@@ -172,6 +172,11 @@
       color: $lh-text-success;
     }
 
+    &.hasAlert {
+      border-color: color-mix(in srgb, var(--token-status-error) 48%, transparent);
+      color: $lh-text-danger;
+    }
+
     &:disabled {
       cursor: not-allowed;
       opacity: 0.72;
@@ -200,6 +205,19 @@
       max-width 180ms ease,
       opacity 140ms ease,
       transform 180ms ease;
+  }
+
+  &RailCount {
+    @include lh-inline(0, nowrap, center, center);
+    @include lh-text($lh-text-danger, 10px, 1, 800);
+
+    min-width: 17px;
+    height: 17px;
+    margin-left: auto;
+    padding: 0 5px;
+    border-radius: $lh-radius-pill;
+    background: color-mix(in srgb, var(--token-status-error) 18%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--token-status-error) 36%, transparent);
   }
 
   &ProjectPanel {
@@ -232,6 +250,158 @@
     &Actions {
       @include lh-inline(10px, nowrap);
     }
+  }
+
+  &ExecutionLogPanel {
+    width: min(380px, calc(100vw - 120px));
+    max-height: min(72vh, 640px);
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--token-border-base) 72%, transparent);
+    border-radius: 20px;
+    background:
+      radial-gradient(circle at top right, color-mix(in srgb, var(--token-accent-base) 10%, transparent), transparent 34%),
+      color-mix(in srgb, var(--token-bg-app) 90%, transparent);
+    backdrop-filter: blur(20px);
+    box-shadow: 0 24px 48px color-mix(in srgb, var(--token-bg-app) 30%, transparent);
+
+    &.isCollapsed {
+      max-height: 72px;
+
+      .linghuiCanvasExecutionLogPanelBody {
+        display: none;
+      }
+    }
+
+    &Header {
+      @include lh-inline(14px, nowrap, flex-start, space-between);
+
+      padding: 14px;
+      border-bottom: 1px solid color-mix(in srgb, var(--token-border-base) 56%, transparent);
+    }
+
+    &TitleBlock {
+      @include lh-stack(4px);
+
+      min-width: 0;
+    }
+
+    &Title {
+      @include lh-text($lh-text-primary, 15px, 1.35, 800);
+    }
+
+    &Meta {
+      @include lh-text($lh-text-muted, 11px, 1.45);
+    }
+
+    &Actions {
+      @include lh-inline(8px, nowrap, center, flex-end);
+    }
+
+    &Body {
+      max-height: min(58vh, 520px);
+      overflow: auto;
+      padding: 12px;
+    }
+  }
+
+  &ExecutionLogEmpty {
+    padding: 18px 12px;
+    border: 1px dashed color-mix(in srgb, var(--token-border-base) 72%, transparent);
+    border-radius: 14px;
+    color: $lh-text-muted;
+    font-size: 12px;
+    text-align: center;
+  }
+
+  &ExecutionLogList {
+    @include lh-stack(8px);
+  }
+
+  &ExecutionLogItem {
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr);
+    gap: 10px;
+    width: 100%;
+    padding: 10px 11px;
+    border: 1px solid color-mix(in srgb, var(--token-border-base) 52%, transparent);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--token-bg-card) 58%, transparent);
+    color: $lh-text-secondary;
+    text-align: left;
+    transition:
+      transform $lh-transition-base,
+      border-color $lh-transition-base,
+      background $lh-transition-base;
+
+    &.isFocusable {
+      cursor: pointer;
+
+      &:hover {
+        transform: translateY(-1px);
+        border-color: color-mix(in srgb, var(--token-accent-base) 48%, transparent);
+        background: color-mix(in srgb, var(--token-bg-hover) 82%, transparent);
+      }
+    }
+
+    &:disabled {
+      cursor: default;
+    }
+
+    &.is-error {
+      border-color: color-mix(in srgb, var(--token-status-error) 32%, transparent);
+
+      .linghuiCanvasExecutionLogIcon,
+      .linghuiCanvasExecutionLogMessage {
+        color: $lh-text-danger;
+      }
+    }
+
+    &.is-warn {
+      border-color: color-mix(in srgb, var(--token-status-warning) 30%, transparent);
+
+      .linghuiCanvasExecutionLogIcon,
+      .linghuiCanvasExecutionLogMessage {
+        color: $lh-text-warning;
+      }
+    }
+
+    &.is-success {
+      .linghuiCanvasExecutionLogIcon,
+      .linghuiCanvasExecutionLogMessage {
+        color: color-mix(in srgb, var(--token-status-success) 72%, var(--token-text-primary));
+      }
+    }
+  }
+
+  &ExecutionLogIcon {
+    @include lh-inline(0, nowrap, center, center);
+
+    width: 24px;
+    height: 24px;
+    margin-top: 1px;
+    border-radius: 9px;
+    background: color-mix(in srgb, var(--token-bg-elevated) 70%, transparent);
+    color: $lh-text-muted;
+  }
+
+  &ExecutionLogContent {
+    @include lh-stack(4px);
+
+    min-width: 0;
+  }
+
+  &ExecutionLogMessage {
+    color: $lh-text-secondary;
+    font-size: 12px;
+    font-weight: 650;
+    line-height: 1.45;
+    word-break: break-word;
+  }
+
+  &ExecutionLogTime {
+    color: $lh-text-muted;
+    font-size: 11px;
+    line-height: 1.4;
   }
 
   &ProjectField {
@@ -493,91 +663,6 @@
       box-shadow:
         0 18px 36px color-mix(in srgb, var(--token-bg-app) 28%, transparent),
         0 0 0 1px color-mix(in srgb, var(--token-accent-base) 12%, transparent);
-    }
-  }
-
-  &RunLog {
-    grid-column: 1 / -1;
-    width: min(560px, calc(100vw - 160px));
-    padding: 10px;
-    border: 1px solid color-mix(in srgb, var(--token-border-base) 78%, transparent);
-    border-radius: 16px;
-    background: color-mix(in srgb, var(--token-bg-surface) 92%, transparent);
-    color: $lh-text-secondary;
-    box-shadow: 0 18px 36px color-mix(in srgb, var(--token-bg-app) 28%, transparent);
-    backdrop-filter: blur(16px);
-
-    &Header {
-      @include lh-inline(6px, nowrap);
-
-      margin: 0 2px 8px;
-      color: $lh-text-strong;
-      font-size: 12px;
-      font-weight: 700;
-    }
-
-    &List {
-      @include lh-stack(5px);
-    }
-
-    &Item {
-      display: grid;
-      grid-template-columns: 72px minmax(0, 1fr);
-      gap: 8px;
-      width: 100%;
-      padding: 7px 8px;
-      border: 1px solid transparent;
-      border-radius: 10px;
-      background: color-mix(in srgb, var(--token-bg-card) 52%, transparent);
-      color: $lh-text-secondary;
-      text-align: left;
-      transition:
-        background $lh-transition-base,
-        border-color $lh-transition-base,
-        transform $lh-transition-base;
-
-      &.isFocusable {
-        cursor: pointer;
-
-        &:hover {
-          transform: translateY(-1px);
-          border-color: color-mix(in srgb, var(--token-accent-base) 42%, transparent);
-          background: color-mix(in srgb, var(--token-bg-hover) 82%, transparent);
-        }
-      }
-
-      &:disabled {
-        cursor: default;
-      }
-
-      &.is-error {
-        border-color: color-mix(in srgb, var(--token-status-error) 26%, transparent);
-
-        .linghuiCanvasRunLogMessage {
-          color: $lh-text-danger;
-        }
-      }
-
-      &.is-success {
-        .linghuiCanvasRunLogMessage {
-          color: color-mix(in srgb, var(--token-status-success) 66%, var(--token-text-primary));
-        }
-      }
-    }
-
-    &Time {
-      color: $lh-text-muted;
-      font-size: 11px;
-      line-height: 1.45;
-      white-space: nowrap;
-    }
-
-    &Message {
-      @include lh-ellipsis;
-
-      color: $lh-text-secondary;
-      font-size: 12px;
-      line-height: 1.45;
     }
   }
 
@@ -1062,18 +1147,17 @@
       max-height: min(52vh, 460px);
     }
 
+    &ExecutionLogPanel {
+      width: min(360px, calc(100vw - 36px));
+      max-height: min(56vh, 500px);
+    }
+
     &StatusDock {
       left: 18px;
       right: 18px;
       bottom: 18px;
       grid-template-columns: repeat(2, minmax(0, auto));
       max-width: none;
-    }
-
-    &RunLog {
-      width: 100%;
-      max-height: 168px;
-      overflow: auto;
     }
   }
 }

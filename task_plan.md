@@ -61,6 +61,10 @@
 | 5. Magnetic Handles | complete | 统一所有输入/输出连接点视觉与命中模型，增大连接吸附范围，并增加线靠近连接点时的磁吸动画 |
 | 6. Validation | complete | 跑相关测试、构建和必要的样式纪律边界检查 |
 | 7. Video Duration Constraints | complete | 灵绘视频节点按当前 ITV 渠道/模型动态限制时长，grok 走枚举，即梦走范围，并在执行前二次归一 |
+| 8. Execution Log Sidebar Panel | complete | 将执行日志从画布 HUD 自动浮层迁移到左侧菜单入口，重做可关闭/可展开收起的日志面板 |
+| 9. Duplicate Submission Guard | complete | 执行目标链路中存在仍在轮询/运行中的节点时阻止重复提交 provider，并允许过期 running 状态重新触发 |
+| 10. Diagnostics Log Export | complete | 设置页新增前后端日志收集/导出 zip；前端日志经白名单 IPC 追加落盘，日志目录跟随 storageRoot |
+| 11. Editor Action Click Guard | complete | 画布节点编辑器的生图、生视频等提交按钮增加即时防双击锁，避免运行态刷新前重复提交 |
 
 ### Acceptance Criteria
 - 系统 Recipe 暂时不再出现在模板列表，用户保存的工作区模板能力保留。
@@ -68,7 +72,10 @@
 - 连线锚点更容易拖拽，连接预览和执行状态更明显。
 - 节点失败、上游阻塞、连接失败都有可回看的日志记录或更具体 toast。
 - 执行失败后首个失败节点会被自动选中聚焦，节点卡片上直接露出失败原因。
-- HUD 在执行中或最近有错误时显示最近日志，日志项可点击定位相关节点。
+- 执行日志入口收纳到左侧菜单；日志面板可手动打开、关闭、展开/收起，日志项可点击定位相关节点。
+- 目标链路里已有运行中节点时，不会再次提交视频/生图等 provider；过期的异常 running 状态不会永久阻塞用户重新执行。
+- 生图、生视频等节点编辑器提交按钮连续双击只会触发一次提交；首击后立刻短暂锁定，随后仍由运行态禁用兜底。
+- 设置页可导出诊断日志 zip，包含 renderer/main/Electron 日志和 manifest；storageRoot 变更后日志目录同步切换。
 - 所有节点连接点使用同一套视觉/吸附样式；连线进入扩大范围即可吸附到端口，不必像素级碰到圆点。
 - 相关测试/构建通过；既有风格脚本失败边界单独记录。
 

@@ -758,6 +758,10 @@ body {
   color: var(--token-status-error);
 }
 
+.settings-action-title.is-muted-danger {
+  color: color-mix(in srgb, var(--token-status-error) 82%, var(--token-text-secondary));
+}
+
 .settings-action-desc {
   color: var(--token-text-secondary);
   font-size: 12px;

@@ -15,6 +15,8 @@ class ProjectController extends BaseController {
   async setStorageRoot(args: { rootPath: string }): Promise<{ success: boolean; rootPath: string }> {
     await ensureServicesReady();
     const rootPath = await services.project.setStorageRoot(args.rootPath);
+    services.diagnostics.setStorageRoot(rootPath);
+    services.linghui.init(rootPath);
     services.ffmpeg.init(`${rootPath}/cache/ffmpeg`).catch(() => undefined);
     return { success: true, rootPath };
   }

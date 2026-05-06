@@ -30,6 +30,14 @@ import {
 } from '../../../../types/linghui';
 import {
   ArrowLeft,
+  ChevronDown,
+  ChevronUp,
+  ClipboardList,
+  CircleAlert,
+  CircleCheck,
+  Info,
+  TriangleAlert,
+  X,
   FolderOpen,
   History,
   Library,
@@ -37,11 +45,16 @@ import {
   Save,
   Workflow,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import LinghuiCanvas, {
   type LinghuiCanvasHandle,
 } from '../../canvas/components/LinghuiCanvas';
 import { LinghuiLibraryDrawer, type LinghuiAssetFilter, type LinghuiLibraryDrawerKey } from '../../library/components/LinghuiLibraryDrawer';
-import { collectLinghuiDependentNodeIds, executeLinghuiWorkflow } from '../../execution/state/linghuiExecution';
+import {
+  collectLinghuiDependentNodeIds,
+  detectLinghuiRunningNodeBlocks,
+  executeLinghuiWorkflow,
+} from '../../execution/state/linghuiExecution';
 import { buildLinghuiExecutionPlan, type LinghuiExecutionPlan } from '../../execution/state/linghuiExecutionPlan';
 import { exportLinghuiNodeResults } from '../../execution/state/linghuiResultExport';
 import { cloneSnapshotValue, detectCanvasMutationKind } from '../../canvas/state/linghuiCanvasShared';
@@ -80,6 +93,12 @@ const EMPTY_WORKSPACE_RUNTIME: LinghuiWorkspaceRuntimeState = {
 };
 const WORKSPACE_SAVE_DEBOUNCE_MS = 2500;
 const workflowLogger = createLogger('LinghuiWorkflowExecution');
+const EXECUTION_LOG_ICON_BY_LEVEL: Record<LinghuiExecutionLogEntry['level'], LucideIcon> = {
+  error: CircleAlert,
+  warn: TriangleAlert,
+  info: Info,
+  success: CircleCheck,
+};
 
 interface PendingLinghuiExecutionPlanRequest {
   plan: LinghuiExecutionPlan;
@@ -125,6 +144,8 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
   const [workspaceHistory, setWorkspaceHistory] = useState<LinghuiWorkspaceHistoryRecord[]>([]);
   const [pendingExecutionPlan, setPendingExecutionPlan] = useState<PendingLinghuiExecutionPlanRequest | null>(null);
   const [projectPanelOpen, setProjectPanelOpen] = useState(false);
+  const [executionLogPanelOpen, setExecutionLogPanelOpen] = useState(false);
+  const [executionLogCollapsed, setExecutionLogCollapsed] = useState(false);
   const [, setStats] = useState<LinghuiGraphStats>({
     nodeCount: 0,
     linkCount: 0,
@@ -156,7 +177,7 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
   }, [activeWorkspace?.id, activeWorkspace?.name]);
 
   useEffect(() => {
-    if (!projectPanelOpen) {
+    if (!projectPanelOpen && !executionLogPanelOpen) {
       return undefined;
     }
 
@@ -166,11 +187,12 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
         return;
       }
       setProjectPanelOpen(false);
+      setExecutionLogPanelOpen(false);
     };
 
     window.addEventListener('pointerdown', handlePointerDown, true);
     return () => window.removeEventListener('pointerdown', handlePointerDown, true);
-  }, [projectPanelOpen]);
+  }, [executionLogPanelOpen, projectPanelOpen]);
 
   const applyWorkspaceRuntime = useCallback((runtime: LinghuiWorkspaceRuntimeState) => {
     workspaceRuntimeRef.current = runtime;
@@ -576,6 +598,42 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
     let nextRuns = { ...current.nodeRuns };
     let nextLogs = [...current.executionLogs];
     const nodeSnapshotMap = new Map(context.nodes.map(node => [node.id, node]));
+    let runningNodeBlocks;
+    try {
+      runningNodeBlocks = detectLinghuiRunningNodeBlocks({
+        context,
+        targetNodeIds: runnableTargetNodeIds ?? targetNodeIds,
+        previousRuns: nextRuns,
+        resolveTargetsOnly: options?.resolveTargetsOnly,
+      });
+    } catch (error: any) {
+      workflowLogger.warn('灵绘执行被阻止：检测运行中节点失败', {
+        targetNodeIds: runnableTargetNodeIds ?? targetNodeIds,
+        error: error?.message || String(error),
+      });
+      message.error(error?.message || '检测执行状态失败');
+      return;
+    }
+
+    if (runningNodeBlocks.length > 0) {
+      const firstRunning = runningNodeBlocks[0];
+      const content = runningNodeBlocks.length === 1
+        ? `「${firstRunning.label}」仍在执行中，请等待当前轮询完成或先取消执行`
+        : `${runningNodeBlocks.length} 个节点仍在执行中，请等待当前轮询完成或先取消执行`;
+      workflowLogger.warn('灵绘执行被阻止：目标链路仍有运行中节点', {
+        targetNodeIds: runnableTargetNodeIds ?? targetNodeIds,
+        runningNodeBlocks,
+      });
+      nextLogs = mergeExecutionLogs(
+        nextLogs,
+        createLog('warn', content, firstRunning.nodeId),
+      );
+      updateWorkspaceExecution(nextRuns, nextLogs);
+      message.warning(content);
+      canvasRef.current?.focusNodes([firstRunning.nodeId], { select: true });
+      return;
+    }
+
     const abortController = new AbortController();
     executionAbortControllerRef.current = abortController;
 
@@ -710,6 +768,8 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
   }, [handleHistoryLibraryMutate, message, updateWorkspaceExecution]);
 
   const openDrawer = useCallback(async (drawer: LinghuiLibraryDrawerKey) => {
+    setProjectPanelOpen(false);
+    setExecutionLogPanelOpen(false);
     setActiveDrawer(drawer);
 
     if (drawer === 'asset') {
@@ -787,6 +847,7 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
       activateWorkspace(workspace);
       await refreshWorkspaceList(workspace.id);
       closeActiveDrawer();
+      setExecutionLogPanelOpen(false);
       setProjectPanelOpen(true);
       message.success('已创建新的灵绘项目');
       window.setTimeout(() => {
@@ -971,6 +1032,21 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
         targetNodeIds: runnableTargetNodeIds ?? requestedTargetNodeIds,
         previousRuns: currentWorkspace.nodeRuns,
       });
+      const runningNodeBlocks = detectLinghuiRunningNodeBlocks({
+        context,
+        targetNodeIds: runnableTargetNodeIds ?? requestedTargetNodeIds,
+        previousRuns: currentWorkspace.nodeRuns,
+        resolveTargetsOnly: options?.resolveTargetsOnly,
+      });
+      if (runningNodeBlocks.length > 0) {
+        const firstRunning = runningNodeBlocks[0];
+        const content = runningNodeBlocks.length === 1
+          ? `「${firstRunning.label}」仍在执行中，请等待当前轮询完成或先取消执行`
+          : `${runningNodeBlocks.length} 个节点仍在执行中，请等待当前轮询完成或先取消执行`;
+        message.warning(content);
+        canvasRef.current?.focusNodes([firstRunning.nodeId], { select: true });
+        return;
+      }
       setPendingExecutionPlan({
         plan,
         scopeLabel,
@@ -1111,6 +1187,18 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
     canvasRef.current?.focusNodes([nodeId], { select: true });
   }, []);
 
+  const executionLogItems = useMemo(
+    () => workspaceRuntime.executionLogs.slice(-24).reverse(),
+    [workspaceRuntime.executionLogs],
+  );
+
+  const executionLogErrorCount = useMemo(
+    () => workspaceRuntime.executionLogs.filter(entry => entry.level === 'error').length,
+    [workspaceRuntime.executionLogs],
+  );
+
+  const executionLogLatest = executionLogItems[0];
+
   const handleRerunAffected = useCallback(async () => {
     if (staleNodeIds.length === 0) {
       message.info('当前没有待重跑节点');
@@ -1189,6 +1277,8 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
           className={`linghuiCanvasRailButton ${projectPanelOpen ? 'isActive' : ''}`}
           onClick={() => {
             setProjectPanelOpen(current => !current);
+            setExecutionLogPanelOpen(false);
+            closeActiveDrawer();
           }}
           title="打开项目列表"
           aria-label="打开项目列表"
@@ -1250,6 +1340,23 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
         >
           <span className="linghuiCanvasRailIcon"><History size={16} /></span>
           <span className="linghuiCanvasRailLabel">历史</span>
+        </button>
+        <button
+          type="button"
+          className={`linghuiCanvasRailButton ${executionLogPanelOpen ? 'isActive' : ''} ${executionLogErrorCount > 0 ? 'hasAlert' : ''}`}
+          onClick={() => {
+            setExecutionLogPanelOpen(current => !current);
+            setProjectPanelOpen(false);
+            closeActiveDrawer();
+          }}
+          title="打开执行日志"
+          aria-label="打开执行日志"
+        >
+          <span className="linghuiCanvasRailIcon"><ClipboardList size={16} /></span>
+          <span className="linghuiCanvasRailLabel">执行日志</span>
+          {executionLogErrorCount > 0 ? (
+            <span className="linghuiCanvasRailCount">{executionLogErrorCount}</span>
+          ) : null}
         </button>
       </div>
 
@@ -1321,12 +1428,92 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
           </div>
         </div>
       ) : null}
+
+      {executionLogPanelOpen ? (
+        <section className={`linghuiCanvasExecutionLogPanel nopan nowheel ${executionLogCollapsed ? 'isCollapsed' : ''}`}>
+          <div className="linghuiCanvasExecutionLogPanelHeader">
+            <div className="linghuiCanvasExecutionLogPanelTitleBlock">
+              <div className="linghuiCanvasExecutionLogPanelTitle">执行日志</div>
+              <div className="linghuiCanvasExecutionLogPanelMeta">
+                {workspaceRuntime.executionLogs.length} 条记录
+                {executionLogLatest ? ` · 最近 ${new Date(executionLogLatest.createdAt).toLocaleTimeString()}` : ''}
+              </div>
+            </div>
+            <div className="linghuiCanvasExecutionLogPanelActions">
+              <button
+                type="button"
+                className="linghuiCanvasProjectActionButton isIconOnly"
+                onClick={() => setExecutionLogCollapsed(value => !value)}
+                title={executionLogCollapsed ? '展开执行日志' : '收起执行日志'}
+                aria-label={executionLogCollapsed ? '展开执行日志' : '收起执行日志'}
+              >
+                {executionLogCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+              </button>
+              <button
+                type="button"
+                className="linghuiCanvasProjectActionButton isIconOnly"
+                onClick={() => setExecutionLogPanelOpen(false)}
+                title="关闭执行日志"
+                aria-label="关闭执行日志"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+
+          {!executionLogCollapsed ? (
+            <div className="linghuiCanvasExecutionLogPanelBody">
+              {executionLogItems.length === 0 ? (
+                <div className="linghuiCanvasExecutionLogEmpty">暂无执行记录。</div>
+              ) : (
+                <div className="linghuiCanvasExecutionLogList">
+                  {executionLogItems.map(entry => {
+                    const LevelIcon = EXECUTION_LOG_ICON_BY_LEVEL[entry.level] ?? Info;
+                    const isFocusable = Boolean(entry.nodeId);
+                    return (
+                      <button
+                        key={entry.id}
+                        type="button"
+                        className={`linghuiCanvasExecutionLogItem is-${entry.level} ${isFocusable ? 'isFocusable' : ''}`}
+                        disabled={!isFocusable}
+                        onClick={() => {
+                          if (entry.nodeId) {
+                            handleFocusLogNode(entry.nodeId);
+                          }
+                        }}
+                        title={isFocusable ? '定位相关节点' : entry.message}
+                      >
+                        <span className="linghuiCanvasExecutionLogIcon">
+                          <LevelIcon size={14} />
+                        </span>
+                        <span className="linghuiCanvasExecutionLogContent">
+                          <span className="linghuiCanvasExecutionLogMessage">{entry.message}</span>
+                          <span className="linghuiCanvasExecutionLogTime">
+                            {new Date(entry.createdAt).toLocaleString()}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
     </div>
   ), [
     activeDrawer,
     activeWorkspace?.id,
     activeWorkspace?.name,
+    closeActiveDrawer,
     commitWorkspaceRename,
+    executionLogCollapsed,
+    executionLogErrorCount,
+    executionLogItems,
+    executionLogLatest,
+    executionLogPanelOpen,
+    handleFocusLogNode,
     handleCreateWorkspace,
     handleManualSave,
     handleSelectWorkspace,
@@ -1335,6 +1522,7 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
     onExit,
     projectPanelOpen,
     saving,
+    workspaceRuntime.executionLogs.length,
     workspaceList,
     workspaceNameDraft,
   ]);
@@ -1366,8 +1554,6 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
             onRunSingleNode={handleRunSingleNode}
             onRunAll={handleRunAll}
             onRunSelection={handleRunSelection}
-            executionLogs={workspaceRuntime.executionLogs}
-            onFocusLogNode={handleFocusLogNode}
             onExportSelection={handleExportSelection}
             onFocusFailedNode={handleFocusFailedNode}
             onRetryFailed={handleRetryFailed}

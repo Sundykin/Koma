@@ -43,6 +43,9 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'controller/fs/writeFile', 'controller/fs/downloadFile',
   'controller/fs/exists', 'controller/fs/mkdir', 'controller/fs/readdir',
   'controller/fs/stat', 'controller/fs/remove', 'controller/fs/copy',
+  'controller/diagnostics/appendRendererLog', 'controller/diagnostics/listLogs',
+  'controller/diagnostics/getUsage', 'controller/diagnostics/clearLogs',
+  'controller/diagnostics/clearRendererLogs', 'controller/diagnostics/exportLogs',
   'controller/app/openExternal', 'controller/app/showItemInFolder',
   'controller/app/getPath', 'controller/app/getVersion',
   // 风格参考图（"画风锚"）：全局上传/清除 + 项目级上传/清除 + 路径解析
@@ -213,6 +216,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     stat: (path: string) => invokeMain('controller/fs/stat', { filePath: path }),
     remove: (path: string) => invokeMain('controller/fs/remove', { filePath: path }),
     copy: (src: string, dest: string) => invokeMain('controller/fs/copy', { src, dest }),
+  },
+  diagnostics: {
+    appendRendererLog: (payload: any) => invokeMain('controller/diagnostics/appendRendererLog', payload),
+    listLogs: () => invokeMain('controller/diagnostics/listLogs', {}),
+    getUsage: () => invokeMain('controller/diagnostics/getUsage', {}),
+    clearLogs: () => invokeMain('controller/diagnostics/clearLogs', {}),
+    clearRendererLogs: () => invokeMain('controller/diagnostics/clearRendererLogs', {}),
+    exportLogs: (destPath: string) => invokeMain('controller/diagnostics/exportLogs', { destPath }),
   },
   shell: {
     openExternal: (url: string) => invokeMain('controller/app/openExternal', { url }),

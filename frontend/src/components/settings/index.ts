@@ -6,4 +6,5 @@ export { TTSConfigManager } from './TTSConfigManager';
 export { VisualStyleManager } from './VisualStyleManager';
 export { ThemeSelector } from './ThemeSelector';
 export { AppearanceThemeSettings } from './AppearanceThemeSettings';
+export { LogDiagnosticsSettings } from './LogDiagnosticsSettings';
 export { WorkflowUploader } from './WorkflowUploader';

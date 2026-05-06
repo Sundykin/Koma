@@ -29,6 +29,11 @@ export function getBusinessRoot(): string {
   return path.join(app.getPath('home'), '.koma');
 }
 
+/** 默认业务日志目录；实际运行时会跟随可配置 storageRoot。 */
+export function getBusinessLogsDir(): string {
+  return path.join(getBusinessRoot(), 'logs');
+}
+
 /** 全局配置 SQLite（settings.db）所在目录 */
 export function getSettingsDir(): string {
   return getBusinessRoot();

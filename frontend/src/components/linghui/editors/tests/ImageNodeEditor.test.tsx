@@ -146,6 +146,17 @@ describe('ImageNodeEditor', () => {
     expect(screen.getAllByText('等待图片生成…').length).toBeGreaterThan(0);
   });
 
+  it('连续双击生成按钮只触发一次生图提交', async () => {
+    const onRun = vi.fn();
+    renderEditor(createImageNodeData(), { onRun });
+
+    const button = await screen.findByRole('button', { name: '生成' });
+    fireEvent.click(button);
+    fireEvent.click(button);
+
+    expect(onRun).toHaveBeenCalledTimes(1);
+  });
+
   it('运行中时会把图片进度文案显示到生成按钮上并保持 loading', async () => {
     useLinghuiNodeEditorApiMock.mockReturnValue({
       executionQueue: {

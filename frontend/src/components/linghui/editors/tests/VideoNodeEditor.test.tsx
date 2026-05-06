@@ -208,6 +208,17 @@ describe('VideoNodeEditor', () => {
     expect(screen.getAllByText('等待视频生成…').length).toBeGreaterThan(0);
   });
 
+  it('连续双击生成按钮只触发一次生视频提交', async () => {
+    const onRun = vi.fn();
+    renderEditor(createVideoNodeData(), { onRun });
+
+    const button = await screen.findByRole('button', { name: '生成' });
+    fireEvent.click(button);
+    fireEvent.click(button);
+
+    expect(onRun).toHaveBeenCalledTimes(1);
+  });
+
   it('运行中时会把进度文案显示到生成按钮上', async () => {
     useLinghuiNodeEditorApiMock.mockReturnValue({
       executionQueue: {
@@ -376,6 +387,41 @@ describe('VideoNodeEditor', () => {
 
     expect(await screen.findByText('当前模型支持 4-15s')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '10s' })).not.toBeInTheDocument();
+    expect(updateNodeDataMock).not.toHaveBeenCalledWith('video-node-1', expect.any(Function));
+  });
+
+  it('Koma 官方即梦 Fast 模型同样使用 4-15 秒范围', async () => {
+    loadSettingsMock.mockResolvedValue({
+      channelConfigs: [
+        {
+          id: 'jimeng-channel',
+          category: 'itv',
+          providerType: 'koma-suihe-itv',
+        },
+      ],
+    });
+    listConfiguredModelSelectOptionsMock.mockReturnValue([
+      {
+        value: 'jimeng-channel::seedance-2.0-f',
+        label: 'Seedance 2.0 Fast',
+        channelId: 'jimeng-channel',
+        modelId: 'seedance-2.0-f',
+        providerType: 'koma-suihe-itv',
+        channelLabel: 'Koma 官方即梦',
+        modelLabel: 'Seedance 2.0 Fast',
+        capabilities: ['video.image-to-video'],
+      },
+    ]);
+
+    renderEditor(createVideoNodeData({
+      itvSelection: 'jimeng-channel::seedance-2.0-f',
+      duration: 15,
+    }));
+
+    expect(await screen.findByRole('button', { name: '16:9 · 720P · 15s' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '16:9 · 720P · 15s' }));
+
+    expect(await screen.findByText('当前模型支持 4-15s')).toBeInTheDocument();
     expect(updateNodeDataMock).not.toHaveBeenCalledWith('video-node-1', expect.any(Function));
   });
 });

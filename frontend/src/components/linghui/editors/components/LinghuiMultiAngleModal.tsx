@@ -9,6 +9,7 @@ import {
   LINGHUI_MULTI_ANGLE_ELEVATIONS,
 } from '../../../../types/linghui';
 import { LinghuiMultiAngle3DViewport } from './LinghuiMultiAngle3DViewport';
+import { useLinghuiActionLock } from '../hooks/useLinghuiActionLock';
 
 interface ProviderOption {
   value: string;
@@ -40,6 +41,7 @@ export const LinghuiMultiAngleModal: React.FC<LinghuiMultiAngleModalProps> = ({
   onCancel,
   onConfirm,
 }) => {
+  const { locked: isConfirmLocked, runWithActionLock } = useLinghuiActionLock(!open);
   const azimuthMeta = useMemo(() => (
     LINGHUI_MULTI_ANGLE_AZIMUTHS.find(item => item.value === config.azimuth) ?? LINGHUI_MULTI_ANGLE_AZIMUTHS[0]
   ), [config.azimuth]);
@@ -49,6 +51,9 @@ export const LinghuiMultiAngleModal: React.FC<LinghuiMultiAngleModalProps> = ({
   const distanceMeta = useMemo(() => (
     LINGHUI_MULTI_ANGLE_DISTANCES.find(item => item.value === config.distance) ?? LINGHUI_MULTI_ANGLE_DISTANCES[1]
   ), [config.distance]);
+  const handleConfirm = () => {
+    runWithActionLock(onConfirm);
+  };
 
   return (
     <Modal
@@ -131,7 +136,7 @@ export const LinghuiMultiAngleModal: React.FC<LinghuiMultiAngleModalProps> = ({
 
           <div className="linghuiMultiAngleFooter">
             <Button onClick={onCancel}>取消</Button>
-            <Button type="primary" onClick={onConfirm}>创建并生图</Button>
+            <Button type="primary" disabled={isConfirmLocked} onClick={handleConfirm}>创建并生图</Button>
           </div>
         </div>
       </div>
