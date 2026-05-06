@@ -385,32 +385,7 @@ function createVoiceoverWorkflowRecipeSnapshot(): LinghuiSubgraphSnapshot {
 }
 
 export function listBuiltinLinghuiRecipeTemplates(): LinghuiBuiltinRecipeTemplateDefinition[] {
-  return [
-    {
-      id: 'builtin-recipe-character-design',
-      recipeKey: 'character-design-flow',
-      name: '角色设计流',
-      description: '从角色设定出发，串起正面图、多角度图与角色展示视频。',
-      sortOrder: 300,
-      snapshot: createCharacterDesignRecipeSnapshot(),
-    },
-    {
-      id: 'builtin-recipe-storyboard-creation',
-      recipeKey: 'storyboard-creation-flow',
-      name: '分镜创作流',
-      description: '从剧情梗概生成分镜脚本，再分支出镜头图与镜头视频骨架。',
-      sortOrder: 200,
-      snapshot: createStoryboardCreationRecipeSnapshot(),
-    },
-    {
-      id: 'builtin-recipe-voiceover-workflow',
-      recipeKey: 'voiceover-workflow',
-      name: '配音工作流',
-      description: '从脚本文案拆出多段台词，并生成对应的配音节点。',
-      sortOrder: 100,
-      snapshot: createVoiceoverWorkflowRecipeSnapshot(),
-    },
-  ];
+  return [];
 }
 
 export function resolveLinghuiRecipeTemplateLabel(recipeKey?: LinghuiRecipeTemplateKey): string | null {

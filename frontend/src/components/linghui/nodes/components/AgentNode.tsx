@@ -1,5 +1,5 @@
-import React, { memo, type CSSProperties } from 'react';
-import { Handle, Position, type NodeProps } from '@xyflow/react';
+import React, { memo } from 'react';
+import { Position, type NodeProps } from '@xyflow/react';
 import type {
   LinghuiAgentNodeProperties,
   LinghuiNodeData,
@@ -12,6 +12,8 @@ import { EditableCompactNodeLabel } from './EditableCompactNodeLabel';
 import { resolveLinghuiNodeViewMode } from '../../editors/state/linghuiNodeViewMode';
 import { resolveDefaultCompactNodeStyle } from '../state/linghuiNodeCardSizing';
 import { cssVars } from '../../../../theme/runtime';
+import { LinghuiNodeRunError } from './LinghuiNodeRunError';
+import { LinghuiNodeHandle } from './LinghuiNodeHandle';
 
 const STATUS_COLORS: Record<LinghuiRunStatus, string> = {
   idle: 'var(--token-text-muted)',
@@ -25,15 +27,6 @@ function resolveHandleTop(index: number, total: number): string {
   if (total <= 1) return '50%';
   const step = 100 / (total + 1);
   return `${step * (index + 1)}%`;
-}
-
-function getHandleColor(dataType: LinghuiNodeData['inputs'][number]['dataType'], accent: string): string {
-  switch (dataType) {
-    case 'text':
-      return 'var(--token-status-warning)';
-    default:
-      return accent;
-  }
 }
 
 function AgentNodeInner({ id, data, selected }: NodeProps) {
@@ -69,26 +62,25 @@ function AgentNodeInner({ id, data, selected }: NodeProps) {
       {...interactionHandlers}
     >
       {nodeData.inputs.map((slot, index) => (
-        <Handle
+        <LinghuiNodeHandle
           key={`input-${index}`}
           type="target"
           position={Position.Left}
           id={`input-${index}`}
-          className="linghuiCompactHandle"
-          style={{
-            '--linghui-handle-bg': getHandleColor(slot.dataType, nodeData.accent),
-            '--linghui-handle-top': resolveHandleTop(index, nodeData.inputs.length),
-          } as CSSProperties}
-          isConnectable
+          dataType={slot.dataType}
+          accent={nodeData.accent}
+          top={resolveHandleTop(index, nodeData.inputs.length)}
+          title={slot.name}
         />
       ))}
 
-      <Handle
+      <LinghuiNodeHandle
         type="source"
         position={Position.Right}
         id="output-0"
-        className="linghuiCompactHandle"
-        style={{ '--linghui-handle-bg': 'var(--token-status-warning)' } as CSSProperties}
+        dataType={nodeData.outputs[0]?.dataType}
+        accent={nodeData.accent}
+        title={nodeData.outputs[0]?.name}
       />
 
       <div className="linghuiCompactThumb linghuiCompactTextThumb">
@@ -114,6 +106,7 @@ function AgentNodeInner({ id, data, selected }: NodeProps) {
             {previewText.slice(0, 84)}
           </div>
         ) : null}
+        <LinghuiNodeRunError runState={runState} />
         {status === 'running' && (
           <div className="linghuiCompactProgress">
             <div className="linghuiCompactProgressBar" />

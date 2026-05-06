@@ -3,12 +3,12 @@
  * 按当前选择的 ITV 渠道动态计算允许值。这里仅作为兜底默认值，
  * 在没有 ctx / 找不到渠道 spec 时使用。
  */
-export const ALLOWED_VIDEO_DURATIONS = [6, 10, 12, 16, 20] as const;
+export const ALLOWED_VIDEO_DURATIONS = [6, 12, 16, 20] as const;
 export const ALLOWED_VIDEO_DURATION_SECONDS = ALLOWED_VIDEO_DURATIONS;
 
 export type AllowedVideoDurationSeconds = typeof ALLOWED_VIDEO_DURATIONS[number];
 
-export const DEFAULT_VIDEO_DURATION_SECONDS: AllowedVideoDurationSeconds = 10;
+export const DEFAULT_VIDEO_DURATION_SECONDS: AllowedVideoDurationSeconds = 6;
 
 function coerceFiniteNumber(value: unknown): number | undefined {
   let parsed: number | undefined;
@@ -52,7 +52,7 @@ function nearestAllowedVideoDuration(value: number): AllowedVideoDurationSeconds
 
 export function normalizeVideoDurationSeconds(
   value: unknown,
-  fallback: unknown = 10,
+  fallback: unknown = DEFAULT_VIDEO_DURATION_SECONDS,
 ): AllowedVideoDurationSeconds {
   const numericValue = coerceFiniteNumber(value);
   if (numericValue != null) {
@@ -60,5 +60,5 @@ export function normalizeVideoDurationSeconds(
   }
 
   const numericFallback = coerceFiniteNumber(fallback);
-  return nearestAllowedVideoDuration(numericFallback ?? 10);
+  return nearestAllowedVideoDuration(numericFallback ?? DEFAULT_VIDEO_DURATION_SECONDS);
 }

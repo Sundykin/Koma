@@ -1,9 +1,11 @@
-import React, { type CSSProperties, type PropsWithChildren } from 'react';
-import { Handle, Position } from '@xyflow/react';
+import React, { type PropsWithChildren } from 'react';
+import { Position } from '@xyflow/react';
 import type { LinghuiNodeData, LinghuiRunStatus } from '../../../../types/linghui';
 import { useLinghuiNodeInteraction, useNodeRunState } from '../state/LinghuiNodeRunsContext';
 import { resolveLinghuiNodeViewMode } from '../../editors/state/linghuiNodeViewMode';
 import { cssVars } from '../../../../theme/runtime';
+import { LinghuiNodeRunError } from './LinghuiNodeRunError';
+import { LinghuiNodeHandle } from './LinghuiNodeHandle';
 
 const STATUS_COLORS: Record<LinghuiRunStatus, string> = {
   idle: 'var(--token-text-muted)',
@@ -86,38 +88,35 @@ export const LinghuiNodeShell: React.FC<PropsWithChildren<LinghuiNodeShellProps>
 
       {/* Input handles */}
       {data.inputs.map((slot, index) => (
-        <Handle
+        <LinghuiNodeHandle
           key={`input-${index}`}
           type="target"
           position={Position.Left}
           id={`input-${index}`}
-          className="linghuiRFHandle"
-          style={{
-            '--linghui-handle-top': `${52 + index * 28}px`,
-            '--linghui-handle-bg': data.accent,
-          } as CSSProperties}
+          dataType={slot.dataType}
+          accent={data.accent}
+          top={`${52 + index * 28}px`}
           title={slot.name}
         />
       ))}
 
       {/* Output handles */}
       {data.outputs.map((slot, index) => (
-        <Handle
+        <LinghuiNodeHandle
           key={`output-${index}`}
           type="source"
           position={Position.Right}
           id={`output-${index}`}
-          className="linghuiRFHandle"
-          style={{
-            '--linghui-handle-top': `${52 + index * 28}px`,
-            '--linghui-handle-bg': data.accent,
-          } as CSSProperties}
+          dataType={slot.dataType}
+          accent={data.accent}
+          top={`${52 + index * 28}px`}
           title={slot.name}
         />
       ))}
 
       {/* Node content */}
       <div className="linghuiRFNodeBody">
+        <LinghuiNodeRunError runState={runState} />
         {children}
       </div>
     </div>

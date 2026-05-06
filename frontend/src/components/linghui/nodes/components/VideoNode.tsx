@@ -1,5 +1,5 @@
-import React, { memo, useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
-import { Handle, Position, type NodeProps } from '@xyflow/react';
+import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { Position, type NodeProps } from '@xyflow/react';
 import { LoaderCircle, Pause, Play } from 'lucide-react';
 import type {
   LinghuiNodeData,
@@ -22,6 +22,8 @@ import { getVideoCapabilityDescriptor } from '../../editors/state/videoCapabilit
 import { electronService } from '../../../../services/electronService';
 import { base64ToBytes } from '../../../../utils/encoding';
 import { cssVars } from '../../../../theme/runtime';
+import { LinghuiNodeRunError } from './LinghuiNodeRunError';
+import { LinghuiNodeHandle } from './LinghuiNodeHandle';
 
 const STATUS_COLORS: Record<LinghuiRunStatus, string> = {
   idle: 'var(--token-text-muted)',
@@ -92,19 +94,6 @@ function resolveHandleTop(index: number, total: number): string {
   if (total <= 1) return '50%';
   const step = 100 / (total + 1);
   return `${step * (index + 1)}%`;
-}
-
-function getHandleColor(dataType: LinghuiNodeData['inputs'][number]['dataType'], accent: string): string {
-  switch (dataType) {
-    case 'text':
-      return 'var(--token-status-warning)';
-    case 'audio':
-      return 'var(--token-status-warning)';
-    case 'video':
-      return 'var(--token-status-info)';
-    default:
-      return accent;
-  }
 }
 
 function drawVideoFrame(video: HTMLVideoElement, canvas: HTMLCanvasElement): boolean {
@@ -359,26 +348,25 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
       {...interactionHandlers}
     >
       {nodeData.inputs.map((slot, index) => (
-        <Handle
+        <LinghuiNodeHandle
           key={`input-${index}`}
           type="target"
           position={Position.Left}
           id={`input-${index}`}
-          className="linghuiCompactHandle"
-          style={{
-            '--linghui-handle-bg': getHandleColor(slot.dataType, nodeData.accent),
-            '--linghui-handle-top': resolveHandleTop(index, nodeData.inputs.length),
-          } as CSSProperties}
-          isConnectable
+          dataType={slot.dataType}
+          accent={nodeData.accent}
+          top={resolveHandleTop(index, nodeData.inputs.length)}
+          title={slot.name}
         />
       ))}
 
-      <Handle
+      <LinghuiNodeHandle
         type="source"
         position={Position.Right}
         id="output-0"
-        className="linghuiCompactHandle"
-        style={{ '--linghui-handle-bg': nodeData.accent } as CSSProperties}
+        dataType={nodeData.outputs[0]?.dataType}
+        accent={nodeData.accent}
+        title={nodeData.outputs[0]?.name}
       />
 
       <div className="linghuiCompactThumb">
@@ -472,6 +460,7 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
             <div className="linghuiCompactProgressBar" />
           </div>
         )}
+        <LinghuiNodeRunError runState={runState} surface="thumb" />
       </div>
 
       {isEditorVisible ? <LinghuiNodeEditor nodeId={id} nodeType="linghui/video" /> : null}

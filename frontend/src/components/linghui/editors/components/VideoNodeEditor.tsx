@@ -16,6 +16,14 @@ import {
   listConfiguredModelSelectOptions,
   serializeMediaSelection,
 } from '../../../../providers/channel/resolver';
+import {
+  DEFAULT_VIDEO_DURATION_SPEC,
+  clampDurationToSpec,
+  getDurationSpecForITVSelection,
+  getDurationSpecForModel,
+  isAllowedDurationForSpec,
+  type VideoDurationSpec,
+} from '../../../../providers/itv/durationSpec';
 import type { LinghuiPromptReferenceItem } from '../state/linghuiPromptReferences';
 import { useLinghuiNodeEditorApi, useLinghuiNodeMutation } from '../../nodes/state/LinghuiNodeRunsContext';
 import {
@@ -75,7 +83,6 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
   const rawVideoCapability = props.videoCapability as LinghuiVideoCapability | undefined;
   const aspectRatio = String(props.aspectRatio ?? '16:9');
   const resolution = String(props.resolution ?? '720p');
-  const duration = Number(props.duration ?? 5);
   const isPassThroughNode = Boolean(source);
   const passThroughPosterSource = String(props.posterSource ?? '').trim();
   const primaryVideo = getLinghuiResultPrimaryMedia(nodeRun?.result);
@@ -105,12 +112,23 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
 
   const [providers, setProviders] = useState<ProviderOption[]>([]);
   const [fallbackSelectionKey, setFallbackSelectionKey] = useState('');
+  const [durationSpec, setDurationSpec] = useState<VideoDurationSpec | null>(null);
 
   const resolvedSelectionKey = itvSelection || fallbackSelectionKey || providers[0]?.value || '';
   const activeProvider = useMemo(
     () => providers.find(option => option.value === resolvedSelectionKey) || providers[0],
     [providers, resolvedSelectionKey],
   );
+  const selectionModelDurationSpec = useMemo(() => {
+    const sepIndex = resolvedSelectionKey.indexOf('::');
+    return getDurationSpecForModel(sepIndex > 0 ? resolvedSelectionKey.slice(sepIndex + 2) : undefined);
+  }, [resolvedSelectionKey]);
+  const activeDurationSpec = activeProvider?.durationSpec
+    ?? selectionModelDurationSpec
+    ?? durationSpec
+    ?? DEFAULT_VIDEO_DURATION_SPEC;
+  const hasResolvedDurationSpec = Boolean(activeProvider?.durationSpec || durationSpec || selectionModelDurationSpec);
+  const duration = clampDurationToSpec(props.duration, activeDurationSpec);
   const supportedCapabilities = useMemo(() => {
     if (activeProvider?.capabilities?.length) {
       return listVideoCapabilities(activeProvider.capabilities);
@@ -131,19 +149,43 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
 
   useEffect(() => {
     loadSettings().then(settings => {
+      const channelSpecs = (settings.channelConfigs || [])
+        .filter(channel => channel.category === 'itv')
+        .map(channel => ({
+          id: channel.id,
+          providerType: channel.providerType,
+        }));
       const nextProviders = listConfiguredModelSelectOptions(settings, 'itv').map(option => ({
         value: option.value,
         label: `${option.channelLabel} / ${option.modelLabel}`,
         capabilities: listVideoCapabilities(option.capabilities),
+        providerType: option.providerType,
+        durationSpec: getDurationSpecForITVSelection(option.value, channelSpecs),
         channelLabel: option.channelLabel,
         modelLabel: option.modelLabel,
       }));
       setProviders(nextProviders);
-      setFallbackSelectionKey(
-        serializeMediaSelection(getDefaultMediaSelection(settings, 'itv')) || nextProviders[0]?.value || '',
-      );
+      const fallbackKey = serializeMediaSelection(getDefaultMediaSelection(settings, 'itv')) || nextProviders[0]?.value || '';
+      setFallbackSelectionKey(fallbackKey);
+      setDurationSpec(getDurationSpecForITVSelection(fallbackKey, channelSpecs));
     });
   }, []);
+
+  useEffect(() => {
+    if (isPassThroughNode || !hasResolvedDurationSpec) {
+      return;
+    }
+    if (isAllowedDurationForSpec(Number(props.duration), activeDurationSpec)) {
+      return;
+    }
+    updateNodeData(nodeId, prev => ({
+      ...prev,
+      properties: {
+        ...prev.properties,
+        duration,
+      },
+    }));
+  }, [activeDurationSpec, duration, hasResolvedDurationSpec, isPassThroughNode, nodeId, props.duration, updateNodeData]);
 
   useEffect(() => {
     if (isPassThroughNode || rawVideoCapability === videoCapability) {
@@ -221,6 +263,8 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
     const nextProvider = providers.find(option => option.value === value);
     const previousCapability = rawVideoCapability || videoCapability;
     const nextCapability = resolveSupportedVideoCapability(previousCapability, nextProvider?.capabilities);
+    const nextDurationSpec = nextProvider?.durationSpec ?? durationSpec ?? DEFAULT_VIDEO_DURATION_SPEC;
+    const nextDuration = clampDurationToSpec(props.duration, nextDurationSpec);
 
     updateNodeData(nodeId, prev => ({
       ...prev,
@@ -228,6 +272,7 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
         ...prev.properties,
         itvSelection: value,
         videoCapability: nextCapability,
+        duration: nextDuration,
       },
     }));
     clearNodeRunState(nodeId);
@@ -242,7 +287,9 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
     message,
     nodeId,
     providers,
+    durationSpec,
     rawVideoCapability,
+    props.duration,
     updateNodeData,
     videoCapability,
   ]);
@@ -354,6 +401,7 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
           aspectRatio={aspectRatio}
           resolution={resolution}
           duration={duration}
+          durationSpec={activeDurationSpec}
           hasCurrentVideo={hasCurrentVideo}
           isGenerating={isVideoGenerating}
           generateButtonText={generateButtonText}
@@ -361,7 +409,7 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
           onUpdateProvider={handleProviderChange}
           onUpdateAspectRatio={value => updateProp('aspectRatio', value)}
           onUpdateResolution={value => updateProp('resolution', value)}
-          onUpdateDuration={value => updateProp('duration', value)}
+          onUpdateDuration={value => updateProp('duration', clampDurationToSpec(value, activeDurationSpec))}
           onRun={handleRun}
         />
       )}

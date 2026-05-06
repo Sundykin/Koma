@@ -152,7 +152,7 @@ function resolveAllInputResults(context: LinghuiExecutionContext, nodeId: string
         return undefined;
       }
 
-      if (sourceNode?.data.linghuiType !== 'linghui/image') {
+      if (sourceNode?.data.linghuiType !== 'linghui/image' && sourceNode?.data.linghuiType !== 'linghui/panorama') {
         return result;
       }
 
@@ -181,7 +181,7 @@ function resolveInputData(context: LinghuiExecutionContext, nodeId: string, inpu
     return undefined;
   }
 
-  if (sourceNode?.data.linghuiType !== 'linghui/image') {
+  if (sourceNode?.data.linghuiType !== 'linghui/image' && sourceNode?.data.linghuiType !== 'linghui/panorama') {
     return result;
   }
 
@@ -234,7 +234,7 @@ function resolveStaticNodeResult(snapshot?: LinghuiRFNodeSnapshot): LinghuiNodeR
     return undefined;
   }
 
-  if (snapshot.data.linghuiType === 'linghui/image') {
+  if (snapshot.data.linghuiType === 'linghui/image' || snapshot.data.linghuiType === 'linghui/panorama') {
     const properties = snapshot.data.properties as unknown as LinghuiImageNodeProperties;
     const collection = resolveLinghuiImageCollection(properties);
     if (!collection.primary) {

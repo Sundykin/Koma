@@ -112,6 +112,13 @@ export const LinghuiCanvasContextMenu: React.FC<LinghuiCanvasContextMenuProps> =
             <>
               <button
                 type="button"
+                className="linghuiContextMenuItem isPrimary"
+                onClick={onRunCurrentNode}
+              >
+                运行当前节点
+              </button>
+              <button
+                type="button"
                 className="linghuiContextMenuItem"
                 onClick={onOpenDownstreamQuickCreate}
               >
@@ -127,13 +134,6 @@ export const LinghuiCanvasContextMenu: React.FC<LinghuiCanvasContextMenuProps> =
               <button
                 type="button"
                 className="linghuiContextMenuItem"
-                onClick={onRunCurrentNode}
-              >
-                运行当前节点
-              </button>
-              <button
-                type="button"
-                className="linghuiContextMenuItem"
                 onClick={onExportCurrentSelection}
               >
                 导出当前结果
@@ -143,7 +143,7 @@ export const LinghuiCanvasContextMenu: React.FC<LinghuiCanvasContextMenuProps> =
             <>
               <button
                 type="button"
-                className="linghuiContextMenuItem"
+                className="linghuiContextMenuItem isPrimary"
                 onClick={onRunCurrentGroup}
               >
                 运行工作流块
@@ -214,6 +214,22 @@ export const LinghuiCanvasContextMenu: React.FC<LinghuiCanvasContextMenuProps> =
 
       {contextMenu.kind !== 'node' && contextMenu.kind !== 'edge' && (
         <>
+          <div className="linghuiContextMenuHeader">运行</div>
+          <button
+            type="button"
+            className="linghuiContextMenuItem isPrimary"
+            onClick={onRunAll}
+          >
+            运行全部
+          </button>
+          <button
+            type="button"
+            className={`linghuiContextMenuItem ${contextMenuSelectionIds.length ? '' : 'isDisabled'}`}
+            onClick={onRunSelection}
+          >
+            运行选中
+          </button>
+          <div className="linghuiContextMenuDivider" />
           <div className="linghuiContextMenuHeader">添加节点</div>
           {(['creation', 'storyboard'] as const).map(category => (
             <div key={category} className="linghuiContextMenuSection">
@@ -237,7 +253,7 @@ export const LinghuiCanvasContextMenu: React.FC<LinghuiCanvasContextMenuProps> =
             </div>
           ))}
           <div className="linghuiContextMenuDivider" />
-          <div className="linghuiContextMenuHeader">运行与操作</div>
+          <div className="linghuiContextMenuHeader">导入与操作</div>
           <button
             type="button"
             className="linghuiContextMenuItem"
@@ -279,20 +295,6 @@ export const LinghuiCanvasContextMenu: React.FC<LinghuiCanvasContextMenuProps> =
             onClick={onRedo}
           >
             重做
-          </button>
-          <button
-            type="button"
-            className="linghuiContextMenuItem"
-            onClick={onRunAll}
-          >
-            运行全部
-          </button>
-          <button
-            type="button"
-            className={`linghuiContextMenuItem ${contextMenuSelectionIds.length ? '' : 'isDisabled'}`}
-            onClick={onRunSelection}
-          >
-            运行选中
           </button>
           {contextMenu.kind === 'selection' && (
             <button

@@ -1,5 +1,35 @@
 # Findings
 
+## 2026-05-06 Linghui Tapnow-Base Capability Audit
+
+- 当前 Koma 工作树已有未提交灵绘改动，不能回滚：`linghui/panorama` 新编辑器/目录已出现，并且类型、节点定义、执行计划、共享执行、画布交互、图片节点和持久化文档都有修改。
+- 参考项目 `/Users/sunmeng/workspace/tapnow-base` 是浏览器端轻量节点画布，文件结构集中：`App.tsx` + `components/Canvas.tsx` + `components/Nodes/*` + `services/mode/*`。
+- tapnow-base 的基础节点能力包括：原始媒体节点、文生图、图生图、文生视频、图生视频、首尾帧视频、创意描述节点，以及本地媒体栈、节点历史产物、导入/导出工作流和缓存设置。
+- Koma 灵绘已经具备更完整的工作区/资产/历史/模板/执行图基础设施，所以本轮不宜照搬 tapnow-base 的单页存储结构；更适合抽取其“基础节点能力覆盖面”和“图像/视频参数模型”的缺口。
+- Koma 视频底层已经支持 `video.text-to-video`、`video.image-to-video`、`video.reference-to-video`、`video.start-end-to-video`；与 tapnow-base 差距不在执行层，而在“用户能否一键发现并创建图生视频/首尾帧视频基础骨架”。
+- `linghui/panorama` 当前已接入类型、节点库、编辑器、执行器、渲染和持久化白名单，但静态解析路径仍只认 `linghui/image`；导入全景图或作为依赖被单输入读取时会丢失图片节点家族行为，需要同步修正。
+- 新增 `PanoramaViewer` 使用了普通 inline style，当前 `frontend/scripts/check-style-discipline.ts` 会拦截；需要移入 Linghui Sass partial，以免主题纪律回退。
+- 实施后确认：tapnow-base 的文生图、图生图、文生视频、图生视频、首尾帧视频与环境/创意描述入口，在 Koma 中更适合沉淀为 Recipe 模板，而不是新增一批重复节点类型。
+- `linghui/panorama` 作为独立节点类型保留产品语义，但执行、静态导入、提示词引用和下游视频消费都必须按图片家族处理；这次已覆盖 `getInputResult`、`getAllInputResults`、静态 node result、fallback reference、result reference 主图选择。
+- 全景预览样式已从普通 inline style 收回 Sass；`npm run check:style-discipline` 仍失败，但失败项均在既有 project/storyboard/chat/theme/index.scss 路径，新 Linghui panorama/Recipe 路径局部检查为 0 命中。
+- 验证结果：5 个目标 Vitest 文件共 21 个测试通过，`npm run build` 通过，`git diff --check` 通过；构建只保留既有 Vite dynamic import/chunk size warnings。
+
+## 2026-05-06 Linghui Canvas Interaction Audit
+
+- 用户明确反馈“不需要工作流模板”，说明把基础能力映射成 Recipe 是错位方案；本轮已暂时隐藏内置系统 Recipe，后续应把能力入口放在节点创建、连线辅助、上下文操作和执行体验里。
+- 当前灵绘画布的基础操作比节点能力更影响可用性：锚点命中区小、运行入口分散、失败原因不易回看、执行流连线反馈偏弱。
+- HUD 是最适合放一键执行完整流程的位置：它常驻、接近执行状态摘要，并且已有失败/待重跑操作；把“运行全部 / 运行选中”放到这里比藏在右键菜单里更符合高频操作。
+- 连接失败不应该只 toast，一旦用户连续试错会丢上下文；写入 executionLogs 后，错误连线规则可以被回看，也能作为后续优化连接规则的证据。
+- 连线状态本身已经有 `edgeStatuses`，不需要重做执行图；第一批只需强化视觉：扩大 interactionWidth、增加 glow path、运行 dash animation 和连接预览动画。
+- 本轮新增的 `LinghuiEdge` 样式变量必须走 `cssVars(...)`；直接 `style={edgeStyle}` 会被主题纪律脚本拦截。修正后 `check:style-discipline` 不再命中新改的画布文件。
+- 只写日志仍然不够：用户真正需要的是“错误发生时画布自己带我到出错节点”。因此失败后自动聚焦首个失败节点，并让日志项可点击定位相关节点，比单纯增加日志条目更有用。
+- 节点卡片上的失败原因必须做成共用组件，否则图片/视频这类媒体节点和文本/脚本这类信息节点会再次分裂；`LinghuiNodeRunError` 作为低成本共享层可以覆盖当前所有节点族。
+- React Flow 当前版本支持 `connectionRadius`，默认 store 值是 20；灵绘应显式提高到更大的半径来实现“不完全接触即可连接”。样式层还要让所有端口共享同一类名和磁吸圈，否则输入/输出点仍会给用户两套手感。
+- 磁吸实现不需要手写全局 pointer 距离检测：React Flow 在拖线进入 `connectionRadius` 后会把最近可连接端口标记为 `connectingto` / `valid`，灵绘只要显式提高 `connectionRadius` 并把这些状态映射为连接点吸附动画即可。
+- 所有节点端口已经收敛到 `LinghuiNodeHandle` 和 `.linghuiNodeMagnetHandle`；旧的 `.linghuiCompactHandle` / `.linghuiRFHandle` 保留为 Sass 兼容别名，但不再维护独立尺寸/边框规则，避免输入点、输出点手感分裂。
+- 灵绘视频节点漏接了项目已有的 `VideoDurationSpec`：聊天/分镜已经按当前 ITV selection 处理 enum/range，灵绘仍固定展示 5/10/15/30 slider 并把 `props.duration` 原样传执行。
+- `durationSpec.ts` 中 Koma 官方即梦已能按 `seedance-2.0` / `seedance-2.0-fast` modelId 解析 4-15 / 4-12 秒范围；Grok provider 的注释写上游枚举是 6/12/16/20，但旧兜底仍包含历史 10 秒，需要避免灵绘 UI 和执行继续暴露 10。
+
 ## 2026-05-03 Theme System Architecture
 
 - 当前 worktree 为 `/Users/sunmeng/workspace/Koma-theme-worktree`，分支 `codex/theme-system-architecture`，从主目录 `feat/panel-restore2` 的 `5a5ac03` 创建；主目录有未提交改动，本轮不触碰。

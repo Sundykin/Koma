@@ -5,6 +5,7 @@ export type LinghuiNodeType =
   | 'linghui/text'
   | 'linghui/agent'
   | 'linghui/image'
+  | 'linghui/panorama'
   | 'linghui/video'
   | 'linghui/audio'
   | 'linghui/script';
@@ -13,6 +14,7 @@ export type LinghuiRFNodeTypeKey =
   | 'linghui-text'
   | 'linghui-agent'
   | 'linghui-image'
+  | 'linghui-panorama'
   | 'linghui-video'
   | 'linghui-audio'
   | 'linghui-script';
@@ -75,6 +77,7 @@ export interface LinghuiScriptNodeProperties {
 }
 
 export type LinghuiGridType = 'none' | '2x2' | '3x3' | '4x4' | '5x5';
+export type LinghuiPanoramaTemplateKind = 'auto' | 'indoor' | 'outdoor';
 
 export interface LinghuiImageAssetItem {
   id: string;
@@ -99,6 +102,10 @@ export interface LinghuiImageNodeProperties extends LinghuiScriptDerivedProperti
   gridType: LinghuiGridType;
   batchCount: number;
   multiAngle?: LinghuiMultiAngleConfig;
+}
+
+export interface LinghuiPanoramaNodeProperties extends LinghuiImageNodeProperties {
+  panoramaTemplate: LinghuiPanoramaTemplateKind;
 }
 
 export interface LinghuiMultiAngleConfig {
@@ -516,6 +523,7 @@ const LINGHUI_TYPE_TO_RF_TYPE_MAP: Record<LinghuiNodeType, LinghuiRFNodeTypeKey>
   'linghui/text': 'linghui-text',
   'linghui/agent': 'linghui-agent',
   'linghui/image': 'linghui-image',
+  'linghui/panorama': 'linghui-panorama',
   'linghui/video': 'linghui-video',
   'linghui/audio': 'linghui-audio',
   'linghui/script': 'linghui-script',
@@ -525,6 +533,7 @@ const RF_TYPE_TO_LINGHUI_TYPE_MAP: Record<LinghuiRFNodeTypeKey, LinghuiNodeType>
   'linghui-text': 'linghui/text',
   'linghui-agent': 'linghui/agent',
   'linghui-image': 'linghui/image',
+  'linghui-panorama': 'linghui/panorama',
   'linghui-video': 'linghui/video',
   'linghui-audio': 'linghui/audio',
   'linghui-script': 'linghui/script',

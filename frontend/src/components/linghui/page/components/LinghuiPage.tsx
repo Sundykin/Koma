@@ -668,7 +668,23 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
       if (result.queue.status === 'canceled') {
         message.warning('已取消当前执行队列');
       } else if (result.queue.failedNodeIds.length > 0) {
-        message.warning(`执行完成，但有 ${result.queue.failedNodeIds.length} 个节点失败`);
+        const firstFailedNodeId = result.queue.failedNodeIds[0];
+        const firstFailedLabel = firstFailedNodeId
+          ? nodeSnapshotMap.get(firstFailedNodeId)?.data.label
+          : '';
+        const firstFailedError = firstFailedNodeId
+          ? finalRuns[firstFailedNodeId]?.error
+          : '';
+        message.warning(
+          firstFailedLabel && firstFailedError
+            ? `${result.queue.failedNodeIds.length} 个节点失败：${firstFailedLabel} · ${firstFailedError}`
+            : `执行完成，但有 ${result.queue.failedNodeIds.length} 个节点失败`,
+        );
+        if (firstFailedNodeId) {
+          window.setTimeout(() => {
+            canvasRef.current?.focusNodes([firstFailedNodeId], { select: true });
+          }, 120);
+        }
       } else {
         message.success(
           options?.successMessage ||
@@ -1088,6 +1104,13 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
     canvasRef.current?.focusNodes([targetNodeId], { select: true });
   }, [failedNodeIds, message]);
 
+  const handleFocusLogNode = useCallback((nodeId: string) => {
+    if (!nodeId) {
+      return;
+    }
+    canvasRef.current?.focusNodes([nodeId], { select: true });
+  }, []);
+
   const handleRerunAffected = useCallback(async () => {
     if (staleNodeIds.length === 0) {
       message.info('当前没有待重跑节点');
@@ -1128,8 +1151,20 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
   }, [message]);
 
   const handleConnectionError = useCallback((content: string) => {
+    const currentWorkspace = activeWorkspaceRef.current;
     message.warning(content);
-  }, [message]);
+    if (!currentWorkspace) {
+      return;
+    }
+
+    updateWorkspaceExecution(
+      workspaceRuntimeRef.current.nodeRuns,
+      mergeExecutionLogs(
+        workspaceRuntimeRef.current.executionLogs,
+        createLog('error', `连接失败：${content}`),
+      ),
+    );
+  }, [message, updateWorkspaceExecution]);
 
   const canvasFloatingRail = useMemo(() => (
     <div
@@ -1331,6 +1366,8 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
             onRunSingleNode={handleRunSingleNode}
             onRunAll={handleRunAll}
             onRunSelection={handleRunSelection}
+            executionLogs={workspaceRuntime.executionLogs}
+            onFocusLogNode={handleFocusLogNode}
             onExportSelection={handleExportSelection}
             onFocusFailedNode={handleFocusFailedNode}
             onRetryFailed={handleRetryFailed}

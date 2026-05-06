@@ -14,8 +14,6 @@ import { fromKomaLocalUrl } from '../../../../utils/urlUtils';
 import type { LinghuiPromptReferenceItem } from '../state/linghuiPromptReferences';
 import { LinghuiPromptEditor } from './LinghuiPromptEditor';
 import {
-  DURATION_OPTIONS,
-  VIDEO_DURATION_MARKS,
   VIDEO_TOOL_PRESETS,
   type ProviderOption,
   type VideoToolPreset,
@@ -26,6 +24,11 @@ import {
   getVideoCapabilityDescriptor,
   type VideoCapabilityDescriptor,
 } from '../state/videoCapabilityUtils';
+import {
+  clampDurationToSpec,
+  specToInputBounds,
+  type VideoDurationSpec,
+} from '../../../../providers/itv/durationSpec';
 
 const decodeKomaLocalSource = fromKomaLocalUrl;
 
@@ -251,6 +254,7 @@ interface VideoGeneratePanelProps {
   aspectRatio: string;
   resolution: string;
   duration: number;
+  durationSpec: VideoDurationSpec;
   hasCurrentVideo: boolean;
   isGenerating: boolean;
   generateButtonText: string;
@@ -278,6 +282,7 @@ export function VideoGeneratePanel({
   aspectRatio,
   resolution,
   duration,
+  durationSpec,
   hasCurrentVideo,
   isGenerating,
   generateButtonText,
@@ -297,6 +302,24 @@ export function VideoGeneratePanel({
   const selectedProvider = providers.find(option => option.value === selectedProviderValue) ?? providers[0];
   const modelSummary = selectedProvider?.label || '未配置视频模型';
   const parameterSummary = formatVideoParameterSummary({ aspectRatio, resolution, duration });
+  const durationBounds = specToInputBounds(durationSpec);
+  const durationMarks = useMemo(() => {
+    if (durationSpec.kind === 'enum') {
+      return durationSpec.values.reduce<Record<number, string>>((marks, value) => {
+        marks[value] = `${value}s`;
+        return marks;
+      }, {});
+    }
+
+    return {
+      [durationSpec.min]: `${durationSpec.min}s`,
+      [durationSpec.default]: `${durationSpec.default}s`,
+      [durationSpec.max]: `${durationSpec.max}s`,
+    };
+  }, [durationSpec]);
+  const durationHint = durationSpec.kind === 'enum'
+    ? `当前模型仅支持 ${durationSpec.values.map(value => `${value}s`).join(' / ')}`
+    : `当前模型支持 ${durationSpec.min}-${durationSpec.max}s`;
 
   const modelMenuItems = useMemo<MenuProps['items']>(() => (
     providers.map(provider => ({
@@ -360,15 +383,31 @@ export function VideoGeneratePanel({
           <span className="linghuiVideoEditorParamLabel">视频时长</span>
           <span className="linghuiVideoEditorDurationValue">{duration}s</span>
         </div>
-        <Slider
-          className="linghuiVideoEditorDurationSlider"
-          min={DURATION_OPTIONS[0]?.value ?? 5}
-          max={DURATION_OPTIONS[DURATION_OPTIONS.length - 1]?.value ?? 30}
-          step={5}
-          marks={VIDEO_DURATION_MARKS}
-          value={duration}
-          onChange={value => onUpdateDuration(Number(value))}
-        />
+        {durationSpec.kind === 'enum' ? (
+          <div className="linghuiVideoEditorDurationChoices">
+            {durationSpec.values.map(value => (
+              <button
+                key={value}
+                type="button"
+                className={`linghuiVideoEditorOptionTile ${duration === value ? 'isActive' : ''}`}
+                onClick={() => onUpdateDuration(value)}
+              >
+                {value}s
+              </button>
+            ))}
+          </div>
+        ) : (
+          <Slider
+            className="linghuiVideoEditorDurationSlider"
+            min={durationBounds.min}
+            max={durationBounds.max}
+            step={durationBounds.step}
+            marks={durationMarks}
+            value={clampDurationToSpec(duration, durationSpec)}
+            onChange={value => onUpdateDuration(Number(value))}
+          />
+        )}
+        <div className="linghuiVideoEditorDurationHint">{durationHint}</div>
       </div>
     </div>
   );

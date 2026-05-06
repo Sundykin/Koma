@@ -62,6 +62,16 @@ export const NODE_META: Record<LinghuiNodeType, LinghuiNodeMeta> = {
     accent: LINGHUI_NODE_COLORS.image,
     background: LINGHUI_NODE_BACKGROUND,
   },
+  'linghui/panorama': {
+    type: 'linghui/panorama',
+    title: '全景',
+    desc: '生成 720° 全景环境板，结果支持球面拖拽预览',
+    catalogCategory: 'creation',
+    catalogLabel: '全景生图',
+    catalogDescription: '内置 AR720 提示词模板 + 球面伪 720° 浏览（拖拽/缩放）',
+    accent: LINGHUI_NODE_COLORS.image,
+    background: LINGHUI_NODE_BACKGROUND,
+  },
   'linghui/video': {
     type: 'linghui/video',
     title: '视频',
@@ -128,6 +138,13 @@ export const NODE_SLOT_LAYOUTS: Record<LinghuiNodeType, { inputs: LinghuiSlotDef
     ],
     outputs: [{ name: 'image', dataType: 'image' }],
   },
+  'linghui/panorama': {
+    inputs: [
+      { name: '参考', dataType: 'image' },
+      { name: '文本', dataType: 'text' },
+    ],
+    outputs: [{ name: 'image', dataType: 'image' }],
+  },
   'linghui/video': {
     inputs: [
       { name: '参考', dataType: 'image' },
@@ -186,6 +203,23 @@ export const NODE_PROPERTY_DEFAULTS: Record<LinghuiNodeType, Record<string, unkn
     resolution: 'auto',
     gridType: 'none',
     batchCount: 1,
+  },
+  // 全景节点 = 独立节点类型：执行器自己包装提示词，编辑器自己渲染 720° 预览，
+  // 与图片节点共享底层数据结构（mode/source/prompt/ttiSelection/...），但不复用 properties 里的 panorama 标志位
+  'linghui/panorama': {
+    mode: 'generate',
+    source: '',
+    items: [],
+    primaryAssetId: '',
+    primaryResultSource: '',
+    prompt: '',
+    ttiSelection: '',
+    aspectRatio: '21:9',
+    resolution: 'auto',
+    gridType: 'none',
+    batchCount: 1,
+    // 全景模板档位：'auto' | 'indoor' | 'outdoor'，影响执行器拼装的 system prompt
+    panoramaTemplate: 'auto',
   },
   'linghui/video': {
     prompt: '',

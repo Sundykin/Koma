@@ -13,6 +13,8 @@ import { linghuiNodeTypes } from '../../nodes';
 type ReactFlowComponentProps = React.ComponentProps<typeof ReactFlow>;
 const DEFAULT_EDGE_OPTIONS = { type: 'linghui-edge' } as const;
 const REACT_FLOW_PRO_OPTIONS = { hideAttribution: true } as const;
+const LINGHUI_CONNECTION_RADIUS = 56;
+const LINGHUI_CONNECTION_DRAG_THRESHOLD = 1;
 
 interface LinghuiCanvasStageProps {
   nodes: ReactFlowComponentProps['nodes'];
@@ -119,6 +121,8 @@ export function LinghuiCanvasStage({
       panActivationKeyCode={null}
       zoomActivationKeyCode={null}
       nodeDragThreshold={8}
+      connectionRadius={LINGHUI_CONNECTION_RADIUS}
+      connectionDragThreshold={LINGHUI_CONNECTION_DRAG_THRESHOLD}
       onlyRenderVisibleElements={useVisibleElementCulling}
       proOptions={REACT_FLOW_PRO_OPTIONS}
       colorMode={theme.meta.mode}

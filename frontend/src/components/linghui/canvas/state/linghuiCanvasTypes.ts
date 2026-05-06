@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import type {
   LinghuiCanvasSelection,
+  LinghuiExecutionLogEntry,
   LinghuiExecutionContext,
   LinghuiExecutionQueueState,
   LinghuiNodeRunState,
@@ -54,6 +55,8 @@ export interface LinghuiCanvasProps {
   onRunSingleNode?: (nodeId: string) => void;
   onRunAll?: () => void;
   onRunSelection?: (selectionIds?: string[]) => void;
+  executionLogs?: LinghuiExecutionLogEntry[];
+  onFocusLogNode?: (nodeId: string) => void;
   onExportSelection?: (selectionIds?: string[]) => void;
   onFocusFailedNode?: () => void;
   onRetryFailed?: () => void;

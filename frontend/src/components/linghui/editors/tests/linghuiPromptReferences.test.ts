@@ -29,6 +29,45 @@ function createImageNodeData(label: string, source: string): LinghuiNodeData {
 }
 
 describe('linghuiPromptReferences', () => {
+  it('全景结果引用会复用图片主图选择', () => {
+    const references = buildLinghuiPromptReferenceItems({
+      nodeId: 'target',
+      nodes: [
+        {
+          id: 'panorama-node',
+          data: {
+            ...createImageNodeData('全景环境', ''),
+            linghuiType: 'linghui/panorama',
+            properties: {
+              ...createImageNodeData('全景环境', '').properties,
+              primaryResultSource: '/tmp/right-panorama.png',
+              aspectRatio: '21:9',
+              panoramaTemplate: 'outdoor',
+            },
+          },
+        },
+        { id: 'target', data: createImageNodeData('目标图片', '') },
+      ],
+      edges: [
+        { source: 'panorama-node', target: 'target', sourceHandle: 'output-0', targetHandle: 'input-0' },
+      ],
+      getNodeResult: () => ({
+        kind: 'images',
+        primary: { kind: 'image', source: '/tmp/left-panorama.png' },
+        items: [
+          { kind: 'image', source: '/tmp/left-panorama.png' },
+          { kind: 'image', source: '/tmp/right-panorama.png' },
+        ],
+      }),
+    });
+
+    expect(references[0]).toEqual(expect.objectContaining({
+      kind: 'image',
+      source: '/tmp/right-panorama.png',
+      previewSource: '/tmp/right-panorama.png',
+    }));
+  });
+
   it('图片引用编号顺序应与上游输入槽顺序一致', () => {
     const references = buildLinghuiPromptReferenceItems({
       nodeId: 'target',

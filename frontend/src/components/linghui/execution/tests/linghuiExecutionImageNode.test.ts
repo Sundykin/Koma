@@ -513,4 +513,43 @@ describe('executeImageNode', () => {
       metadata: expect.objectContaining({ mode: 'generate' }),
     }));
   });
+
+  it('全景节点会用模板包装用户提示词后复用单图 provider', async () => {
+    const { executePanoramaNode } = await import('../state/linghuiExecutionNodeExecutors');
+    const executionProviders = await import('../state/linghuiExecutionProviders');
+
+    vi.mocked(executionProviders.generateImageWithProvider).mockResolvedValue(
+      { kind: 'image', source: 'https://cdn.example.com/panorama.png' } as any,
+    );
+
+    const result = await executePanoramaNode({
+      ...createNode(1, { prompt: '赛博寺庙中庭，雨后夜色' }),
+      id: 'panorama-node-1',
+      type: 'linghui/panorama',
+      title: '全景环境',
+      properties: {
+        mode: 'generate',
+        source: '',
+        prompt: '赛博寺庙中庭，雨后夜色',
+        ttiSelection: 'channel-image::model-image',
+        batchCount: 1,
+        panoramaTemplate: 'indoor',
+      },
+    });
+
+    expect(executionProviders.generateImageWithProvider).toHaveBeenCalledTimes(1);
+    const call = vi.mocked(executionProviders.generateImageWithProvider).mock.calls[0]?.[0];
+    expect(call?.prompt).toContain('赛博寺庙中庭，雨后夜色');
+    expect(call?.prompt).toContain('This is an enclosed indoor panoramic environment');
+    expect(call?.prompt).toContain('seam-safe edges');
+    expect(result).toEqual(expect.objectContaining({
+      kind: 'image',
+      primary: expect.objectContaining({ source: 'https://cdn.example.com/panorama.png' }),
+      metadata: expect.objectContaining({
+        mode: 'panorama',
+        panoramaTemplate: 'indoor',
+        originalPrompt: '赛博寺庙中庭，雨后夜色',
+      }),
+    }));
+  });
 });

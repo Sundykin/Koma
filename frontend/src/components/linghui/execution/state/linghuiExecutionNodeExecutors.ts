@@ -33,6 +33,10 @@ import {
   resolveLinghuiImagePrimaryImportItem,
 } from '../../editors/state/linghuiImageCollections';
 import {
+  wrapWithPanoramaTemplate,
+  type PanoramaTemplateKind,
+} from '../../panorama/panoramaPromptTemplate';
+import {
   generateAudioWithProvider,
   generateImageVariantsWithProvider,
   generateImageWithProvider,
@@ -60,6 +64,8 @@ const LINGHUI_NODE_TASK_SUBTYPE: Record<string, TaskSubType> = {
   'linghui/text': 'linghui-text',
   'linghui/agent': 'linghui-agent',
   'linghui/image': 'linghui-image',
+  // 全景节点也用 image subtype（任务面板按图标分组时与图片同列）
+  'linghui/panorama': 'linghui-image',
   'linghui/video': 'linghui-video',
   'linghui/audio': 'linghui-audio',
   'linghui/script': 'linghui-script',
@@ -869,6 +875,41 @@ export async function executeImageNode(
   };
 }
 
+/**
+ * 全景节点执行：把用户 prompt 通过 PANORAMA_SYSTEM_PROMPT 模板包成 720° 投影提示词，
+ * 再委托给 executeImageNode 复用全部图片生成逻辑（参考图、批量、占位 / 流式 / TaskManager 桥接等）。
+ *
+ * 通过"创建一个 properties.prompt 已替换的 NodeView"实现，原图片节点路径完全不感知全景，
+ * 也就不再需要 LinghuiImageNodeProperties.panoramaMode 这种污染字段。
+ */
+export async function executePanoramaNode(
+  node: ExecutionNodeView,
+  onProgress?: NodeExecutionProgressHandler,
+  signal?: AbortSignal,
+): Promise<LinghuiNodeResult> {
+  const originalPrompt = String(node.properties.prompt ?? '');
+  const rawTemplate = String(node.properties.panoramaTemplate ?? 'auto');
+  const templateKind: PanoramaTemplateKind = rawTemplate === 'indoor' || rawTemplate === 'outdoor'
+    ? rawTemplate
+    : 'auto';
+  const wrappedPrompt = wrapWithPanoramaTemplate(originalPrompt, templateKind);
+  const wrappedNode: ExecutionNodeView = {
+    ...node,
+    properties: { ...node.properties, prompt: wrappedPrompt },
+  };
+
+  const result = await executeImageNode(wrappedNode, onProgress, signal);
+  return {
+    ...result,
+    metadata: {
+      ...(result.metadata ?? {}),
+      mode: 'panorama',
+      panoramaTemplate: templateKind,
+      originalPrompt: originalPrompt.trim(),
+    },
+  } as LinghuiNodeResult;
+}
+
 export async function executeScriptNode(
   node: ExecutionNodeView,
   onProgress?: NodeExecutionProgressHandler,
@@ -1145,6 +1186,8 @@ async function executeNodeInner(
       return executeAgentNode(node, onProgress, signal);
     case 'linghui/image':
       return executeImageNode(node, onProgress, signal);
+    case 'linghui/panorama':
+      return executePanoramaNode(node, onProgress, signal);
     case 'linghui/video':
       return executeVideoNode(node, onProgress, signal);
     case 'linghui/audio':

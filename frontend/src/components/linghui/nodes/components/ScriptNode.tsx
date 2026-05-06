@@ -1,5 +1,5 @@
-import React, { memo, useMemo, type CSSProperties } from 'react';
-import { Handle, Position, type NodeProps } from '@xyflow/react';
+import React, { memo, useMemo } from 'react';
+import { Position, type NodeProps } from '@xyflow/react';
 import type {
   LinghuiNodeData,
   LinghuiRunStatus,
@@ -12,6 +12,8 @@ import { parseLinghuiScriptContent } from '../../editors/state/linghuiScriptNode
 import { resolveLinghuiNodeViewMode } from '../../editors/state/linghuiNodeViewMode';
 import { resolveDefaultCompactNodeStyle } from '../state/linghuiNodeCardSizing';
 import { cssVars } from '../../../../theme/runtime';
+import { LinghuiNodeRunError } from './LinghuiNodeRunError';
+import { LinghuiNodeHandle } from './LinghuiNodeHandle';
 
 const STATUS_COLORS: Record<LinghuiRunStatus, string> = {
   idle: 'var(--token-text-muted)',
@@ -25,17 +27,6 @@ function resolveHandleTop(index: number, total: number): string {
   if (total <= 1) return '50%';
   const step = 100 / (total + 1);
   return `${step * (index + 1)}%`;
-}
-
-function getHandleColor(dataType: LinghuiNodeData['inputs'][number]['dataType'], accent: string): string {
-  switch (dataType) {
-    case 'text':
-      return 'var(--token-status-warning)';
-    case 'video':
-      return 'var(--token-status-info)';
-    default:
-      return accent;
-  }
 }
 
 function ScriptNodeInner({ id, data, selected }: NodeProps) {
@@ -75,31 +66,28 @@ function ScriptNodeInner({ id, data, selected }: NodeProps) {
       {...interactionHandlers}
     >
       {nodeData.inputs.map((slot, index) => (
-        <Handle
+        <LinghuiNodeHandle
           key={`input-${index}`}
           type="target"
           position={Position.Left}
           id={`input-${index}`}
-          className="linghuiCompactHandle"
-          style={{
-            '--linghui-handle-bg': getHandleColor(slot.dataType, nodeData.accent),
-            '--linghui-handle-top': resolveHandleTop(index, nodeData.inputs.length),
-          } as CSSProperties}
-          isConnectable
+          dataType={slot.dataType}
+          accent={nodeData.accent}
+          top={resolveHandleTop(index, nodeData.inputs.length)}
+          title={slot.name}
         />
       ))}
 
-      {nodeData.outputs.map((_, index) => (
-        <Handle
+      {nodeData.outputs.map((slot, index) => (
+        <LinghuiNodeHandle
           key={`output-${index}`}
           type="source"
           position={Position.Right}
           id={`output-${index}`}
-          className="linghuiCompactHandle"
-          style={{
-            '--linghui-handle-bg': index === 0 ? 'var(--token-status-warning)' : nodeData.accent,
-            '--linghui-handle-top': resolveHandleTop(index, nodeData.outputs.length),
-          } as CSSProperties}
+          dataType={slot.dataType}
+          accent={nodeData.accent}
+          top={resolveHandleTop(index, nodeData.outputs.length)}
+          title={slot.name}
         />
       ))}
 
@@ -135,6 +123,7 @@ function ScriptNodeInner({ id, data, selected }: NodeProps) {
             {previewLine.slice(0, 80)}
           </div>
         ) : null}
+        <LinghuiNodeRunError runState={runState} />
         {status === 'running' && (
           <div className="linghuiCompactProgress">
             <div className="linghuiCompactProgressBar" />

@@ -109,7 +109,7 @@ describe('Grok2ApiImagineITVProvider', () => {
       createdAt: Date.now(),
       updatedAt: Date.now(),
       modelName: 'grok-imagine-video',
-      defaultDuration: 10,
+      defaultDuration: 6,
       defaultResolution: '720p',
     } as any);
 
@@ -152,21 +152,21 @@ describe('Grok2ApiImagineITVProvider', () => {
       createdAt: Date.now(),
       updatedAt: Date.now(),
       modelName: 'grok-imagine-video',
-      defaultDuration: 10,
+      defaultDuration: 6,
       defaultResolution: '720p',
     } as any);
 
     const res = await p.start({
       capability: 'video.text-to-video',
       prompt: 'A calico cat playing a piano on stage',
-      options: { duration: 10, aspectRatio: '9:16', resolution: '720p' },
+      options: { duration: 12, aspectRatio: '9:16', resolution: '720p' },
     } as any);
 
     const body = JSON.parse((safeFetch as any).mock.calls[0][1].body as string);
     expect(body.model).toBe('grok-imagine-video');
     expect(body.prompt).toBe('A calico cat playing a piano on stage');
     expect(body.size).toBe('720x1280');
-    expect(body.seconds).toBe('10');
+    expect(body.seconds).toBe('12');
     expect(body.quality).toBeUndefined();
     expect(body.input_reference).toBeUndefined();
     expect(body.images).toBeUndefined();
@@ -223,7 +223,7 @@ describe('Grok2ApiImagineITVProvider', () => {
       createdAt: Date.now(),
       updatedAt: Date.now(),
       modelName: 'grok-imagine-video',
-      defaultDuration: 10,
+      defaultDuration: 6,
       defaultResolution: '720p',
     } as any);
 
@@ -257,7 +257,7 @@ describe('Grok2ApiImagineITVProvider', () => {
       createdAt: Date.now(),
       updatedAt: Date.now(),
       modelName: 'grok-imagine-video',
-      defaultDuration: 10,
+      defaultDuration: 6,
     } as any);
 
     await p.start({
@@ -272,7 +272,7 @@ describe('Grok2ApiImagineITVProvider', () => {
     expect(body.seconds).toBe('16');
   });
 
-  it('falls back to 10 seconds when duration is missing or invalid', async () => {
+  it('falls back to 6 seconds when duration is missing or invalid', async () => {
     (safeFetch as any).mockResolvedValueOnce({
       ok: true,
       status: 200,
@@ -298,7 +298,7 @@ describe('Grok2ApiImagineITVProvider', () => {
     } as any);
 
     const body = JSON.parse((safeFetch as any).mock.calls[0][1].body as string);
-    expect(body.seconds).toBe('10');
+    expect(body.seconds).toBe('6');
   });
 
   it('keeps built-in Grok model name unchanged', async () => {

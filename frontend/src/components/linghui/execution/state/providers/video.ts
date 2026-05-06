@@ -1,6 +1,11 @@
 import type { AppSettings, VideoGenerationCapability } from '../../../../../types';
 import { getProjectITVProvider } from '../../../../../providers';
 import { listCapabilityFallbackCandidates, resolveConfiguredChannelModel } from '../../../../../providers/channel/resolver';
+import {
+  clampDurationToSpec,
+  getDurationSpecForModel,
+  getDurationSpecForProviderType,
+} from '../../../../../providers/itv/durationSpec';
 import type { ITVResult } from '../../../../../providers/itv/types';
 import {
   buildVideoCapabilityRequest,
@@ -84,7 +89,10 @@ async function executeVideoProviderAttempt(
   }
 
   const commonOptions = {
-    duration: params.duration,
+    duration: clampDurationToSpec(
+      params.duration,
+      getDurationSpecForModel(candidate.modelId) ?? getDurationSpecForProviderType(candidate.providerType),
+    ),
     aspectRatio: params.aspectRatio,
     resolution: params.resolution,
   } as Record<string, unknown>;

@@ -1,6 +1,10 @@
 import React from 'react';
-import { Focus, Hand, MousePointer2, ZoomIn, ZoomOut } from 'lucide-react';
-import type { LinghuiCanvasMode, LinghuiExecutionQueueState } from '../../../../types/linghui';
+import { Focus, Hand, ListChecks, MousePointer2, Play, PlayCircle, ZoomIn, ZoomOut } from 'lucide-react';
+import type {
+  LinghuiCanvasMode,
+  LinghuiExecutionLogEntry,
+  LinghuiExecutionQueueState,
+} from '../../../../types/linghui';
 
 interface LinghuiCanvasHudProps {
   projectEntry?: React.ReactNode;
@@ -19,6 +23,10 @@ interface LinghuiCanvasHudProps {
   onRetryFailed?: () => void;
   onRerunAffected?: () => void;
   onCancelRun?: () => void;
+  onRunAll?: () => void;
+  onRunSelection?: () => void;
+  executionLogs?: LinghuiExecutionLogEntry[];
+  onFocusLogNode?: (nodeId: string) => void;
   onSetCanvasMode: (mode: LinghuiCanvasMode) => void;
   onZoomOut: () => void;
   onFocusContent: () => void;
@@ -36,6 +44,10 @@ export const LinghuiCanvasHud: React.FC<LinghuiCanvasHudProps> = ({
   onRetryFailed,
   onRerunAffected,
   onCancelRun,
+  onRunAll,
+  onRunSelection,
+  executionLogs = [],
+  onFocusLogNode,
   onSetCanvasMode,
   onZoomOut,
   onFocusContent,
@@ -43,11 +55,16 @@ export const LinghuiCanvasHud: React.FC<LinghuiCanvasHudProps> = ({
 }) => {
   const isCanceling = runSummary.queueStatus === 'canceling';
   const hasQueue = runSummary.running > 0 || runSummary.queued > 0 || isCanceling;
+  const hasAttention = runSummary.failed > 0 || runSummary.stale > 0;
   const badgeLabel = isCanceling
     ? `取消中 · 排队 ${runSummary.queued}`
     : hasQueue
       ? `${runSummary.queued > 0 ? `排队 ${runSummary.queued} · ` : ''}运行中 ${runSummary.running}`
-      : '画布就绪';
+      : hasAttention
+        ? '需要处理'
+        : '画布就绪';
+  const recentLogs = executionLogs.slice(-5).reverse();
+  const shouldShowLogs = hasQueue || runSummary.failed > 0 || recentLogs.some(entry => entry.level === 'error');
 
   return (
     <>
@@ -60,7 +77,7 @@ export const LinghuiCanvasHud: React.FC<LinghuiCanvasHudProps> = ({
       <div className="linghuiCanvasStatusDock nopan nowheel">
         <button
           type="button"
-          className="linghuiCanvasRunBadge"
+          className={`linghuiCanvasRunBadge ${hasQueue ? 'isRunning' : ''} ${runSummary.failed > 0 ? 'hasFailure' : ''}`}
           onClick={onOpenHistory}
           title="打开历史记录与最近运行结果"
         >
@@ -68,6 +85,28 @@ export const LinghuiCanvasHud: React.FC<LinghuiCanvasHudProps> = ({
           {runSummary.failed > 0 && <span className="isWarn">失败 {runSummary.failed}</span>}
           {runSummary.stale > 0 && <span className="isMuted">待重跑 {runSummary.stale}</span>}
         </button>
+        {onRunAll && !hasQueue && (
+          <button
+            type="button"
+            className="linghuiCanvasRunAction isPrimary"
+            onClick={onRunAll}
+            title="生成执行计划并运行整个画布"
+          >
+            <PlayCircle size={14} />
+            <span>运行全部</span>
+          </button>
+        )}
+        {onRunSelection && !hasQueue && (
+          <button
+            type="button"
+            className="linghuiCanvasRunAction"
+            onClick={onRunSelection}
+            title="运行当前选中的节点或工作流块"
+          >
+            <Play size={13} />
+            <span>运行选中</span>
+          </button>
+        )}
         {runSummary.failed > 0 && onRetryFailed && !hasQueue && (
           <button
             type="button"
@@ -108,6 +147,35 @@ export const LinghuiCanvasHud: React.FC<LinghuiCanvasHudProps> = ({
           >
             {isCanceling ? '取消中' : '取消执行'}
           </button>
+        )}
+        {shouldShowLogs && recentLogs.length > 0 && (
+          <div className="linghuiCanvasRunLog">
+            <div className="linghuiCanvasRunLogHeader">
+              <ListChecks size={13} />
+              <span>执行日志</span>
+            </div>
+            <div className="linghuiCanvasRunLogList">
+              {recentLogs.map(entry => (
+                <button
+                  key={entry.id}
+                  type="button"
+                  className={`linghuiCanvasRunLogItem is-${entry.level} ${entry.nodeId ? 'isFocusable' : ''}`}
+                  onClick={() => {
+                    if (entry.nodeId) {
+                      onFocusLogNode?.(entry.nodeId);
+                    }
+                  }}
+                  disabled={!entry.nodeId}
+                  title={entry.nodeId ? '定位相关节点' : entry.message}
+                >
+                  <span className="linghuiCanvasRunLogTime">
+                    {new Date(entry.createdAt).toLocaleTimeString()}
+                  </span>
+                  <span className="linghuiCanvasRunLogMessage">{entry.message}</span>
+                </button>
+              ))}
+            </div>
+          </div>
         )}
       </div>
 

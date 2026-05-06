@@ -167,7 +167,8 @@ export async function executeLinghuiWorkflow(options: ExecuteLinghuiWorkflowOpti
         };
         nextRuns[nodeId] = failedState;
         onNodeStateChange?.(nodeId, failedState);
-        onLog?.(createLog('error', `${snapshot.data.label} 未执行：上游依赖失败`, nodeId));
+        const upstreamLabel = context.nodes.find(node => node.id === upstreamFailure)?.data.label ?? upstreamFailure;
+        onLog?.(createLog('error', `${snapshot.data.label} 未执行：上游「${upstreamLabel}」失败`, nodeId));
         blockedNodeIds.push(nodeId);
         return [];
       }
@@ -286,7 +287,7 @@ export async function executeLinghuiWorkflow(options: ExecuteLinghuiWorkflowOpti
         };
         nextRuns[nodeId] = failedState;
         onNodeStateChange?.(nodeId, failedState);
-        onLog?.(createLog('error', `${snapshot.data.label} 执行失败：${failedState.error}`, nodeId));
+        onLog?.(createLog('error', `${snapshot.data.label} 执行失败：${failedState.error || '未知错误'}`, nodeId));
         emitQueueChange(current => withRunningNodeIds({
           ...current,
           failedNodeIds: [...current.failedNodeIds, nodeId],

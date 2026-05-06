@@ -98,18 +98,6 @@
     }
   }
 
-  &Handle {
-    top: var(--linghui-handle-top, 50%) !important;
-    background: var(--linghui-handle-bg, var(--token-accent-base)) !important;
-    width: 10px !important;
-    height: 10px !important;
-    border: 2px solid var(--token-bg-card) !important;
-    border-radius: 50% !important;
-    opacity: 1 !important;
-    z-index: 4 !important;
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--token-bg-card) 24%, transparent);
-  }
-
   &Thumb {
     position: relative;
     width: 100%;
@@ -137,6 +125,11 @@
 
   &StatusShadow {
     box-shadow: var(--linghui-node-shadow, none);
+  }
+
+  &PanoramaSurface {
+    position: absolute;
+    inset: 0;
   }
 
   &ProgressBar {
@@ -871,6 +864,51 @@
     height: 100%;
     background: linear-gradient(90deg, color-mix(in srgb, var(--token-status-info) 72%, var(--token-text-primary)), var(--token-status-success));
     transition: width 300ms ease;
+  }
+}
+
+.linghuiNodeRunError {
+  border: 1px solid color-mix(in srgb, var(--token-status-error) 38%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--token-status-error) 12%, var(--token-bg-card));
+  color: $lh-text-danger;
+  box-shadow: 0 10px 20px color-mix(in srgb, var(--token-bg-app) 18%, transparent);
+
+  &Label {
+    flex: 0 0 auto;
+    font-weight: 800;
+  }
+
+  &Message {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  &.isInline {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    padding: 8px 10px;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  &.isThumb {
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    z-index: 22;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 8px;
+    padding: 8px 10px;
+    background: color-mix(in srgb, var(--token-status-error) 18%, var(--token-bg-app));
+    color: $lh-text-danger;
+    font-size: 12px;
+    line-height: 1.35;
+    backdrop-filter: blur(14px);
   }
 }
 
