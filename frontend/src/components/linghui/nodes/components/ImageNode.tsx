@@ -1,6 +1,6 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { App } from 'antd';
-import { Handle, Position, type NodeProps, useUpdateNodeInternals } from '@xyflow/react';
+import { Position, type NodeProps, useUpdateNodeInternals } from '@xyflow/react';
 import { Download, Image as ImageIcon } from 'lucide-react';
 import type {
   LinghuiImageNodeMode,
@@ -16,6 +16,7 @@ import {
   useLinghuiNodeEditorVisibility,
 } from '../state/LinghuiNodeRunsContext';
 import { LinghuiNodeEditor } from '../../editors/components/LinghuiNodeEditor';
+import { PanoramaViewer, PanoramaViewport } from '../../panorama/PanoramaViewer';
 import { electronService } from '../../../../services/electronService';
 import { toFileSystemDisplayUrl } from '../../../../services/fileSystemPort';
 import { stripDataHeader } from '../../../../utils/encoding';
@@ -29,6 +30,8 @@ import {
 } from '../../editors/state/linghuiImageCollections';
 import { resolveMediaCardSize } from '../state/linghuiNodeCardSizing';
 import { cssVars } from '../../../../theme/runtime';
+import { LinghuiNodeRunError } from './LinghuiNodeRunError';
+import { LinghuiNodeHandle } from './LinghuiNodeHandle';
 
 const STATUS_COLORS: Record<LinghuiRunStatus, string> = {
   idle: 'var(--token-text-muted)',
@@ -304,7 +307,10 @@ function ImageNodeInner({ id, data, selected }: NodeProps) {
   const statusColor = STATUS_COLORS[status] ?? STATUS_COLORS.idle;
   const viewMode = resolveLinghuiNodeViewMode(nodeData.viewMode);
   const [isExpanded, setIsExpanded] = useState(false);
-  const isEditorVisible = useLinghuiNodeEditorVisibility(id, 'linghui/image');
+  const isPanoramaNode = nodeData.linghuiType === 'linghui/panorama';
+  const editorNodeType = isPanoramaNode ? 'linghui/panorama' : 'linghui/image';
+  const isEditorVisible = useLinghuiNodeEditorVisibility(id, editorNodeType);
+  const [isPanoramaFullscreen, setIsPanoramaFullscreen] = useState(false);
 
   const collection = resolveLinghuiImageCollection(props, runState?.result);
   const importItems = useMemo(() => getLinghuiImageImportItems(props), [props]);
@@ -376,7 +382,18 @@ function ImageNodeInner({ id, data, selected }: NodeProps) {
         : 'none',
     '--linghui-accent': nodeData.accent,
     '--linghui-progress': `${runState?.progress ?? 0}%`,
-  }), [expandedHeight, expandedWidth, mediaCardLayout, nodeData.accent, runState?.progress, selected, status, statusColor]);
+  }), [
+    expandedHeight,
+    expandedWidth,
+    mediaCardLayout.height,
+    mediaCardLayout.style,
+    mediaCardLayout.width,
+    nodeData.accent,
+    runState?.progress,
+    selected,
+    status,
+    statusColor,
+  ]);
   const expandedDeckStyle = useMemo(() => (
     isExpanded
       ? cssVars({
@@ -534,31 +551,43 @@ function ImageNodeInner({ id, data, selected }: NodeProps) {
       {...interactionHandlers}
     >
       {nodeData.inputs.map((slot, index) => (
-        <Handle
+        <LinghuiNodeHandle
           key={`input-${index}`}
           type="target"
           position={Position.Left}
           id={`input-${index}`}
-          className="linghuiCompactHandle"
-          style={{
-            '--linghui-handle-bg': slot.dataType === 'text' ? 'var(--token-status-warning)' : nodeData.accent,
-            '--linghui-handle-top': resolveHandleTop(index, nodeData.inputs.length),
-          } as CSSProperties}
-          isConnectable
+          dataType={slot.dataType}
+          accent={nodeData.accent}
+          top={resolveHandleTop(index, nodeData.inputs.length)}
+          title={slot.name}
         />
       ))}
 
-      <Handle
+      <LinghuiNodeHandle
         type="source"
         position={Position.Right}
         id="output-0"
-        className="linghuiCompactHandle"
-        style={{ '--linghui-handle-bg': nodeData.accent } as CSSProperties}
+        dataType={nodeData.outputs[0]?.dataType}
+        accent={nodeData.accent}
+        title={nodeData.outputs[0]?.name}
       />
 
       {/* 缩略图 */}
       <div className="linghuiCompactThumb">
-        {gridSplitOverlay && primaryDisplayItem && gridSplitPreviewLayout ? (
+        {isPanoramaNode && primaryDisplayItem?.preview ? (
+          <div
+            className="linghuiCompactPanoramaSurface nodrag nopan"
+            onPointerDown={stopSurfaceEvent}
+            onWheel={stopSurfaceEvent}
+          >
+            <PanoramaViewport
+              imageUrl={primaryDisplayItem.preview}
+              mountReady
+              showFovHint={false}
+              onRequestFullscreen={() => setIsPanoramaFullscreen(true)}
+            />
+          </div>
+        ) : gridSplitOverlay && primaryDisplayItem && gridSplitPreviewLayout ? (
           <div className="linghuiCompactGridPreviewSurface">
             <div
               className="linghuiCompactGridPreviewMedia"
@@ -704,9 +733,19 @@ function ImageNodeInner({ id, data, selected }: NodeProps) {
             <div className="linghuiCompactProgressBar" />
           </div>
         )}
+        <LinghuiNodeRunError runState={runState} surface="thumb" />
       </div>
 
-      {isEditorVisible ? <LinghuiNodeEditor nodeId={id} nodeType="linghui/image" /> : null}
+      {isEditorVisible ? <LinghuiNodeEditor nodeId={id} nodeType={editorNodeType} /> : null}
+
+      {isPanoramaNode && primaryDisplayItem?.preview && (
+        <PanoramaViewer
+          open={isPanoramaFullscreen}
+          imageUrl={primaryDisplayItem.preview}
+          title={`${nodeData.label || '全景'} · 720° 预览`}
+          onClose={() => setIsPanoramaFullscreen(false)}
+        />
+      )}
     </div>
   );
 }

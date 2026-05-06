@@ -5,6 +5,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LinghuiNodeData, LinghuiNodeRunState } from '../../../../types/linghui';
 import { VideoNodeEditor } from '../components/VideoNodeEditor';
 
+class ResizeObserverMock {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
+vi.stubGlobal('ResizeObserver', ResizeObserverMock);
+
 const {
   loadSettingsMock,
   listConfiguredModelSelectOptionsMock,
@@ -121,6 +129,9 @@ describe('VideoNodeEditor', () => {
       {
         value: 'vidu-main::viduq3-pro',
         label: 'Vidu Q3 Pro',
+        channelId: 'vidu-main',
+        modelId: 'viduq3-pro',
+        providerType: 'vidu',
         channelLabel: 'Vidu',
         modelLabel: 'viduq3-pro',
         capabilities: ['video.image-to-video'],
@@ -166,7 +177,7 @@ describe('VideoNodeEditor', () => {
     });
 
     expect(screen.getAllByText('图生视频').length).toBeGreaterThan(0);
-    expect(screen.getByRole('button', { name: '16:9 · 720P · 5s' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '16:9 · 720P · 6s' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '生成' })).toBeInTheDocument();
     expect(screen.queryByText('提示词')).not.toBeInTheDocument();
     expect(screen.queryByText('模型与参数')).not.toBeInTheDocument();
@@ -268,6 +279,9 @@ describe('VideoNodeEditor', () => {
       {
         value: 'vidu-main::viduq3-pro',
         label: 'Vidu Q3 Pro',
+        channelId: 'vidu-main',
+        modelId: 'viduq3-pro',
+        providerType: 'vidu',
         channelLabel: 'Vidu',
         modelLabel: 'viduq3-pro',
         capabilities: ['video.text-to-video', 'video.start-end-to-video'],
@@ -283,5 +297,85 @@ describe('VideoNodeEditor', () => {
     expect(screen.getByRole('button', { name: '首尾帧视频' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '图生视频' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '参考生视频' })).not.toBeInTheDocument();
+  });
+
+  it('Grok 渠道只展示 6/12/16/20 时长枚举并把旧 10 秒归一', async () => {
+    loadSettingsMock.mockResolvedValue({
+      channelConfigs: [
+        {
+          id: 'grok-channel',
+          category: 'itv',
+          providerType: 'grok2api-imagine-itv',
+        },
+      ],
+    });
+    listConfiguredModelSelectOptionsMock.mockReturnValue([
+      {
+        value: 'grok-channel::grok-imagine-video',
+        label: 'Grok Video',
+        channelId: 'grok-channel',
+        modelId: 'grok-imagine-video',
+        providerType: 'grok2api-imagine-itv',
+        channelLabel: 'Koma Grok',
+        modelLabel: 'grok-imagine-video',
+        capabilities: ['video.image-to-video'],
+      },
+    ]);
+
+    renderEditor(createVideoNodeData({
+      itvSelection: 'grok-channel::grok-imagine-video',
+      duration: 10,
+    }));
+
+    await waitFor(() => {
+      expect(updateNodeDataMock).toHaveBeenCalledWith('video-node-1', expect.any(Function));
+    });
+
+    const lastCall = updateNodeDataMock.mock.calls[updateNodeDataMock.mock.calls.length - 1];
+    const updater = lastCall?.[1] as (previous: LinghuiNodeData) => LinghuiNodeData;
+    expect(updater(createVideoNodeData({ duration: 10 })).properties.duration).toBe(12);
+
+    fireEvent.click(screen.getByRole('button', { name: '16:9 · 720P · 12s' }));
+    expect(await screen.findByRole('button', { name: '6s' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '12s' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '16s' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '20s' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '10s' })).not.toBeInTheDocument();
+  });
+
+  it('Koma 官方即梦渠道使用 4-15 秒范围并保留 5 秒默认', async () => {
+    loadSettingsMock.mockResolvedValue({
+      channelConfigs: [
+        {
+          id: 'jimeng-channel',
+          category: 'itv',
+          providerType: 'koma-suihe-itv',
+        },
+      ],
+    });
+    listConfiguredModelSelectOptionsMock.mockReturnValue([
+      {
+        value: 'jimeng-channel::seedance-2.0',
+        label: 'Seedance 2.0',
+        channelId: 'jimeng-channel',
+        modelId: 'seedance-2.0',
+        providerType: 'koma-suihe-itv',
+        channelLabel: 'Koma 官方即梦',
+        modelLabel: 'Seedance 2.0',
+        capabilities: ['video.image-to-video'],
+      },
+    ]);
+
+    renderEditor(createVideoNodeData({
+      itvSelection: 'jimeng-channel::seedance-2.0',
+      duration: 5,
+    }));
+
+    expect(await screen.findByRole('button', { name: '16:9 · 720P · 5s' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '16:9 · 720P · 5s' }));
+
+    expect(await screen.findByText('当前模型支持 4-15s')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '10s' })).not.toBeInTheDocument();
+    expect(updateNodeDataMock).not.toHaveBeenCalledWith('video-node-1', expect.any(Function));
   });
 });

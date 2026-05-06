@@ -196,4 +196,14 @@
       }
     }
   }
+
+  &DurationChoices {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(68px, 1fr));
+    gap: 8px;
+  }
+
+  &DurationHint {
+    @include lh-text($lh-text-muted, 11px, 1.45);
+  }
 }

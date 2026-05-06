@@ -28,8 +28,8 @@ export type VideoDurationSpec =
  */
 export const DEFAULT_VIDEO_DURATION_SPEC: VideoDurationSpec = {
   kind: 'enum',
-  values: [6, 10, 12, 16, 20],
-  default: 10,
+  values: [6, 12, 16, 20],
+  default: 6,
 };
 
 /**
@@ -108,8 +108,8 @@ export function specToInputBounds(spec: VideoDurationSpec): { min: number; max: 
  * 时长能力也不同。所以 lookup 优先走 modelId 命中，再回落到 providerType。
  */
 const ITV_DURATION_SPECS_BY_PROVIDER: Record<string, VideoDurationSpec> = {
-  // grok-imagine-video：上游仅接受 6/12/16/20；10 是 UI 兜底默认
-  'grok2api-imagine-itv': { kind: 'enum', values: [6, 10, 12, 16, 20], default: 10 },
+  // grok-imagine-video：上游仅接受 6/12/16/20
+  'grok2api-imagine-itv': { kind: 'enum', values: [6, 12, 16, 20], default: 6 },
   // Koma 官方：上游约束 4-15s 连续（参考 new-api/relay/channel/task/suihe/constants.go）
   // 注意 modelId 前缀映射会进一步细化（seedance-2.0-fast 仅到 12s）
   'koma-suihe-itv': { kind: 'range', min: 4, max: 15, step: 1, default: 5 },

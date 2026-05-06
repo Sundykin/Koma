@@ -11,6 +11,7 @@ import {
   VIDEO_CAPABILITY_LABELS,
   type LinghuiVideoCapability as SharedLinghuiVideoCapability,
 } from './videoCapabilityUtils';
+import type { VideoDurationSpec } from '../../../../providers/itv/durationSpec';
 
 export function getPreviewSource(source?: string): string {
   return toFileSystemDisplayUrl(source) || '';
@@ -86,6 +87,8 @@ export interface ProviderOption {
   value: string;
   label: string;
   capabilities: SharedLinghuiVideoCapability[];
+  providerType?: string;
+  durationSpec?: VideoDurationSpec;
   channelLabel?: string;
   modelLabel?: string;
 }
@@ -96,18 +99,6 @@ export const VIDEO_CAPABILITIES: Array<{ key: LinghuiVideoCapability; label: str
   { key: 'video.reference-to-video', label: VIDEO_CAPABILITY_LABELS['video.reference-to-video'] },
   { key: 'video.start-end-to-video', label: VIDEO_CAPABILITY_LABELS['video.start-end-to-video'] },
 ];
-
-export const DURATION_OPTIONS = [
-  { value: 5, label: '5s' },
-  { value: 10, label: '10s' },
-  { value: 15, label: '15s' },
-  { value: 30, label: '30s' },
-];
-
-export const VIDEO_DURATION_MARKS = DURATION_OPTIONS.reduce<Record<number, string>>((marks, option) => {
-  marks[option.value] = option.label;
-  return marks;
-}, {});
 
 export function formatVideoResolutionLabel(value: string): string {
   const normalized = String(value ?? '').trim();

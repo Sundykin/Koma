@@ -99,12 +99,12 @@ describe('specToInputBounds', () => {
 });
 
 describe('getDurationSpecForProviderType', () => {
-  it('grok2api-imagine-itv → enum 6/10/12/16/20 default 10', () => {
+  it('grok2api-imagine-itv -> enum 6/12/16/20 default 6', () => {
     const spec = getDurationSpecForProviderType('grok2api-imagine-itv');
     expect(spec.kind).toBe('enum');
     if (spec.kind === 'enum') {
-      expect(spec.values).toEqual([6, 10, 12, 16, 20]);
-      expect(spec.default).toBe(10);
+      expect(spec.values).toEqual([6, 12, 16, 20]);
+      expect(spec.default).toBe(6);
     }
   });
 

@@ -66,6 +66,16 @@ interface DisplayReferenceImage {
   badge: string;
 }
 
+export interface ImageNodeEditorExtraSettingsBlock {
+  /** 渲染在设置弹层里的标题（与原生 比例 / 分辨率 / 出图数量 等并列） */
+  label: string;
+  /** 当前选中的 value */
+  value: string;
+  /** 候选项；label 显示，value 写回 */
+  options: Array<{ value: string; label: string; hint?: string }>;
+  onChange: (next: string) => void;
+}
+
 export interface ImageNodeEditorProps {
   nodeId: string;
   nodeData: LinghuiNodeData;
@@ -77,6 +87,12 @@ export interface ImageNodeEditorProps {
   onToolChange: (tool: LinghuiImageToolKey | null) => void;
   onExecuteMultiAngle?: (options?: LinghuiExecuteMultiAngleOptions) => void;
   onRun: () => void;
+  /** 覆盖默认 IMAGE_ASPECT_RATIOS，用于全景节点这类只允许子集（16:9/21:9）的场景 */
+  aspectRatioOptions?: Array<{ value: string; label: string }>;
+  /** 是否隐藏「出图数量」（全景节点单图为主，避免一次出多张全景） */
+  hideBatchCount?: boolean;
+  /** 设置弹层底部追加的额外配置块，按 ImageNodeEditorExtraSettingsBlock 渲染 */
+  extraSettings?: ImageNodeEditorExtraSettingsBlock;
 }
 
 export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
@@ -90,7 +106,11 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
   onToolChange,
   onExecuteMultiAngle,
   onRun,
+  aspectRatioOptions,
+  hideBatchCount = false,
+  extraSettings,
 }) => {
+  const aspectRatioChoices = aspectRatioOptions ?? IMAGE_ASPECT_RATIOS;
   const { message } = App.useApp();
   const { executionQueue } = useLinghuiNodeEditorApi();
   const { clearNodeRunState, updateNodeData } = useLinghuiNodeMutation();
@@ -160,6 +180,15 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
       properties: { ...prev.properties, [key]: value },
     }), options);
   }, [nodeId, updateNodeData]);
+
+  // 当外部把比例可选集合收紧时（如全景节点只许 16:9/21:9），如果当前 aspectRatio 不在子集里，
+  // 自动校正到子集的第一项，避免 popover 选不到 active 状态、生成时仍走到不允许的比例。
+  useEffect(() => {
+    if (!aspectRatioOptions || aspectRatioOptions.length === 0) return;
+    if (!aspectRatioOptions.some(option => option.value === aspectRatio)) {
+      updateProp('aspectRatio', aspectRatioOptions[0].value, { markStale: false });
+    }
+  }, [aspectRatio, aspectRatioOptions, updateProp]);
 
   const updateMultiAngle = useCallback((patch: Partial<typeof multiAngleConfig>) => {
     updateProp('multiAngle', normalizeLinghuiMultiAngleConfig({
@@ -298,7 +327,7 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
       <div className="linghuiEditorSettingsBlock">
         <div className="linghuiEditorSettingsLabel">比例</div>
         <div className="linghuiEditorOptionGrid">
-          {IMAGE_ASPECT_RATIOS.map(option => (
+          {aspectRatioChoices.map(option => (
             <button
               key={option.value}
               type="button"
@@ -327,21 +356,42 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
         </div>
       </div>
 
-      <div className="linghuiEditorSettingsBlock">
-        <div className="linghuiEditorSettingsLabel">出图数量</div>
-        <div className="linghuiEditorOptionGrid">
-          {LINGHUI_IMAGE_BATCH_COUNTS.map(value => (
-            <button
-              key={value}
-              type="button"
-              className={`linghuiEditorOptionTile ${batchCount === value ? 'isActive' : ''}`}
-              onClick={() => updateProp('batchCount', value)}
-            >
-              {value}张
-            </button>
-          ))}
+      {!hideBatchCount && (
+        <div className="linghuiEditorSettingsBlock">
+          <div className="linghuiEditorSettingsLabel">出图数量</div>
+          <div className="linghuiEditorOptionGrid">
+            {LINGHUI_IMAGE_BATCH_COUNTS.map(value => (
+              <button
+                key={value}
+                type="button"
+                className={`linghuiEditorOptionTile ${batchCount === value ? 'isActive' : ''}`}
+                onClick={() => updateProp('batchCount', value)}
+              >
+                {value}张
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
+
+      {extraSettings && (
+        <div className="linghuiEditorSettingsBlock">
+          <div className="linghuiEditorSettingsLabel">{extraSettings.label}</div>
+          <div className="linghuiEditorOptionGrid">
+            {extraSettings.options.map(option => (
+              <button
+                key={option.value}
+                type="button"
+                className={`linghuiEditorOptionTile ${extraSettings.value === option.value ? 'isActive' : ''}`}
+                onClick={() => extraSettings.onChange(option.value)}
+                title={option.hint}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 

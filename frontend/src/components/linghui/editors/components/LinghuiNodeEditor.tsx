@@ -22,6 +22,7 @@ import { getLinghuiResultPrimaryMedia } from '../../../../types/linghui';
 import { AgentNodeEditor } from './AgentNodeEditor';
 import { AudioNodeEditor } from './AudioNodeEditor';
 import { ImageNodeEditor } from './ImageNodeEditor';
+import { PanoramaNodeEditor } from './PanoramaNodeEditor';
 import { ScriptNodeEditor } from './ScriptNodeEditor';
 import { TextNodeEditor } from './TextNodeEditor';
 import { VideoNodeEditor } from './VideoNodeEditor';
@@ -168,6 +169,8 @@ function getNodeTypeLabel(nodeType: LinghuiNodeType): string {
   switch (nodeType) {
     case 'linghui/image':
       return '图片节点';
+    case 'linghui/panorama':
+      return '全景节点';
     case 'linghui/agent':
       return 'Agent 节点';
     case 'linghui/video':
@@ -262,7 +265,8 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
       const result = nodeRuns[edge.source]?.result;
       const sourceNodeData = nodeDataMap.get(edge.source);
       const sourceNodeProps = sourceNodeData?.properties as unknown as LinghuiImageNodeProperties | undefined;
-      const fallbackSource = sourceNodeData?.linghuiType === 'linghui/image' && sourceNodeProps
+      const fallbackSource = (sourceNodeData?.linghuiType === 'linghui/image' || sourceNodeData?.linghuiType === 'linghui/panorama')
+        && sourceNodeProps
         && resolveImageFallbackMode(sourceNodeProps) === 'import'
         ? String(sourceNodeProps.source ?? '').trim()
         : '';
@@ -738,6 +742,20 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
           )}
           {nodeType === 'linghui/image' && (
             <ImageNodeEditor
+              nodeId={nodeId}
+              nodeData={nodeData}
+              nodeRun={nodeRuns[nodeId]}
+              referenceImages={referenceImages}
+              promptReferences={promptReferences}
+              workspaceId={workspaceId}
+              activeTool={activeImageTool}
+              onToolChange={tool => setActiveTool(tool ? { kind: 'image', nodeId, tool } : null)}
+              onExecuteMultiAngle={options => onExecuteMultiAngle?.(options)}
+              onRun={() => onRunNode(nodeId)}
+            />
+          )}
+          {nodeType === 'linghui/panorama' && (
+            <PanoramaNodeEditor
               nodeId={nodeId}
               nodeData={nodeData}
               nodeRun={nodeRuns[nodeId]}

@@ -10,6 +10,101 @@ vi.mock('../../services/electronService', () => ({
 }));
 
 describe('createNodeView', () => {
+  it('把导入态全景节点按图片节点家族静态解析给下游消费', async () => {
+    const { createNodeView } = await import('../state/linghuiExecutionShared');
+
+    const context: LinghuiExecutionContext = {
+      nodes: [
+        {
+          id: 'panorama-node',
+          type: 'linghui-panorama',
+          position: { x: 0, y: 0 },
+          data: {
+            linghuiType: 'linghui/panorama',
+            label: '全景环境',
+            accent: '#22c55e',
+            background: '#0f1720',
+            properties: {
+              mode: 'import',
+              source: 'koma-local://workspace/panorama.png',
+              prompt: '',
+              ttiSelection: '',
+              aspectRatio: '21:9',
+              resolution: 'auto',
+              gridType: 'none',
+              batchCount: 1,
+              panoramaTemplate: 'auto',
+            },
+            inputs: [
+              { name: '参考', dataType: 'image' },
+              { name: '文本', dataType: 'text' },
+            ],
+            outputs: [{ name: 'image', dataType: 'image' }],
+            active: false,
+          },
+        },
+        {
+          id: 'video-node',
+          type: 'linghui-video',
+          position: { x: 320, y: 0 },
+          data: {
+            linghuiType: 'linghui/video',
+            label: '漫游视频',
+            accent: '#22c55e',
+            background: '#0f1720',
+            properties: {
+              prompt: '',
+              itvSelection: '',
+              source: '',
+              posterSource: '',
+              videoCapability: 'video.image-to-video',
+              aspectRatio: '16:9',
+              resolution: '720p',
+              duration: 5,
+            },
+            inputs: [
+              { name: '参考', dataType: 'image' },
+              { name: '文本', dataType: 'text' },
+              { name: '音频', dataType: 'audio' },
+              { name: '视频', dataType: 'video' },
+            ],
+            outputs: [{ name: 'video', dataType: 'video' }],
+            active: false,
+          },
+        },
+      ],
+      edges: [
+        {
+          id: 'edge-panorama-video',
+          source: 'panorama-node',
+          target: 'video-node',
+          sourceHandle: 'output-0',
+          targetHandle: 'input-0',
+          type: 'linghui-edge',
+          data: {
+            sourceSlotType: 'image',
+            targetSlotType: 'image',
+          },
+        },
+      ],
+      nodeOutputs: {},
+    };
+
+    const targetNode = context.nodes[1];
+    const nodeView = createNodeView(context, targetNode);
+    const input = nodeView.getInputResult(0);
+
+    expect(input?.kind).toBe('image');
+    if (!input || input.kind !== 'image') {
+      throw new Error('expected image result');
+    }
+    expect(input.primary.source).toBe('koma-local://workspace/panorama.png');
+    expect(input.metadata).toEqual(expect.objectContaining({
+      mode: 'import',
+      itemCount: 1,
+    }));
+  });
+
   it('静态解析手动脚本节点时会输出格式化文本和结构化 shots', async () => {
     const { createNodeView } = await import('../state/linghuiExecutionShared');
 

@@ -109,7 +109,7 @@ describe('linghuiStorage', () => {
     expect(linghuiApiMock.loadWorkspace).toHaveBeenCalledWith('workspace-1');
   });
 
-  it('会合并系统 Recipe 模板与后端工作区模板', async () => {
+  it('暂不返回系统 Recipe，仅保留后端工作区模板', async () => {
     linghuiApiMock.listWorkflowTemplates.mockResolvedValueOnce([
       {
         id: 'workspace-template-1',
@@ -137,11 +137,7 @@ describe('linghuiStorage', () => {
     const workspaceTemplate = templates.find(template => template.id === 'workspace-template-1');
 
     expect(linghuiApiMock.listWorkflowTemplates).toHaveBeenCalledWith('workspace-1');
-    expect(builtinTemplates.map(template => template.recipeKey)).toEqual([
-      'character-design-flow',
-      'storyboard-creation-flow',
-      'voiceover-workflow',
-    ]);
+    expect(builtinTemplates).toEqual([]);
     expect(workspaceTemplate).toEqual(expect.objectContaining({
       source: 'workspace',
       kind: 'saved-workflow',

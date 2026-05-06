@@ -128,6 +128,23 @@ describe('isLinghuiConnectionValid', () => {
     expect(result.valid).toBe(true);
   });
 
+  it('为全景节点创建图片家族槽位和全景默认参数', () => {
+    const data = createNewNodeData('linghui/panorama');
+
+    expect(data.linghuiType).toBe('linghui/panorama');
+    expect(data.inputs).toEqual([
+      { name: '参考', dataType: 'image' },
+      { name: '文本', dataType: 'text' },
+    ]);
+    expect(data.outputs).toEqual([{ name: 'image', dataType: 'image' }]);
+    expect(data.properties).toEqual(expect.objectContaining({
+      mode: 'generate',
+      aspectRatio: '21:9',
+      batchCount: 1,
+      panoramaTemplate: 'auto',
+    }));
+  });
+
   it('为 agent 节点创建文本输出和安全默认属性', () => {
     const data = createNewNodeData('linghui/agent');
 

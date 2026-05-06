@@ -37,6 +37,7 @@ export interface ConfiguredModelSelectOption {
   value: string;
   channelId: string;
   modelId: string;
+  providerType: string;
   channelName: string;
   channelLabel: string;
   modelLabel: string;
@@ -408,6 +409,7 @@ export function listConfiguredModelSelectOptions(
     value: serializeMediaSelection(item.selection) || '',
     channelId: item.channelConfig.id,
     modelId: item.model.id,
+    providerType: item.definition.runtimeProviderType || item.channelConfig.providerType,
     channelName: item.definition.id,
     channelLabel: item.definition.name,
     modelLabel: item.model.label,

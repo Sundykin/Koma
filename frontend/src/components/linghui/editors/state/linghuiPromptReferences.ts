@@ -186,7 +186,7 @@ function buildResultReferences(
   const refs: LinghuiPromptReferenceItem[] = [];
   if (!result) return refs;
 
-  const normalizedResult = nodeData.linghuiType === 'linghui/image'
+  const normalizedResult = nodeData.linghuiType === 'linghui/image' || nodeData.linghuiType === 'linghui/panorama'
     ? resolveLinghuiImageResultWithSelectedPrimary(
         nodeData.properties as unknown as LinghuiImageNodeProperties,
         result,
@@ -338,7 +338,7 @@ function buildFallbackReference(
     }];
   }
 
-  if (nodeData.linghuiType === 'linghui/image') {
+  if (nodeData.linghuiType === 'linghui/image' || nodeData.linghuiType === 'linghui/panorama') {
     const properties = nodeData.properties as unknown as LinghuiImageNodeProperties;
     const mode = resolveImageFallbackMode(properties);
     const source = getDescriptionText(properties.source);

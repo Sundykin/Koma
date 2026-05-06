@@ -11,6 +11,7 @@ import { compileGrokITV, compileGrokTTI } from './grokImageIndexCompiler';
 import { compilePromptReferences } from './promptReferenceCompiler';
 import type { PromptCompilationDebug, PromptCompilationInput } from './types';
 import { normalizeVideoDurationSeconds } from '../../utils/videoDuration';
+import { clampDurationToSpec, type VideoDurationSpec } from '../../providers/itv/durationSpec';
 
 type VideoRequestAsset = MediaAssetSource | ProviderAssetInput;
 type ProviderAssetTransport = ProviderAssetInput['transport'];
@@ -195,6 +196,7 @@ async function ensureRemoteUrlForMultipleSources(params: {
 
 function normalizeVideoRequestOptions(
   options?: Record<string, unknown>,
+  durationSpec?: VideoDurationSpec,
 ): Record<string, unknown> | undefined {
   if (!options) {
     return undefined;
@@ -204,7 +206,9 @@ function normalizeVideoRequestOptions(
   }
   return {
     ...options,
-    duration: normalizeVideoDurationSeconds(options.duration),
+    duration: durationSpec
+      ? clampDurationToSpec(options.duration, durationSpec)
+      : normalizeVideoDurationSeconds(options.duration),
   };
 }
 
@@ -218,9 +222,10 @@ function createVideoRequest<TAsset extends VideoRequestAsset>(
     referenceImages?: TAsset[];
     startFrame?: TAsset;
     endFrame?: TAsset;
+    durationSpec?: VideoDurationSpec;
   },
 ): ITVRequest<TAsset> {
-  const options = normalizeVideoRequestOptions(params.options);
+  const options = normalizeVideoRequestOptions(params.options, params.durationSpec);
   if (capability === 'video.text-to-video') {
     return {
       capability,
@@ -275,6 +280,7 @@ export function buildVideoCapabilityRequest(params: {
   referenceImages?: VideoRequestAsset[];
   startFrame?: VideoRequestAsset;
   endFrame?: VideoRequestAsset;
+  durationSpec?: VideoDurationSpec;
 }): ITVRequest<VideoRequestAsset>;
 export function buildVideoCapabilityRequest<TAsset extends VideoRequestAsset>(params: {
   capability: VideoGenerationCapability;
@@ -285,6 +291,7 @@ export function buildVideoCapabilityRequest<TAsset extends VideoRequestAsset>(pa
   referenceImages?: TAsset[];
   startFrame?: TAsset;
   endFrame?: TAsset;
+  durationSpec?: VideoDurationSpec;
 }): ITVRequest<TAsset>;
 export function buildVideoCapabilityRequest<TAsset extends VideoRequestAsset>(params: {
   capability: VideoGenerationCapability;
@@ -295,6 +302,7 @@ export function buildVideoCapabilityRequest<TAsset extends VideoRequestAsset>(pa
   referenceImages?: TAsset[];
   startFrame?: TAsset;
   endFrame?: TAsset;
+  durationSpec?: VideoDurationSpec;
 }): ITVRequest<TAsset> {
   return createVideoRequest(params.capability, params);
 }

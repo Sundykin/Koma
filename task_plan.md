@@ -1,5 +1,85 @@
 # Task Plan
 
+## Session: 2026-05-06 Linghui Tapnow-Base Capability Audit
+
+### Goal
+- 审计当前 Koma 灵绘与参考项目 `/Users/sunmeng/workspace/tapnow-base` 的节点画布基础能力差异。
+- 在不回滚已有未提交改动的前提下，补齐灵绘缺失或半成品能力，优先完善已出现的 `linghui/panorama` 全景/首尾帧链路。
+- 保持现有 Linghui 架构边界：节点定义、编辑器、画布交互、执行器、类型、持久化文档 schema 统一演进。
+
+### Scope
+- `frontend/src/types/linghui.ts`
+- `frontend/src/components/linghui/library/state/linghuiNodeDefs.ts`
+- `frontend/src/components/linghui/nodes/**`
+- `frontend/src/components/linghui/editors/components/**`
+- `frontend/src/components/linghui/execution/state/**`
+- `frontend/src/components/linghui/canvas/hooks/**`
+- `electron/service/linghui/document.ts`
+- 必要测试与文档记录
+
+### Phases
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Reference Audit | complete | 对照 tapnow-base 的基础节点、生成链路、媒体栈与导入导出能力，整理 Koma 差距 |
+| 2. Current Diff Review | complete | 审查当前未提交灵绘改动，判断哪些是半成品、哪些需要接入 |
+| 3. Capability Implementation | complete | 补齐缺失能力，优先让新增/半成品节点完成类型、UI、执行和持久化闭环 |
+| 4. Validation | complete | 运行针对性测试/构建，必要时浏览器烟测灵绘入口 |
+
+### Acceptance Criteria
+- 参考项目的基础节点能力在 Koma 灵绘中有明确映射或记录为有意不做。
+- 已存在的 `linghui/panorama` 改动不处于半接入状态：可创建、可编辑、可预览、可执行、可被下游消费、可持久化。
+- 执行层对图片输入、首尾帧/全景类输出、提示词与模型参数处理稳定，不静默丢失引用。
+- 构建或相关测试通过；如存在既有失败，记录具体边界。
+
+### Error Log
+| Error | Attempt | Resolution |
+|------|---------|------------|
+| `npm run check:style-discipline` failed | 1 | 确认为既有项目/分镜/chat/theme 注释与根 token 快照债务；新增 Linghui panorama/Recipe 路径未命中该脚本失败项 |
+
+## Session: 2026-05-06 Linghui Canvas Interaction Audit
+
+### Goal
+- 暂时移除不需要的基础工作流模板，避免把灵绘基础能力误导成预设 Recipe。
+- 审计并改善灵绘画布基础操作：拖拽、连线锚点、执行入口、执行流反馈动画、失败反馈与执行日志。
+- 优先修正“反人类”的高频触点：锚点难拖、运行入口藏太深、失败信息一闪而过、连线执行状态不够清楚。
+
+### Scope
+- `frontend/src/components/linghui/canvas/**`
+- `frontend/src/components/linghui/page/components/LinghuiPage.tsx`
+- `frontend/src/components/linghui/page/styles/**`
+- `frontend/src/components/linghui/execution/state/linghuiExecutionWorkflow.ts`
+- `frontend/src/components/linghui/library/state/linghuiRecipeTemplates.ts`
+- 相关测试与记录文件
+
+### Phases
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Template Cleanup | complete | 暂时隐藏内置系统 Recipe，不再让工作流模板占据主线入口 |
+| 2. Interaction Audit | complete | 定位 HUD、右键菜单、锚点、连线、执行状态和日志的主要摩擦点 |
+| 3. First-Pass Fixes | complete | 优化一键运行入口、锚点命中区、连线执行动画、失败日志与连接失败记录 |
+| 4. Failure Feedback Pass | complete | 节点本体展示失败原因，HUD 展示最近错误/运行日志并支持点击定位节点，失败执行后自动聚焦首个失败节点 |
+| 5. Magnetic Handles | complete | 统一所有输入/输出连接点视觉与命中模型，增大连接吸附范围，并增加线靠近连接点时的磁吸动画 |
+| 6. Validation | complete | 跑相关测试、构建和必要的样式纪律边界检查 |
+| 7. Video Duration Constraints | complete | 灵绘视频节点按当前 ITV 渠道/模型动态限制时长，grok 走枚举，即梦走范围，并在执行前二次归一 |
+
+### Acceptance Criteria
+- 系统 Recipe 暂时不再出现在模板列表，用户保存的工作区模板能力保留。
+- 画布 HUD 可直接一键运行全部/选中，不依赖右键菜单探索。
+- 连线锚点更容易拖拽，连接预览和执行状态更明显。
+- 节点失败、上游阻塞、连接失败都有可回看的日志记录或更具体 toast。
+- 执行失败后首个失败节点会被自动选中聚焦，节点卡片上直接露出失败原因。
+- HUD 在执行中或最近有错误时显示最近日志，日志项可点击定位相关节点。
+- 所有节点连接点使用同一套视觉/吸附样式；连线进入扩大范围即可吸附到端口，不必像素级碰到圆点。
+- 相关测试/构建通过；既有风格脚本失败边界单独记录。
+
+### Error Log
+| Error | Attempt | Resolution |
+|------|---------|------------|
+| `npm run check:style-discipline` failed after first edge patch | 1 | `LinghuiEdge` 的 `style={edgeStyle}` 被脚本拦截，已改为 `cssVars(...)`；复跑后新灵绘画布文件不再命中 |
+| `npm run check:style-discipline` still fails | 2 | 剩余失败均为既有 project/storyboard/chat/theme/index.scss 债务，本轮不扩大范围 |
+| `npm run check:style-discipline` still fails after magnetic handles | 3 | 失败项仍只在既有 project/storyboard/chat/theme/index.scss 路径；新增 `LinghuiNodeHandle`、连接点样式和舞台半径未出现在失败列表中 |
+| `npm run check:style-discipline` still fails after video duration pass | 4 | 失败项仍只在既有 project/storyboard/chat/theme/index.scss 注释/颜色/inline style 债务；本轮视频时长文件未出现在失败列表中 |
+
 ## Session: 2026-05-03 Theme System Architecture
 
 ### Goal

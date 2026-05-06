@@ -13,6 +13,7 @@ const DEFAULT_NODE_DURATION_SEC: Record<LinghuiNodeType, number> = {
   'linghui/text': 10,
   'linghui/agent': 18,
   'linghui/image': 28,
+  'linghui/panorama': 32,
   'linghui/video': 45,
   'linghui/audio': 15,
   'linghui/script': 14,

@@ -50,6 +50,8 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     onRunSingleNode,
     onRunAll,
     onRunSelection,
+    executionLogs,
+    onFocusLogNode,
     onExportSelection,
     onFocusFailedNode,
     onRetryFailed,
@@ -485,6 +487,10 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
         onRetryFailed,
         onRerunAffected,
         onCancelRun,
+        onRunAll,
+        onRunSelection,
+        executionLogs,
+        onFocusLogNode,
         onSetCanvasMode: setCanvasMode,
         onZoomOut: zoomOut,
         onFocusContent: focusContent,
@@ -548,6 +554,8 @@ function areLinghuiCanvasPropsEqual(prev: LinghuiCanvasProps, next: LinghuiCanva
     prev.onRunSingleNode === next.onRunSingleNode &&
     prev.onRunAll === next.onRunAll &&
     prev.onRunSelection === next.onRunSelection &&
+    prev.executionLogs === next.executionLogs &&
+    prev.onFocusLogNode === next.onFocusLogNode &&
     prev.onExportSelection === next.onExportSelection &&
     prev.onFocusFailedNode === next.onFocusFailedNode &&
     prev.onRetryFailed === next.onRetryFailed &&

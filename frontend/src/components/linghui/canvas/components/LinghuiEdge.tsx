@@ -1,7 +1,8 @@
-import React, { memo, type CSSProperties } from 'react';
+import React, { memo } from 'react';
 import { BaseEdge, getBezierPath, type EdgeProps } from '@xyflow/react';
 import type { LinghuiRunStatus } from '../../../../types/linghui';
 import { useLinghuiExecutionTrace, useNodeRunState } from '../../nodes/state/LinghuiNodeRunsContext';
+import { cssVars } from '../../../../theme/runtime';
 
 const STATUS_COLORS: Record<LinghuiRunStatus, string> = {
   idle: 'var(--token-text-muted)',
@@ -42,8 +43,13 @@ function LinghuiEdgeInner({
   const traceStatus = executionTrace.edgeStatuses[id];
   const linkStatus = traceStatus ?? getLinkStatus([fromStatus, toStatus]);
   const color = STATUS_COLORS[linkStatus] ?? STATUS_COLORS.idle;
-  const edgeStyle = {
-    ...style,
+  const edgeClassName = [
+    'linghuiExecutionEdge',
+    `is-${linkStatus}`,
+    selected ? 'is-selected' : '',
+    traceStatus ? 'has-trace' : '',
+  ].filter(Boolean).join(' ');
+  const edgeVars = cssVars({
     '--linghui-edge-stroke': color,
     '--linghui-edge-stroke-width': selected ? 4 : linkStatus === 'running' ? 3 : 2,
     '--linghui-edge-stroke-dasharray': linkStatus === 'running' ? '8 6' : 'none',
@@ -53,7 +59,7 @@ function LinghuiEdgeInner({
       : traceStatus
         ? `drop-shadow(0 0 4px ${color})`
         : 'none',
-  } as CSSProperties;
+  });
 
   const [edgePath] = getBezierPath({
     sourceX,
@@ -65,13 +71,20 @@ function LinghuiEdgeInner({
   });
 
   return (
-    <BaseEdge
-      id={id}
-      path={edgePath}
-      markerEnd={markerEnd}
-      interactionWidth={24}
-      style={edgeStyle}
-    />
+    <g className={edgeClassName}>
+      <path
+        className="linghuiExecutionEdgeGlow"
+        d={edgePath}
+        style={edgeVars}
+      />
+      <BaseEdge
+        id={id}
+        path={edgePath}
+        markerEnd={markerEnd}
+        interactionWidth={36}
+        style={edgeVars}
+      />
+    </g>
   );
 }
 

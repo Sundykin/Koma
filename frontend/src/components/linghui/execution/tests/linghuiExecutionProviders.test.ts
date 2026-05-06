@@ -298,6 +298,58 @@ describe('linghuiExecutionProviders', () => {
     expect(result.source).toBe('https://cdn.example.com/task-vidu-1.mp4');
   });
 
+  it('视频生成会按候选 ITV 渠道时长规格归一 duration', async () => {
+    const provider = {
+      config: { provider: 'koma-suihe-itv' },
+      validate: () => true,
+      start: vi.fn(async () => ({
+        mode: 'immediate' as const,
+        output: {
+          source: 'https://cdn.example.com/jimeng.mp4',
+          durationSec: 15,
+        },
+      })),
+    };
+
+    getProjectITVProviderMock.mockResolvedValue(provider);
+    listCapabilityFallbackCandidatesMock.mockReturnValue([
+      {
+        selection: { channelId: 'jimeng-channel', modelId: 'seedance-2.0' },
+        selectionKey: 'jimeng-channel::seedance-2.0',
+        channelId: 'jimeng-channel',
+        modelId: 'seedance-2.0',
+        channelLabel: 'Koma 官方即梦',
+        modelLabel: 'Seedance 2.0',
+        providerType: 'koma-suihe-itv',
+        capabilities: ['video.text-to-video'],
+      },
+    ]);
+    resolveConfiguredChannelModelMock.mockReturnValue({
+      channelConfig: { id: 'jimeng-channel', providerType: 'koma-suihe-itv' },
+      model: { id: 'seedance-2.0', capabilities: ['video.text-to-video'] },
+    });
+
+    const { generateVideoWithProvider } = await import('../state/linghuiExecutionProviders');
+
+    await generateVideoWithProvider({
+      capability: 'video.text-to-video',
+      prompt: '即梦范围时长归一',
+      duration: 20,
+      itvSelection: 'jimeng-channel::seedance-2.0',
+    });
+
+    expect(buildVideoCapabilityRequestMock).toHaveBeenCalledWith(expect.objectContaining({
+      options: expect.objectContaining({
+        duration: 15,
+      }),
+    }));
+    expect(provider.start).toHaveBeenCalledWith(expect.objectContaining({
+      options: expect.objectContaining({
+        duration: 15,
+      }),
+    }));
+  });
+
   it('多角度图片请求会附带专用 requestType 和编译后的角度提示词', async () => {
     const provider = {
       type: 'openai-compatible-tti',

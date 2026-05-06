@@ -1,5 +1,168 @@
 # Progress Log
 
+## Session: 2026-05-06 Linghui Tapnow-Base Capability Audit
+
+### Phase 1: Reference Audit
+- **Status:** complete
+- Actions taken:
+  - 使用 `pi-planning-with-files` 技能恢复并更新本地计划文件。
+  - 确认当前 Koma 工作树已有未提交灵绘改动：`linghui/panorama` 新节点、图片/执行/画布/类型/文档相关文件均已被修改。
+  - 初扫参考项目 `/Users/sunmeng/workspace/tapnow-base`，确认其是轻量 React 节点画布，核心入口包含 `components/Canvas.tsx`、多种 `components/Nodes/*`、`services/mode/*` 模型通道配置与 `Settings/ExportImportModal.tsx`。
+  - 对照 tapnow-base 节点类型后确认：Koma 灵绘底层已覆盖文生图、图生图、文生视频、图生视频、首尾帧视频、媒体导入、历史与导入导出；本轮应补的是基础 Recipe 入口与全景节点闭环。
+  - 发现 `linghui/panorama` 作为图片节点家族的静态解析不完整，以及全景预览新文件存在会触发样式纪律的普通 inline style。
+- Files created/modified:
+  - `task_plan.md` (updated)
+  - `progress.md` (updated)
+  - `findings.md` (updated)
+
+### Phases 2-4: Diff Review, Implementation, Validation
+- **Status:** complete
+- Actions taken:
+  - 审查现有 `linghui/panorama` 半接入改动，确认它应该作为图片节点家族的独立节点类型存在，而不是复制 tapnow-base 的独立轻量节点系统。
+  - 新增 4 个内置 Recipe：图片基础流、视频基础流、首尾帧视频流、全景环境流，让 tapnow-base 的基础节点能力在 Koma 里有一键工作流入口。
+  - 补齐全景节点闭环：类型/RF 类型映射、节点库默认值、编辑器接入、画布节点预览、全屏 720° 查看、执行计划时长、执行器提示词模板、持久化白名单和静态导入结果解析。
+  - 修正全景节点作为图片家族被下游消费的路径：`getInputResult`、`getAllInputResults`、静态导入结果、提示词引用 fallback 和生成结果主图选择都识别 `linghui/panorama`。
+  - 将全景 viewer 的普通 inline style 移入 Linghui Sass partial；新增路径局部 grep 未发现 inline style/hex/rgba 命中。
+  - 修正 `ImageNode.tsx` 节点样式 memo 依赖，避免对象引用导致无意义重算。
+- Validation:
+  - `npm run test -- --run src/components/linghui/library/tests/linghuiNodeDefs.test.ts src/components/linghui/editors/tests/linghuiPromptReferences.test.ts src/components/linghui/execution/tests/linghuiExecutionShared.test.ts src/components/linghui/execution/tests/linghuiExecutionImageNode.test.ts src/store/linghuiStorage.test.ts`：5 files / 21 tests passed。
+  - `npm run build`：passed；仅保留既有 Vite dynamic import/chunk size warnings。
+  - `git diff --check`：passed。
+  - `npm run check:style-discipline`：failed on existing unrelated files (`project`, `storyboard`, `chat`, `theme` comments, `index.scss` first-paint token snapshot); new Linghui panorama/Recipe paths were not in the reported failures.
+- Files created/modified:
+  - `frontend/src/components/linghui/library/state/linghuiRecipeTemplates.ts`
+  - `frontend/src/components/linghui/execution/state/linghuiExecutionShared.ts`
+  - `frontend/src/components/linghui/editors/state/linghuiPromptReferences.ts`
+  - `frontend/src/components/linghui/editors/tests/linghuiPromptReferences.test.ts`
+  - `frontend/src/components/linghui/nodes/components/ImageNode.tsx`
+  - `frontend/src/components/linghui/panorama/*`
+  - `frontend/src/components/linghui/page/styles/_media-panels.scss`
+  - `frontend/src/components/linghui/page/styles/_compact-nodes.scss`
+  - 相关类型、节点定义、执行器、存储与测试文件
+
+## Session: 2026-05-06 Linghui Canvas Interaction Audit
+
+### Phase 1-3: Cleanup, Audit, First Fixes
+- **Status:** complete
+- Actions taken:
+  - 根据用户反馈修正方向：本轮目标不是新增工作流模板，而是优化灵绘画布基础操作与执行反馈。
+  - 暂时隐藏内置系统 Recipe，避免工作流模板继续占据主线入口；工作区用户自保存模板仍由存储层保留。
+  - 审计现有画布交互后确认主要摩擦点：
+    - 锚点尺寸只有 10px，拖线命中困难。
+    - “运行全部”主要藏在右键菜单/面板入口里，发现成本高。
+    - 连线虽然能按状态变色，但执行流动画和 hover 反馈偏弱。
+    - 连接失败只有 toast，回头无法追踪失败原因。
+    - 节点失败 toast 只报失败数量，缺少第一失败节点和错误摘要。
+  - 已落第一批修复：
+    - HUD 常驻新增“运行全部 / 运行选中”按钮。
+    - 空白右键菜单把“运行全部 / 运行选中”前置，节点/工作流块右键把运行操作前置并标为 primary。
+    - 锚点从 10px 增至 14px，并增加 hover/连接态光圈。
+    - 连线交互宽度从 24 增至 36，增加 glow path、运行流动动画、连接预览动画和 hover 强化。
+    - 上游阻塞日志包含具体失败上游节点；执行失败 toast 显示第一个失败节点和错误摘要。
+    - 连接失败写入执行日志，避免错误原因一闪而过。
+- Validation:
+  - `npm run test -- --run src/store/linghuiStorage.test.ts src/components/linghui/library/tests/linghuiNodeDefs.test.ts src/components/linghui/execution/tests/linghuiExecutionWorkflow.test.ts`：3 files / 19 tests passed。
+  - `npm run build`：passed；仅保留既有 Vite dynamic import/chunk size warnings。
+  - `git diff --check`：passed。
+  - `npm run check:style-discipline`：failed only on existing unrelated project/storyboard/chat/theme/index.scss debt after fixing new `LinghuiEdge` `cssVars(...)` usage.
+- Files created/modified:
+  - `frontend/src/components/linghui/library/state/linghuiRecipeTemplates.ts`
+  - `frontend/src/store/linghuiStorage.test.ts`
+  - `frontend/src/components/linghui/canvas/components/LinghuiCanvasHud.tsx`
+  - `frontend/src/components/linghui/canvas/components/LinghuiCanvas.tsx`
+  - `frontend/src/components/linghui/canvas/components/LinghuiCanvasContextMenu.tsx`
+  - `frontend/src/components/linghui/canvas/components/LinghuiEdge.tsx`
+  - `frontend/src/components/linghui/page/components/LinghuiPage.tsx`
+  - `frontend/src/components/linghui/execution/state/linghuiExecutionWorkflow.ts`
+  - `frontend/src/components/linghui/page/styles/_canvas-reactflow.scss`
+  - `frontend/src/components/linghui/page/styles/_compact-nodes.scss`
+  - `frontend/src/components/linghui/page/styles/_canvas-overlays.scss`
+
+### Phase 4: Failure Feedback Second Pass
+- **Status:** complete
+- Actions taken:
+  - 新增通用 `LinghuiNodeRunError`，文本、Agent、脚本、音频、图片、视频和通用节点壳层都能在节点本体上直接展示失败原因。
+  - HUD 接入 `executionLogs`，在执行中、存在失败或最近有错误时显示最近 5 条执行日志；带 `nodeId` 的日志项可点击定位相关节点。
+  - 失败执行完成后自动聚焦并选中首个失败节点，减少用户在大画布里手动寻找错误节点的成本。
+  - 日志 HUD 默认不常驻显示普通历史成功记录，避免占用画布底部空间。
+- Validation:
+  - `npm run test -- --run src/store/linghuiStorage.test.ts src/components/linghui/library/tests/linghuiNodeDefs.test.ts src/components/linghui/execution/tests/linghuiExecutionWorkflow.test.ts src/components/linghui/execution/tests/linghuiExecutionImageNode.test.ts src/components/linghui/execution/tests/linghuiExecutionShared.test.ts`：5 files / 27 tests passed。
+  - `npm run build`：passed；仅保留既有 Vite dynamic import/chunk size warnings。
+  - `git diff --check`：passed。
+  - `npm run check:style-discipline`：failed only on existing unrelated project/storyboard/chat/theme/index.scss debt；新增 Linghui 文件未出现在失败列表中。
+  - 本地 dev server 启动在 `http://127.0.0.1:5174/`；DevTools 烟测确认应用挂载到激活页。当前环境受激活页阻挡，未执行真实灵绘画布点击/拖拽烟测。
+- Files created/modified:
+  - `frontend/src/components/linghui/nodes/components/LinghuiNodeRunError.tsx`
+  - `frontend/src/components/linghui/nodes/components/TextNode.tsx`
+  - `frontend/src/components/linghui/nodes/components/AgentNode.tsx`
+  - `frontend/src/components/linghui/nodes/components/ScriptNode.tsx`
+  - `frontend/src/components/linghui/nodes/components/AudioNode.tsx`
+  - `frontend/src/components/linghui/nodes/components/ImageNode.tsx`
+  - `frontend/src/components/linghui/nodes/components/VideoNode.tsx`
+  - `frontend/src/components/linghui/nodes/components/LinghuiNodeShell.tsx`
+  - `frontend/src/components/linghui/canvas/components/LinghuiCanvasHud.tsx`
+  - `frontend/src/components/linghui/canvas/components/LinghuiCanvas.tsx`
+  - `frontend/src/components/linghui/canvas/state/linghuiCanvasTypes.ts`
+  - `frontend/src/components/linghui/page/components/LinghuiPage.tsx`
+  - `frontend/src/components/linghui/page/styles/_canvas-overlays.scss`
+  - `frontend/src/components/linghui/page/styles/_compact-nodes.scss`
+  - `frontend/src/components/linghui/page/styles/_canvas-reactflow.scss`
+
+### Phase 5: Magnetic Handles
+- **Status:** complete
+- Actions taken:
+  - 新增并接入统一 `LinghuiNodeHandle`，文本、Agent、脚本、音频、图片、视频和通用节点壳层都使用同一套输入/输出端口组件。
+  - `LinghuiNodeHandle` 统一根据 slot 数据类型解析端口颜色，并通过 `cssVars(...)` 写入 `--linghui-handle-bg` / `--linghui-handle-top`，避免回退到普通 inline style。
+  - `LinghuiCanvasStage` 显式把 React Flow `connectionRadius` 提高到 `56`，并把 `connectionDragThreshold` 降到 `1`，让拖线进入端口附近范围即可吸附连接，不需要像素级碰到圆点。
+  - `.linghuiNodeMagnetHandle` 统一端口视觉和交互目标：30px 起手热区、56px 磁吸光圈、hover/connectingfrom/connectingto/valid 状态动画、有效连接预览线强化。
+  - 移除旧 `.linghuiCompactHandle` / `.linghuiRFHandle` 的独立尺寸规则，仅保留为兼容别名，避免不同节点族端口手感不一致。
+- Validation:
+  - `npm run build`：passed；仅保留既有 Vite dynamic import/chunk size warnings。
+  - `git diff --check`：passed。
+  - `npm run test -- --run src/store/linghuiStorage.test.ts src/components/linghui/library/tests/linghuiNodeDefs.test.ts src/components/linghui/execution/tests/linghuiExecutionWorkflow.test.ts src/components/linghui/execution/tests/linghuiExecutionImageNode.test.ts src/components/linghui/execution/tests/linghuiExecutionShared.test.ts`：5 files / 27 tests passed。
+  - `npm run test -- --run src/components/linghui/nodes/tests/VideoNode.test.tsx`：1 file / 3 tests passed。
+  - `npm run check:style-discipline`：failed only on existing unrelated `project` / `storyboard` / `chat` / `theme` / `index.scss` debt；新增 Linghui 磁吸端口路径未出现在失败列表中。
+- Files created/modified:
+  - `frontend/src/components/linghui/nodes/components/LinghuiNodeHandle.tsx`
+  - `frontend/src/components/linghui/nodes/components/TextNode.tsx`
+  - `frontend/src/components/linghui/nodes/components/AgentNode.tsx`
+  - `frontend/src/components/linghui/nodes/components/ScriptNode.tsx`
+  - `frontend/src/components/linghui/nodes/components/AudioNode.tsx`
+  - `frontend/src/components/linghui/nodes/components/ImageNode.tsx`
+  - `frontend/src/components/linghui/nodes/components/VideoNode.tsx`
+  - `frontend/src/components/linghui/nodes/components/LinghuiNodeShell.tsx`
+  - `frontend/src/components/linghui/canvas/components/LinghuiCanvasStage.tsx`
+  - `frontend/src/components/linghui/page/styles/_canvas-reactflow.scss`
+  - `frontend/src/components/linghui/page/styles/_compact-nodes.scss`
+
+### Phase 7: Video Duration Constraints
+- **Status:** complete
+- Actions taken:
+  - 审计发现项目已有 `providers/itv/durationSpec.ts`，聊天和分镜已按当前 ITV 渠道动态限制时长；灵绘视频节点仍使用固定 `Number(props.duration ?? 5)` 和通用 5/10/15/30 slider。
+  - 确认 Koma 官方即梦 provider/model 已有范围表达：`seedance-2.0` 为 4-15 秒，`seedance-2.0-fast` 为 4-12 秒；Grok provider 注释要求枚举 6/12/16/20，但旧 fallback spec 和旧 `utils/videoDuration` 仍包含历史 10 秒。
+  - 将 Grok 默认/兜底时长统一为 `6/12/16/20`，默认 `6`；移除历史 10 秒暴露。
+  - 灵绘视频编辑器接入 `VideoDurationSpec`：按当前 selection 的 modelId/providerType 解析时长约束，Grok 渲染枚举按钮，即梦/Seedance 渲染 4-15 或 4-12 秒范围 slider，并在参数摘要中使用归一后的时长。
+  - 为已有 `seedance-*` selection 增加 modelId 级别即时识别，避免等待设置异步加载期间把 5 秒短暂吸到 Grok 兜底 6 秒。
+  - 切换视频模型时会按目标模型约束归一 `duration`，用户手动改时长也会按当前 spec clamp。
+  - 灵绘执行层在调用 `buildVideoCapabilityRequest` 前按候选 ITV 渠道/model 二次归一，避免绕过 UI 或旧数据把非法时长发给 provider。
+  - prompt 编译的 `buildVideoCapabilityRequest` 支持显式 `durationSpec`，保留旧 Grok fallback 作为无上下文兜底。
+- Validation:
+  - `npm run test -- --run src/providers/itv/durationSpec.test.ts src/services/promptCompilation/videoRequestCompiler.test.ts src/providers/itv/Grok2ApiImagineITVProvider.test.ts src/components/linghui/editors/tests/VideoNodeEditor.test.tsx src/components/linghui/execution/tests/linghuiExecutionProviders.test.ts`：5 files / 60 tests passed。
+  - `npm run test -- --run src/components/linghui/editors/tests/VideoNodeEditor.test.tsx src/components/linghui/execution/tests/linghuiExecutionVideoNode.test.ts src/components/linghui/execution/tests/linghuiExecutionProviders.test.ts src/components/linghui/nodes/tests/VideoNode.test.tsx`：4 files / 25 tests passed。
+  - `npm run build`：passed；仅保留既有 Vite dynamic import/chunk size warnings。
+  - `git diff --check`：passed。
+  - `npm run check:style-discipline`：failed only on existing project/storyboard/chat/theme/index.scss inline style / color comment debt；本轮视频时长路径未出现在失败列表中。
+- Files created/modified:
+  - `frontend/src/providers/itv/durationSpec.ts`
+  - `frontend/src/utils/videoDuration.ts`
+  - `frontend/src/services/promptCompilation/videoRequestCompiler.ts`
+  - `frontend/src/providers/channel/resolver.ts`
+  - `frontend/src/components/linghui/editors/components/VideoNodeEditor.tsx`
+  - `frontend/src/components/linghui/editors/components/VideoNodeEditorPanels.tsx`
+  - `frontend/src/components/linghui/editors/state/videoNodeEditorShared.ts`
+  - `frontend/src/components/linghui/execution/state/providers/video.ts`
+  - 相关 tests
+
 ## Session: 2026-05-03 Theme System Architecture
 
 ### Phase 1: Worktree Setup
