@@ -78,33 +78,6 @@ export function useLinghuiCanvasSelectionInteractions({
     openQuickCreateAt(event.clientX, event.clientY);
   }, [openQuickCreateAt, setEditorSelection, setPendingGroupFrame]);
 
-  const handleNodeContextMenu = useCallback((event: ReactMouseEvent, node: Node) => {
-    event.preventDefault();
-    event.stopPropagation();
-
-    if (!node.selected) {
-      setNodes(current => current.map(item => ({ ...item, selected: item.id === node.id })));
-    }
-
-    setPendingGroupFrame(null);
-    openContextMenuAt(event.clientX, event.clientY, 'node', { nodeId: node.id });
-  }, [openContextMenuAt, setNodes, setPendingGroupFrame]);
-
-  const openNodeContextMenu = useCallback((nodeId: string, clientX: number, clientY: number) => {
-    const targetNode = reactFlow.getNode(nodeId);
-    if (!targetNode) return;
-
-    if (!targetNode.selected) {
-      setNodes(current => current.map(node => ({
-        ...node,
-        selected: node.id === nodeId,
-      })));
-    }
-
-    setPendingGroupFrame(null);
-    openContextMenuAt(clientX, clientY, 'node', { nodeId });
-  }, [openContextMenuAt, reactFlow, setNodes, setPendingGroupFrame]);
-
   const handleSelectionStart = useCallback((event: ReactMouseEvent) => {
     if (canvasMode !== 'mouse') return;
 
@@ -218,8 +191,6 @@ export function useLinghuiCanvasSelectionInteractions({
   return {
     handlePaneContextMenu,
     handleCanvasDoubleClick,
-    handleNodeContextMenu,
-    openNodeContextMenu,
     handleSelectionStart,
     handleSelectionDragStart,
     handleSelectionDragStop,

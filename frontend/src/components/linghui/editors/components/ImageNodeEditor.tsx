@@ -493,8 +493,8 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
           references={promptReferences}
           placeholder="输入 @ 引用上游产物"
           surfaceStyle="fusion"
-          minHeight="72px"
-          maxHeight="144px"
+          minHeight="76px"
+          maxHeight="176px"
         />
       </div>
 

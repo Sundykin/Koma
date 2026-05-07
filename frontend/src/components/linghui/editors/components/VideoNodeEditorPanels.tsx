@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { InfoCircleOutlined } from '@ant-design/icons';
 import { App, Button, Dropdown, Popover, Slider, Tooltip } from 'antd';
 import type { MenuProps } from 'antd';
@@ -265,7 +265,12 @@ interface VideoGeneratePanelProps {
   onUpdateResolution: (value: string) => void;
   onUpdateDuration: (value: number) => void;
   onRun: () => void;
+  canvasInteractionVersion?: number;
 }
+
+const DROPDOWN_ROOT_CLASS_NAME = 'linghuiNodeEditorDropdownMenu linghuiVideoEditorDropdownMenu';
+const NODE_EDITOR_POPUP_Z_INDEX = 1500;
+const POPUP_ROOT_STYLE = { zIndex: NODE_EDITOR_POPUP_Z_INDEX } as const;
 
 export function VideoGeneratePanel({
   videoCapability,
@@ -294,7 +299,9 @@ export function VideoGeneratePanel({
   onUpdateResolution,
   onUpdateDuration,
   onRun,
+  canvasInteractionVersion = 0,
 }: VideoGeneratePanelProps) {
+  const [openPanel, setOpenPanel] = useState<'model' | 'params' | null>(null);
   const upstreamSummary = [
     referenceImages.length > 0 ? `${referenceImages.length} 张图片` : '',
     referenceVideos.length > 0 ? `${referenceVideos.length} 条视频` : '',
@@ -336,12 +343,44 @@ export function VideoGeneratePanel({
       ),
       onClick: ({ domEvent }) => {
         domEvent.stopPropagation();
+        setOpenPanel(null);
         onUpdateProvider(provider.value);
       },
     }))
   ), [onUpdateProvider, providers]);
+  const modelMenu = useMemo<MenuProps>(() => ({
+    items: modelMenuItems,
+    selectable: true,
+    selectedKeys: selectedProvider ? [selectedProvider.value] : [],
+  }), [modelMenuItems, selectedProvider]);
+  const resolvePopupContainer = useCallback((triggerNode: HTMLElement) => triggerNode.ownerDocument.body, []);
+  const handleModelOpenChange = useCallback((nextOpen: boolean) => {
+    setOpenPanel(nextOpen ? 'model' : null);
+  }, []);
+  const handleParamsOpenChange = useCallback((nextOpen: boolean) => {
+    setOpenPanel(nextOpen ? 'params' : null);
+  }, []);
+  const handleModelTriggerClick = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    setOpenPanel(current => current === 'model' ? null : 'model');
+  }, []);
+  const handleParamsTriggerClick = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    setOpenPanel(current => current === 'params' ? null : 'params');
+  }, []);
+  const handleActionGroupEvent = useCallback((event: React.SyntheticEvent) => {
+    event.stopPropagation();
+  }, []);
 
-  const parameterContent = (
+  useEffect(() => {
+    setOpenPanel(null);
+  }, [
+    canvasInteractionVersion,
+    selectedProviderValue,
+    videoCapability,
+  ]);
+
+  const parameterContent = useMemo(() => (
     <div
       className="linghuiVideoEditorParamsPopover"
       onClick={event => event.stopPropagation()}
@@ -356,7 +395,10 @@ export function VideoGeneratePanel({
               key={option.value}
               type="button"
               className={`linghuiVideoEditorOptionTile ${aspectRatio === option.value ? 'isActive' : ''}`}
-              onClick={() => onUpdateAspectRatio(option.value)}
+              onClick={() => {
+                setOpenPanel(null);
+                onUpdateAspectRatio(option.value);
+              }}
             >
               {option.label}
             </button>
@@ -372,7 +414,10 @@ export function VideoGeneratePanel({
               key={option.value}
               type="button"
               className={`linghuiVideoEditorOptionTile ${resolution === option.value ? 'isActive' : ''}`}
-              onClick={() => onUpdateResolution(option.value)}
+              onClick={() => {
+                setOpenPanel(null);
+                onUpdateResolution(option.value);
+              }}
             >
               {option.label}
             </button>
@@ -392,7 +437,10 @@ export function VideoGeneratePanel({
                 key={value}
                 type="button"
                 className={`linghuiVideoEditorOptionTile ${duration === value ? 'isActive' : ''}`}
-                onClick={() => onUpdateDuration(value)}
+                onClick={() => {
+                  setOpenPanel(null);
+                  onUpdateDuration(value);
+                }}
               >
                 {value}s
               </button>
@@ -407,12 +455,26 @@ export function VideoGeneratePanel({
             marks={durationMarks}
             value={clampDurationToSpec(duration, durationSpec)}
             onChange={value => onUpdateDuration(Number(value))}
+            onChangeComplete={() => setOpenPanel(null)}
           />
         )}
         <div className="linghuiVideoEditorDurationHint">{durationHint}</div>
       </div>
     </div>
-  );
+  ), [
+    aspectRatio,
+    duration,
+    durationBounds.max,
+    durationBounds.min,
+    durationBounds.step,
+    durationHint,
+    durationMarks,
+    durationSpec,
+    onUpdateAspectRatio,
+    onUpdateDuration,
+    onUpdateResolution,
+    resolution,
+  ]);
 
   return (
     <>
@@ -459,27 +521,25 @@ export function VideoGeneratePanel({
           references={promptReferences}
           placeholder="描述镜头动作、节奏和风格，输入 @ 引用上游产物"
           surfaceStyle="fusion"
-          minHeight="112px"
-          maxHeight="220px"
+          minHeight="76px"
+          maxHeight="176px"
         />
       </div>
 
       <div className="linghuiVideoEditorControlRow">
         <Dropdown
-          trigger={providers.length > 0 ? ['click'] : []}
-          menu={{
-            items: modelMenuItems,
-            selectable: true,
-            selectedKeys: selectedProvider ? [selectedProvider.value] : [],
-          }}
-          classNames={{ root: 'linghuiNodeEditorDropdownMenu linghuiVideoEditorDropdownMenu' }}
-          getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
-          styles={{ root: { zIndex: 1200 } }}
+          open={providers.length > 0 && openPanel === 'model'}
+          trigger={[]}
+          menu={modelMenu}
+          classNames={{ root: DROPDOWN_ROOT_CLASS_NAME }}
+          getPopupContainer={resolvePopupContainer}
+          styles={{ root: POPUP_ROOT_STYLE }}
+          onOpenChange={handleModelOpenChange}
         >
           <button
             type="button"
             className={`linghuiVideoEditorInlineTrigger ${providers.length === 0 ? 'isDisabled' : ''}`}
-            onClick={event => event.stopPropagation()}
+            onClick={handleModelTriggerClick}
             disabled={providers.length === 0}
           >
             {modelSummary}
@@ -487,25 +547,34 @@ export function VideoGeneratePanel({
         </Dropdown>
 
         <Popover
-          trigger="click"
+          open={openPanel === 'params'}
+          trigger={[]}
           placement="bottomRight"
           content={parameterContent}
           overlayClassName="linghuiVideoEditorPopover"
-          getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
-          zIndex={1200}
+          getPopupContainer={resolvePopupContainer}
+          zIndex={NODE_EDITOR_POPUP_Z_INDEX}
+          onOpenChange={handleParamsOpenChange}
         >
           <button
             type="button"
             className="linghuiVideoEditorInlineTrigger"
-            onClick={event => event.stopPropagation()}
+            onClick={handleParamsTriggerClick}
           >
             {parameterSummary}
           </button>
         </Popover>
-        <div className="linghuiVideoEditorActionGroup">
+        <div
+          className="linghuiVideoEditorActionGroup nodrag nopan nowheel"
+          onClick={handleActionGroupEvent}
+          onMouseDown={handleActionGroupEvent}
+          onPointerDown={handleActionGroupEvent}
+          onPointerMove={handleActionGroupEvent}
+        >
           {hasCurrentVideo ? (
             <Button
               size="middle"
+              className="linghuiVideoEditorActionButton nodrag nopan nowheel"
               icon={<Download size={14} />}
               onClick={onDownloadCurrentVideo}
             >
@@ -514,6 +583,7 @@ export function VideoGeneratePanel({
           ) : null}
           <Button
             type="primary"
+            className="linghuiVideoEditorActionButton nodrag nopan nowheel"
             icon={isGenerating ? undefined : <ArrowUp size={14} />}
             onClick={onRun}
             loading={isGenerating}

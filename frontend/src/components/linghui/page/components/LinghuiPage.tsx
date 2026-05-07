@@ -135,7 +135,8 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
   const railShellRef = useRef<HTMLDivElement | null>(null);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   const saveTimerRef = useRef<number | null>(null);
-  const executionAbortControllerRef = useRef<AbortController | null>(null);
+  const executionBatchesRef = useRef<Set<AbortController>>(new Set());
+  const executionQueuesRef = useRef<Map<AbortController, LinghuiExecutionQueueState>>(new Map());
   const pendingSaveRef = useRef<{
     doc: LinghuiWorkspaceDocument;
     syncActiveWorkspace: boolean;
@@ -274,7 +275,13 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
       if (saveTimerRef.current) {
         window.clearTimeout(saveTimerRef.current);
       }
-      executionAbortControllerRef.current?.abort('工作区已关闭，停止当前执行');
+      for (const controller of executionBatchesRef.current) {
+        if (!controller.signal.aborted) {
+          controller.abort('工作区已关闭，停止当前执行');
+        }
+      }
+      executionBatchesRef.current.clear();
+      executionQueuesRef.current.clear();
     };
   }, [activateWorkspace, message]);
 
@@ -542,6 +549,43 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
     updateWorkspaceExecution(nextRuns, nextLogs);
   }, [updateWorkspaceExecution]);
 
+  const recomputeExecutionQueue = useCallback(() => {
+    const queues = Array.from(executionQueuesRef.current.values());
+    if (queues.length === 0) {
+      setExecutionQueue(null);
+      return;
+    }
+
+    const status: LinghuiExecutionQueueState['status'] = queues.some(q => q.status === 'canceling')
+      ? 'canceling'
+      : queues.some(q => q.status === 'running')
+        ? 'running'
+        : queues.some(q => q.status === 'failed')
+          ? 'failed'
+          : queues.some(q => q.status === 'canceled')
+            ? 'canceled'
+            : queues.every(q => q.status === 'completed')
+              ? 'completed'
+              : 'running';
+
+    const dedupe = (ids: string[]) => Array.from(new Set(ids));
+    const runningNodeIds = dedupe(queues.flatMap(q => q.runningNodeIds));
+
+    setExecutionQueue({
+      status,
+      total: queues.reduce((sum, q) => sum + q.total, 0),
+      targetNodeIds: dedupe(queues.flatMap(q => q.targetNodeIds)),
+      queuedNodeIds: dedupe(queues.flatMap(q => q.queuedNodeIds)),
+      runningNodeIds,
+      runningNodeId: runningNodeIds[0],
+      completedNodeIds: dedupe(queues.flatMap(q => q.completedNodeIds)),
+      failedNodeIds: dedupe(queues.flatMap(q => q.failedNodeIds)),
+      canceledNodeIds: dedupe(queues.flatMap(q => q.canceledNodeIds)),
+      startedAt: Math.min(...queues.map(q => q.startedAt ?? Number.POSITIVE_INFINITY)),
+      updatedAt: Math.max(...queues.map(q => q.updatedAt ?? 0)),
+    });
+  }, []);
+
   const runWorkflow = useCallback(async (
     targetNodeIds?: string[],
     options?: {
@@ -552,19 +596,10 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
     workflowLogger.info('灵绘执行入口', {
       targetNodeIds,
       resolveTargetsOnly: options?.resolveTargetsOnly ?? false,
-      hasAbortController: Boolean(executionAbortControllerRef.current),
-      abortControllerAborted: executionAbortControllerRef.current?.signal.aborted ?? null,
+      activeBatchCount: executionBatchesRef.current.size,
       hasCanvasHandle: Boolean(canvasRef.current),
       hasActiveWorkspace: Boolean(activeWorkspaceRef.current),
     });
-
-    if (executionAbortControllerRef.current && !executionAbortControllerRef.current.signal.aborted) {
-      workflowLogger.warn('灵绘执行被阻止：已有执行队列', {
-        targetNodeIds,
-      });
-      message.info('当前已有执行队列，请先等待完成或取消');
-      return;
-    }
 
     const context = canvasRef.current?.getExecutionContext();
     const current = activeWorkspaceRef.current;
@@ -658,15 +693,15 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
     }
 
     const abortController = new AbortController();
-    executionAbortControllerRef.current = abortController;
+    executionBatchesRef.current.add(abortController);
 
     setRunning(true);
-    setExecutionQueue(null);
 
     try {
       workflowLogger.info('灵绘开始执行工作流', {
         targetNodeIds: runnableTargetNodeIds ?? targetNodeIds,
         resolveTargetsOnly: options?.resolveTargetsOnly ?? false,
+        activeBatchCount: executionBatchesRef.current.size,
       });
       const result = await executeLinghuiWorkflow({
         context,
@@ -688,7 +723,8 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
           updateWorkspaceExecution(nextRuns, nextLogs);
         },
         onQueueChange(queue) {
-          setExecutionQueue(queue);
+          executionQueuesRef.current.set(abortController, queue);
+          recomputeExecutionQueue();
         },
       });
 
@@ -782,13 +818,15 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
       updateWorkspaceExecution(nextRuns, nextLogs);
       message.error(failureMessage);
     } finally {
-      if (executionAbortControllerRef.current === abortController) {
-        executionAbortControllerRef.current = null;
+      executionBatchesRef.current.delete(abortController);
+      executionQueuesRef.current.delete(abortController);
+      recomputeExecutionQueue();
+      if (executionBatchesRef.current.size === 0) {
+        setRunning(false);
       }
-      setRunning(false);
       canvasRef.current?.notifyMutation();
     }
-  }, [handleHistoryLibraryMutate, message, updateWorkspaceExecution]);
+  }, [handleHistoryLibraryMutate, message, recomputeExecutionQueue, updateWorkspaceExecution]);
 
   const openDrawer = useCallback(async (drawer: LinghuiLibraryDrawerKey) => {
     setProjectPanelOpen(false);
@@ -1130,11 +1168,6 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
       successMessage?: string;
     },
   ) => {
-    if (executionAbortControllerRef.current && !executionAbortControllerRef.current.signal.aborted) {
-      message.info('当前已有执行队列，请先等待完成或取消');
-      return;
-    }
-
     const context = canvasRef.current?.getExecutionContext();
     const currentWorkspace = activeWorkspaceRef.current;
     if (!context || !currentWorkspace) {
@@ -1356,13 +1389,17 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
   }, [failedNodeIds, message, runWorkflow]);
 
   const handleCancelRun = useCallback(() => {
-    const controller = executionAbortControllerRef.current;
-    if (!controller || controller.signal.aborted) {
+    const activeControllers = Array.from(executionBatchesRef.current).filter(
+      controller => !controller.signal.aborted,
+    );
+    if (activeControllers.length === 0) {
       message.info('当前没有正在执行的队列');
       return;
     }
 
-    controller.abort('用户取消了本轮灵绘执行');
+    for (const controller of activeControllers) {
+      controller.abort('用户取消了本轮灵绘执行');
+    }
     setExecutionQueue(current => current ? {
       ...current,
       status: 'canceling',

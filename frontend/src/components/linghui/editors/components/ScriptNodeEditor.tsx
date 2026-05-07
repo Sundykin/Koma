@@ -419,8 +419,8 @@ export const ScriptNodeEditor: React.FC<ScriptNodeEditorProps> = ({
                 references={promptReferences}
                 placeholder="描述剧情推进、角色关系、镜头节奏和画面风格，输入 @ 引用上游产物"
                 surfaceStyle="fusion"
-                minHeight="120px"
-                maxHeight="220px"
+                minHeight="76px"
+                maxHeight="176px"
               />
             </div>
           </>

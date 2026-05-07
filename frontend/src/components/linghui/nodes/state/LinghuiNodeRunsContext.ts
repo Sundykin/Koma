@@ -1,4 +1,4 @@
-import { createContext, useContext } from 'react';
+import { createContext, useContext, useMemo } from 'react';
 import type { PointerEventHandler } from 'react';
 import type {
   LinghuiCanvasMode,
@@ -121,7 +121,7 @@ export const LinghuiCanvasZoomContext = createContext<number>(1);
 
 export function useLinghuiNodeInteraction(nodeId: string): LinghuiNodeInteractionHandlers {
   const api = useContext(LinghuiNodeInteractionContext);
-  return api.bindNodeSurface(nodeId);
+  return useMemo(() => api.bindNodeSurface(nodeId), [api, nodeId]);
 }
 
 export function useLinghuiCanvasMode(): LinghuiCanvasMode {
@@ -163,6 +163,7 @@ export interface LinghuiNodeEditorApi {
   activeTool: LinghuiNodeToolState;
   setActiveTool: (tool: LinghuiNodeToolState) => void;
   closeEditor: () => void;
+  canvasInteractionVersion: number;
   nodeRuns: Record<string, LinghuiNodeRunState>;
   executionQueue?: LinghuiExecutionQueueState | null;
   workspaceId: string | null;
@@ -196,6 +197,7 @@ const noopNodeEditorApi: LinghuiNodeEditorApi = {
   activeTool: null,
   setActiveTool: () => undefined,
   closeEditor: () => undefined,
+  canvasInteractionVersion: 0,
   nodeRuns: {},
   executionQueue: null,
   workspaceId: null,

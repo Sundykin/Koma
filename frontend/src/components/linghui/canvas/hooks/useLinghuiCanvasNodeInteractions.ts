@@ -33,6 +33,8 @@ interface UseLinghuiCanvasNodeInteractionsParams {
     extras?: { nodeId?: string; selectionIds?: string[] },
   ) => void;
   emitSnapshot: (options?: { recordHistory?: boolean; force?: boolean }) => void;
+  onNodeDragStart?: () => void;
+  onNodeDragStop?: () => void;
 }
 
 export function useLinghuiCanvasNodeInteractions({
@@ -45,6 +47,8 @@ export function useLinghuiCanvasNodeInteractions({
   closeQuickCreate,
   openContextMenuAt,
   emitSnapshot,
+  onNodeDragStart,
+  onNodeDragStop,
 }: UseLinghuiCanvasNodeInteractionsParams) {
   const activePressRef = useRef<ActiveNodePressState | null>(null);
   const suppressedClickRef = useRef<{ nodeId: string; until: number } | null>(null);
@@ -232,6 +236,7 @@ export function useLinghuiCanvasNodeInteractions({
           ...activePressRef.current,
           dragActive: true,
         };
+        onNodeDragStart?.();
       }, NODE_LONG_PRESS_MS);
 
       activePressRef.current = {
@@ -282,6 +287,7 @@ export function useLinghuiCanvasNodeInteractions({
       event.currentTarget.releasePointerCapture?.(event.pointerId);
 
       if (wasDragging) {
+        onNodeDragStop?.();
         suppressedClickRef.current = {
           nodeId,
           until: Date.now() + 280,
@@ -295,10 +301,22 @@ export function useLinghuiCanvasNodeInteractions({
         return;
       }
 
+      if (activePress.dragActive) {
+        onNodeDragStop?.();
+      }
       clearActivePress();
       event.currentTarget.releasePointerCapture?.(event.pointerId);
     },
-  }), [applyPendingDragMovement, cancelDragFrame, clearActivePress, emitSnapshot, isInteractiveNodeTarget, scheduleDragFrame]);
+  }), [
+    applyPendingDragMovement,
+    cancelDragFrame,
+    clearActivePress,
+    emitSnapshot,
+    isInteractiveNodeTarget,
+    onNodeDragStart,
+    onNodeDragStop,
+    scheduleDragFrame,
+  ]);
 
   const handleNodeContextMenu = useCallback((event: ReactMouseEvent, node: Node) => {
     event.preventDefault();
