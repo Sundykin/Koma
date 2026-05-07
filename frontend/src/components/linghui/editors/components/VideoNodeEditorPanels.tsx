@@ -565,7 +565,7 @@ export function VideoGeneratePanel({
           </button>
         </Popover>
         <div
-          className="linghuiVideoEditorActionGroup nodrag nopan nowheel"
+          className="linghuiEditorActionGroup nodrag nopan nowheel"
           onClick={handleActionGroupEvent}
           onMouseDown={handleActionGroupEvent}
           onPointerDown={handleActionGroupEvent}
@@ -573,9 +573,9 @@ export function VideoGeneratePanel({
         >
           {hasCurrentVideo ? (
             <Button
-              size="middle"
-              className="linghuiVideoEditorActionButton nodrag nopan nowheel"
-              icon={<Download size={14} />}
+              size="small"
+              className="nodrag nopan nowheel"
+              icon={<Download size={12} />}
               onClick={onDownloadCurrentVideo}
             >
               下载
@@ -583,8 +583,9 @@ export function VideoGeneratePanel({
           ) : null}
           <Button
             type="primary"
-            className="linghuiVideoEditorActionButton nodrag nopan nowheel"
-            icon={isGenerating ? undefined : <ArrowUp size={14} />}
+            size="small"
+            className="nodrag nopan nowheel"
+            icon={isGenerating ? undefined : <ArrowUp size={12} />}
             onClick={onRun}
             loading={isGenerating}
             disabled={isGenerating || isRunActionLocked}

@@ -444,11 +444,11 @@ export const AudioNodeEditor: React.FC<AudioNodeEditorProps> = ({
         )}
 
         <div className="linghuiEditorActionGroup">
-          <Button size="small" icon={<UploadCloud size={14} />} onClick={handleSelectAudio}>
+          <Button size="small" icon={<UploadCloud size={12} />} onClick={handleSelectAudio}>
             {source ? '替换音频' : '上传音频'}
           </Button>
           {source ? (
-            <Button size="small" icon={<Trash2 size={14} />} danger onClick={handleClearAudio}>
+            <Button size="small" icon={<Trash2 size={12} />} danger onClick={handleClearAudio}>
               清空素材
             </Button>
           ) : null}
@@ -465,7 +465,8 @@ export const AudioNodeEditor: React.FC<AudioNodeEditorProps> = ({
           {!source ? (
             <Button
               type="primary"
-              icon={<ArrowUp size={14} />}
+              size="small"
+              icon={<ArrowUp size={12} />}
               onClick={handleRun}
               disabled={isRunActionLocked || isAudioGenerating}
               loading={isAudioGenerating}

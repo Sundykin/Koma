@@ -469,7 +469,8 @@ export const ScriptNodeEditor: React.FC<ScriptNodeEditorProps> = ({
             <div className="linghuiEditorActionGroup">
               <Button
                 type="primary"
-                icon={<ArrowUp size={14} />}
+                size="small"
+                icon={<ArrowUp size={12} />}
                 onClick={handleRun}
                 disabled={isRunActionLocked || isScriptGenerating}
                 loading={isScriptGenerating}

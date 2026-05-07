@@ -150,9 +150,10 @@
 
   &MainSurface {
     overflow: auto;
+    scrollbar-gutter: stable;
     display: flex;
     align-items: flex-start;
-    justify-content: center;
+    justify-content: flex-start;
     z-index: 1;
     top: var(--linghui-node-editor-top, calc(100% + 14px));
     max-height: var(--linghui-node-editor-max-height, min(70vh, 620px));

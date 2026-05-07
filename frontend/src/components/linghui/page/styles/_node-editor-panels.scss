@@ -16,6 +16,7 @@
     backdrop-filter: blur(22px);
     overflow: visible;
     color: $lh-text-primary;
+    padding-bottom: 12px;
   }
 
   &PanelMain {
@@ -45,9 +46,9 @@
   }
 
   &Header {
-    @include lh-inline(12px, nowrap, flex-start, space-between);
+    @include lh-inline(10px, nowrap, flex-start, space-between);
 
-    padding: 14px 16px 0;
+    padding: 12px 14px 0;
     border: none;
     background: none;
     border-radius: 0;
@@ -66,7 +67,7 @@
   &ToolBar {
     display: flex;
     flex-wrap: wrap;
-    padding: 12px 16px 0;
+    padding: 10px 14px 0;
   }
 
   &RefModes {
@@ -92,8 +93,8 @@
   }
 
   &Section {
-    gap: 10px;
-    padding: 12px 16px 0;
+    gap: 8px;
+    padding: 10px 14px 0;
   }
 
   &ToolSection {
@@ -201,11 +202,11 @@
   }
 
   &SummaryRow {
-    @include lh-inline(8px);
+    @include lh-inline(6px);
   }
 
   &SummaryPill {
-    @include lh-chip(28px, 0 12px, color-mix(in srgb, var(--token-text-primary) 8%, transparent), $lh-text-secondary, 12px, 600);
+    @include lh-chip(22px, 0 9px, color-mix(in srgb, var(--token-text-primary) 8%, transparent), $lh-text-secondary, 11px, 600);
 
     &.isMuted {
       color: $lh-text-muted;
