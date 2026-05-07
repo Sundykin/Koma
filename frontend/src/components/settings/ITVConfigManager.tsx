@@ -84,6 +84,7 @@ function getProviderColor(provider: string) {
     case 'sora2': return 'geekblue';
     case 'comfyui-animatediff': return 'orange';
     case 'grok2api-imagine-itv': return 'green';
+    case 'openai-video': return 'gold';
     default: return 'default';
   }
 }
@@ -707,8 +708,10 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
                   { value: 'video.start-end-to-video', label: '首尾帧视频' },
                 ]}
                 defaultCapabilities={['video.image-to-video']}
-                helpText="模型列表为手动维护。请按真实能力勾选，项目与灵绘会自动过滤不可用的模型。"
-                modelNamePlaceholder="填写模型名称，如: viduq2-pro / gen-3 / kling-v1-5"
+                helpText="模型列表为手动维护。请按真实能力勾选，项目与灵绘会自动过滤不可用的模型。视频时长范围按模型独立配置，留空则按 provider 兜底。OpenAI 兼容渠道可在此覆盖视频任务路径。"
+                modelNamePlaceholder="填写模型名称，如: viduq2-pro / gen-3 / kling-v1-5 / sora-2"
+                showDurationRange
+                showVideosPath={currentProviderType === 'openai-video'}
               />
             </Form.Item>
           </div>

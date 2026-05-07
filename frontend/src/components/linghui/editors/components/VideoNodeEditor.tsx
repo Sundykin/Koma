@@ -156,6 +156,7 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
         .map(channel => ({
           id: channel.id,
           providerType: channel.providerType,
+          models: channel.models,
         }));
       const nextProviders = listConfiguredModelSelectOptions(settings, 'itv').map(option => ({
         value: option.value,

@@ -143,24 +143,107 @@ export function getDurationSpecForModel(modelId: string | undefined): VideoDurat
   return matched?.spec;
 }
 
+interface ChannelLookupModel {
+  id: string;
+  providerModelName?: string;
+  defaults?: Record<string, unknown>;
+}
+
+interface ChannelLookupEntry {
+  id: string;
+  providerType: string;
+  models?: ReadonlyArray<ChannelLookupModel>;
+}
+
+function readNumericField(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+    const n = Number(trimmed);
+    return Number.isFinite(n) ? n : undefined;
+  }
+  return undefined;
+}
+
+function readNumericArrayField(value: unknown): number[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const out: number[] = [];
+  for (const item of value) {
+    const n = readNumericField(item);
+    if (n != null) out.push(n);
+  }
+  return out.length ? out : undefined;
+}
+
+/**
+ * 把模型 defaults 上的用户配置（durationMin/Max/Step/Values/Default）转成 VideoDurationSpec。
+ * 优先识别 enum（durationValues），其次 range（durationMin + durationMax）。
+ * 不合法或不完整时返回 undefined。
+ */
+export function buildDurationSpecFromModelDefaults(
+  defaults: Record<string, unknown> | undefined | null,
+): VideoDurationSpec | undefined {
+  if (!defaults) return undefined;
+
+  const enumValues = readNumericArrayField(defaults.durationValues);
+  const explicitDefault = readNumericField(defaults.defaultDuration ?? defaults.durationDefault);
+
+  if (enumValues && enumValues.length > 0) {
+    const sorted = [...new Set(enumValues)].sort((a, b) => a - b);
+    return {
+      kind: 'enum',
+      values: sorted,
+      default: explicitDefault != null && sorted.includes(explicitDefault)
+        ? explicitDefault
+        : sorted[0],
+    };
+  }
+
+  const min = readNumericField(defaults.durationMin);
+  const max = readNumericField(defaults.durationMax);
+  if (min != null && max != null && max >= min) {
+    const step = readNumericField(defaults.durationStep);
+    const safeStep = step && step > 0 ? step : 1;
+    const fallbackDefault = explicitDefault != null
+      ? Math.min(Math.max(explicitDefault, min), max)
+      : Math.min(Math.max(5, min), max);
+    return {
+      kind: 'range',
+      min: Math.max(1, Math.floor(min)),
+      max: Math.max(1, Math.floor(max)),
+      step: safeStep,
+      default: fallbackDefault,
+    };
+  }
+
+  return undefined;
+}
+
 /**
  * 通过 itv selection key（"channelId::modelId"）+ 当前 ITV channel 列表反查 spec。
- * 优先级：modelId 前缀 > providerType > DEFAULT。
+ * 优先级：模型 defaults 显式配置 > modelId 前缀 > providerType > DEFAULT。
  * 调用方负责异步拿到 channels；这里是同步纯函数便于 React 渲染。
  */
 export function getDurationSpecForITVSelection(
   selectionKey: string | undefined | null,
-  channels: ReadonlyArray<{ id: string; providerType: string }>,
+  channels: ReadonlyArray<ChannelLookupEntry>,
 ): VideoDurationSpec {
   if (!selectionKey) return DEFAULT_VIDEO_DURATION_SPEC;
   const sepIndex = selectionKey.indexOf('::');
   const channelId = sepIndex > 0 ? selectionKey.slice(0, sepIndex) : selectionKey;
   const modelId = sepIndex > 0 ? selectionKey.slice(sepIndex + 2) : undefined;
 
+  const channel = channels.find((c) => c.id === channelId);
+  const model = modelId
+    ? channel?.models?.find((m) => m.id === modelId || m.providerModelName === modelId)
+    : undefined;
+  const fromModelDefaults = buildDurationSpecFromModelDefaults(model?.defaults);
+  if (fromModelDefaults) return fromModelDefaults;
+
   const byModel = getDurationSpecForModel(modelId);
   if (byModel) return byModel;
 
-  const channel = channels.find((c) => c.id === channelId);
   return getDurationSpecForProviderType(channel?.providerType);
 }
 

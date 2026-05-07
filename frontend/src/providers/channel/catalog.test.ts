@@ -24,9 +24,20 @@ describe('channel catalog (itv)', () => {
     expect(channel?.models.length).toBe(0);
   });
 
-  it('only exposes the two Koma 官方 ITV providers (runway / kling / pika / sora2 / seedance / vidu / comfyui-animatediff / custom 已下线)', () => {
+  it('exposes the two Koma 官方 ITV providers + openai-video（runway / kling / pika / sora2 / seedance / vidu / comfyui-animatediff / custom 已下线）', () => {
     const itvChannels = listBuiltInChannelDefinitions('itv');
     const ids = itvChannels.map((c) => c.id).sort();
-    expect(ids).toEqual(['grok2api-imagine-itv', 'koma-suihe-itv']);
+    expect(ids).toEqual(['grok2api-imagine-itv', 'koma-suihe-itv', 'openai-video']);
+  });
+
+  it('declares provider template metadata for openai-video channel', () => {
+    const channel = getBuiltInChannelDefinition('openai-video');
+    expect(channel).toBeTruthy();
+    expect(channel?.category).toBe('itv');
+    expect(channel?.id).toBe('openai-video');
+    expect(channel?.models.length).toBe(0);
+    // baseUrl 必填，因为没有官方默认上游
+    expect((channel?.configSchema as { required?: string[] } | undefined)?.required).toContain('baseUrl');
+    expect((channel?.configSchema as { required?: string[] } | undefined)?.required).toContain('apiKey');
   });
 });

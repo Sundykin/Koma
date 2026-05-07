@@ -13,11 +13,13 @@
 export * from './types';
 export { Grok2ApiImagineITVProvider } from './Grok2ApiImagineITVProvider';
 export { SuiheITVProvider } from './SuiheITVProvider';
+export { OpenAIVideoITVProvider } from './OpenAIVideoITVProvider';
 
 import type { ITVConfig } from '../../types';
 import type { ITVProvider } from './types';
 import { Grok2ApiImagineITVProvider } from './Grok2ApiImagineITVProvider';
 import { SuiheITVProvider } from './SuiheITVProvider';
+import { OpenAIVideoITVProvider } from './OpenAIVideoITVProvider';
 import type { ProviderDefinition } from '../registry.types';
 import { DEFAULT_POLLING_CONFIG, MEDIA_PROVIDER_CONTRACT_VERSION } from '../registry.types';
 import { itvRegistry } from '../registry';
@@ -54,6 +56,25 @@ function registerBuiltinProviders() {
       },
       presetBaseUrl: 'https://komaapi.com',
       auth: { apiKey: 'required', baseUrl: 'optional' },
+    },
+    {
+      type: 'openai-video',
+      kind: 'itv',
+      name: 'OpenAI 兼容视频',
+      description: '使用 OpenAI 标准异步视频接口（POST /v1/videos · GET /v1/videos/{id}），适配自建 new-api、官方 OpenAI、第三方代理等任何兼容上游。时长范围与请求路径在模型上单独配置。',
+      factory: (config) => new OpenAIVideoITVProvider(config as ITVConfig),
+      contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
+      capabilities: ['itv'],
+      polling: {
+        interval: 5000,
+        maxDuration: 600000,
+        initialDelay: 3000,
+      },
+      auth: { apiKey: 'required', baseUrl: 'required' },
+      // 用户明确选了 OpenAI 兼容渠道时，失败就报错，不静默回退到 Grok / 即梦等其他 provider。
+      // 若想要回退，可改成 'lock-to-provider-type' 在其他 openai-video 渠道之间换；
+      // 但跨 providerType 的回退（'cross-provider'）会把上游协议直接换掉，体验最差。
+      fallbackPolicy: 'lock-to-selection',
     },
   ];
 

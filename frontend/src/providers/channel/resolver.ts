@@ -324,6 +324,9 @@ export function buildITVConfigFromContext(context: ResolvedChannelModelContext):
 
 export function buildITVProviderConfigFromContext(context: ResolvedChannelModelContext): ITVConfig {
   const config = buildITVConfigFromContext(context);
+  const modelDefaults = context.model.defaults
+    ? { ...(context.model.defaults as Record<string, unknown>) }
+    : undefined;
   return {
     provider: config.provider,
     name: config.name,
@@ -333,6 +336,7 @@ export function buildITVProviderConfigFromContext(context: ResolvedChannelModelC
     defaultDuration: config.defaultDuration,
     defaultResolution: config.defaultResolution,
     profileId: config.profileId,
+    modelDefaults,
   };
 }
 

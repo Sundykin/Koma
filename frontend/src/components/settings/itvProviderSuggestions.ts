@@ -47,10 +47,32 @@ const KLING_MODEL_SUGGESTIONS: ChannelModelDefinition[] = [
   },
 ];
 
+const OPENAI_VIDEO_MODEL_SUGGESTIONS: ChannelModelDefinition[] = [
+  {
+    id: 'sora-2',
+    label: 'Sora 2',
+    providerModelName: 'sora-2',
+    capabilities: [
+      'video.text-to-video',
+      'video.image-to-video',
+      'video.reference-to-video',
+      'video.start-end-to-video',
+    ],
+    defaults: {
+      defaultDuration: 8,
+      defaultResolution: '1280x720',
+      durationMin: 4,
+      durationMax: 20,
+      durationStep: 1,
+    },
+  },
+];
+
 const ITV_PROVIDER_MODEL_SUGGESTIONS: Record<string, ChannelModelDefinition[]> = {
   vidu: getSuggestedViduModels(),
   seedance: getSuggestedSeedanceModels(),
   kling: KLING_MODEL_SUGGESTIONS,
+  'openai-video': OPENAI_VIDEO_MODEL_SUGGESTIONS,
 };
 
 const ITV_PROVIDER_FIELD_DEFAULTS: Record<string, Record<string, unknown>> = {
@@ -64,6 +86,10 @@ const ITV_PROVIDER_FIELD_DEFAULTS: Record<string, Record<string, unknown>> = {
   },
   kling: {
     defaultDuration: 5,
+    defaultResolution: '1280x720',
+  },
+  'openai-video': {
+    defaultDuration: 8,
     defaultResolution: '1280x720',
   },
   // Koma 官方 ITV 渠道：默认开启 Koma 协议（grok-image-index）。
