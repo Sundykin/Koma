@@ -56,6 +56,16 @@ const LINGHUI_TYPE_TO_RF_TYPE_MAP: Record<LinghuiNodeType, LinghuiRFNodeTypeKey>
   'linghui/script': 'linghui-script',
 };
 
+const RF_TYPE_TO_LINGHUI_TYPE_MAP: Record<LinghuiRFNodeTypeKey, LinghuiNodeType> = {
+  'linghui-text': 'linghui/text',
+  'linghui-agent': 'linghui/agent',
+  'linghui-image': 'linghui/image',
+  'linghui-panorama': 'linghui/panorama',
+  'linghui-video': 'linghui/video',
+  'linghui-audio': 'linghui/audio',
+  'linghui-script': 'linghui/script',
+};
+
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value));
 }
@@ -87,6 +97,55 @@ function isCurrentRFType(value: unknown): value is LinghuiRFNodeTypeKey {
 
 function linghuiTypeToRFType(type: LinghuiNodeType): LinghuiRFNodeTypeKey {
   return LINGHUI_TYPE_TO_RF_TYPE_MAP[type];
+}
+
+function normalizeCurrentNode(node: LinghuiRFNodeSnapshot, index: number): LinghuiRFNodeSnapshot | null {
+  if (!isCurrentRFType(node.type)) {
+    if (!node.type && !node.data?.linghuiType) {
+      return null;
+    }
+    throw new Error(`Linghui workspace 包含不受支持的节点类型: node[${index}].type=${String(node.type)}`);
+  }
+
+  const fallbackLinghuiType = RF_TYPE_TO_LINGHUI_TYPE_MAP[node.type];
+  if (!isCurrentLinghuiType(node.data?.linghuiType)) {
+    if (!node.data?.linghuiType && fallbackLinghuiType) {
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          linghuiType: fallbackLinghuiType,
+          label: node.data?.label || fallbackLinghuiType.replace('linghui/', ''),
+          accent: node.data?.accent || 'var(--token-accent-base)',
+          background: node.data?.background || 'var(--token-bg-card)',
+          properties: node.data?.properties ?? {},
+          inputs: Array.isArray(node.data?.inputs) ? node.data.inputs : [],
+          outputs: Array.isArray(node.data?.outputs) ? node.data.outputs : [],
+          active: false,
+        },
+      };
+    }
+    throw new Error(`Linghui workspace 包含不受支持的灵绘节点语义: node[${index}].data.linghuiType=${String(node.data?.linghuiType)}`);
+  }
+
+  const expectedRFType = linghuiTypeToRFType(node.data.linghuiType);
+  if (node.type !== expectedRFType) {
+    throw new Error(
+      `Linghui workspace 节点类型不匹配: node[${index}] expects ${expectedRFType} but received ${node.type}`,
+    );
+  }
+
+  return {
+    ...node,
+    type: expectedRFType,
+    data: {
+      ...node.data,
+      properties: node.data.properties ?? {},
+      inputs: Array.isArray(node.data.inputs) ? node.data.inputs : [],
+      outputs: Array.isArray(node.data.outputs) ? node.data.outputs : [],
+      active: false,
+    },
+  };
 }
 
 function normalizeViewport(viewport?: LinghuiViewportState): LinghuiViewportState {
@@ -130,11 +189,32 @@ function assertCurrentGraph(graphData: LinghuiGraphSnapshot): void {
   graphData.nodes.forEach(assertCurrentNode);
 }
 
+function normalizeCurrentGraph(graphData: LinghuiGraphSnapshot): LinghuiGraphSnapshot {
+  if (graphData.version !== 2) {
+    throw new Error(`Linghui workspace graph 版本不受支持: ${String(graphData.version)}`);
+  }
+  if (!Array.isArray(graphData.nodes) || !Array.isArray(graphData.edges) || !Array.isArray(graphData.groups)) {
+    throw new Error('Linghui workspace graphData 必须使用当前 nodes/edges/groups 结构');
+  }
+
+  const nodes = graphData.nodes
+    .map((node, index) => normalizeCurrentNode(node, index))
+    .filter((node): node is LinghuiRFNodeSnapshot => Boolean(node));
+  const nodeIds = new Set(nodes.map(node => node.id));
+
+  return {
+    version: graphData.version,
+    nodes,
+    edges: graphData.edges.filter(edge => nodeIds.has(edge.source) && nodeIds.has(edge.target)),
+    groups: graphData.groups,
+  };
+}
+
 export function normalizeLinghuiWorkspaceDocument(
   input: Partial<LinghuiWorkspaceDocument> & Pick<LinghuiWorkspaceDocument, 'id' | 'name'>,
 ): LinghuiWorkspaceDocument {
   const now = Date.now();
-  const graphData = clone(input.graphData ?? EMPTY_LINGHUI_GRAPH);
+  const graphData = normalizeCurrentGraph(clone(input.graphData ?? EMPTY_LINGHUI_GRAPH));
   assertCurrentGraph(graphData);
 
   const stats = buildStats(graphData);

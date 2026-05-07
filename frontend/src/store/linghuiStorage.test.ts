@@ -4,9 +4,12 @@ import {
   createLinghuiWorkspaceHistoryRecord,
   createLinghuiWorkflowTemplate,
   deleteLinghuiWorkspace,
+  exportLinghuiWorkspace,
+  importLinghuiWorkspace,
   listLinghuiWorkflowTemplates,
   listLinghuiWorkspaces,
   loadLinghuiWorkspace,
+  saveLinghuiWorkspace,
 } from './linghuiStorage';
 import { DEFAULT_LINGHUI_WORKSPACE_NAME } from '../types/linghui';
 
@@ -69,6 +72,35 @@ describe('linghuiStorage', () => {
 
     expect(linghuiApiMock.createWorkspace).toHaveBeenCalledWith('   ');
     expect(workspace.name).toBe(DEFAULT_LINGHUI_WORKSPACE_NAME);
+  });
+
+  it('保存工作区时透出后端结构化错误', async () => {
+    linghuiApiMock.saveWorkspace.mockResolvedValueOnce({
+      success: false,
+      error: '[linghui/saveWorkspace] 节点数据异常',
+    });
+
+    await expect(saveLinghuiWorkspace({
+      id: 'workspace-1',
+      name: DEFAULT_LINGHUI_WORKSPACE_NAME,
+      description: '',
+      createdAt: 1,
+      updatedAt: 1,
+      lastOpenedAt: 1,
+      viewport: { x: 0, y: 0, zoom: 1 },
+      graphData: { version: 2, nodes: [], edges: [], groups: [] },
+      nodeRuns: {},
+      executionLogs: [],
+      nodeCount: 0,
+      linkCount: 0,
+      groupCount: 0,
+    })).rejects.toThrow('[linghui/saveWorkspace] 节点数据异常');
+  });
+
+  it('创建工作区遇到空后端返回时给出明确错误', async () => {
+    linghuiApiMock.createWorkspace.mockResolvedValueOnce(undefined);
+
+    await expect(createLinghuiWorkspace()).rejects.toThrow('createWorkspace 未返回数据');
   });
 
   it('工作区列表与详情都通过后端读取', async () => {
@@ -247,5 +279,49 @@ describe('linghuiStorage', () => {
     await deleteLinghuiWorkspace('workspace-1');
 
     expect(linghuiApiMock.deleteWorkspace).toHaveBeenCalledWith('workspace-1');
+  });
+
+  it('导出工作区时默认使用 zip 包并返回后端实际路径', async () => {
+    saveFileMock.mockResolvedValueOnce({
+      canceled: false,
+      filePath: '/tmp/镜头工作区.linghui.zip',
+    });
+    linghuiApiMock.exportWorkspace.mockResolvedValueOnce({
+      path: '/tmp/镜头工作区.linghui.zip',
+    });
+
+    const result = await exportLinghuiWorkspace({
+      id: 'workspace-1',
+      name: '镜头/工作区',
+      description: '',
+      createdAt: 1,
+      updatedAt: 1,
+      lastOpenedAt: 1,
+      viewport: { x: 0, y: 0, zoom: 1 },
+      graphData: { version: 2, nodes: [], edges: [], groups: [] },
+      nodeRuns: {},
+      executionLogs: [],
+      nodeCount: 0,
+      linkCount: 0,
+      groupCount: 0,
+    });
+
+    expect(result).toBe('/tmp/镜头工作区.linghui.zip');
+    expect(saveFileMock).toHaveBeenCalledWith(expect.objectContaining({
+      defaultPath: '镜头-工作区.linghui.zip',
+    }));
+    expect(linghuiApiMock.exportWorkspace).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'workspace-1' }),
+      '/tmp/镜头工作区.linghui.zip',
+    );
+  });
+
+  it('导入工作区时透出后端结构化错误', async () => {
+    linghuiApiMock.importWorkspace.mockResolvedValueOnce({
+      success: false,
+      error: '[linghui/importWorkspace] 不是有效的灵绘工作区导出包',
+    });
+
+    await expect(importLinghuiWorkspace('/tmp/bad.zip')).rejects.toThrow('不是有效的灵绘工作区导出包');
   });
 });

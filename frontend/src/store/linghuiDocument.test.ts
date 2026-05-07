@@ -69,4 +69,52 @@ describe('linghui document normalization', () => {
       },
     } as any)).toThrow(/不受支持的节点类型/);
   });
+
+  it('drops empty shell nodes and their edges while keeping valid nodes', () => {
+    const doc = normalizeLinghuiWorkspaceDocument({
+      id: 'workspace-empty-shell',
+      name: '含空壳节点',
+      graphData: {
+        version: 2,
+        nodes: [
+          {
+            id: 'empty-node',
+            type: '',
+            position: { x: 0, y: 0 },
+            data: {},
+          },
+          {
+            id: 'video-node',
+            type: 'linghui-video',
+            position: { x: 120, y: 40 },
+            data: {
+              linghuiType: 'linghui/video',
+              label: '视频',
+              accent: '#38bdf8',
+              background: '#0f172a',
+              properties: {},
+              inputs: [],
+              outputs: [],
+              active: false,
+            },
+          },
+        ],
+        edges: [
+          {
+            id: 'edge-empty',
+            source: 'empty-node',
+            target: 'video-node',
+            sourceHandle: 'output-0',
+            targetHandle: 'input-0',
+          },
+        ],
+        groups: [],
+      },
+    } as any);
+
+    expect(doc.graphData.nodes.map(node => node.id)).toEqual(['video-node']);
+    expect(doc.graphData.edges).toEqual([]);
+    expect(doc.nodeCount).toBe(1);
+    expect(doc.linkCount).toBe(0);
+  });
 });

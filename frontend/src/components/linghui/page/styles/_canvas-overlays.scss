@@ -99,13 +99,14 @@
     top: 50%;
     z-index: 38;
     transform: translateY(-50%);
-    max-width: min(360px, calc(100vw - 36px));
+    max-width: calc(100vw - 36px);
   }
 
   &RailShell {
     @include lh-inline(14px, nowrap, flex-start);
 
     display: inline-flex;
+    position: relative;
 
     &:hover,
     &.isProjectPanelOpen {
@@ -223,8 +224,11 @@
   &ProjectPanel {
     @include lh-stack(14px);
 
+    position: absolute;
+    left: calc(100% + 14px);
+    top: 0;
     width: min(280px, calc(100vw - 120px));
-    max-height: min(68vh, 560px);
+    max-height: min(76vh, 620px);
     padding: 14px;
     overflow: hidden;
     border: 1px solid color-mix(in srgb, var(--token-border-base) 72%, transparent);
@@ -236,7 +240,13 @@
     box-shadow: 0 24px 48px color-mix(in srgb, var(--token-bg-app) 28%, transparent);
 
     &Header {
+      @include lh-inline(12px, nowrap, flex-start, space-between);
+    }
+
+    &TitleBlock {
       @include lh-stack(4px);
+
+      min-width: 0;
     }
 
     &Title {
@@ -248,7 +258,9 @@
     }
 
     &Actions {
-      @include lh-inline(10px, nowrap);
+      @include lh-inline(8px, nowrap, center, flex-end);
+
+      flex: 0 0 auto;
     }
   }
 
@@ -472,6 +484,16 @@
       color: var(--token-accent-base);
     }
 
+    &.isDanger {
+      border-color: color-mix(in srgb, var(--token-status-error) 48%, transparent);
+      color: $lh-text-danger;
+
+      &:hover {
+        border-color: color-mix(in srgb, var(--token-status-error) 64%, transparent);
+        background: color-mix(in srgb, var(--token-status-error) 12%, var(--token-bg-hover));
+      }
+    }
+
     &:disabled {
       cursor: not-allowed;
       opacity: 0.7;
@@ -490,21 +512,24 @@
   &ProjectList {
     @include lh-stack(10px);
 
+    flex: 1 1 auto;
     min-height: 0;
     overflow: auto;
     padding-right: 2px;
   }
 
   &ProjectItem {
-    @include lh-stack(4px);
-
     width: 100%;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
     align-items: flex-start;
     padding: 11px 12px;
     border: 1px solid color-mix(in srgb, var(--token-border-base) 68%, transparent);
     border-radius: 14px;
     background: color-mix(in srgb, var(--token-bg-card) 62%, transparent);
     color: $lh-text-primary;
+    cursor: pointer;
     text-align: left;
     transition:
       transform $lh-transition-base,
@@ -522,6 +547,12 @@
       background: linear-gradient(180deg, color-mix(in srgb, var(--token-accent-hover) 18%, transparent), color-mix(in srgb, var(--token-bg-card) 82%, transparent));
     }
 
+    &Content {
+      @include lh-stack(4px);
+
+      min-width: 0;
+    }
+
     &Name {
       width: 100%;
       color: inherit;
@@ -533,6 +564,58 @@
 
     &Meta {
       @include lh-text($lh-text-muted, 11px, 1.5);
+    }
+
+    &Actions {
+      @include lh-inline(6px, nowrap, center, flex-end);
+
+      opacity: 0;
+      transition: opacity $lh-transition-base;
+    }
+
+    &:hover,
+    &.isActive {
+      .linghuiCanvasProjectItemActions {
+        opacity: 1;
+      }
+    }
+
+    &Action {
+      @include lh-inline(0, nowrap, center, center);
+
+      width: 28px;
+      height: 28px;
+      border: 1px solid color-mix(in srgb, var(--token-border-base) 58%, transparent);
+      border-radius: 10px;
+      background: color-mix(in srgb, var(--token-bg-elevated) 58%, transparent);
+      color: $lh-text-secondary;
+      cursor: pointer;
+      transition:
+        transform $lh-transition-base,
+        border-color $lh-transition-base,
+        background $lh-transition-base,
+        color $lh-transition-base;
+
+      &:hover {
+        transform: translateY(-1px);
+        border-color: color-mix(in srgb, var(--token-status-info) 52%, transparent);
+        background: color-mix(in srgb, var(--token-bg-hover) 86%, transparent);
+        color: $lh-text-primary;
+      }
+
+      &:focus-visible {
+        outline: none;
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--token-status-info) 18%, transparent);
+      }
+
+      &.isDanger {
+        color: $lh-text-danger;
+
+        &:hover {
+          border-color: color-mix(in srgb, var(--token-status-error) 56%, transparent);
+          background: color-mix(in srgb, var(--token-status-error) 12%, var(--token-bg-hover));
+        }
+      }
     }
   }
 
@@ -602,10 +685,7 @@
     padding: 0 14px;
     font-size: 12px;
     font-weight: 600;
-
-    &:hover {
-      border-color: color-mix(in srgb, var(--token-accent-base) 50%, transparent);
-    }
+    cursor: default;
 
     &.isRunning {
       border-color: color-mix(in srgb, var(--token-status-info) 58%, transparent);
@@ -682,8 +762,9 @@
   }
 
   &ToolButton {
-    width: 34px;
+    min-width: 34px;
     height: 34px;
+    padding: 0 9px;
     border: 1px solid color-mix(in srgb, var(--token-border-base) 72%, transparent);
     border-radius: 10px;
     background: color-mix(in srgb, var(--token-bg-elevated) 72%, transparent);
@@ -704,6 +785,22 @@
     &.isActive {
       background: color-mix(in srgb, var(--token-accent-base) 16%, transparent);
       border-color: color-mix(in srgb, var(--token-accent-base) 78%, transparent);
+      color: $lh-text-success;
+    }
+
+    &.isRun,
+    &.isRunPrimary {
+      @include lh-inline(7px, nowrap, center, center);
+
+      width: auto;
+      min-width: 84px;
+      font-size: 12px;
+      font-weight: 750;
+    }
+
+    &.isRunPrimary {
+      border-color: color-mix(in srgb, var(--token-accent-base) 62%, transparent);
+      background: color-mix(in srgb, var(--token-accent-base) 16%, var(--token-bg-elevated));
       color: $lh-text-success;
     }
   }
@@ -1143,6 +1240,7 @@
     }
 
     &ProjectPanel {
+      position: static;
       width: min(320px, calc(100vw - 36px));
       max-height: min(52vh, 460px);
     }

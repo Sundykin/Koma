@@ -680,3 +680,32 @@
 - Residual risk:
   - The app is blocked by activation in this environment, so Settings UI click-through and 4 themes x 5 pages screenshot matrix were not executed here.
   - Build warnings about chunking/dynamic import and Sass Tailwind import remain pre-existing/non-blocking for this theme architecture target.
+
+### Linghui Empty Workspace Document Guard - 2026-05-06
+- **Status:** complete
+- Actions taken:
+  - 查看 `~/.koma/logs` 与 SQLite 灵绘表，确认没有直接前端堆栈；最近工作区中出现多个空工作区和一个视频节点工作区，说明“新建”已到达后端，但异常路径被 IPC/ee-core 吞成空返回。
+  - 排查 `LinghuiPage -> flushWorkspaceSave -> saveLinghuiWorkspace -> controller/linghui -> service/linghui.saveWorkspace -> normalizeLinghuiWorkspaceDocument` 链路，定位空壳 React Flow 节点缺少 `type/data.linghuiType` 会触发后端严格校验。
+  - 在 `linghuiCanvasShared` 增加可持久化节点判断，保存/执行上下文都过滤未知空壳节点和由其产生的悬空边；合法节点缺省数据会按节点类型补齐。
+  - 在后端 `document.ts` 增加 normalize 清洗：空壳节点丢弃，缺 `data.linghuiType` 但 RF 类型明确的节点可补语义；旧/不支持节点类型仍保持拒绝。
+  - 在 `LinghuiController` 对保存/新建/另存/导入增加 try/catch，把 ee-core 可能吞掉的异常转成 `{success:false,error}`；前端 `linghuiStorage` 统一 unwrap，空返回和结构化错误都会抛出可读异常。
+  - 补充 `linghuiCanvasShared.test.ts`、`linghuiDocument.test.ts`、`linghuiStorage.test.ts` 覆盖空壳节点过滤、后端 normalize 清洗和错误透出。
+- Validation:
+  - `npm --prefix frontend run test -- --run src/store/linghuiStorage.test.ts src/store/linghuiDocument.test.ts src/components/linghui/canvas/tests/linghuiCanvasShared.test.ts src/components/project/ProjectAssetOverview.test.tsx src/components/linghui/canvas/tests/linghuiCanvasStore.test.ts src/components/linghui/canvas/tests/useLinghuiCanvasHistory.test.tsx` passed: 6 files / 25 tests.
+  - `npm --prefix frontend run build` passed with existing Vite dynamic import/chunk warnings.
+  - `npm run build-electron` passed.
+  - `git diff --check` passed.
+
+### Linghui Workspace Package Import Export - 2026-05-06
+- **Status:** complete
+- Actions taken:
+  - 在灵绘后端导出 `.linghui.zip` 包，写入 `manifest.json`、`workspace.json`、`records/workflowTemplates.json`、`records/assets.json`、`records/history.json`。
+  - 递归扫描工作区文档、节点运行结果、资产库和历史记录中的本地静态资源引用，支持绝对路径、`koma-local://files/...` 和工作区内 `assets/`、`history/`、`resources/` 相对路径；导出时重写为 `koma-archive://...` 并把文件打包。
+  - 导入 zip 时解包资源到新的工作区目录，重写资源引用为新目录本地路径，并给工作区、节点、边、分组、模板、资产、历史记录重新分配 id，避免与现有数据冲突；旧 `.json` 导入仍保持兼容。
+  - 项目列表面板增加导入、导出和删除操作；删除会确认后清理工作区记录和目录，删到 0 个项目时自动创建一个空项目。
+  - `linghuiStorage` 将导出默认扩展改为 `.linghui.zip`，并统一透出导入/导出/删除的结构化后端错误。
+- Validation:
+  - `npm --prefix frontend run test -- --run src/store/linghuiStorage.test.ts src/store/linghuiDocument.test.ts src/components/linghui/canvas/tests/linghuiCanvasShared.test.ts src/components/project/ProjectAssetOverview.test.tsx` passed: 4 files / 21 tests.
+  - `npm run build-electron` passed.
+  - `npm --prefix frontend run build` passed with existing Vite dynamic import/chunk warnings.
+  - `git diff --check` passed.

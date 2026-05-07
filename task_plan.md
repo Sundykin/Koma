@@ -65,6 +65,8 @@
 | 9. Duplicate Submission Guard | complete | 执行目标链路中存在仍在轮询/运行中的节点时阻止重复提交 provider，并允许过期 running 状态重新触发 |
 | 10. Diagnostics Log Export | complete | 设置页新增前后端日志收集/导出 zip；前端日志经白名单 IPC 追加落盘，日志目录跟随 storageRoot |
 | 11. Editor Action Click Guard | complete | 画布节点编辑器的生图、生视频等提交按钮增加即时防双击锁，避免运行态刷新前重复提交 |
+| 12. Workspace Empty Node Guard | complete | 修复空壳 React Flow 节点进入灵绘工作区文档后导致保存/新建返回空文档的问题，并透出后端真实错误 |
+| 13. Workspace Package Import Export | complete | 灵绘项目列表增加删除、导入、导出；导出 `.linghui.zip` 包含工作区文档、资产/历史/模板记录和本地静态资源 |
 
 ### Acceptance Criteria
 - 系统 Recipe 暂时不再出现在模板列表，用户保存的工作区模板能力保留。
@@ -77,6 +79,8 @@
 - 生图、生视频等节点编辑器提交按钮连续双击只会触发一次提交；首击后立刻短暂锁定，随后仍由运行态禁用兜底。
 - 设置页可导出诊断日志 zip，包含 renderer/main/Electron 日志和 manifest；storageRoot 变更后日志目录同步切换。
 - 所有节点连接点使用同一套视觉/吸附样式；连线进入扩大范围即可吸附到端口，不必像素级碰到圆点。
+- 配置了空壳节点的画布不会再把无效节点写入工作区文档；新建/保存遇到后端异常会显示真实错误而不是 undefined 文档报错。
+- 项目列表可以删除、导入和导出灵绘项目；导出的 zip 包可带走节点属性、运行结果、资产库与历史结果引用到的本地静态资源。
 - 相关测试/构建通过；既有风格脚本失败边界单独记录。
 
 ### Error Log
@@ -86,6 +90,7 @@
 | `npm run check:style-discipline` still fails | 2 | 剩余失败均为既有 project/storyboard/chat/theme/index.scss 债务，本轮不扩大范围 |
 | `npm run check:style-discipline` still fails after magnetic handles | 3 | 失败项仍只在既有 project/storyboard/chat/theme/index.scss 路径；新增 `LinghuiNodeHandle`、连接点样式和舞台半径未出现在失败列表中 |
 | `npm run check:style-discipline` still fails after video duration pass | 4 | 失败项仍只在既有 project/storyboard/chat/theme/index.scss 注释/颜色/inline style 债务；本轮视频时长文件未出现在失败列表中 |
+| `灵绘工作区数据异常：未返回工作区文档` after canvas with empty nodes | 1 | 空壳 React Flow 节点缺少 `type/data.linghuiType`，后端严格 normalize 会抛错且 ee-core 会吞成 undefined；已在前端快照、后端 normalize、controller/store 错误透出三层修复 |
 
 ## Session: 2026-05-03 Theme System Architecture
 
