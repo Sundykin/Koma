@@ -41,6 +41,7 @@ interface LinghuiCanvasSurfaceProps {
   hudProps: React.ComponentProps<typeof LinghuiCanvasHud>;
   stageProps: React.ComponentProps<typeof LinghuiCanvasStage>;
   overlayProps: LinghuiCanvasOverlaysProps;
+  canvasInteractionVersion: number;
 }
 
 export function LinghuiCanvasSurface({
@@ -56,12 +57,14 @@ export function LinghuiCanvasSurface({
   hudProps,
   stageProps,
   overlayProps,
+  canvasInteractionVersion,
 }: LinghuiCanvasSurfaceProps) {
   const nodeEditor = React.useMemo(() => ({
     selection: overlayProps.editorSelection,
     activeTool: overlayProps.activeNodeTool,
     setActiveTool: overlayProps.setActiveNodeTool,
     closeEditor: overlayProps.onCloseEditor,
+    canvasInteractionVersion,
     nodeRuns: overlayProps.nodeRuns,
     executionQueue: overlayProps.executionQueue,
     workspaceId: overlayProps.workspaceId,
@@ -80,7 +83,7 @@ export function LinghuiCanvasSurface({
     gridSplitUpscaleFactor: overlayProps.gridSplitUpscaleFactor,
     onSetGridSplitUpscaleFactor: overlayProps.onSetGridSplitUpscaleFactor,
     onRevertGridSplit: overlayProps.onRevertGridSplit,
-  }), [overlayProps]);
+  }), [canvasInteractionVersion, overlayProps]);
 
   return (
     <LinghuiCanvasModeContext.Provider value={canvasMode}>

@@ -17,6 +17,7 @@ import {
   WidgetType,
   highlightActiveLine,
   keymap,
+  tooltips,
 } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { toFileSystemDisplayUrl } from '../../../../services/fileSystemPort';
@@ -82,13 +83,11 @@ function toPreviewSource(source?: string): string | undefined {
   return toFileSystemDisplayUrl(source);
 }
 
-function removeReferencePreviewTooltip(anchor: HTMLElement) {
-  const tooltip = (anchor as HTMLElement & { __linghuiPreviewTooltip?: HTMLElement }).__linghuiPreviewTooltip;
-  if (tooltip) {
-    tooltip.remove();
-    delete (anchor as HTMLElement & { __linghuiPreviewTooltip?: HTMLElement }).__linghuiPreviewTooltip;
-  }
-}
+let activeReferencePreview: {
+  anchor: HTMLElement;
+  tooltip: HTMLElement;
+  watchdogId: number | null;
+} | null = null;
 
 function positionReferencePreviewTooltip(tooltip: HTMLElement, event: MouseEvent) {
   const rect = tooltip.getBoundingClientRect();
@@ -110,8 +109,30 @@ function positionReferencePreviewTooltip(tooltip: HTMLElement, event: MouseEvent
   tooltip.style.top = `${Math.max(12, top)}px`;
 }
 
+function hideReferencePreviewTooltip(anchor?: HTMLElement) {
+  if (!activeReferencePreview) return;
+  if (anchor && activeReferencePreview.anchor !== anchor && !anchor.contains(activeReferencePreview.anchor)) {
+    return;
+  }
+  activeReferencePreview.tooltip.remove();
+  if (activeReferencePreview.watchdogId !== null) {
+    cancelAnimationFrame(activeReferencePreview.watchdogId);
+  }
+  activeReferencePreview = null;
+}
+
+function watchReferencePreviewAnchor() {
+  if (!activeReferencePreview) return;
+  const { anchor } = activeReferencePreview;
+  if (!anchor.isConnected || !anchor.matches(':hover')) {
+    hideReferencePreviewTooltip();
+    return;
+  }
+  activeReferencePreview.watchdogId = requestAnimationFrame(watchReferencePreviewAnchor);
+}
+
 function showReferencePreviewTooltip(anchor: HTMLElement, item: LinghuiPromptReferenceItem, event: MouseEvent) {
-  removeReferencePreviewTooltip(anchor);
+  hideReferencePreviewTooltip();
 
   const previewSource = toPreviewSource(item.previewSource);
   if (!previewSource) return;
@@ -157,8 +178,12 @@ function showReferencePreviewTooltip(anchor: HTMLElement, item: LinghuiPromptRef
   tooltip.appendChild(description);
 
   document.body.appendChild(tooltip);
-  (anchor as HTMLElement & { __linghuiPreviewTooltip?: HTMLElement }).__linghuiPreviewTooltip = tooltip;
   positionReferencePreviewTooltip(tooltip, event);
+  activeReferencePreview = {
+    anchor,
+    tooltip,
+    watchdogId: requestAnimationFrame(watchReferencePreviewAnchor),
+  };
 }
 
 function getReferenceCompletionItem(completion: Completion): LinghuiPromptReferenceItem | null {
@@ -335,16 +360,15 @@ class LinghuiReferenceWidget extends WidgetType {
       chip.appendChild(name);
 
       const moveTooltip = (event: MouseEvent) => {
-        const tooltip = (chip as HTMLElement & { __linghuiPreviewTooltip?: HTMLElement }).__linghuiPreviewTooltip;
-        if (tooltip) {
-          positionReferencePreviewTooltip(tooltip, event);
+        if (activeReferencePreview && activeReferencePreview.anchor === chip) {
+          positionReferencePreviewTooltip(activeReferencePreview.tooltip, event);
         }
       };
 
       chip.addEventListener('mouseenter', event => showReferencePreviewTooltip(chip, this.item, event));
       chip.addEventListener('mousemove', moveTooltip);
-      chip.addEventListener('mouseleave', () => removeReferencePreviewTooltip(chip));
-      chip.addEventListener('pointerdown', () => removeReferencePreviewTooltip(chip));
+      chip.addEventListener('mouseleave', () => hideReferencePreviewTooltip(chip));
+      chip.addEventListener('pointerdown', () => hideReferencePreviewTooltip(chip));
 
       span.appendChild(chip);
       return span;
@@ -382,7 +406,7 @@ class LinghuiReferenceWidget extends WidgetType {
   }
 
   destroy(dom: HTMLElement): void {
-    removeReferencePreviewTooltip(dom);
+    hideReferencePreviewTooltip(dom);
   }
 }
 
@@ -710,8 +734,8 @@ export const LinghuiPromptEditor: React.FC<LinghuiPromptEditorProps> = ({
   placeholder = '输入提示词，使用 @ 引用上游图片、视频封面或文本产物',
   references = [],
   readOnly = false,
-  minHeight = '120px',
-  maxHeight = '200px',
+  minHeight = '76px',
+  maxHeight = '176px',
   darkTheme,
   surfaceStyle = 'default',
   className,
@@ -750,8 +774,8 @@ export const LinghuiPromptEditor: React.FC<LinghuiPromptEditorProps> = ({
       }),
       EditorView.theme({
         '&': {
-          height: minHeight,
-          maxHeight,
+          minHeight,
+          height: 'auto',
           overflow: 'visible',
           border: 'none',
           borderRadius: isFusionSurface ? '16px' : '14px',
@@ -767,7 +791,8 @@ export const LinghuiPromptEditor: React.FC<LinghuiPromptEditorProps> = ({
         },
         '.cm-scroller': {
           overflow: 'auto',
-          height: '100%',
+          minHeight,
+          maxHeight,
           cursor: 'text',
         },
         '.cm-content': {
@@ -813,11 +838,13 @@ export const LinghuiPromptEditor: React.FC<LinghuiPromptEditorProps> = ({
     if (!containerRef.current) return;
 
     const compartment = extensionCompartmentRef.current;
+    const tooltipParent = containerRef.current.ownerDocument.body;
     const view = new EditorView({
       state: EditorState.create({
         doc: value,
         extensions: [
           ...baseExtensions,
+          tooltips({ parent: tooltipParent, position: 'fixed' }),
           compartment.of(referenceExtension),
         ],
       }),

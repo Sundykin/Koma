@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { isEditableEventTarget, type LinghuiPendingGroupFrame } from '../state/linghuiCanvasShared';
 
 interface UseLinghuiCanvasHotkeysParams {
@@ -19,26 +19,31 @@ interface UseLinghuiCanvasHotkeysParams {
   clearPendingGroupFrame: () => void;
 }
 
-export function useLinghuiCanvasHotkeys({
-  canUndo,
-  canRedo,
-  selectedNodeIds,
-  selectedEdgeIds,
-  pendingGroupFrame,
-  copySelectionToClipboard,
-  pasteClipboardSnapshot,
-  duplicateSelection,
-  deleteNodesByIds,
-  deleteEdgesByIds,
-  undoHistory,
-  redoHistory,
-  closeContextMenu,
-  closeQuickCreate,
-  clearPendingGroupFrame,
-}: UseLinghuiCanvasHotkeysParams) {
+export function useLinghuiCanvasHotkeys(params: UseLinghuiCanvasHotkeysParams) {
+  const paramsRef = useRef(params);
+  paramsRef.current = params;
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (isEditableEventTarget(event.target)) return;
+
+      const {
+        canUndo,
+        canRedo,
+        selectedNodeIds,
+        selectedEdgeIds,
+        pendingGroupFrame,
+        copySelectionToClipboard,
+        pasteClipboardSnapshot,
+        duplicateSelection,
+        deleteNodesByIds,
+        deleteEdgesByIds,
+        undoHistory,
+        redoHistory,
+        closeContextMenu,
+        closeQuickCreate,
+        clearPendingGroupFrame,
+      } = paramsRef.current;
 
       const modifierPressed = event.metaKey || event.ctrlKey;
       const normalizedKey = event.key.toLowerCase();
@@ -109,21 +114,5 @@ export function useLinghuiCanvasHotkeys({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [
-    canRedo,
-    canUndo,
-    copySelectionToClipboard,
-    deleteEdgesByIds,
-    deleteNodesByIds,
-    duplicateSelection,
-    pasteClipboardSnapshot,
-    pendingGroupFrame,
-    redoHistory,
-    selectedEdgeIds,
-    selectedNodeIds,
-    clearPendingGroupFrame,
-    closeContextMenu,
-    closeQuickCreate,
-    undoHistory,
-  ]);
+  }, []);
 }

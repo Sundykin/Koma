@@ -167,8 +167,8 @@ export const TextNodeEditor: React.FC<TextNodeEditorProps> = ({
               references={promptReferences}
               placeholder="描述要生成什么文本，输入 @ 引用上游产物"
               surfaceStyle="fusion"
-              minHeight="112px"
-              maxHeight="220px"
+              minHeight="76px"
+              maxHeight="176px"
             />
           </div>
 

@@ -5,6 +5,7 @@ import React, {
   useEffect,
   useMemo,
   useRef,
+  useState,
 } from 'react';
 import { App as AntApp } from 'antd';
 import {
@@ -64,6 +65,7 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
   const { message } = AntApp.useApp();
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [canvasInteractionVersion, setCanvasInteractionVersion] = useState(0);
   const reactFlow = useReactFlow();
 
   const viewport = useViewport();
@@ -297,6 +299,17 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     closeContextMenu,
   });
 
+  const handleNodeDragStart = useCallback(() => {
+    closeContextMenu();
+    closeQuickCreate();
+    setActiveNodeTool(null);
+    setCanvasInteractionVersion(version => version + 1);
+  }, [closeContextMenu, closeQuickCreate, setActiveNodeTool]);
+
+  const handleNodeDragStop = useCallback(() => {
+    setCanvasInteractionVersion(version => version + 1);
+  }, []);
+
   const {
     bindNodeSurface,
     openNodeContextMenu,
@@ -314,6 +327,8 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     closeQuickCreate,
     openContextMenuAt,
     emitSnapshot,
+    onNodeDragStart: handleNodeDragStart,
+    onNodeDragStop: handleNodeDragStop,
   });
 
   const nodeInteractionApi = useMemo(() => ({
@@ -455,6 +470,7 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
         failedNodeIds: canvasRunSummary.failedNodeIds,
         staleNodeIds: canvasRunSummary.staleNodeIds,
       }}
+      canvasInteractionVersion={canvasInteractionVersion}
       gridSplitOverlay={{
         nodeId: activeNodeTool?.kind === 'image' && activeNodeTool.tool === 'grid-split' ? activeNodeTool.nodeId : null,
         gridSize: (() => {
@@ -509,6 +525,8 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
         onSelectionEnd: handleSelectionEnd,
         onNodeClick: handleNodeClick,
         onNodeContextMenu: handleNodeContextMenu,
+        onNodeDragStart: handleNodeDragStart,
+        onNodeDragStop: handleNodeDragStop,
         onEdgeClick: handleEdgeClick,
         onEdgeContextMenu: handleEdgeContextMenu,
         onPaneClick: handlePaneClick,

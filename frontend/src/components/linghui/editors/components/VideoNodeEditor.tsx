@@ -75,7 +75,7 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
   onRun,
 }) => {
   const { message } = App.useApp();
-  const { executionQueue } = useLinghuiNodeEditorApi();
+  const { canvasInteractionVersion, executionQueue } = useLinghuiNodeEditorApi();
   const { clearNodeRunState, updateNodeData } = useLinghuiNodeMutation();
   const props = nodeData.properties as unknown as LinghuiVideoNodeProperties;
   const source = String(props.source ?? '').trim();
@@ -414,6 +414,7 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
           onUpdateResolution={value => updateProp('resolution', value)}
           onUpdateDuration={value => updateProp('duration', clampDurationToSpec(value, activeDurationSpec))}
           onRun={handleRun}
+          canvasInteractionVersion={canvasInteractionVersion}
         />
       )}
     </div>

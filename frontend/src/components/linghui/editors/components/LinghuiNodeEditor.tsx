@@ -681,7 +681,7 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
   const toolbarContent = renderToolbar();
 
   return (
-    <div className="linghuiNodeEditorContainer">
+    <div className="linghuiNodeEditorContainer nodrag nopan nowheel">
       <div
         className={`linghuiNodeEditorTopBar ${useMinimalTopBar ? 'isMinimal' : ''}`}
         style={toolbarStyle}

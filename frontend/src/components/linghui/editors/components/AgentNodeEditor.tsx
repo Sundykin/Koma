@@ -203,8 +203,8 @@ export const AgentNodeEditor: React.FC<AgentNodeEditorProps> = ({
           references={promptReferences}
           placeholder="描述 Agent 目标、输出要求和可用上下文，输入 @ 引用上游产物"
           surfaceStyle="fusion"
-          minHeight="124px"
-          maxHeight="240px"
+          minHeight="76px"
+          maxHeight="176px"
         />
       </div>
 

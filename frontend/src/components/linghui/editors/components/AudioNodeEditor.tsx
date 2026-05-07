@@ -385,8 +385,8 @@ export const AudioNodeEditor: React.FC<AudioNodeEditorProps> = ({
             references={promptReferences}
             placeholder="输入要合成的旁白、对白或音频描述，输入 @ 引用上游产物"
             surfaceStyle="fusion"
-            minHeight="96px"
-            maxHeight="188px"
+            minHeight="76px"
+            maxHeight="176px"
           />
         </div>
       ) : null}
