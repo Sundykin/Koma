@@ -22,6 +22,24 @@ function assertLinghuiBackend() {
   return electronService.linghui;
 }
 
+function unwrapLinghuiResult<T>(
+  result: T | { success?: boolean; error?: string; operation?: string } | null | undefined,
+  operation: string,
+): T {
+  if (!result) {
+    throw new Error(`灵绘后端异常：${operation} 未返回数据`);
+  }
+  if (
+    typeof result === 'object' &&
+    'success' in result &&
+    (result as { success?: boolean }).success === false
+  ) {
+    const error = (result as { error?: string }).error?.trim();
+    throw new Error(error || `灵绘后端异常：${operation} 执行失败`);
+  }
+  return result as T;
+}
+
 function buildSubgraphStats(snapshot: LinghuiSubgraphSnapshot): LinghuiGraphStats {
   return {
     nodeCount: snapshot.nodes.length,
@@ -140,28 +158,28 @@ export async function listLinghuiWorkspaces(): Promise<LinghuiWorkspaceMeta[]> {
 }
 
 export async function loadLinghuiWorkspace(workspaceId: string): Promise<LinghuiWorkspaceDocument | null> {
-  return assertLinghuiBackend().loadWorkspace(workspaceId);
+  return unwrapLinghuiResult(await assertLinghuiBackend().loadWorkspace(workspaceId), 'loadWorkspace');
 }
 
 export async function saveLinghuiWorkspace(doc: LinghuiWorkspaceDocument): Promise<LinghuiWorkspaceDocument> {
-  return assertLinghuiBackend().saveWorkspace(doc);
+  return unwrapLinghuiResult(await assertLinghuiBackend().saveWorkspace(doc), 'saveWorkspace');
 }
 
 export async function createLinghuiWorkspace(
   name: string = DEFAULT_LINGHUI_WORKSPACE_NAME,
 ): Promise<LinghuiWorkspaceDocument> {
-  return assertLinghuiBackend().createWorkspace(name);
+  return unwrapLinghuiResult(await assertLinghuiBackend().createWorkspace(name), 'createWorkspace');
 }
 
 export async function saveLinghuiWorkspaceAs(
   doc: LinghuiWorkspaceDocument,
   name?: string,
 ): Promise<LinghuiWorkspaceDocument> {
-  return assertLinghuiBackend().saveWorkspaceAs(doc, name);
+  return unwrapLinghuiResult(await assertLinghuiBackend().saveWorkspaceAs(doc, name), 'saveWorkspaceAs');
 }
 
 export async function deleteLinghuiWorkspace(workspaceId: string): Promise<void> {
-  await assertLinghuiBackend().deleteWorkspace(workspaceId);
+  unwrapLinghuiResult(await assertLinghuiBackend().deleteWorkspace(workspaceId), 'deleteWorkspace');
 }
 
 export async function getLinghuiWorkspaceDir(workspaceId: string): Promise<string> {
@@ -169,7 +187,7 @@ export async function getLinghuiWorkspaceDir(workspaceId: string): Promise<strin
 }
 
 export async function importLinghuiWorkspace(filePath: string): Promise<LinghuiWorkspaceDocument> {
-  return assertLinghuiBackend().importWorkspace(filePath);
+  return unwrapLinghuiResult(await assertLinghuiBackend().importWorkspace(filePath), 'importWorkspace');
 }
 
 export async function exportLinghuiWorkspace(
@@ -177,16 +195,24 @@ export async function exportLinghuiWorkspace(
 ): Promise<string | null> {
   const result = await electronService.dialog.saveFile({
     title: '导出灵绘工作区',
-    defaultPath: `${(doc.name || DEFAULT_LINGHUI_WORKSPACE_NAME).replace(/[\\/:*?"<>|]/g, '-')}.linghui.json`,
-    filters: [{ name: 'Linghui Workspace', extensions: ['json'] }],
+    defaultPath: `${(doc.name || DEFAULT_LINGHUI_WORKSPACE_NAME).replace(/[\\/:*?"<>|]/g, '-')}.linghui.zip`,
+    filters: [
+      { name: 'Linghui Workspace Package', extensions: ['zip'] },
+      { name: 'Linghui JSON', extensions: ['json'] },
+    ],
   });
 
   if (result.canceled || !result.filePath) {
     return null;
   }
 
-  await assertLinghuiBackend().exportWorkspace(doc, result.filePath);
-  return result.filePath;
+  const exportResult = unwrapLinghuiResult(
+    await assertLinghuiBackend().exportWorkspace(doc, result.filePath),
+    'exportWorkspace',
+  );
+  return typeof exportResult === 'object' && exportResult !== null && 'path' in exportResult
+    ? String((exportResult as { path: string }).path)
+    : result.filePath;
 }
 
 export async function listLinghuiWorkflowTemplates(workspaceId: string): Promise<LinghuiWorkflowTemplateRecord[]> {

@@ -3,6 +3,9 @@ import { App as AntApp, Spin } from 'antd';
 import {
   createLinghuiWorkspace,
   createLinghuiWorkspaceHistoryRecord,
+  deleteLinghuiWorkspace,
+  exportLinghuiWorkspace,
+  importLinghuiWorkspace,
   listLinghuiWorkflowTemplates,
   listLinghuiWorkspaceAssets,
   listLinghuiWorkspaceHistoryRecords,
@@ -13,6 +16,7 @@ import {
   type LinghuiWorkspaceAssetRecord,
   type LinghuiWorkspaceHistoryRecord,
 } from '../../../../store/linghuiStorage';
+import { electronService } from '../../../../services/electronService';
 import type {
   LinghuiExecutionLogEntry,
   LinghuiExecutionQueueState,
@@ -35,6 +39,7 @@ import {
   ClipboardList,
   CircleAlert,
   CircleCheck,
+  Download,
   Info,
   TriangleAlert,
   X,
@@ -43,6 +48,8 @@ import {
   Library,
   Plus,
   Save,
+  Trash2,
+  Upload,
   Workflow,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -100,6 +107,18 @@ const EXECUTION_LOG_ICON_BY_LEVEL: Record<LinghuiExecutionLogEntry['level'], Luc
   success: CircleCheck,
 };
 
+function ensureWorkspaceRuntime(workspace: LinghuiWorkspaceDocument | null | undefined): LinghuiWorkspaceDocument {
+  if (!workspace) {
+    throw new Error('灵绘工作区数据异常：未返回工作区文档');
+  }
+
+  return {
+    ...workspace,
+    nodeRuns: workspace.nodeRuns ?? EMPTY_LINGHUI_NODE_RUNS,
+    executionLogs: workspace.executionLogs ?? EMPTY_LINGHUI_EXECUTION_LOGS,
+  };
+}
+
 interface PendingLinghuiExecutionPlanRequest {
   plan: LinghuiExecutionPlan;
   scopeLabel: string;
@@ -111,7 +130,7 @@ interface PendingLinghuiExecutionPlanRequest {
 }
 
 export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
-  const { message } = AntApp.useApp();
+  const { message, modal } = AntApp.useApp();
   const canvasRef = useRef<LinghuiCanvasHandle | null>(null);
   const railShellRef = useRef<HTMLDivElement | null>(null);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
@@ -186,6 +205,9 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
       if (railShellRef.current && target instanceof Node && railShellRef.current.contains(target)) {
         return;
       }
+      if (target instanceof Element && target.closest('.ant-modal-root, .ant-modal, .ant-popover, .ant-dropdown')) {
+        return;
+      }
       setProjectPanelOpen(false);
       setExecutionLogPanelOpen(false);
     };
@@ -200,19 +222,20 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
   }, []);
 
   const activateWorkspace = useCallback((workspace: LinghuiWorkspaceDocument) => {
-    activeWorkspaceRef.current = workspace;
-    persistedWorkspaceRef.current = workspace;
+    const normalizedWorkspace = ensureWorkspaceRuntime(workspace);
+    activeWorkspaceRef.current = normalizedWorkspace;
+    persistedWorkspaceRef.current = normalizedWorkspace;
     applyWorkspaceRuntime({
-      nodeRuns: workspace.nodeRuns,
-      executionLogs: workspace.executionLogs,
+      nodeRuns: normalizedWorkspace.nodeRuns,
+      executionLogs: normalizedWorkspace.executionLogs,
     });
-    setActiveWorkspace(workspace);
+    setActiveWorkspace(normalizedWorkspace);
     setStats({
-      nodeCount: workspace.nodeCount,
-      linkCount: workspace.linkCount,
-      groupCount: workspace.groupCount,
+      nodeCount: normalizedWorkspace.nodeCount,
+      linkCount: normalizedWorkspace.linkCount,
+      groupCount: normalizedWorkspace.groupCount,
     });
-    setLastSavedAt(workspace.updatedAt);
+    setLastSavedAt(normalizedWorkspace.updatedAt);
   }, [applyWorkspaceRuntime]);
 
   useEffect(() => {
@@ -357,7 +380,7 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
       setSaving(true);
     }
     try {
-      const saved = await saveLinghuiWorkspace(doc);
+      const saved = ensureWorkspaceRuntime(await saveLinghuiWorkspace(doc));
       activeWorkspaceRef.current = saved;
       persistedWorkspaceRef.current = saved;
       workspaceRuntimeRef.current = {
@@ -831,6 +854,116 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
       setProjectPanelOpen(false);
     }
   }, [flushWorkspaceSave]);
+
+  const handleExportWorkspace = useCallback(async (workspaceId?: string) => {
+    const current = activeWorkspaceRef.current;
+    const targetWorkspaceId = workspaceId || current?.id;
+    if (!targetWorkspaceId) {
+      message.info('请先打开一个灵绘项目');
+      return;
+    }
+
+    const shouldFlushActive = targetWorkspaceId === current?.id;
+    if (shouldFlushActive) {
+      const flushed = await flushWorkspaceSave({
+        syncActiveWorkspace: true,
+        refreshWorkspaceList: true,
+        showIndicator: true,
+      });
+      if (!flushed) {
+        return;
+      }
+    }
+
+    try {
+      const workspace = shouldFlushActive && activeWorkspaceRef.current
+        ? activeWorkspaceRef.current
+        : await loadLinghuiWorkspace(targetWorkspaceId);
+      if (!workspace) {
+        message.error('无法读取要导出的灵绘项目');
+        return;
+      }
+      const exportPath = await exportLinghuiWorkspace(workspace);
+      if (exportPath) {
+        message.success('灵绘项目已导出');
+      }
+    } catch (error: any) {
+      message.error(error?.message || '导出灵绘项目失败');
+    }
+  }, [flushWorkspaceSave, message]);
+
+  const handleImportWorkspace = useCallback(async () => {
+    try {
+      const result = await electronService.dialog.openFile({
+        title: '导入灵绘项目',
+        filters: [
+          { name: 'Linghui Workspace Package', extensions: ['zip'] },
+          { name: 'Linghui JSON', extensions: ['json'] },
+        ],
+      });
+      const filePath = result.filePaths?.[0];
+      if (result.canceled || !filePath) {
+        return;
+      }
+
+      const flushed = await flushWorkspaceSave({
+        syncActiveWorkspace: true,
+        refreshWorkspaceList: true,
+        showIndicator: true,
+      });
+      if (!flushed) {
+        return;
+      }
+
+      const imported = await importLinghuiWorkspace(filePath);
+      activateWorkspace(imported);
+      await refreshWorkspaceList(imported.id);
+      closeActiveDrawer();
+      setExecutionLogPanelOpen(false);
+      setProjectPanelOpen(true);
+      message.success('灵绘项目已导入');
+    } catch (error: any) {
+      message.error(error?.message || '导入灵绘项目失败');
+    }
+  }, [activateWorkspace, closeActiveDrawer, flushWorkspaceSave, message, refreshWorkspaceList]);
+
+  const handleDeleteWorkspace = useCallback((workspaceId: string) => {
+    const workspace = workspaceList.find(item => item.id === workspaceId);
+    if (!workspace) {
+      message.error('无法找到要删除的灵绘项目');
+      return;
+    }
+
+    modal.confirm({
+      title: '删除灵绘项目',
+      content: `确定删除「${workspace.name}」吗？画布、资产、历史结果和本地静态资源都会一起删除。`,
+      okText: '删除',
+      okType: 'danger',
+      cancelText: '取消',
+      async onOk() {
+        await deleteLinghuiWorkspace(workspaceId);
+        const nextList = await listLinghuiWorkspaces();
+        if (nextList.length === 0) {
+          const created = await createLinghuiWorkspace(DEFAULT_LINGHUI_WORKSPACE_NAME);
+          activateWorkspace(created);
+          setWorkspaceList([created]);
+          setProjectPanelOpen(true);
+          message.success('已删除灵绘项目，并创建了新的空项目');
+          return;
+        }
+
+        setWorkspaceList(nextList);
+        if (activeWorkspaceRef.current?.id === workspaceId) {
+          const nextWorkspace = await loadLinghuiWorkspace(nextList[0].id);
+          if (nextWorkspace) {
+            activateWorkspace(nextWorkspace);
+          }
+        }
+        setProjectPanelOpen(true);
+        message.success('已删除灵绘项目');
+      },
+    });
+  }, [activateWorkspace, message, modal, workspaceList]);
 
   const handleCreateWorkspace = useCallback(async () => {
     const flushed = await flushWorkspaceSave({
@@ -1363,10 +1496,25 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
       {projectPanelOpen ? (
         <div className="linghuiCanvasProjectPanel nopan nowheel">
           <div className="linghuiCanvasProjectPanelHeader">
-            <div className="linghuiCanvasProjectPanelTitle">项目列表</div>
-            <div className="linghuiCanvasProjectPanelMeta">
-              {workspaceList.length} 个项目
-              {lastSavedAt ? ` · 最近保存 ${new Date(lastSavedAt).toLocaleTimeString()}` : ''}
+            <div className="linghuiCanvasProjectPanelTitleBlock">
+              <div className="linghuiCanvasProjectPanelTitle">项目列表</div>
+              <div className="linghuiCanvasProjectPanelMeta">
+                {workspaceList.length} 个项目
+                {lastSavedAt ? ` · 最近保存 ${new Date(lastSavedAt).toLocaleTimeString()}` : ''}
+              </div>
+            </div>
+            <div className="linghuiCanvasProjectPanelActions">
+              <button
+                type="button"
+                className="linghuiCanvasProjectActionButton isIconOnly"
+                onClick={() => {
+                  void handleImportWorkspace();
+                }}
+                title="导入灵绘项目"
+                aria-label="导入灵绘项目"
+              >
+                <Upload size={14} />
+              </button>
             </div>
           </div>
 
@@ -1411,19 +1559,67 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
 
           <div className="linghuiCanvasProjectList">
             {workspaceList.map(workspace => (
-              <button
+              <div
                 key={workspace.id}
-                type="button"
+                role="button"
+                tabIndex={0}
                 className={`linghuiCanvasProjectItem ${workspace.id === activeWorkspace?.id ? 'isActive' : ''}`}
                 onClick={() => {
                   void handleSelectWorkspace(workspace.id);
                 }}
+                onKeyDown={event => {
+                  if (event.key !== 'Enter' && event.key !== ' ') return;
+                  event.preventDefault();
+                  void handleSelectWorkspace(workspace.id);
+                }}
               >
-                <span className="linghuiCanvasProjectItemName">{workspace.name}</span>
-                <span className="linghuiCanvasProjectItemMeta">
-                  更新于 {new Date(workspace.updatedAt).toLocaleString()}
+                <span className="linghuiCanvasProjectItemContent">
+                  <span className="linghuiCanvasProjectItemName">{workspace.name}</span>
+                  <span className="linghuiCanvasProjectItemMeta">
+                    更新于 {new Date(workspace.updatedAt).toLocaleString()}
+                  </span>
                 </span>
-              </button>
+                <span className="linghuiCanvasProjectItemActions">
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    className="linghuiCanvasProjectItemAction"
+                    onClick={event => {
+                      event.stopPropagation();
+                      void handleExportWorkspace(workspace.id);
+                    }}
+                    onKeyDown={event => {
+                      if (event.key !== 'Enter' && event.key !== ' ') return;
+                      event.preventDefault();
+                      event.stopPropagation();
+                      void handleExportWorkspace(workspace.id);
+                    }}
+                    title="导出项目"
+                    aria-label={`导出 ${workspace.name}`}
+                  >
+                    <Download size={13} />
+                  </span>
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    className="linghuiCanvasProjectItemAction isDanger"
+                    onClick={event => {
+                      event.stopPropagation();
+                      handleDeleteWorkspace(workspace.id);
+                    }}
+                    onKeyDown={event => {
+                      if (event.key !== 'Enter' && event.key !== ' ') return;
+                      event.preventDefault();
+                      event.stopPropagation();
+                      handleDeleteWorkspace(workspace.id);
+                    }}
+                    title="删除项目"
+                    aria-label={`删除 ${workspace.name}`}
+                  >
+                    <Trash2 size={13} />
+                  </span>
+                </span>
+              </div>
             ))}
           </div>
         </div>
@@ -1513,8 +1709,11 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
     executionLogItems,
     executionLogLatest,
     executionLogPanelOpen,
+    handleDeleteWorkspace,
+    handleExportWorkspace,
     handleFocusLogNode,
     handleCreateWorkspace,
+    handleImportWorkspace,
     handleManualSave,
     handleSelectWorkspace,
     handleToggleDrawer,

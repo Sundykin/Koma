@@ -2,6 +2,19 @@ import { BaseController } from './base';
 import { ensureServicesReady, services } from '../service';
 import type { LinghuiWorkspaceDocument } from '../../frontend/src/types/linghui';
 
+function toLinghuiControllerError(operation: string, error: unknown): { success: false; error: string; operation: string } {
+  const message = error instanceof Error ? error.message : String(error || '未知错误');
+  console.error(`[LinghuiController] ${operation} failed`, {
+    error: message,
+    stack: error instanceof Error ? error.stack : undefined,
+  });
+  return {
+    success: false,
+    error: `[linghui/${operation}] ${message}`,
+    operation,
+  };
+}
+
 class LinghuiController extends BaseController {
   async listWorkspaces() {
     await ensureServicesReady();
@@ -14,18 +27,33 @@ class LinghuiController extends BaseController {
   }
 
   async saveWorkspace(args: { doc: LinghuiWorkspaceDocument }) {
-    await ensureServicesReady();
-    return services.linghui.saveWorkspace(args.doc);
+    try {
+      await ensureServicesReady();
+      const result = services.linghui.saveWorkspace(args.doc);
+      return result ?? toLinghuiControllerError('saveWorkspace', new Error('saveWorkspace 返回空结果'));
+    } catch (error) {
+      return toLinghuiControllerError('saveWorkspace', error);
+    }
   }
 
   async createWorkspace(args: { name?: string }) {
-    await ensureServicesReady();
-    return services.linghui.createWorkspace(args.name || '');
+    try {
+      await ensureServicesReady();
+      const result = services.linghui.createWorkspace(args.name || '');
+      return result ?? toLinghuiControllerError('createWorkspace', new Error('createWorkspace 返回空结果'));
+    } catch (error) {
+      return toLinghuiControllerError('createWorkspace', error);
+    }
   }
 
   async saveWorkspaceAs(args: { doc: LinghuiWorkspaceDocument; name?: string }) {
-    await ensureServicesReady();
-    return services.linghui.saveWorkspaceAs(args.doc, args.name);
+    try {
+      await ensureServicesReady();
+      const result = services.linghui.saveWorkspaceAs(args.doc, args.name);
+      return result ?? toLinghuiControllerError('saveWorkspaceAs', new Error('saveWorkspaceAs 返回空结果'));
+    } catch (error) {
+      return toLinghuiControllerError('saveWorkspaceAs', error);
+    }
   }
 
   async deleteWorkspace(args: { workspaceId: string }) {
@@ -35,13 +63,23 @@ class LinghuiController extends BaseController {
   }
 
   async importWorkspace(args: { filePath: string }) {
-    await ensureServicesReady();
-    return services.linghui.importWorkspace(args.filePath);
+    try {
+      await ensureServicesReady();
+      const result = await services.linghui.importWorkspace(args.filePath);
+      return result ?? toLinghuiControllerError('importWorkspace', new Error('importWorkspace 返回空结果'));
+    } catch (error) {
+      return toLinghuiControllerError('importWorkspace', error);
+    }
   }
 
   async exportWorkspace(args: { doc: LinghuiWorkspaceDocument; destPath: string }) {
-    await ensureServicesReady();
-    return { path: services.linghui.exportWorkspace(args.doc, args.destPath) };
+    try {
+      await ensureServicesReady();
+      const result = await services.linghui.exportWorkspace(args.doc, args.destPath);
+      return result ? { path: result } : toLinghuiControllerError('exportWorkspace', new Error('exportWorkspace 返回空结果'));
+    } catch (error) {
+      return toLinghuiControllerError('exportWorkspace', error);
+    }
   }
 
   async getWorkspaceDir(args: { workspaceId: string }) {

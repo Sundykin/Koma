@@ -11,6 +11,7 @@ import {
   collectGroupPositions,
   createCanvasNode,
   getNodeAbsolutePosition,
+  isPersistableLinghuiNode,
   resolveExecutionTargetNodeIds,
   toEdgeSnapshot,
   toNodeSnapshot,
@@ -176,8 +177,11 @@ export function useLinghuiCanvasImperativeHandle({
     },
 
     getExecutionContext(): LinghuiExecutionContext | null {
-      const rfNodes = reactFlowRef.current.getNodes().filter(node => node.type !== 'group');
-      const rfEdges = reactFlowRef.current.getEdges();
+      const rfNodes = reactFlowRef.current.getNodes().filter(isPersistableLinghuiNode);
+      const rfNodeIds = new Set(rfNodes.map(node => node.id));
+      const rfEdges = reactFlowRef.current.getEdges().filter(edge => (
+        rfNodeIds.has(edge.source) && rfNodeIds.has(edge.target)
+      ));
       return {
         nodes: rfNodes.map(node => toNodeSnapshot(node)),
         edges: rfEdges.map(edge => toEdgeSnapshot(edge)),

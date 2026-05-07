@@ -17,7 +17,6 @@ interface LinghuiCanvasHudProps {
     queueStatus: LinghuiExecutionQueueState['status'];
   };
   showEmpty: boolean;
-  onOpenHistory: () => void;
   onFocusFailedNode?: () => void;
   onRetryFailed?: () => void;
   onRerunAffected?: () => void;
@@ -36,7 +35,6 @@ export const LinghuiCanvasHud: React.FC<LinghuiCanvasHudProps> = ({
   zoom,
   runSummary,
   showEmpty,
-  onOpenHistory,
   onFocusFailedNode,
   onRetryFailed,
   onRerunAffected,
@@ -68,38 +66,14 @@ export const LinghuiCanvasHud: React.FC<LinghuiCanvasHudProps> = ({
       ) : null}
 
       <div className="linghuiCanvasStatusDock nopan nowheel">
-        <button
-          type="button"
+        <div
           className={`linghuiCanvasRunBadge ${hasQueue ? 'isRunning' : ''} ${runSummary.failed > 0 ? 'hasFailure' : ''}`}
-          onClick={onOpenHistory}
-          title="打开历史记录与最近运行结果"
+          aria-label={badgeLabel}
         >
           {badgeLabel}
           {runSummary.failed > 0 && <span className="isWarn">失败 {runSummary.failed}</span>}
           {runSummary.stale > 0 && <span className="isMuted">待重跑 {runSummary.stale}</span>}
-        </button>
-        {onRunAll && !hasQueue && (
-          <button
-            type="button"
-            className="linghuiCanvasRunAction isPrimary"
-            onClick={onRunAll}
-            title="生成执行计划并运行整个画布"
-          >
-            <PlayCircle size={14} />
-            <span>运行全部</span>
-          </button>
-        )}
-        {onRunSelection && !hasQueue && (
-          <button
-            type="button"
-            className="linghuiCanvasRunAction"
-            onClick={onRunSelection}
-            title="运行当前选中的节点或工作流块"
-          >
-            <Play size={13} />
-            <span>运行选中</span>
-          </button>
-        )}
+        </div>
         {runSummary.failed > 0 && onRetryFailed && !hasQueue && (
           <button
             type="button"
@@ -144,6 +118,31 @@ export const LinghuiCanvasHud: React.FC<LinghuiCanvasHudProps> = ({
       </div>
 
       <div className="linghuiCanvasTools nopan nowheel">
+        {onRunAll && !hasQueue && (
+          <button
+            type="button"
+            className="linghuiCanvasToolButton isRunPrimary"
+            onClick={onRunAll}
+            title="生成执行计划并运行整个画布"
+          >
+            <PlayCircle size={15} />
+            <span>运行全部</span>
+          </button>
+        )}
+        {onRunSelection && !hasQueue && (
+          <button
+            type="button"
+            className="linghuiCanvasToolButton isRun"
+            onClick={onRunSelection}
+            title="运行当前选中的节点或工作流块"
+          >
+            <Play size={14} />
+            <span>运行选中</span>
+          </button>
+        )}
+        {(onRunAll || onRunSelection) && !hasQueue ? (
+          <span className="linghuiCanvasToolDivider" />
+        ) : null}
         <button
           type="button"
           className={`linghuiCanvasToolButton ${canvasMode === 'hand' ? 'isActive' : ''}`}

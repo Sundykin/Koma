@@ -16,6 +16,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import type { LinghuiCanvasSelection } from '../../../../types/linghui';
+import { EMPTY_LINGHUI_NODE_RUNS } from '../../../../types/linghui';
 import { LinghuiCanvasProviders } from './LinghuiCanvasProviders';
 import { LinghuiCanvasSurface } from './LinghuiCanvasSurface';
 import { useLinghuiCanvasOverlayState } from '../hooks/useLinghuiCanvasOverlayState';
@@ -96,7 +97,6 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     onNodeMutateRef,
     onConnectionErrorRef,
     onRunSingleNodeRef,
-    onOpenDrawerRef,
   } = useLinghuiCanvasCallbackRefs({
     onSelectionChange,
     onNodeMutate,
@@ -480,7 +480,6 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
           queueStatus: executionQueue?.status ?? 'idle',
         },
         showEmpty: !workspace,
-        onOpenHistory: () => onOpenDrawerRef.current?.('history'),
         onFocusFailedNode,
         onRetryFailed,
         onRerunAffected,
@@ -525,12 +524,18 @@ const LinghuiCanvasComponent = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProp
   props,
   ref,
 ) {
+  if (!props) {
+    return null;
+  }
+
+  const nodeRuns = props.nodeRuns ?? EMPTY_LINGHUI_NODE_RUNS;
+
   return (
     <LinghuiCanvasProviders
-      nodeRuns={props.nodeRuns}
+      nodeRuns={nodeRuns}
       onConnectionError={props.onConnectionError}
     >
-      <LinghuiCanvasInner {...props} ref={ref} />
+      <LinghuiCanvasInner {...props} nodeRuns={nodeRuns} ref={ref} />
     </LinghuiCanvasProviders>
   );
 });

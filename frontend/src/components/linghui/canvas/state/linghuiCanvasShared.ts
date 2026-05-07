@@ -1,5 +1,6 @@
 import type { Edge, Node } from '@xyflow/react';
 import { nanoid } from 'nanoid';
+import { linghuiTypeToRFType } from '../../../../types/linghui';
 import type {
   LinghuiCanvasGroupData,
   LinghuiCanvasMode,
@@ -103,11 +104,66 @@ export function cloneLinghuiNodeData(data: LinghuiNodeData): LinghuiNodeData {
   };
 }
 
+const LINGHUI_RF_TYPE_TO_NODE_TYPE: Record<string, LinghuiNodeType> = {
+  'linghui-text': 'linghui/text',
+  'linghui-agent': 'linghui/agent',
+  'linghui-image': 'linghui/image',
+  'linghui-panorama': 'linghui/panorama',
+  'linghui-video': 'linghui/video',
+  'linghui-audio': 'linghui/audio',
+  'linghui-script': 'linghui/script',
+};
+
+function isKnownLinghuiNodeType(value: unknown): value is LinghuiNodeType {
+  return typeof value === 'string' && Object.values(LINGHUI_RF_TYPE_TO_NODE_TYPE).includes(value as LinghuiNodeType);
+}
+
+function resolveLinghuiTypeFromRFNode(node: Node): LinghuiNodeType | null {
+  const data = node.data as unknown as Partial<LinghuiNodeData> | undefined;
+  if (isKnownLinghuiNodeType(data?.linghuiType)) {
+    return data.linghuiType;
+  }
+  return LINGHUI_RF_TYPE_TO_NODE_TYPE[node.type ?? ''] ?? null;
+}
+
+export function isPersistableLinghuiNode(node: Node): boolean {
+  if (node.type === 'group') {
+    return false;
+  }
+
+  const nodeType = resolveLinghuiTypeFromRFNode(node);
+  if (!nodeType) {
+    return false;
+  }
+
+  const data = node.data as unknown as Partial<LinghuiNodeData> | undefined;
+  return data?.linghuiType === nodeType || node.type === linghuiTypeToRFType(nodeType);
+}
+
 export function toNodeSnapshot(node: Node): LinghuiRFNodeSnapshot {
-  const data = node.data as unknown as LinghuiNodeData;
+  const nodeType = resolveLinghuiTypeFromRFNode(node);
+  if (!nodeType) {
+    throw new Error(`无法保存未知灵绘节点: ${node.id}`);
+  }
+
+  const inputData = node.data as unknown as Partial<LinghuiNodeData> | undefined;
+  const fallbackData = createNewNodeData(nodeType);
+  const data: LinghuiNodeData = {
+    ...fallbackData,
+    ...inputData,
+    linghuiType: nodeType,
+    inputs: Array.isArray(inputData?.inputs) ? inputData.inputs : fallbackData.inputs,
+    outputs: Array.isArray(inputData?.outputs) ? inputData.outputs : fallbackData.outputs,
+    properties: {
+      ...fallbackData.properties,
+      ...(inputData?.properties ?? {}),
+    },
+    active: false,
+  };
+
   return {
     id: node.id,
-    type: node.type ?? '',
+    type: linghuiTypeToRFType(nodeType),
     position: { x: node.position.x, y: node.position.y },
     data: cloneLinghuiNodeData(data),
     parentId: node.parentId,
@@ -230,11 +286,19 @@ export function buildCanvasDocumentSnapshotFromRF(
   rfEdges: Edge[],
   viewport: LinghuiViewportState,
 ): LinghuiCanvasDocumentSnapshot {
+  const persistableNodeIds = new Set(
+    rfNodes
+      .filter(isPersistableLinghuiNode)
+      .map(node => node.id),
+  );
+
   return {
     graphData: {
       version: 2,
-      nodes: rfNodes.filter(node => node.type !== 'group').map(toNodeSnapshot),
-      edges: rfEdges.map(toEdgeSnapshot),
+      nodes: rfNodes.filter(isPersistableLinghuiNode).map(toNodeSnapshot),
+      edges: rfEdges
+        .filter(edge => persistableNodeIds.has(edge.source) && persistableNodeIds.has(edge.target))
+        .map(toEdgeSnapshot),
       groups: rfNodes.filter(node => node.type === 'group').map(toGroupSnapshot),
     },
     viewport,

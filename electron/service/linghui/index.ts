@@ -1,5 +1,9 @@
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
+import { createHash } from 'crypto';
+import archiver from 'archiver';
+import extract from 'extract-zip';
 import type Database from 'better-sqlite3';
 import { baseDB } from '../storage';
 import { copyLinghuiWorkspaceAsset, materializeLinghuiSource } from './media';
@@ -53,6 +57,448 @@ import {
   type LinghuiWorkspaceNodeRunRow,
   type LinghuiWorkspaceRow,
 } from './persistenceHelpers';
+
+interface LinghuiWorkspaceExportResource {
+  source: string;
+  archivePath: string;
+  size: number;
+}
+
+interface LinghuiWorkspaceExportResourceEntry extends LinghuiWorkspaceExportResource {
+  localPath: string;
+}
+
+interface LinghuiWorkspaceExportManifest {
+  format: 'koma-linghui-workspace';
+  version: 1;
+  exportedAt: string;
+  workspaceId: string;
+  workspaceName: string;
+  resources: LinghuiWorkspaceExportResource[];
+}
+
+interface LinghuiWorkspaceExportRecords {
+  workflowTemplates: LinghuiWorkflowTemplateRecord[];
+  assets: LinghuiWorkspaceAssetRecord[];
+  history: LinghuiWorkspaceHistoryRecord[];
+}
+
+const LINGHUI_EXPORT_FORMAT = 'koma-linghui-workspace';
+const LINGHUI_ARCHIVE_RESOURCE_PREFIX = 'koma-archive://';
+
+function ensureLinghuiZipPath(destPath: string): string {
+  const raw = String(destPath || '').trim();
+  if (!raw) {
+    throw new Error('导出路径不能为空');
+  }
+  const resolved = path.resolve(raw);
+  if (!resolved) {
+    throw new Error('导出路径不能为空');
+  }
+  if (resolved.toLowerCase().endsWith('.linghui.zip') || resolved.toLowerCase().endsWith('.zip')) {
+    return resolved;
+  }
+  return `${resolved}.linghui.zip`;
+}
+
+function normalizeArchivePath(relativePath: string): string {
+  return relativePath.split(path.sep).join('/');
+}
+
+function decodeKomaLocalSource(source: string): string {
+  if (!source.startsWith('koma-local://files/')) return source;
+  const tail = source.slice('koma-local://files'.length);
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(tail);
+  } catch {
+    decoded = tail;
+  }
+  if (/^\/[a-zA-Z]:\//.test(decoded)) return decoded.slice(1);
+  return decoded;
+}
+
+function isSkippableResourceSource(source: string): boolean {
+  return (
+    !source ||
+    source.startsWith(LINGHUI_ARCHIVE_RESOURCE_PREFIX) ||
+    source.startsWith('http://') ||
+    source.startsWith('https://') ||
+    source.startsWith('data:') ||
+    source.startsWith('blob:') ||
+    source.startsWith('sqlite://') ||
+    source.startsWith('builtin://')
+  );
+}
+
+function resolveExistingLocalFile(source: string): string | null {
+  const rawSource = decodeKomaLocalSource(source.trim());
+  if (isSkippableResourceSource(rawSource)) {
+    return null;
+  }
+  if (!path.isAbsolute(rawSource)) {
+    return null;
+  }
+  try {
+    const resolved = path.resolve(rawSource);
+    const stat = fs.statSync(resolved);
+    return stat.isFile() ? resolved : null;
+  } catch {
+    return null;
+  }
+}
+
+function sanitizeArchiveSegment(value: string): string {
+  return value.replace(/[\\/:*?"<>|\s]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'resource';
+}
+
+function cloneLinghuiValue<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function isPathInside(parent: string, child: string): boolean {
+  const relativePath = path.relative(path.resolve(parent), path.resolve(child));
+  return relativePath === '' || (!!relativePath && !relativePath.startsWith('..') && !path.isAbsolute(relativePath));
+}
+
+function makeUniqueArchivePath(archivePath: string, usedArchivePaths: Set<string>): string {
+  const normalized = normalizeArchivePath(archivePath).replace(/^\/+/, '');
+  if (!usedArchivePaths.has(normalized)) {
+    usedArchivePaths.add(normalized);
+    return normalized;
+  }
+
+  const extension = path.posix.extname(normalized);
+  const basename = normalized.slice(0, normalized.length - extension.length);
+  for (let index = 2; index < 10_000; index += 1) {
+    const candidate = `${basename}-${index}${extension}`;
+    if (!usedArchivePaths.has(candidate)) {
+      usedArchivePaths.add(candidate);
+      return candidate;
+    }
+  }
+  throw new Error(`无法为资源生成唯一导出路径: ${archivePath}`);
+}
+
+function buildArchivePathForLocalFile(localPath: string, workspaceDir: string, usedArchivePaths: Set<string>): string {
+  const resolvedFile = path.resolve(localPath);
+  const resolvedWorkspaceDir = path.resolve(workspaceDir);
+  if (isPathInside(resolvedWorkspaceDir, resolvedFile)) {
+    const relativePath = normalizeArchivePath(path.relative(resolvedWorkspaceDir, resolvedFile));
+    if (
+      relativePath.startsWith('assets/') ||
+      relativePath.startsWith('history/') ||
+      relativePath.startsWith('resources/')
+    ) {
+      return makeUniqueArchivePath(relativePath, usedArchivePaths);
+    }
+  }
+
+  const extension = path.extname(resolvedFile);
+  const basename = sanitizeArchiveSegment(path.basename(resolvedFile, extension));
+  const hash = createHash('sha1').update(resolvedFile).digest('hex').slice(0, 12);
+  return makeUniqueArchivePath(`resources/${hash}-${basename}${extension}`, usedArchivePaths);
+}
+
+function createLinghuiResourceCollector(workspaceDir: string): {
+  resources: LinghuiWorkspaceExportResourceEntry[];
+  rewriteSource: (source: string) => string | null;
+} {
+  const resources: LinghuiWorkspaceExportResourceEntry[] = [];
+  const usedArchivePaths = new Set<string>();
+  const resourceByLocalPath = new Map<string, LinghuiWorkspaceExportResourceEntry>();
+
+  return {
+    resources,
+    rewriteSource(source: string): string | null {
+      let localPath = resolveExistingLocalFile(source);
+      if (!localPath) {
+        const rawSource = decodeKomaLocalSource(source.trim());
+        const normalizedRelativeSource = normalizeArchivePath(rawSource);
+        if (
+          !isSkippableResourceSource(rawSource) &&
+          !path.isAbsolute(rawSource) &&
+          (
+            normalizedRelativeSource.startsWith('assets/') ||
+            normalizedRelativeSource.startsWith('history/') ||
+            normalizedRelativeSource.startsWith('resources/')
+          )
+        ) {
+          localPath = resolveExistingLocalFile(path.join(workspaceDir, rawSource));
+        }
+      }
+      if (!localPath) {
+        return null;
+      }
+
+      const resolvedLocalPath = path.resolve(localPath);
+      const existing = resourceByLocalPath.get(resolvedLocalPath);
+      if (existing) {
+        return `${LINGHUI_ARCHIVE_RESOURCE_PREFIX}${existing.archivePath}`;
+      }
+
+      const stat = fs.statSync(resolvedLocalPath);
+      const resource: LinghuiWorkspaceExportResourceEntry = {
+        source,
+        localPath: resolvedLocalPath,
+        archivePath: buildArchivePathForLocalFile(resolvedLocalPath, workspaceDir, usedArchivePaths),
+        size: stat.size,
+      };
+      resourceByLocalPath.set(resolvedLocalPath, resource);
+      resources.push(resource);
+      return `${LINGHUI_ARCHIVE_RESOURCE_PREFIX}${resource.archivePath}`;
+    },
+  };
+}
+
+function rewriteLinghuiLocalResourceReferences<T>(
+  value: T,
+  rewriteSource: (source: string) => string | null,
+): T {
+  if (typeof value === 'string') {
+    return (rewriteSource(value) ?? value) as T;
+  }
+  if (Array.isArray(value)) {
+    return value.map(item => rewriteLinghuiLocalResourceReferences(item, rewriteSource)) as T;
+  }
+  if (value && typeof value === 'object') {
+    const next: Record<string, unknown> = {};
+    Object.entries(value as Record<string, unknown>).forEach(([key, item]) => {
+      next[key] = rewriteLinghuiLocalResourceReferences(item, rewriteSource);
+    });
+    return next as T;
+  }
+  return value;
+}
+
+function normalizeArchiveEntryPath(archivePath: string): string {
+  const normalized = normalizeArchivePath(String(archivePath || '').trim()).replace(/^\/+/, '');
+  if (
+    !normalized ||
+    normalized.split('/').some(segment => !segment || segment === '.' || segment === '..') ||
+    path.isAbsolute(normalized)
+  ) {
+    throw new Error(`灵绘导入包包含非法资源路径: ${archivePath}`);
+  }
+  return normalized;
+}
+
+function resolveArchiveEntry(rootDir: string, archivePath: string): string {
+  const normalized = normalizeArchiveEntryPath(archivePath);
+  const resolved = path.resolve(rootDir, ...normalized.split('/'));
+  if (!isPathInside(rootDir, resolved)) {
+    throw new Error(`灵绘导入包资源路径越界: ${archivePath}`);
+  }
+  return resolved;
+}
+
+function collectLinghuiArchiveReferences(value: unknown, archivePaths: Set<string>): void {
+  if (typeof value === 'string') {
+    if (value.startsWith(LINGHUI_ARCHIVE_RESOURCE_PREFIX)) {
+      archivePaths.add(normalizeArchiveEntryPath(value.slice(LINGHUI_ARCHIVE_RESOURCE_PREFIX.length)));
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    value.forEach(item => collectLinghuiArchiveReferences(item, archivePaths));
+    return;
+  }
+  if (value && typeof value === 'object') {
+    Object.values(value).forEach(item => collectLinghuiArchiveReferences(item, archivePaths));
+  }
+}
+
+function rewriteLinghuiArchiveResourceReferences<T>(value: T, workspaceDir: string): T {
+  if (typeof value === 'string') {
+    if (!value.startsWith(LINGHUI_ARCHIVE_RESOURCE_PREFIX)) {
+      return value as T;
+    }
+    const archivePath = normalizeArchiveEntryPath(value.slice(LINGHUI_ARCHIVE_RESOURCE_PREFIX.length));
+    return path.join(workspaceDir, ...archivePath.split('/')) as T;
+  }
+  if (Array.isArray(value)) {
+    return value.map(item => rewriteLinghuiArchiveResourceReferences(item, workspaceDir)) as T;
+  }
+  if (value && typeof value === 'object') {
+    const next: Record<string, unknown> = {};
+    Object.entries(value as Record<string, unknown>).forEach(([key, item]) => {
+      next[key] = rewriteLinghuiArchiveResourceReferences(item, workspaceDir);
+    });
+    return next as T;
+  }
+  return value;
+}
+
+function mapLinghuiId(id: string | undefined, idMap: Map<string, string>): string | undefined {
+  if (!id) return id;
+  return idMap.get(id) ?? id;
+}
+
+function remapLinghuiSubgraphSnapshot<T extends {
+  nodes: LinghuiRFNodeSnapshot[];
+  edges: LinghuiRFEdgeSnapshot[];
+  groups: LinghuiRFGroupSnapshot[];
+}>(snapshot: T): {
+  snapshot: T;
+  nodeIds: Map<string, string>;
+  groupIds: Map<string, string>;
+} {
+  const nodeIds = new Map(snapshot.nodes.map(node => [node.id, randomLinghuiId()]));
+  const groupIds = new Map(snapshot.groups.map(group => [group.id, randomLinghuiId()]));
+  const edgeIds = new Map(snapshot.edges.map(edge => [edge.id, randomLinghuiId()]));
+  const nodeIdKeys = Array.from(nodeIds.keys()).sort((left, right) => right.length - left.length);
+  const replaceIdInString = (value: string): string => {
+    let next = value;
+    for (const originalId of nodeIdKeys) {
+      const replacement = nodeIds.get(originalId);
+      if (replacement) {
+        next = next.split(originalId).join(replacement);
+      }
+    }
+    return next;
+  };
+  const rewriteNodeReferences = <Value>(value: Value): Value => {
+    if (typeof value === 'string') {
+      return replaceIdInString(value) as Value;
+    }
+    if (Array.isArray(value)) {
+      return value.map(item => rewriteNodeReferences(item)) as Value;
+    }
+    if (value && typeof value === 'object') {
+      const next: Record<string, unknown> = {};
+      Object.entries(value as Record<string, unknown>).forEach(([key, item]) => {
+        next[key] = rewriteNodeReferences(item);
+      });
+      return next as Value;
+    }
+    return value;
+  };
+
+  return {
+    nodeIds,
+    groupIds,
+    snapshot: {
+      ...snapshot,
+      nodes: snapshot.nodes.map(node => ({
+        ...node,
+        id: nodeIds.get(node.id) ?? node.id,
+        parentId: mapLinghuiId(node.parentId, groupIds),
+        data: rewriteNodeReferences(node.data),
+      })),
+      edges: snapshot.edges.map(edge => ({
+        ...edge,
+        id: edgeIds.get(edge.id) ?? edge.id,
+        source: nodeIds.get(edge.source) ?? edge.source,
+        target: nodeIds.get(edge.target) ?? edge.target,
+      })),
+      groups: snapshot.groups.map(group => ({
+        ...group,
+        id: groupIds.get(group.id) ?? group.id,
+      })),
+    },
+  };
+}
+
+function remapLinghuiImportedDocument(doc: LinghuiWorkspaceDocument): {
+  doc: LinghuiWorkspaceDocument;
+  nodeIds: Map<string, string>;
+  groupIds: Map<string, string>;
+} {
+  const graphData = doc.graphData
+    ? remapLinghuiSubgraphSnapshot(doc.graphData)
+    : null;
+  const nodeIds = graphData?.nodeIds ?? new Map<string, string>();
+  const groupIds = graphData?.groupIds ?? new Map<string, string>();
+  const nextNodeRuns: Record<string, LinghuiNodeRunState> = {};
+
+  Object.entries(doc.nodeRuns || {}).forEach(([nodeId, run]) => {
+    const nextNodeId = nodeIds.get(nodeId) ?? nodeId;
+    nextNodeRuns[nextNodeId] = {
+      ...run,
+      upstreamIds: Array.isArray(run.upstreamIds)
+        ? run.upstreamIds.map(id => nodeIds.get(id) ?? id)
+        : run.upstreamIds,
+    };
+  });
+
+  return {
+    nodeIds,
+    groupIds,
+    doc: {
+      ...doc,
+      graphData: graphData?.snapshot ?? doc.graphData,
+      nodeRuns: nextNodeRuns,
+      executionLogs: (doc.executionLogs || []).map(entry => ({
+        ...entry,
+        id: randomLinghuiId(),
+        nodeId: mapLinghuiId(entry.nodeId, nodeIds),
+      })),
+    },
+  };
+}
+
+function retargetLinghuiWorkspaceRecords(
+  records: LinghuiWorkspaceExportRecords,
+  workspaceId: string,
+  importedIds: {
+    nodeIds?: Map<string, string>;
+  } = {},
+): LinghuiWorkspaceExportRecords {
+  return {
+    workflowTemplates: records.workflowTemplates.map(record => {
+      const id = randomLinghuiId();
+      const remappedSnapshot = remapLinghuiSubgraphSnapshot(record.snapshot);
+      return {
+        ...record,
+        id,
+        workspaceId,
+        sourceGroupId: mapLinghuiId(record.sourceGroupId, remappedSnapshot.groupIds),
+        snapshotPath: buildLinghuiTemplateSnapshotKey(workspaceId, id),
+        snapshot: remappedSnapshot.snapshot,
+      };
+    }),
+    assets: records.assets.map(record => {
+      const id = randomLinghuiId();
+      return {
+        ...record,
+        id,
+        workspaceId,
+        nodeId: importedIds?.nodeIds?.get(record.nodeId) ?? record.nodeId,
+        snapshotPath: buildLinghuiLibrarySnapshotKey(workspaceId, 'assets', id),
+      };
+    }),
+    history: records.history.map(record => {
+      const id = randomLinghuiId();
+      return {
+        ...record,
+        id,
+        workspaceId,
+        nodeId: importedIds?.nodeIds?.get(record.nodeId) ?? record.nodeId,
+        snapshotPath: buildLinghuiLibrarySnapshotKey(workspaceId, 'history', id),
+      };
+    }),
+  };
+}
+
+async function copyLinghuiArchiveResources(params: {
+  tempDir: string;
+  workspaceDir: string;
+  archivePaths: Set<string>;
+}): Promise<void> {
+  for (const archivePath of params.archivePaths) {
+    const sourcePath = resolveArchiveEntry(params.tempDir, archivePath);
+    const targetPath = resolveArchiveEntry(params.workspaceDir, archivePath);
+    if (!fs.existsSync(sourcePath)) {
+      continue;
+    }
+    const stat = await fs.promises.stat(sourcePath);
+    if (!stat.isFile()) {
+      continue;
+    }
+    await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
+    await fs.promises.copyFile(sourcePath, targetPath);
+  }
+}
 
 export class LinghuiService {
   private storageRoot = '';
@@ -302,7 +748,22 @@ export class LinghuiService {
     fs.rmSync(this.getWorkspaceDir(workspaceId), { recursive: true, force: true });
   }
 
-  importWorkspace(filePath: string): LinghuiWorkspaceDocument {
+  async importWorkspace(filePath: string): Promise<LinghuiWorkspaceDocument> {
+    const lowerFilePath = filePath.toLowerCase();
+    if (lowerFilePath.endsWith('.zip') || lowerFilePath.endsWith('.linghui')) {
+      return this.importWorkspacePackage(filePath);
+    }
+    return this.importWorkspaceJson(filePath);
+  }
+
+  exportWorkspace(doc: LinghuiWorkspaceDocument, destPath: string): Promise<string> {
+    if (String(destPath || '').trim().toLowerCase().endsWith('.json')) {
+      return Promise.resolve(this.exportWorkspaceJson(doc, destPath));
+    }
+    return this.exportWorkspacePackage(doc, destPath);
+  }
+
+  private importWorkspaceJson(filePath: string): LinghuiWorkspaceDocument {
     const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as Partial<LinghuiWorkspaceDocument>;
     const imported = normalizeLinghuiWorkspaceDocument({
       ...raw,
@@ -315,10 +776,131 @@ export class LinghuiService {
     return this.saveWorkspace(imported);
   }
 
-  exportWorkspace(doc: LinghuiWorkspaceDocument, destPath: string): string {
+  private exportWorkspaceJson(doc: LinghuiWorkspaceDocument, destPath: string): string {
     const normalized = normalizeLinghuiWorkspaceDocument(doc);
     fs.writeFileSync(destPath, JSON.stringify(normalized, null, 2), 'utf-8');
     return destPath;
+  }
+
+  private async exportWorkspacePackage(doc: LinghuiWorkspaceDocument, destPath: string): Promise<string> {
+    const zipPath = ensureLinghuiZipPath(destPath);
+    await fs.promises.mkdir(path.dirname(zipPath), { recursive: true });
+
+    const normalized = normalizeLinghuiWorkspaceDocument(doc);
+    const workspaceDir = this.getWorkspaceDir(normalized.id);
+    const collector = createLinghuiResourceCollector(workspaceDir);
+    const records: LinghuiWorkspaceExportRecords = {
+      workflowTemplates: this.listWorkflowTemplates(normalized.id),
+      assets: this.listWorkspaceAssets(normalized.id),
+      history: this.listWorkspaceHistoryRecords(normalized.id),
+    };
+    const exportDoc = rewriteLinghuiLocalResourceReferences(cloneLinghuiValue(normalized), collector.rewriteSource);
+    const exportRecords = rewriteLinghuiLocalResourceReferences(cloneLinghuiValue(records), collector.rewriteSource);
+    const manifest: LinghuiWorkspaceExportManifest = {
+      format: LINGHUI_EXPORT_FORMAT,
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      workspaceId: normalized.id,
+      workspaceName: normalized.name,
+      resources: collector.resources.map(({ source, archivePath, size }) => ({ source, archivePath, size })),
+    };
+
+    return new Promise((resolve, reject) => {
+      const output = fs.createWriteStream(zipPath);
+      const archive = archiver('zip', { zlib: { level: 6 } });
+
+      output.on('close', () => resolve(zipPath));
+      output.on('error', reject);
+      archive.on('error', reject);
+      archive.pipe(output);
+
+      archive.append(JSON.stringify(manifest, null, 2), { name: 'manifest.json' });
+      archive.append(JSON.stringify(exportDoc, null, 2), { name: 'workspace.json' });
+      archive.append(JSON.stringify(exportRecords.workflowTemplates, null, 2), { name: 'records/workflowTemplates.json' });
+      archive.append(JSON.stringify(exportRecords.assets, null, 2), { name: 'records/assets.json' });
+      archive.append(JSON.stringify(exportRecords.history, null, 2), { name: 'records/history.json' });
+      for (const resource of collector.resources) {
+        archive.file(resource.localPath, { name: resource.archivePath });
+      }
+      archive.finalize();
+    });
+  }
+
+  private async importWorkspacePackage(filePath: string): Promise<LinghuiWorkspaceDocument> {
+    const tempDir = path.join(os.tmpdir(), `koma-linghui-import-${Date.now()}-${randomLinghuiId(6)}`);
+
+    try {
+      await fs.promises.mkdir(tempDir, { recursive: true });
+      await extract(filePath, { dir: tempDir });
+
+      const manifestPath = path.join(tempDir, 'manifest.json');
+      const workspacePath = path.join(tempDir, 'workspace.json');
+      if (!fs.existsSync(manifestPath) || !fs.existsSync(workspacePath)) {
+        throw new Error('灵绘导入包缺少 manifest.json 或 workspace.json');
+      }
+
+      const manifest = JSON.parse(await fs.promises.readFile(manifestPath, 'utf-8')) as Partial<LinghuiWorkspaceExportManifest>;
+      if (manifest.format !== LINGHUI_EXPORT_FORMAT) {
+        throw new Error('不是有效的灵绘工作区导出包');
+      }
+
+      const rawDoc = JSON.parse(await fs.promises.readFile(workspacePath, 'utf-8')) as Partial<LinghuiWorkspaceDocument>;
+      const readRecordFile = async <T>(relativePath: string, fallback: T): Promise<T> => {
+        const target = resolveArchiveEntry(tempDir, relativePath);
+        if (!fs.existsSync(target)) {
+          return fallback;
+        }
+        return JSON.parse(await fs.promises.readFile(target, 'utf-8')) as T;
+      };
+      const rawRecords: LinghuiWorkspaceExportRecords = {
+        workflowTemplates: await readRecordFile('records/workflowTemplates.json', []),
+        assets: await readRecordFile('records/assets.json', []),
+        history: await readRecordFile('records/history.json', []),
+      };
+
+      const importedId = randomLinghuiId();
+      const importedWorkspaceDir = this.getWorkspaceDir(importedId);
+      const archivePaths = new Set<string>();
+      collectLinghuiArchiveReferences(rawDoc, archivePaths);
+      collectLinghuiArchiveReferences(rawRecords, archivePaths);
+      if (Array.isArray(manifest.resources)) {
+        manifest.resources.forEach(resource => {
+          if (resource?.archivePath) {
+            archivePaths.add(normalizeArchiveEntryPath(resource.archivePath));
+          }
+        });
+      }
+      await copyLinghuiArchiveResources({
+        tempDir,
+        workspaceDir: importedWorkspaceDir,
+        archivePaths,
+      });
+
+      const now = Date.now();
+      const importedDoc = normalizeLinghuiWorkspaceDocument(rewriteLinghuiArchiveResourceReferences({
+        ...rawDoc,
+        id: importedId,
+        name: sanitizeLinghuiWorkspaceName(rawDoc.name ?? manifest.workspaceName ?? path.basename(filePath).replace(/\.linghui\.zip$/i, '').replace(/\.zip$/i, '')),
+        createdAt: now,
+        updatedAt: now,
+        lastOpenedAt: now,
+      } as LinghuiWorkspaceDocument, importedWorkspaceDir));
+      const remappedDocument = remapLinghuiImportedDocument(importedDoc);
+      const importedRecords = retargetLinghuiWorkspaceRecords(
+        rewriteLinghuiArchiveResourceReferences(rawRecords, importedWorkspaceDir),
+        importedId,
+        {
+          nodeIds: remappedDocument.nodeIds,
+          groupIds: remappedDocument.groupIds,
+        },
+      );
+
+      const saved = this.saveWorkspace(remappedDocument.doc);
+      this.replaceWorkspaceExportRecords(importedId, importedRecords);
+      return saved;
+    } finally {
+      await fs.promises.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
+    }
   }
 
   listWorkflowTemplates(workspaceId: string): LinghuiWorkflowTemplateRecord[] {
@@ -358,6 +940,182 @@ export class LinghuiService {
         groups: (listTemplateGroups.all(row.id) as LinghuiGraphGroupRow[]).map(groupRowToSnapshot),
       },
     }));
+  }
+
+  private replaceWorkspaceExportRecords(workspaceId: string, records: LinghuiWorkspaceExportRecords): void {
+    baseDB.transaction(() => {
+      this.getDb().prepare('DELETE FROM linghui_workflow_templates WHERE workspace_id = ?').run(workspaceId);
+      this.getDb().prepare('DELETE FROM linghui_workspace_assets WHERE workspace_id = ?').run(workspaceId);
+      this.getDb().prepare('DELETE FROM linghui_workspace_history_records WHERE workspace_id = ?').run(workspaceId);
+
+      records.workflowTemplates.forEach(template => {
+        this.insertWorkflowTemplateRecord({
+          ...template,
+          workspaceId,
+          source: 'workspace',
+          kind: 'saved-workflow',
+        });
+      });
+      records.assets.forEach(record => this.insertWorkspaceAssetRecord({
+        ...record,
+        workspaceId,
+      }));
+      records.history.forEach(record => this.insertWorkspaceHistoryRecord({
+        ...record,
+        workspaceId,
+      }));
+    });
+  }
+
+  private insertWorkflowTemplateRecord(record: LinghuiWorkflowTemplateRecord): void {
+    const stats = buildLinghuiGraphStats({
+      version: 2,
+      nodes: record.snapshot.nodes,
+      edges: record.snapshot.edges,
+      groups: record.snapshot.groups,
+    });
+    const sampleNodeLabels = record.sampleNodeLabels?.length
+      ? record.sampleNodeLabels
+      : record.snapshot.nodes
+          .map(node => node.data?.label?.trim())
+          .filter((label): label is string => Boolean(label))
+          .slice(0, 4);
+
+    this.getDb().prepare(`
+      INSERT OR REPLACE INTO linghui_workflow_templates (
+        id, workspace_id, name, description, source, kind, recipe_key,
+        created_at, updated_at, source_group_id, node_count, link_count, group_count, sample_node_labels_json
+      ) VALUES (?, ?, ?, ?, 'workspace', 'saved-workflow', NULL, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      record.id,
+      record.workspaceId,
+      record.name?.trim() || '未命名工作流',
+      record.description?.trim() || null,
+      record.createdAt || Date.now(),
+      record.updatedAt || record.createdAt || Date.now(),
+      record.sourceGroupId ?? null,
+      stats.nodeCount,
+      stats.linkCount,
+      stats.groupCount,
+      stringifyLinghuiJson(sampleNodeLabels),
+    );
+
+    this.getDb().prepare('DELETE FROM linghui_workflow_template_groups WHERE template_id = ?').run(record.id);
+    this.getDb().prepare('DELETE FROM linghui_workflow_template_nodes WHERE template_id = ?').run(record.id);
+    this.getDb().prepare('DELETE FROM linghui_workflow_template_edges WHERE template_id = ?').run(record.id);
+
+    const insertGroup = this.getDb().prepare(`
+      INSERT INTO linghui_workflow_template_groups (
+        id, template_id, position_x, position_y, label, color, collapsed, width, height, sort_order
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    record.snapshot.groups.forEach((group, index) => {
+      insertGroup.run(
+        group.id,
+        record.id,
+        group.position.x,
+        group.position.y,
+        group.data.label,
+        group.data.color,
+        group.data.collapsed ? 1 : 0,
+        group.style.width,
+        group.style.height,
+        index,
+      );
+    });
+
+    const insertNode = this.getDb().prepare(`
+      INSERT INTO linghui_workflow_template_nodes (
+        id, template_id, type, position_x, position_y, width, height, parent_group_id,
+        label, accent, background, view_mode, active, properties_json, inputs_json, outputs_json, sort_order
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    record.snapshot.nodes.forEach((node, index) => {
+      insertNode.run(
+        node.id,
+        record.id,
+        node.type,
+        node.position.x,
+        node.position.y,
+        node.width ?? null,
+        node.height ?? null,
+        node.parentId ?? null,
+        node.data.label,
+        node.data.accent,
+        node.data.background,
+        node.data.viewMode ?? null,
+        node.data.active ? 1 : 0,
+        stringifyLinghuiJson(node.data.properties ?? {}),
+        stringifyLinghuiJson(node.data.inputs ?? []),
+        stringifyLinghuiJson(node.data.outputs ?? []),
+        index,
+      );
+    });
+
+    const insertEdge = this.getDb().prepare(`
+      INSERT INTO linghui_workflow_template_edges (
+        id, template_id, source_node_id, target_node_id, source_handle, target_handle, edge_type, data_json, sort_order
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    record.snapshot.edges.forEach((edge, index) => {
+      insertEdge.run(
+        edge.id,
+        record.id,
+        edge.source,
+        edge.target,
+        edge.sourceHandle,
+        edge.targetHandle,
+        edge.type ?? null,
+        edge.data ? stringifyLinghuiJson(edge.data) : null,
+        index,
+      );
+    });
+  }
+
+  private insertWorkspaceAssetRecord(record: LinghuiWorkspaceAssetRecord): void {
+    this.getDb().prepare(`
+      INSERT OR REPLACE INTO linghui_workspace_assets (
+        id, workspace_id, node_id, node_type, kind, name, created_at,
+        source, preview_source, poster_source, text, snapshot_path, metadata_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      record.id,
+      record.workspaceId,
+      record.nodeId,
+      record.nodeType,
+      record.kind,
+      record.name || '未命名资产',
+      record.createdAt || Date.now(),
+      record.source ?? null,
+      record.previewSource ?? null,
+      record.posterSource ?? null,
+      record.text ?? null,
+      record.snapshotPath ?? buildLinghuiLibrarySnapshotKey(record.workspaceId, 'assets', record.id),
+      stringifyLinghuiJson(record.metadata ?? {}),
+    );
+  }
+
+  private insertWorkspaceHistoryRecord(record: LinghuiWorkspaceHistoryRecord): void {
+    this.getDb().prepare(`
+      INSERT OR REPLACE INTO linghui_workspace_history_records (
+        id, workspace_id, node_id, node_type, kind, name, created_at,
+        source, preview_source, poster_source, text, snapshot_path, metadata_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      record.id,
+      record.workspaceId,
+      record.nodeId,
+      record.nodeType,
+      record.kind,
+      record.name || '未命名结果',
+      record.createdAt || Date.now(),
+      record.source ?? null,
+      record.previewSource ?? null,
+      record.posterSource ?? null,
+      record.text ?? null,
+      record.snapshotPath ?? buildLinghuiLibrarySnapshotKey(record.workspaceId, 'history', record.id),
+      stringifyLinghuiJson(record.metadata ?? {}),
+    );
   }
 
   createWorkflowTemplate(params: {

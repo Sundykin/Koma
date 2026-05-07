@@ -42,6 +42,10 @@
 - 日志目录必须跟随用户可设置的 `storageRoot`，不能固定 Electron `userData`。本轮把 `diagnosticsService` 初始化到 `${storageRoot}/logs`，并在 `project.setStorageRoot` 时同步 `app.setAppLogsPath`。
 - IPC 安全边界采用显式白名单：renderer 只能调用 `controller/diagnostics/appendRendererLog`、`listLogs`、`clearRendererLogs`、`exportLogs`，不能指定任意写入路径或任意打包目录。
 - 导出 zip 由主进程扫描固定日志根生成，包含 `manifest.json`、renderer/console/main/Electron 日志；单文件大小和递归深度都受限，避免把用户目录任意内容打进诊断包。
+- 本次“打开两个空节点画布后新建报错”的根因是空壳 React Flow 节点进入了 `graphData.nodes`：这些节点没有 `type` / `data.linghuiType`，后端 `normalizeLinghuiWorkspaceDocument` 严格校验后抛错，而 ee-core controller 异常会被吞成 `undefined`，前端因此只能看到“未返回工作区文档”。
+- 修复需要三层同时做：画布快照只持久化可识别灵绘节点并过滤悬空边；后端 normalize 对空壳节点做兼容丢弃、继续拒绝真正不支持的旧节点类型；`LinghuiController` 与 `linghuiStorage` 把结构化错误返回/空返回转成可读异常。
+- 灵绘项目导出不能只写 JSON：真实画布引用会散落在节点属性、运行结果、资产库、历史记录和模板快照里，因此导出包采用 `koma-archive://` 中间引用统一收集资源，导入时再重写到新的工作区目录。
+- 导入灵绘工作区必须重分配节点/边/分组以及模板、资产、历史记录 id；否则 SQLite 主键和画布节点 id 都可能与本机已有工作区冲突。
 
 ## 2026-05-03 Theme System Architecture
 

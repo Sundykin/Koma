@@ -27,6 +27,7 @@ import { getCharacterCostumePhotoSource } from '../../utils/mediaSelectors';
 const logger = createLogger('ProjectAssetOverview');
 
 type ProjectAssetType = 'character' | 'scene' | 'prop';
+type ProjectAssetTabKey = 'characters' | 'scenes' | 'props';
 type ProjectAsset = Character | Scene | Prop;
 
 const assetTypeLabel: Record<ProjectAssetType, string> = {
@@ -108,6 +109,7 @@ export const ProjectAssetOverview = forwardRef<ProjectAssetOverviewRef, ProjectA
   const [props, setProps] = useState<Prop[]>([]);
   const [orphanedCount, setOrphanedCount] = useState(0);
   const [deletingAssetIds, setDeletingAssetIds] = useState<Set<string>>(() => new Set());
+  const [activeTab, setActiveTab] = useState<ProjectAssetTabKey>('characters');
 
   const loadAssets = useCallback(async () => {
     setLoading(true);
@@ -315,7 +317,8 @@ export const ProjectAssetOverview = forwardRef<ProjectAssetOverviewRef, ProjectA
 
       {/* Tab 内容 */}
       <Tabs
-        defaultActiveKey="characters"
+        activeKey={activeTab}
+        onChange={(key) => setActiveTab(key as ProjectAssetTabKey)}
         centered
         size="small"
         className="flex-1 overflow-hidden [&_.ant-tabs-content]:h-full [&_.ant-tabs-tabpane]:h-full"
