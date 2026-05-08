@@ -105,7 +105,7 @@ export interface ShotRow {
   duration?: number;
   image_prompt?: string;
   video_prompt?: string;
-  image_mode?: 'normal' | 'grid';
+  image_mode?: 'normal' | 'grid' | 'grid-9' | 'grid-4';
   dialogue?: string;
   emotion?: string;
   confirmed?: number;

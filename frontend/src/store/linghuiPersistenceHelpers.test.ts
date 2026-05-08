@@ -46,6 +46,86 @@ describe('linghui persistence helpers', () => {
     }));
   });
 
+  it('preserves panorama and director3d semantics when loading stored node rows', () => {
+    const panorama = nodeRowToSnapshot({
+      id: 'panorama-1',
+      type: 'linghui-panorama',
+      position_x: 120,
+      position_y: 48,
+      label: '全景',
+      accent: '#22c55e',
+      background: '#0f1720',
+      active: 0,
+      properties_json: '{"projectionMode":"ar720-band"}',
+      inputs_json: '[]',
+      outputs_json: '[]',
+      sort_order: 0,
+    } satisfies LinghuiGraphNodeRow);
+    const director = nodeRowToSnapshot({
+      id: 'director-1',
+      type: 'linghui-director3d',
+      position_x: 360,
+      position_y: 48,
+      label: '3D 导演',
+      accent: '#38bdf8',
+      background: '#0f1720',
+      active: 0,
+      properties_json: '{"scene":{"version":1}}',
+      inputs_json: '[]',
+      outputs_json: '[]',
+      sort_order: 1,
+    } satisfies LinghuiGraphNodeRow);
+
+    expect(panorama).toEqual(expect.objectContaining({
+      type: 'linghui-panorama',
+      data: expect.objectContaining({
+        linghuiType: 'linghui/panorama',
+      }),
+    }));
+    expect(director).toEqual(expect.objectContaining({
+      type: 'linghui-director3d',
+      data: expect.objectContaining({
+        linghuiType: 'linghui/director3d',
+      }),
+    }));
+  });
+
+  it('recovers panorama and director3d semantics from stored properties after an accidental text downgrade', () => {
+    const panorama = nodeRowToSnapshot({
+      id: 'panorama-text-1',
+      type: 'linghui-text',
+      position_x: 120,
+      position_y: 48,
+      label: '全景',
+      accent: '#22c55e',
+      background: '#0f1720',
+      active: 0,
+      properties_json: '{"projectionMode":"ar720-band","panoramaTemplate":"auto"}',
+      inputs_json: '[]',
+      outputs_json: '[]',
+      sort_order: 0,
+    } satisfies LinghuiGraphNodeRow);
+    const director = nodeRowToSnapshot({
+      id: 'director-text-1',
+      type: 'linghui-text',
+      position_x: 360,
+      position_y: 48,
+      label: '3D 导演',
+      accent: '#38bdf8',
+      background: '#0f1720',
+      active: 0,
+      properties_json: '{"scene":{"version":1,"actors":[]}}',
+      inputs_json: '[]',
+      outputs_json: '[]',
+      sort_order: 1,
+    } satisfies LinghuiGraphNodeRow);
+
+    expect(panorama.type).toBe('linghui-panorama');
+    expect(panorama.data.linghuiType).toBe('linghui/panorama');
+    expect(director.type).toBe('linghui-director3d');
+    expect(director.data.linghuiType).toBe('linghui/director3d');
+  });
+
   it('uses sqlite snapshot keys for library records instead of filesystem json paths', () => {
     const assetRecord = libraryRowToAssetRecord({
       id: 'asset-1',

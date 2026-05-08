@@ -142,13 +142,16 @@ describe('VideoNode', () => {
 
   it('播放时切回 video 渲染，暂停后把当前帧同步到 canvas', async () => {
     const drawImageMock = vi.fn();
-    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+    const context = {
       setTransform: vi.fn(),
       clearRect: vi.fn(),
       fillRect: vi.fn(),
       drawImage: drawImageMock,
       fillStyle: '',
-    } as unknown as CanvasRenderingContext2D);
+    } as unknown as CanvasRenderingContext2D;
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation((
+      (contextId: string) => (contextId === '2d' ? context : null)
+    ) as HTMLCanvasElement['getContext']);
 
     useNodeRunStateMock.mockReturnValue({
       status: 'succeeded',

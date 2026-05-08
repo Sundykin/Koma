@@ -1,5 +1,55 @@
 # Findings
 
+## 2026-05-08 Linghui Panorama + Director3D Stabilization
+
+- `docs/linghui-panorama-and-3d-director-workbench-plan.md` 已把近期优先级写清楚：先修全景 projection/prompt/viewer 契约，再做 `linghui/director3d` MVP；当前用户的阻塞点是 director3d 无法进入编辑，因此本轮先处理编辑入口。
+- 当前工作树已有未提交 director3d 半成品：`frontend/src/types/linghui.ts` 已包含 `linghui/director3d` 类型，且存在 `frontend/src/components/linghui/director3d/`、`Director3DNodeEditor.tsx`、`Director3DNode.tsx` 和 `_director3d.scss` 未跟踪文件；这些应视为已有工作继续接入，不回滚。
+- `git status --short` 同时显示大量全景与图片节点相关修改，说明本轮修复必须保持小范围，避免覆盖全景半成品。
+- `linghui/director3d` 无法进入编辑的直接原因是 `useLinghuiCanvasNodeInteractions.openNodeEditor` 的节点类型白名单漏了 `linghui/director3d`；点击节点时 selection 被清空，`Director3DNode` 内部的 `useLinghuiNodeEditorVisibility` 永远为 false。
+- 前端持久化快照的 `LINGHUI_RF_TYPE_TO_NODE_TYPE` 也漏了 `linghui-director3d`，Electron 文档 normalize 的 `CURRENT_LINGHUI_TYPES` / `CURRENT_RF_TYPES` 同样漏了 director3d；即使节点能打开，保存/恢复路径也会不稳定。
+- 新增 director3d 视口半成品里有硬编码颜色，会被当前样式纪律脚本拦截；本轮将其收敛到 CSS token 解析工具，并把全景 seam 诊断里的 inline color 移到 Sass class。
+- DevTools MCP 当前被已有 Chrome profile 占用，无法做真实浏览器点击烟测；本轮补了 hook 级测试，直接覆盖“打开 director3d 节点编辑器会设置 editor selection”的入口行为。
+- 用户进一步明确：3D 导演台编辑界面不能挂在节点下方，必须是独立全屏工作台；相机也不能以“虚拟机位”物体标注在场景中，工作台编辑视角本身就是最终相机。
+- 因此 director3d 保持由节点 selection 触发，但 `LinghuiNodeEditor` 对 `linghui/director3d` 直接渲染 antd fullscreen Modal；节点卡片不再使用 `hasInlineEditor` 状态。
+- `Director3DViewport` 已从“编辑相机 + 虚拟 stage camera marker”改为单一工作台相机：orbit/pan/zoom 后写回 scene camera，导出线稿时 `captureCurrentView` 使用当前视角，而不是另一个虚拟相机参数。
+- 右侧属性面板不再暴露 camera position/lookAt 表单；未选中假人时只编辑 FOV、比例和背景，视角预设从左侧“视角” tab 触发。
+- 进一步排查确认：假人点击后立刻失活，是 R3F actor pointer down 后仍触发外层 viewport `onClick`，调用 `onCanvasClick` 把 selection 清空；需要在 actor pointer down 后抑制下一次 viewport click。
+- 假人拖动不自由的根因是拖动计算用了“本次 pointer move 的 dx/dy + 初始位置”，每帧都会围绕初始点小幅重算；改成“累计 pointer 位移 + 初始位置”后可连续拖动。
+- 全屏高度不满的风险点在 AntD Modal 多层结构：只设 `.ant-modal-content` 不够，必须同时覆盖 root / wrap / modal / content / body，并让 director3d editor panel/layout 用 100vh。
+- 用户继续反馈 X 方向相反且“不跟手”，说明 delta 映射仍然不够。更稳的拖动模型是把鼠标屏幕坐标通过当前工作台相机反投影成 ray，再与假人脚底所在的水平平面求交；假人位置 = 当前鼠标地面交点 + 点击时的偏移量。这样不依赖 yaw/right/forward 的手写方向映射，鼠标在哪，脚底平面上的目标点就在哪。
+- 继续排查当前代码后发现：ray-plane 版本的拖动仍然在 React 外层 div 里用 `cameraStateRef` 重建 `PerspectiveCamera`，而真实视口相机在 `EditorCameraRig.useFrame` 中用 lerp 追目标；快速移动或刚切视角后，重建相机与真实 R3F camera 会不一致，表现就是假人不跟手或方向感错误。拖动应放进 R3F 子组件，直接读 `useThree()` 的 live `camera` 和 `gl.domElement`。
+- 新拖动层 `ActorDragLayer` 放在 R3F Canvas 内部：actor pointer down 时记录 actor 位置与鼠标落点偏移，window pointermove 期间用 live camera 对鼠标坐标做 ray-plane 求交，并用本地 `dragPreview` 立即渲染位置，避免等父级 React 状态写回造成拖动延迟。
+- 拖动写回策略进一步调整为：pointermove 只更新 `ActorDragLayer` 内部 preview，不再每帧调用 `updateNodeData`；pointerup / cancel / blur 时把最终位置一次性提交到 scene。这能避免全局节点数据频繁变更导致 editor/store/React Flow 重渲染。
+- 保存后退出再进，panorama/director3d 不可操作的高概率原因有三类：早期半成品可能把 `linghui/panorama` 保存成 `type: linghui-image`；恢复 RF 节点时只 clone snapshot，没有用当前 `createNewNodeData` 补齐 inputs/outputs/properties；如果退出前节点运行态是 `running`，重新进入后 UI/执行链路会继续认为仍在执行中。
+- 后端文档 normalize 现在对“已知语义类型 + 已知 RF 类型但不匹配”的节点采用修复式规范化，直接改成语义类型对应的当前 RF type；仍然拒绝真正未知旧类型。
+- 前端 `buildRFNodesFromSnapshot` 现在恢复节点时合并当前默认 data：旧 panorama 会补回 `21:9`、`panoramaTemplate`、`projectionMode` 和连接点；旧 director3d 会补回默认 `scene` 和输入/输出连接点。
+- `LinghuiPage` 激活工作区时把恢复出来的 `running` nodeRuns 标为 `stale` 并提示“上次执行已中断，可重新运行”，但保存中的运行态不会被此逻辑打断。
+- 重新进入后全景/3D 导演台退化为普通文本节点的直接根因不在前端 restore，而在 Electron SQLite persistence helper：`electron/service/linghui/persistenceHelpers.ts` 的 `rfTypeToLinghuiType()` 仍只认识 text/agent/image/video/audio/script，`linghui-panorama` 和 `linghui-director3d` 从数据库读出时走 default，写成了 `linghui/text`。
+- 为避免用户已经在退化状态下二次保存，`nodeRowToSnapshot()` 现在还会根据 stored `properties` 做语义恢复：`scene.version === 1` 恢复为 `linghui/director3d`，`projectionMode` / `panoramaTemplate` 恢复为 `linghui/panorama`，并同步把 RF type 规范化回 `linghui-director3d` / `linghui-panorama`。
+
+## 2026-05-08 Unified Linghui Node Ports
+
+- 需求可接受，但必须从“端口语义”改为“节点语义”：画布只展示一个输入点/输出点；执行层仍保留按 result kind 过滤，节点自行从全部上游中挑选图片、文本、视频、音频、storyboard 等需要的数据。
+- 当前多端口来源有三处：节点组件按 `nodeData.inputs/outputs` 渲染多个 `LinghuiNodeHandle`；`isLinghuiConnectionValid()` 按 handle index 做 slot type 校验；`createExecutionNodeView()` 的 `getInputResult(slot)` / `getAllInputResults(slot)` 只读对应 `input-N` 的上游。
+- 当前性能已有一层保护：`LinghuiCanvasStage` 在 `nodes.length + edges.length >= 120` 时开启 React Flow culling。统一端口可进一步减少 DOM handle 数量和无意义分叉边，但仍要保留 DAG 边本身用于执行依赖。
+- 旧工作区里已经持久化的 `input-1` / `output-1` 边不能直接丢；需要读取/保存时兼容，执行聚合应把所有直接上游边都视为同一个输入集合。
+- 实施后端口 UI 已收敛成 `LinghuiNodePorts`：节点能力声明仍保留在 `inputs/outputs`，但 React Flow 物理 handle 只渲染 `input-0` / `output-0`，端口 tooltip 汇总该节点可消费/输出的语义槽位。
+- 连接校验现在只看节点级约束，不再用 handle 编号推断 slot 类型；这允许图片接文本、图片接脚本等链路成立，真正是否消费由目标节点执行时的 `dataType` 过滤决定。
+- 执行层不能简单把所有上游结果原样返回给每个 slot，否则文本/脚本/视频节点会因为多次调用 `getAllInputResults(1/2/3)` 重复拼接同一段文本；正确模型是先收集全链路上游，再按目标 slot 的 `dataType` 返回子集。
+- 编辑器侧也有旧端口依赖：参考视频/音频原来分别筛 `input-3` / `input-2`。统一端口后改为遍历全链路上游节点并按媒体 kind/节点属性收集参考资源，避免保存恢复后编辑器参考区丢失。
+- 画布保存和恢复都把 edge handles 规范化到统一端口；旧测试 fixture 中的 `input-1` 等仍保留用于验证执行/提示词引用对历史边兼容，但运行时新建/保存的边不再产生多 slot handle。
+- 下游引用数量统计必须和执行过滤一样按媒体 kind 分桶；仅遍历全链路上游不够。`referenceImages/referenceVideos/referenceAudios` 如果直接取 `primary.source`，4 张图片 + 2 个视频会同时被三类列表各计为 6 个。
+
+## 2026-05-08 Full TSC Debt Cleanup
+
+- `frontend npx tsc --noEmit --project tsconfig.json` 当前失败集中在 13 类：Electron timeline 持久化 viewMode union、Canvas context union、GPUCanvasContext 测试 mock、Antd message API 调用参数、InputNumber ref 类型、ES2023 `findLastIndex`、不可能的状态比较、Electron project bridge 类型缺 `setStorageRoot`、测试 spread 参数、TimelineData fixture、AsyncTask fixture cast、storageConfig bridge 类型、视频生成媒体输入 union。
+- 处理原则：业务代码用类型保护/接口补齐/安全收窄，不用 `any` 掩盖真实数据结构；测试代码只收紧 mock/fixture 类型，不改变测试目标。
+- frontend tsc 已清零后，root `tsconfig.json` 仍会通过 Electron 导入链路触达部分 frontend 文件；根因是 root include 只覆盖 `electron/**/*`，没有加载 `frontend/src/types/electron-window.d.ts` 的 Window declaration merging。最终采用局部 `ElectronBridgeWindow`/window cast 收窄，避免扩大 root tsconfig include 半径。
+- `linghuiRecipeTemplates.ts` 的内置模板已经按用户方向隐藏，旧 builder 函数不再被引用；删除未使用构造函数比恢复空列表不可见模板更符合“不需要工作流模板”的现状。
+- activation 默认管理渠道当前实际为 5 个：llm / tti / itv(grok) / itvJimeng / tts；测试仍按 4 个断言属于历史债务。
+- `mediaTaskBindingService.test.ts` 的 `vi.mock` factory 必须使用 `vi.hoisted` mocks，否则 Vitest hoist 后会在初始化前读取普通顶层 mock 变量。
+- 当前验证结果：root `npx tsc --noEmit --project tsconfig.json` 通过；frontend `npx tsc --noEmit --project tsconfig.json` 通过；11 个目标测试文件共 54 个测试通过；frontend build、Electron build、`git diff --check` 通过。
+
 ## 2026-05-06 Linghui Tapnow-Base Capability Audit
 
 - 当前 Koma 工作树已有未提交灵绘改动，不能回滚：`linghui/panorama` 新编辑器/目录已出现，并且类型、节点定义、执行计划、共享执行、画布交互、图片节点和持久化文档都有修改。

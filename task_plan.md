@@ -1,5 +1,103 @@
 # Task Plan
 
+## Session: 2026-05-08 Linghui Panorama + Director3D Stabilization
+
+### Goal
+- 修复 `linghui/director3d` 节点无法进入编辑的问题。
+- 在不回滚现有半成品改动的前提下，优先打通节点创建、画布卡片、编辑器挂载和基础验证。
+- 继续以 `docs/linghui-panorama-and-3d-director-workbench-plan.md` 为产品方向，后续再推进全景投影契约与导演台能力增强。
+
+### Scope
+- `frontend/src/types/linghui.ts`
+- `frontend/src/components/linghui/library/state/linghuiNodeDefs.ts`
+- `frontend/src/components/linghui/nodes/**`
+- `frontend/src/components/linghui/editors/components/**`
+- `frontend/src/components/linghui/director3d/**`
+- `frontend/src/components/linghui/page/styles/**`
+- 必要测试与本地烟测
+
+### Phases
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Current State Recovery | complete | 读取计划文档、现有未提交改动和 director3d 接入点 |
+| 2. Edit Entry Diagnosis | complete | 定位无法进入编辑的入口断点：节点类型映射、交互 hook、编辑器可见性、渲染异常 |
+| 3. Targeted Fix | complete | 小范围修复 director3d 编辑入口，必要时补齐类型/样式/默认值 |
+| 4. Validation | complete | 运行针对性测试/构建，必要时启动页面烟测 |
+
+### Acceptance Criteria
+- `linghui/director3d` 节点在画布上可创建/展示。
+- 双击或已有节点编辑入口能打开 3D 导演工作台编辑器。
+- 编辑器打开后不因运行时异常白屏或被交互逻辑拦截。
+- 修复不破坏现有全景节点接入。
+
+### Error Log
+| Error | Attempt | Resolution |
+|------|---------|------------|
+| DevTools MCP 无法接管 Chrome profile | 1 | 改为补 `useLinghuiCanvasNodeInteractions` hook 测试，直接覆盖 director3d 打开编辑入口 |
+| `npm run check:style-discipline` failed | 1 | 首次失败包含新增 director3d/panorama 路径；已收敛新增路径颜色/inline style，复跑后剩余仅为既有 project/settings/storyboard/chat/theme/index 债务 |
+| 统一端口目标测试中脚本分镜时长断言仍期望 10 秒 | 1 | 当前 `normalizeVideoDurationSeconds` 会归一到允许档位 12 秒；更新测试断言为当前行为 |
+
+### Follow-up: Fullscreen Director3D Workbench
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Fullscreen Editor | complete | `linghui/director3d` 编辑器改为独立全屏 Modal，不再作为节点下方 inline 面板出现 |
+| 2. Real View Camera | complete | 移除虚拟相机/画幅标注，工作台编辑视角即真实取景视角 |
+| 3. Current View Export | complete | 导出线稿时使用当前工作台视角，并将该视角写回 scene camera / prompt fragment |
+| 4. Validation | complete | 运行目标测试、生产构建、样式纪律边界和 diff check |
+
+### Follow-up: Fullscreen Height + Actor Interaction
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Height Fix | complete | 覆盖 AntD Modal root/wrap/modal/content/body，并让 director3d layout 按 100vh 撑满 |
+| 2. Selection Fix | complete | actor pointer down 后抑制下一次 viewport click，避免点击假人后立刻失活 |
+| 3. Drag Fix | complete | actor 拖动改用累计 pointer 位移计算，支持连续自由拖动 |
+| 4. Validation | complete | 运行目标测试、生产构建、样式纪律边界和 diff check |
+
+### Follow-up: Ray-Plane Actor Drag
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Drag Model Redesign | complete | 假人拖动从屏幕 delta 估算改为当前相机 ray-plane 求交 |
+| 2. Direction/Follow Fix | complete | 用鼠标地面交点 + 点击偏移量设置 actor position，解决 X 方向反和不跟手 |
+| 3. Validation | complete | 运行目标测试、生产构建、样式纪律边界和 diff check |
+
+### Follow-up: Live-Camera Actor Drag
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Root Cause Check | complete | 确认现有 ray-plane 拖动仍通过重建 cameraStateRef 相机计算，可能与真实 R3F camera 滞后 |
+| 2. Drag Controller Refactor | complete | 将假人拖动控制下沉到 Canvas 内部，使用 useThree 的真实 camera/gl 射线；拖动中局部预览，松手一次写回 |
+| 3. Validation | complete | 运行目标测试、构建和 diff check；记录样式脚本/tsc 既有失败边界 |
+
+### Follow-up: Panorama + Director3D Restore Operability
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Persistence Diagnosis | complete | 定位保存恢复后不可操作的风险：旧半成品 RF 类型不一致、恢复时未补默认 slots/properties、上次 running 状态持久化 |
+| 2. Restore Repair | complete | 后端 normalize 修正已知语义节点 RF 类型；前端快照恢复合并当前节点默认结构；激活工作区时中断 running 转 stale |
+| 3. Validation | complete | 目标测试、前端构建、Electron 构建、样式边界和 diff check |
+
+### Follow-up: Panorama + Director3D SQLite Restore Type Regression
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Regression Diagnosis | complete | 定位重新进入后退化成文本节点的根因：SQLite row → snapshot 的 Electron persistence helper 旧映射缺 `linghui-panorama` / `linghui-director3d` |
+| 2. Restore Mapping Fix | complete | 补齐 row type 映射，并用属性指纹恢复已误保存为 `linghui-text` 的全景/导演台节点 |
+| 3. Validation | complete | 运行 persistence/document/canvas/type 目标测试、root/frontend tsc、Electron build、frontend build 和 diff check |
+
+### Follow-up: Unified Linghui Node Ports
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Current Port/Execution Audit | complete | 审计节点 handle 渲染、连接校验、快照持久化、执行输入聚合和提示词引用排序 |
+| 2. Unified Port UI | complete | 所有节点只暴露一个输入点和一个输出点，减少多端口蜘蛛网 |
+| 3. Semantic Upstream Filtering | complete | 连接允许按节点级上游传递，执行时由节点自身按类型过滤需要的上游结果 |
+| 4. Legacy Edge Compatibility | complete | 兼容旧 `input-N` / `output-N` 边，保存时规范化到统一 handle |
+| 5. Validation | complete | 跑连接/执行/canvas 相关测试、tsc、构建与 diff check |
+
+### Follow-up: Full TSC Debt Cleanup
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Error Inventory | complete | 重新跑 `frontend npx tsc --noEmit --project tsconfig.json` 和 root `npx tsc --noEmit --project tsconfig.json`，归类剩余类型错误 |
+| 2. Runtime Type Fixes | complete | 修复业务代码中的类型不匹配、IPC 类型缺口、union 收窄问题 |
+| 3. Test Type Fixes | complete | 修复测试 mock / fixture 类型错误，不改变被测逻辑 |
+| 4. Validation | complete | 复跑 root/frontend tsc、目标测试、构建和 diff check |
+
 ## Session: 2026-05-06 Linghui Tapnow-Base Capability Audit
 
 ### Goal

@@ -43,7 +43,7 @@ export type TaskType = 'script-analysis' | 'asset-generation' | 'shot-generation
   | 'audio-generation'
   | 'linghui-execution';
 
-export type TaskStatus = 'pending' | 'running' | 'processing' | 'completed' | 'failed';
+export type TaskStatus = 'pending' | 'running' | 'processing' | 'completed' | 'failed' | 'cancelled';
 
 export type TaskTargetType = 'episode' | 'character' | 'scene' | 'prop' | 'shot' | 'linghui-node';
 

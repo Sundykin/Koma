@@ -540,7 +540,9 @@ describe('executeImageNode', () => {
     expect(executionProviders.generateImageWithProvider).toHaveBeenCalledTimes(1);
     const call = vi.mocked(executionProviders.generateImageWithProvider).mock.calls[0]?.[0];
     expect(call?.prompt).toContain('赛博寺庙中庭，雨后夜色');
-    expect(call?.prompt).toContain('This is an enclosed indoor panoramic environment');
+    // 新提示词契约：projection contract（ar720-band 默认）+ scene specialization（indoor）
+    expect(call?.prompt).toContain('wraparound horizontal panoramic environment band');
+    expect(call?.prompt).toContain('enclosed indoor environment');
     expect(call?.prompt).toContain('seam-safe edges');
     expect(result).toEqual(expect.objectContaining({
       kind: 'image',
@@ -548,6 +550,7 @@ describe('executeImageNode', () => {
       metadata: expect.objectContaining({
         mode: 'panorama',
         panoramaTemplate: 'indoor',
+        panoramaProjection: 'ar720-band',
         originalPrompt: '赛博寺庙中庭，雨后夜色',
       }),
     }));

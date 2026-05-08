@@ -14,6 +14,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Button, Dropdown, InputNumber, Tooltip } from 'antd';
 import type { MenuProps } from 'antd';
+import type { InputNumberRef } from '@rc-component/input-number';
 import { DownOutlined } from '@ant-design/icons';
 import { ALLOWED_VIDEO_DURATIONS, normalizeVideoDurationSeconds } from '../../utils/videoDuration';
 import { clampDurationToSpec, type VideoDurationSpec } from '../../providers/itv/durationSpec';
@@ -32,7 +33,7 @@ export const ShotDurationControl: React.FC<ShotDurationControlProps> = ({
   durationSpec,
 }) => {
   const [editing, setEditing] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<InputNumberRef>(null);
 
   // 进入编辑态后聚焦 + 全选，便于直接覆盖输入
   useEffect(() => {

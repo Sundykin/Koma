@@ -21,7 +21,7 @@ describe('isLinghuiConnectionValid', () => {
     active: false,
   });
 
-  it('阻止图片连接到文本节点的无效图片槽位', () => {
+  it('允许图片连接到文本节点，由目标节点按自身输入能力过滤', () => {
     const textNode = createNode('text-node', {
       linghuiType: 'linghui/text',
       label: '文本',
@@ -45,11 +45,10 @@ describe('isLinghuiConnectionValid', () => {
       targetHandle: 'input-0',
     }, [imageNode, textNode]);
 
-    expect(result.valid).toBe(false);
-    expect(result.message).toContain('文本节点当前不会消费图片输入');
+    expect(result.valid).toBe(true);
   });
 
-  it('阻止图片连接到音频和脚本节点的无效图片槽位', () => {
+  it('允许图片连接到音频和脚本节点，由执行阶段过滤无关上游结果', () => {
     const audioNode = createNode('audio-node', {
       linghuiType: 'linghui/audio',
       label: '音频',
@@ -97,8 +96,8 @@ describe('isLinghuiConnectionValid', () => {
       targetHandle: 'input-0',
     }, [imageNode, scriptNode]);
 
-    expect(audioResult.valid).toBe(false);
-    expect(scriptResult.valid).toBe(false);
+    expect(audioResult.valid).toBe(true);
+    expect(scriptResult.valid).toBe(true);
   });
 
   it('保留图片到视频节点主参考输入的合法连接', () => {

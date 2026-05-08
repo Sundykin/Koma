@@ -66,6 +66,7 @@ interface ElectronAPI {
     exportLogs: (destPath: string) => Promise<DiagnosticsExportResult>;
   };
   project: {
+    setStorageRoot: (rootPath: string) => Promise<{ success: boolean; rootPath: string }>;
     list: () => Promise<ProjectMeta[]>;
     create: (meta: ProjectMeta) => Promise<ProjectMeta>;
     load: (projectId: string) => Promise<ProjectMeta>;
@@ -142,6 +143,15 @@ interface ElectronAPI {
     importWorkspaceAsset: (workspaceId: string, sourcePath: string, filenameHint?: string) => Promise<string | { path: string }>;
   };
 }
+
+type ElectronBridgeWindow = Window & {
+  electronAPI?: ElectronAPI;
+  electron?: {
+    ipcRenderer?: {
+      invoke: (channel: string, args?: unknown) => Promise<unknown>;
+    };
+  };
+};
 
 interface OpenFileOptions {
   filters?: { name: string; extensions: string[] }[];
@@ -221,7 +231,7 @@ export interface DiagnosticsExportResult {
 
 // 检测是否在 Electron 环境中
 export const isElectron = (): boolean => {
-  return typeof window !== 'undefined' && 'electronAPI' in window;
+  return typeof window !== 'undefined' && 'electronAPI' in (window as ElectronBridgeWindow);
 };
 
 // 统一路径斜杠为 /（跨平台兼容）
@@ -232,10 +242,8 @@ export const normalizePath = (path: string): string => {
 
 // 获取 Electron API（如果可用）
 const getElectronAPI = (): ElectronAPI | null => {
-  if (isElectron()) {
-    return window.electronAPI as ElectronAPI;
-  }
-  return null;
+  if (typeof window === 'undefined') return null;
+  return (window as ElectronBridgeWindow).electronAPI ?? null;
 };
 
 // ========== 窗口控制 ==========
@@ -1074,6 +1082,7 @@ export const electronService = {
   getStoragePath,
   getMachineId,
   project: {
+    setStorageRoot: projectSetStorageRoot,
     list: projectList,
     create: projectCreate,
     load: projectLoad,
@@ -1131,8 +1140,9 @@ export const electronService = {
         }
       }
       // 通用 IPC 调用（通过 window.electron）
-      if (typeof window !== 'undefined' && window.electron?.ipcRenderer) {
-        return window.electron.ipcRenderer.invoke(channel, args);
+      const bridgeWindow = typeof window === 'undefined' ? null : (window as ElectronBridgeWindow);
+      if (bridgeWindow?.electron?.ipcRenderer) {
+        return bridgeWindow.electron.ipcRenderer.invoke(channel, args);
       }
       throw new Error(`IPC not available: ${channel}`);
     },

@@ -83,7 +83,7 @@ async function removeLocalMediaFiles(paths: string[]): Promise<string[]> {
       await electronService.fs.remove(path);
     } catch (error) {
       failures.push(path);
-      logger.warn('删除项目资产本地媒体失败:', path, error);
+      logger.warn('删除项目资产本地媒体失败', { path, error });
     }
   }));
 

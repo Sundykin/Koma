@@ -1,5 +1,188 @@
 # Progress Log
 
+## Session: 2026-05-08 Linghui Panorama + Director3D Stabilization
+
+### Phase 1: Current State Recovery
+- **Status:** complete
+- Actions taken:
+  - 使用 `pi-planning-with-files` 技能执行 session catchup；脚本无输出。
+  - 阅读 `docs/linghui-panorama-and-3d-director-workbench-plan.md`、当前 `task_plan.md`、`progress.md`、`findings.md`。
+  - 通过 `git status --short` 确认当前有大量未提交全景与 director3d 半成品改动，本轮必须小范围定位修复“无法进入编辑”。
+
+### Phases 2-4: Diagnosis, Fix, Validation
+- **Status:** complete
+- Actions taken:
+  - 修复 `useLinghuiCanvasNodeInteractions.openNodeEditor` 白名单，允许 `linghui/director3d` 设置 editor selection。
+  - 补齐前端画布快照 `linghui-director3d` → `linghui/director3d` 映射，避免保存时被当作未知节点。
+  - 补齐 Electron 文档 normalize 的 current node / RF type 白名单，避免保存恢复时拒绝 director3d 工作区。
+  - 新增 `useLinghuiCanvasNodeInteractions` 测试覆盖 director3d 打开编辑入口；扩展画布快照和文档 normalize 测试覆盖 director3d 保存/恢复。
+  - 将 director3d 视口/假人默认颜色从硬编码 hex 收敛到 CSS token 解析工具；将 panorama seam 诊断风险色改成 Sass class，canvas 分隔色改读 token。
+- Validation:
+  - `npm run test -- --run src/components/linghui/canvas/tests/useLinghuiCanvasNodeInteractions.test.tsx src/components/linghui/canvas/tests/linghuiCanvasShared.test.ts src/store/linghuiDocument.test.ts src/components/linghui/library/tests/linghuiNodeDefs.test.ts`：4 files / 18 tests passed。
+  - `npm run test -- --run src/components/linghui/canvas/tests/linghuiCanvasShared.test.ts src/store/linghuiDocument.test.ts src/components/linghui/library/tests/linghuiNodeDefs.test.ts src/components/linghui/execution/tests/linghuiExecutionImageNode.test.ts`：4 files / 23 tests passed。
+  - `npm run build`：passed；仅保留既有 Vite dynamic import/chunk size warnings。
+  - `npm run check:style-discipline`：failed only on existing project/settings/storyboard/chat/theme/index.scss debts after new director3d/panorama paths were cleaned.
+  - `git diff --check`：passed。
+- Files created/modified:
+  - `task_plan.md`
+  - `findings.md`
+  - `progress.md`
+  - `frontend/src/components/linghui/canvas/hooks/useLinghuiCanvasNodeInteractions.ts`
+  - `frontend/src/components/linghui/canvas/state/linghuiCanvasShared.ts`
+  - `electron/service/linghui/document.ts`
+  - `frontend/src/components/linghui/director3d/director3dColors.ts`
+  - `frontend/src/components/linghui/director3d/director3dScene.ts`
+  - `frontend/src/components/linghui/director3d/Director3DMannequin.tsx`
+  - `frontend/src/components/linghui/director3d/Director3DViewport.tsx`
+  - `frontend/src/components/linghui/editors/components/Director3DNodeEditor.tsx`
+  - `frontend/src/components/linghui/panorama/PanoramaSeamDiagnostics.tsx`
+  - `frontend/src/components/linghui/page/styles/_director3d.scss`
+  - `frontend/src/components/linghui/page/styles/_media-panels.scss`
+  - related tests
+
+### Follow-up: Fullscreen Director3D Workbench
+- **Status:** complete
+- Actions taken:
+  - `LinghuiNodeEditor` 对 `linghui/director3d` 改走独立 fullscreen Modal 分支，不再渲染节点下方主面板。
+  - `Director3DNode` 去掉 `hasInlineEditor` class，避免 director3d 打开时仍按 inline editor 节点层级处理。
+  - `Director3DNodeEditor` 把“机位”文案收敛为“视角”，并移除右侧 camera position / LookAt 表单，只保留当前取景视角的 FOV、比例、背景等直接参数。
+  - `Director3DViewport` 移除虚拟相机模型和画幅标注；当前 orbit/pan/zoom 工作台视角就是真实相机，导出线稿读取当前相机并写回 scene。
+  - 默认 scene 的 `showCameraFrame` 改为 false，避免后续误把虚拟相机标注恢复出来。
+- Validation:
+  - `npm run test -- --run src/components/linghui/canvas/tests/useLinghuiCanvasNodeInteractions.test.tsx src/components/linghui/canvas/tests/linghuiCanvasShared.test.ts src/store/linghuiDocument.test.ts src/components/linghui/library/tests/linghuiNodeDefs.test.ts`：4 files / 18 tests passed。
+  - `npm run build`：passed；仅保留既有 Vite dynamic import/chunk size warnings。
+  - `npm run check:style-discipline`：failed only on existing project/settings/storyboard/chat/theme/index.scss debts；新增 director3d 路径未出现。
+  - `git diff --check`：passed。
+
+### Follow-up: Director3D Fullscreen Height + Actor Interaction
+- **Status:** complete
+- Actions taken:
+  - 强化 `.linghuiDirector3DModal` 对 AntD root / wrap / modal / content / body 的高度覆盖，确保 director3d 工作台按 100vh 撑满。
+  - `linghuiDirector3DEditorPanel` 和 `linghuiDirector3DLayout` 增加 100vw/100vh 约束，避免内容仍按旧 inline panel 高度收缩。
+  - 修复假人点击后立即失活：actor pointer down 后抑制下一次 viewport click，不再触发空白画布选择清空。
+  - 修复假人拖动：拖动位置改为累计 pointer 位移计算，不再每帧回到起始点附近。
+- Validation:
+  - `npm run test -- --run src/components/linghui/canvas/tests/useLinghuiCanvasNodeInteractions.test.tsx src/components/linghui/canvas/tests/linghuiCanvasShared.test.ts src/store/linghuiDocument.test.ts src/components/linghui/library/tests/linghuiNodeDefs.test.ts`：4 files / 18 tests passed。
+  - `npm run build`：passed；仅保留既有 Vite dynamic import/chunk size warnings。
+  - `npm run check:style-discipline`：failed only on existing project/settings/storyboard/chat/theme/index.scss debts；新增 director3d 路径未出现。
+  - `git diff --check`：passed。
+
+### Follow-up: Director3D Actor Drag Redesign
+- **Status:** complete
+- Actions taken:
+  - 将假人拖动从屏幕 delta / yaw/right/forward 估算改为 ray-plane 拖动。
+  - `Director3DViewport` 新增 viewport ref、raycaster、drag plane 和 hit point cache；鼠标坐标按当前工作台相机反投影到假人脚底平面。
+  - actor pointer down 时记录点击点到 actor position 的 offset；pointer move 时用当前 ray-plane 命中点加 offset 得到新位置，解决 X 方向反和“不跟手”的问题。
+- Validation:
+  - `npm run test -- --run src/components/linghui/canvas/tests/useLinghuiCanvasNodeInteractions.test.tsx src/components/linghui/canvas/tests/linghuiCanvasShared.test.ts src/store/linghuiDocument.test.ts src/components/linghui/library/tests/linghuiNodeDefs.test.ts`：4 files / 18 tests passed。
+  - `npm run build`：passed；仅保留既有 Vite dynamic import/chunk size warnings。
+  - `npm run check:style-discipline`：failed only on existing project/settings/storyboard/chat/theme/index.scss debts；新增 director3d 路径未出现。
+  - `git diff --check`：passed。
+
+### Follow-up: Director3D Live-Camera Actor Drag
+- **Status:** complete
+- Actions taken:
+  - 根据用户继续反馈“X 方向相反、不跟手”，复查当前 `Director3DViewport`。
+  - 发现现有 ray-plane 计算仍由外层 DOM pointer move 重建 `PerspectiveCamera`，数据源是 `cameraStateRef`；真实相机由 `EditorCameraRig.useFrame` 逐帧 lerp 更新，两者可能短暂不一致。
+  - 新增 `ActorDragLayer`，把假人拖动会话移入 R3F Canvas 内部，直接用 `useThree()` 的 live camera / `gl.domElement` bounding rect 计算地面交点。
+  - 拖动期间由 `dragPreview` 立即渲染假人临时位置；最终改成松手/取消/窗口失焦时一次性写回父级 scene，避免拖动时全局节点数据频繁重渲染。
+  - 外层视口在 actor 拖动期间暂停 orbit/pan/wheel，避免假人拖动和相机控制互相抢 pointer。
+  - 修正 `useLinghuiCanvasNodeInteractions.test.tsx` 的 React Flow node data 类型转换，使本轮测试文件不再出现在 `tsc --noEmit` 报错里。
+- Validation:
+  - `npm run test -- --run src/components/linghui/canvas/tests/useLinghuiCanvasNodeInteractions.test.tsx src/components/linghui/canvas/tests/linghuiCanvasShared.test.ts src/store/linghuiDocument.test.ts src/components/linghui/library/tests/linghuiNodeDefs.test.ts`：4 files / 20 tests passed。
+  - `npm run build`：passed；仅保留既有 Vite dynamic import/chunk size warnings。
+  - `npm run check:style-discipline`：failed only on existing project/settings/storyboard/chat/theme/index.scss debts；新增 director3d 路径未出现。
+  - `npx tsc --noEmit --project tsconfig.json`：failed on existing unrelated type debts；复查输出中不再包含 `Director3DViewport` 或 `useLinghuiCanvasNodeInteractions.test.tsx`。
+  - `git diff --check`：passed。
+
+### Follow-up: Panorama + Director3D Save/Restore Operability
+- **Status:** complete
+- Actions taken:
+  - `electron/service/linghui/document.ts` 对已知语义类型的节点不再因 RF type 旧值直接报错，而是规范化为当前 RF type；可修复旧 `linghui-image` + `linghui/panorama` 半保存数据。
+  - `buildRFNodesFromSnapshot` 恢复节点时合并 `createNewNodeData` 默认值，补齐旧 panorama/director3d 缺失的 `inputs`、`outputs` 和关键 `properties`。
+  - `LinghuiPage` 激活工作区时将恢复出来的 `running` runState 转为 `stale`，避免保存退出后重新进入仍被“执行中”状态锁住；保存过程本身不触发该转换，避免打断当前执行。
+  - 补测试覆盖旧全景 RF type 修复，以及 sparse panorama/director3d 快照恢复后仍有默认连接点和属性。
+- Validation:
+  - `npm run test -- --run src/components/linghui/canvas/tests/useLinghuiCanvasNodeInteractions.test.tsx src/components/linghui/canvas/tests/linghuiCanvasShared.test.ts src/store/linghuiDocument.test.ts src/components/linghui/library/tests/linghuiNodeDefs.test.ts`：4 files / 20 tests passed。
+  - `npm run build`（frontend）：passed；仅保留既有 Vite dynamic import/chunk size warnings。
+  - `npm run build-electron`：passed。
+  - `npm run check:style-discipline`：failed only on existing project/settings/storyboard/chat/theme/index.scss debts；本轮路径未出现。
+  - `npx tsc --noEmit --project tsconfig.json`：failed on existing unrelated type debts；复查输出中不包含本轮相关文件。
+  - `git diff --check`：passed。
+
+### Follow-up: Panorama + Director3D SQLite Restore Type Regression
+- **Status:** complete
+- Actions taken:
+  - 根据用户反馈“重新进入后退化成普通文本节点”，复查保存/恢复链路。
+  - 定位到 `electron/service/linghui/persistenceHelpers.ts` 的 SQLite row → snapshot 映射表漏了 `linghui-panorama` / `linghui-director3d`，导致读库时 `data.linghuiType` 默认变成 `linghui/text`。
+  - 补齐两类 RF type 映射。
+  - 增加属性指纹恢复：如果用户已经把退化后的节点再次保存为 `linghui-text`，但 properties 里仍有 `scene.version === 1` 或 `projectionMode/panoramaTemplate`，读取时恢复为 3D 导演台或全景节点，并规范化 RF type。
+  - 扩展 `linghuiPersistenceHelpers.test.ts` 和 `types/linghui.test.ts`，防止该映射再次漏掉。
+- Validation:
+  - `npm run test -- --run src/store/linghuiPersistenceHelpers.test.ts src/store/linghuiDocument.test.ts src/components/linghui/canvas/tests/linghuiCanvasShared.test.ts src/types/linghui.test.ts`：4 files / 25 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json`（root）：passed。
+  - `npx tsc --noEmit --project tsconfig.json`（frontend）：passed。
+  - `npm run build-electron`：passed。
+  - `npm run build`（frontend）：passed；保留既有 Vite dynamic import/chunk size warnings。
+  - `git diff --check`：passed。
+
+### Follow-up: Unified Linghui Node Ports
+- **Status:** complete
+- Actions taken:
+  - 用户要求整理所有节点输入输出连接点，避免每个节点暴露多个输入/输出导致蜘蛛网，并希望上游参数能沿链路传到最终节点，由节点自身过滤不需要的上游输入类型。
+  - 初步确认可行方向：UI 合并为单输入/单输出；连接校验从 slot-level 改为 node-level；执行输入聚合从按 `input-N` 过滤改为按直接上游全集合聚合。
+  - 新增统一端口常量和 `LinghuiNodePorts`，所有灵绘节点卡片只渲染 `input-0` / `output-0`。
+  - 画布连线创建、快速创建接线、保存快照和恢复快照全部规范化到统一 handle；旧 `input-N` / `output-N` 边恢复后也会变成统一端口。
+  - 连接校验改为节点级：只校验节点存在、非自环、源节点有输出能力、目标节点有输入能力，不再按 handle slot 拒绝不同媒体类型。
+  - 执行视图改为收集目标节点的全链路上游结果，`getAllInputResults(slot)` / `getInputResult(slot)` 再按目标节点声明的 slot `dataType` 过滤；`getAllInputImages()` 只返回图片类上游结果。
+  - 节点编辑器里的参考图、参考视频、参考音频改为遍历全链路上游节点，不再依赖 `input-2` / `input-3` 等旧端口编号。
+  - 修复统一端口后的引用统计回归：下游编辑器参考列表现在按媒体 kind 分桶，图片不会被算进视频/音频，视频也不会被算进图片/音频。
+- Validation:
+  - `npm run test -- --run src/components/linghui/library/tests/linghuiNodeDefs.test.ts src/components/linghui/execution/tests/linghuiExecutionShared.test.ts src/components/linghui/execution/tests/linghuiExecutionImageNode.test.ts src/components/linghui/execution/tests/linghuiExecutionVideoNode.test.ts src/components/linghui/execution/tests/linghuiExecutionAudioNode.test.ts src/components/linghui/execution/tests/linghuiExecutionScriptNode.test.ts src/components/linghui/canvas/tests/linghuiCanvasShared.test.ts`：7 files / 28 tests passed。
+  - `npm run test -- --run src/components/linghui/execution/tests/linghuiExecutionWorkflow.test.ts src/components/linghui/execution/tests/linghuiExecutionPlan.test.ts src/components/linghui/editors/tests/linghuiPromptReferences.test.ts src/components/linghui/execution/tests/linghuiExecutionImageNode.test.ts src/components/linghui/execution/tests/linghuiExecutionVideoNode.test.ts src/components/linghui/execution/tests/linghuiExecutionAudioNode.test.ts src/components/linghui/execution/tests/linghuiExecutionScriptNode.test.ts`：7 files / 25 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json`（root）：passed。
+  - `npx tsc --noEmit --project tsconfig.json`（frontend）：passed。
+  - `npm run build-electron`：passed。
+  - `npm run build`（frontend）：passed；保留既有 Vite dynamic import/chunk size warnings。
+  - `git diff --check`：passed。
+  - `npm run test -- --run src/components/linghui/editors/tests/linghuiReferenceMedia.test.ts src/components/linghui/execution/tests/linghuiExecutionShared.test.ts src/components/linghui/editors/tests/linghuiPromptReferences.test.ts`：3 files / 6 tests passed。
+  - 回归修复后 `npx tsc --noEmit --project tsconfig.json`（root/frontend）passed，`npm run build`（frontend）passed。
+- Errors:
+  - 首次目标测试中 `linghuiExecutionShared.test.ts` 仍期望脚本分镜 10 秒；当前时长工具会归一到允许档位 12 秒，已更新测试断言。
+  - 用户反馈 4 张图片 + 2 个视频在下游显示成 6 张图片 / 6 个视频 / 6 个音频；根因是编辑器参考统计遍历全上游后未按 `primary.kind` 过滤，已抽出 `linghuiReferenceMedia` 并补回归测试。
+
+### Follow-up: Full TSC Debt Cleanup
+- **Status:** complete
+- Actions taken:
+  - 用户要求继续解决全仓 `tsc` 既有失败。
+  - 已重新运行 `frontend npx tsc --noEmit --project tsconfig.json`，确认当前错误列表。
+  - 已把错误归类为业务类型收窄、Electron bridge 类型、Canvas/WebGPU mock、测试 fixture 类型四组。
+  - 修复 runtime 类型债务：
+    - `ShotRow.image_mode` 补齐 `grid-9` / `grid-4`。
+    - Canvas 2D context options 改为合法 `willReadFrequently`。
+    - `ProjectAssetOverview` logger 参数改成单对象 payload。
+    - `ShotDurationControl` 使用 `@rc-component/input-number` 的 `InputNumberRef`。
+    - `TaskStatus` 补齐 `cancelled`。
+    - Electron project bridge 补齐 `setStorageRoot`。
+    - Seedance selected asset refs 增加媒体输入类型保护，过滤 provider-only asset input。
+    - root tsc 触达 frontend 时用局部 `ElectronBridgeWindow` / window cast 收窄 `window.electronAPI` 与 `window.electron`。
+    - 灵绘导入记录 retarget 参数补齐 `groupIds`，并用于模板 `sourceGroupId` 重映射。
+    - 删除已隐藏内置 Recipe 的未使用 snapshot builder 函数。
+  - 修复测试类型债务：
+    - `findLastIndex` 测试替换为 reduce，避免 ES2023 lib 要求。
+    - 多处 Canvas/WebGPU `getContext` mock 改为按 contextId 返回。
+    - project persistence fixtures 使用 `MediaType` / `EasingType` / `TimelineData`。
+    - project open task payload 经 `unknown` 过渡 cast。
+    - activation 默认管理渠道测试更新为 5 个渠道（新增 tts）。
+    - mediaTaskBindingService mock 改为 `vi.hoisted` 并补 diagnostics mock。
+- Validation:
+  - `npx tsc --noEmit --project tsconfig.json`（root）：passed。
+  - `npx tsc --noEmit --project tsconfig.json`（frontend）：passed。
+  - `npm run test -- --run ...`（11 个目标文件）：54 tests passed。
+  - `npm run build`（frontend）：passed；保留既有 Vite dynamic import/chunk size warnings。
+  - `npm run build-electron`：passed。
+  - `git diff --check`：passed。
+
 ## Session: 2026-05-06 Linghui Tapnow-Base Capability Audit
 
 ### Phase 1: Reference Audit

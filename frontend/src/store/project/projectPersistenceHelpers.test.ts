@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  EasingType,
+  MediaType,
+  type TimelineData,
+} from '../../types/editor';
+import {
   animationToRow,
   assetRowToAsset,
   buildTimelineData,
@@ -300,7 +305,7 @@ describe('projectPersistenceHelpers', () => {
   });
 
   it('round-trips timeline rows through normalized relational mappings', () => {
-    const timeline = {
+    const timeline: TimelineData = {
       version: 1,
       createdAt: 10,
       updatedAt: 20,
@@ -334,7 +339,7 @@ describe('projectPersistenceHelpers', () => {
               sourceWidth: 1920,
               sourceHeight: 1080,
               name: '镜头一',
-              type: 'IMAGE' as const,
+              type: MediaType.IMAGE,
               src: '/tmp/shot-1.png',
               x: 10,
               y: 20,
@@ -350,7 +355,7 @@ describe('projectPersistenceHelpers', () => {
                   scale: 1.2,
                   rotation: 4,
                   opacity: 0.8,
-                  easing: 'easeInOut',
+                  easing: EasingType.EASE_IN_OUT,
                 },
               ],
               filter: {
@@ -387,7 +392,7 @@ describe('projectPersistenceHelpers', () => {
               duration: 2,
               offset: 0,
               name: '镜头二',
-              type: 'VIDEO' as const,
+              type: MediaType.VIDEO,
               src: '/tmp/shot-2.mp4',
               x: 0,
               y: 0,
@@ -413,7 +418,7 @@ describe('projectPersistenceHelpers', () => {
               duration: 3,
               offset: 0,
               name: '字幕一',
-              type: 'TEXT' as const,
+              type: MediaType.TEXT,
               src: '你好',
               x: 0,
               y: 0,

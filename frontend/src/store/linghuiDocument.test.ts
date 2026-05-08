@@ -117,4 +117,75 @@ describe('linghui document normalization', () => {
     expect(doc.nodeCount).toBe(1);
     expect(doc.linkCount).toBe(0);
   });
+
+  it('accepts director3d nodes as current workspace nodes', () => {
+    const doc = normalizeLinghuiWorkspaceDocument({
+      id: 'workspace-director3d',
+      name: '3D 导演工作区',
+      graphData: {
+        version: 2,
+        nodes: [{
+          id: 'director-1',
+          type: 'linghui-director3d',
+          position: { x: 120, y: 40 },
+          data: {
+            linghuiType: 'linghui/director3d',
+            label: '3D 导演',
+            accent: '#38bdf8',
+            background: '#0f172a',
+            properties: {},
+            inputs: [],
+            outputs: [],
+            active: false,
+          },
+        }],
+        edges: [],
+        groups: [],
+      },
+    } as any);
+
+    expect(doc.graphData.nodes[0]).toEqual(expect.objectContaining({
+      id: 'director-1',
+      type: 'linghui-director3d',
+      data: expect.objectContaining({
+        linghuiType: 'linghui/director3d',
+      }),
+    }));
+    expect(doc.nodeCount).toBe(1);
+  });
+
+  it('repairs known RF type mismatches from half-saved panorama nodes', () => {
+    const doc = normalizeLinghuiWorkspaceDocument({
+      id: 'workspace-panorama-mismatch',
+      name: '旧全景工作区',
+      graphData: {
+        version: 2,
+        nodes: [{
+          id: 'panorama-1',
+          type: 'linghui-image',
+          position: { x: 120, y: 40 },
+          data: {
+            linghuiType: 'linghui/panorama',
+            label: '全景',
+            accent: '#22c55e',
+            background: '#0f172a',
+            properties: {},
+            inputs: [],
+            outputs: [],
+            active: false,
+          },
+        }],
+        edges: [],
+        groups: [],
+      },
+    } as any);
+
+    expect(doc.graphData.nodes[0]).toEqual(expect.objectContaining({
+      id: 'panorama-1',
+      type: 'linghui-panorama',
+      data: expect.objectContaining({
+        linghuiType: 'linghui/panorama',
+      }),
+    }));
+  });
 });

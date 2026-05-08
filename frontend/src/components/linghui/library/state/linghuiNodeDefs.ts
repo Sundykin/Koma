@@ -5,6 +5,7 @@ import type {
   LinghuiSlotDataType,
   LinghuiSlotDef,
 } from '../../../../types/linghui';
+import { createDefaultDirector3DScene } from '../../director3d/director3dScene';
 
 export interface LinghuiNodeMeta {
   type: LinghuiNodeType;
@@ -29,6 +30,7 @@ const LINGHUI_NODE_COLORS = {
   video: 'var(--token-accent-base)',
   audio: 'var(--token-status-warning)',
   script: 'var(--token-accent-hover)',
+  director3d: 'var(--token-status-info)',
 } as const;
 
 export const NODE_META: Record<LinghuiNodeType, LinghuiNodeMeta> = {
@@ -100,6 +102,16 @@ export const NODE_META: Record<LinghuiNodeType, LinghuiNodeMeta> = {
     catalogLabel: '脚本节点',
     catalogDescription: '生成或整理剧情脚本，输出结构化分镜序列',
     accent: LINGHUI_NODE_COLORS.script,
+    background: LINGHUI_NODE_BACKGROUND,
+  },
+  'linghui/director3d': {
+    type: 'linghui/director3d',
+    title: '3D 导演',
+    desc: '3D 草图工作台：摆机位、放假人、导出线稿构图参考',
+    catalogCategory: 'creation',
+    catalogLabel: '3D 导演工作台',
+    catalogDescription: '低成本 3D 摆位 + 假人 + 相机，导出 lineart 给图片/视频节点参考',
+    accent: LINGHUI_NODE_COLORS.director3d,
     background: LINGHUI_NODE_BACKGROUND,
   },
 };
@@ -174,6 +186,16 @@ export const NODE_SLOT_LAYOUTS: Record<LinghuiNodeType, { inputs: LinghuiSlotDef
       { name: 'storyboard', dataType: 'storyboard' },
     ],
   },
+  'linghui/director3d': {
+    inputs: [
+      { name: '背景', dataType: 'image' },
+      { name: '文本', dataType: 'text' },
+    ],
+    outputs: [
+      { name: 'image', dataType: 'image' },
+      { name: 'text', dataType: 'text' },
+    ],
+  },
 };
 
 export const NODE_PROPERTY_DEFAULTS: Record<LinghuiNodeType, Record<string, unknown>> = {
@@ -220,6 +242,8 @@ export const NODE_PROPERTY_DEFAULTS: Record<LinghuiNodeType, Record<string, unkn
     batchCount: 1,
     // 全景模板档位：'auto' | 'indoor' | 'outdoor'，影响执行器拼装的 system prompt
     panoramaTemplate: 'auto',
+    // 投影契约：'ar720-band' 默认（21:9 / 16:9 环境带），可切到真 2:1 球面或宽幅平面
+    projectionMode: 'ar720-band',
   },
   'linghui/video': {
     prompt: '',
@@ -244,6 +268,10 @@ export const NODE_PROPERTY_DEFAULTS: Record<LinghuiNodeType, Record<string, unkn
     systemPrompt: '',
     llmSelection: '',
     viewMode: 'cards',
+  },
+  'linghui/director3d': {
+    prompt: '',
+    scene: createDefaultDirector3DScene(),
   },
 };
 
@@ -270,47 +298,8 @@ export function validateLinghuiConnection(params: {
   sourceSlotIndex?: number;
   targetSlotIndex?: number;
 }): LinghuiConnectionValidationResult {
-  const {
-    sourceDataType,
-    targetDataType,
-    sourceNodeType,
-    targetNodeType,
-    targetSlotIndex,
-  } = params;
-
-  if (
-    sourceDataType === 'image'
-    && targetDataType === 'image'
-    && targetSlotIndex === 0
-    && (targetNodeType === 'linghui/text' || targetNodeType === 'linghui/audio' || targetNodeType === 'linghui/script')
-  ) {
-    const targetNodeLabel = NODE_META[targetNodeType]?.title ?? '当前节点';
-    return {
-      valid: false,
-      message: `${targetNodeLabel}节点当前不会消费图片输入，请改用可被执行层读取的文本或媒体结果。`,
-    };
-  }
-
-  if (sourceDataType === targetDataType) {
-    return { valid: true };
-  }
-
-  const sourceNodeLabel = sourceNodeType ? (NODE_META[sourceNodeType]?.title ?? '当前节点') : '当前节点';
-  const targetNodeLabel = targetNodeType ? (NODE_META[targetNodeType]?.title ?? '目标节点') : '目标节点';
-  const sourceTypeLabel = SLOT_TYPE_LABELS[sourceDataType] ?? sourceDataType;
-  const targetTypeLabel = SLOT_TYPE_LABELS[targetDataType] ?? targetDataType;
-
-  return {
-    valid: false,
-    message: `${sourceNodeLabel} 的 ${sourceTypeLabel} 输出不能连接到 ${targetNodeLabel} 的 ${targetTypeLabel} 输入。`,
-  };
-}
-
-export function parseHandleId(handleId: string | null | undefined): { direction: 'input' | 'output'; index: number } | null {
-  if (!handleId) return null;
-  const match = handleId.match(/^(input|output)-(\d+)$/);
-  if (!match) return null;
-  return { direction: match[1] as 'input' | 'output', index: Number(match[2]) };
+  void params;
+  return { valid: true };
 }
 
 export function isLinghuiConnectionValid(
@@ -319,23 +308,19 @@ export function isLinghuiConnectionValid(
 ): LinghuiConnectionValidationResult {
   const sourceNode = nodes.find(n => n.id === connection.source);
   const targetNode = nodes.find(n => n.id === connection.target);
-  if (!sourceNode || !targetNode) return { valid: false, message: '连接端口不存在。' };
-
-  const sourceHandle = parseHandleId(connection.sourceHandle);
-  const targetHandle = parseHandleId(connection.targetHandle);
-  if (!sourceHandle || !targetHandle) return { valid: false, message: '连接端口不存在。' };
-
-  const sourceSlot = sourceNode.data.outputs[sourceHandle.index];
-  const targetSlot = targetNode.data.inputs[targetHandle.index];
-  if (!sourceSlot || !targetSlot) return { valid: false, message: '连接端口不存在。' };
+  if (!sourceNode || !targetNode) return { valid: false, message: '连接节点不存在。' };
+  if (sourceNode.id === targetNode.id) return { valid: false, message: '节点不能连接到自身。' };
+  if (!sourceNode.data.outputs.length || !targetNode.data.inputs.length) {
+    return { valid: false, message: '连接端口不存在。' };
+  }
 
   return validateLinghuiConnection({
-    sourceDataType: sourceSlot.dataType,
-    targetDataType: targetSlot.dataType,
+    sourceDataType: sourceNode.data.outputs[0].dataType,
+    targetDataType: targetNode.data.inputs[0].dataType,
     sourceNodeType: sourceNode.data.linghuiType,
     targetNodeType: targetNode.data.linghuiType,
-    sourceSlotIndex: sourceHandle.index,
-    targetSlotIndex: targetHandle.index,
+    sourceSlotIndex: 0,
+    targetSlotIndex: 0,
   });
 }
 

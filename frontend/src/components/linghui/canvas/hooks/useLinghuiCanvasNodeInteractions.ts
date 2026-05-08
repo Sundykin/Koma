@@ -92,7 +92,8 @@ export function useLinghuiCanvasNodeInteractions({
       nodeData.linghuiType !== 'linghui/panorama' &&
       nodeData.linghuiType !== 'linghui/video' &&
       nodeData.linghuiType !== 'linghui/audio' &&
-      nodeData.linghuiType !== 'linghui/script'
+      nodeData.linghuiType !== 'linghui/script' &&
+      nodeData.linghuiType !== 'linghui/director3d'
     ) {
       setEditorSelection(null);
       setActiveNodeTool(null);

@@ -41,6 +41,12 @@ function createCanvasContext() {
   return { ctx, alphaSnapshots };
 }
 
+function mockCanvas2DContext(ctx: CanvasRenderingContext2D) {
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation((
+    (contextId: string) => (contextId === '2d' ? ctx : null)
+  ) as HTMLCanvasElement['getContext']);
+}
+
 function createClip(id: string, start: number, duration: number, trackId = 'track-1'): Clip {
   return {
     id,
@@ -97,7 +103,7 @@ describe('SimpleExportRenderer transition support', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     const { ctx } = createCanvasContext();
-    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(ctx);
+    mockCanvas2DContext(ctx);
   });
 
   it('includes both clips during overlap on resolved timeline', () => {
@@ -119,7 +125,7 @@ describe('SimpleExportRenderer transition support', () => {
 
   it('applies complementary transition alpha while rendering overlap clips', async () => {
     const { ctx, alphaSnapshots } = createCanvasContext();
-    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(ctx);
+    mockCanvas2DContext(ctx);
 
     const track = createTrack();
     const resolved = resolveTrackTimeline(track);
@@ -226,7 +232,7 @@ describe('SimpleExportRenderer transition support', () => {
 
   it('applies transition opacity to text clips', async () => {
     const { ctx } = createCanvasContext();
-    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(ctx);
+    mockCanvas2DContext(ctx);
     const track: Track = {
       ...createTrack(),
       clips: [
@@ -339,7 +345,7 @@ describe('SimpleExportRenderer transition support', () => {
 
   it('renders single clip at full opacity outside transition region', async () => {
     const { ctx, alphaSnapshots } = createCanvasContext();
-    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(ctx);
+    mockCanvas2DContext(ctx);
 
     const track = createTrack();
     const resolved = resolveTrackTimeline(track);
@@ -359,7 +365,7 @@ describe('SimpleExportRenderer transition support', () => {
 
   it('renders track without transitions at full opacity', async () => {
     const { ctx, alphaSnapshots } = createCanvasContext();
-    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(ctx);
+    mockCanvas2DContext(ctx);
 
     const noTransitionTrack: Track = {
       id: 'track-no-trans',

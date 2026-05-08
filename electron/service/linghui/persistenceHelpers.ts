@@ -196,6 +196,53 @@ export function rowToWorkspaceMeta(row: LinghuiWorkspaceRow): LinghuiWorkspaceMe
   };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function inferLinghuiTypeFromStoredProperties(properties: Record<string, unknown>): LinghuiNodeType | null {
+  const scene = properties.scene;
+  if (isRecord(scene) && scene.version === 1) {
+    return 'linghui/director3d';
+  }
+
+  if (
+    properties.projectionMode === 'ar720-band'
+    || properties.projectionMode === 'equirectangular-2to1'
+    || properties.projectionMode === 'flat-wide'
+    || properties.panoramaTemplate === 'auto'
+    || properties.panoramaTemplate === 'indoor'
+    || properties.panoramaTemplate === 'outdoor'
+  ) {
+    return 'linghui/panorama';
+  }
+
+  return null;
+}
+
+function linghuiTypeToRFType(type: LinghuiNodeType): string {
+  switch (type) {
+    case 'linghui/text':
+      return 'linghui-text';
+    case 'linghui/agent':
+      return 'linghui-agent';
+    case 'linghui/image':
+      return 'linghui-image';
+    case 'linghui/panorama':
+      return 'linghui-panorama';
+    case 'linghui/video':
+      return 'linghui-video';
+    case 'linghui/audio':
+      return 'linghui-audio';
+    case 'linghui/script':
+      return 'linghui-script';
+    case 'linghui/director3d':
+      return 'linghui-director3d';
+    default:
+      return 'linghui-text';
+  }
+}
+
 function rfTypeToLinghuiType(rfType: string): LinghuiNodeType {
   switch (rfType) {
     case 'linghui-text':
@@ -204,21 +251,29 @@ function rfTypeToLinghuiType(rfType: string): LinghuiNodeType {
       return 'linghui/agent';
     case 'linghui-image':
       return 'linghui/image';
+    case 'linghui-panorama':
+      return 'linghui/panorama';
     case 'linghui-video':
       return 'linghui/video';
     case 'linghui-audio':
       return 'linghui/audio';
     case 'linghui-script':
       return 'linghui/script';
+    case 'linghui-director3d':
+      return 'linghui/director3d';
     default:
       return 'linghui/text';
   }
 }
 
 export function nodeRowToSnapshot(row: LinghuiGraphNodeRow): LinghuiRFNodeSnapshot {
+  const properties = parseLinghuiJson<Record<string, unknown>>(row.properties_json, {});
+  const inferredType = inferLinghuiTypeFromStoredProperties(properties);
+  const linghuiType = inferredType ?? rfTypeToLinghuiType(row.type);
+
   return {
     id: row.id,
-    type: row.type,
+    type: inferredType ? linghuiTypeToRFType(inferredType) : row.type,
     position: {
       x: row.position_x,
       y: row.position_y,
@@ -227,12 +282,12 @@ export function nodeRowToSnapshot(row: LinghuiGraphNodeRow): LinghuiRFNodeSnapsh
     height: row.height ?? undefined,
     parentId: row.parent_group_id ?? undefined,
     data: {
-      linghuiType: rfTypeToLinghuiType(row.type),
+      linghuiType,
       label: row.label,
       accent: row.accent,
       background: row.background,
       viewMode: row.view_mode ?? undefined,
-      properties: parseLinghuiJson<Record<string, unknown>>(row.properties_json, {}),
+      properties,
       inputs: parseLinghuiJson<any[]>(row.inputs_json, []),
       outputs: parseLinghuiJson<any[]>(row.outputs_json, []),
       active: Boolean(row.active),

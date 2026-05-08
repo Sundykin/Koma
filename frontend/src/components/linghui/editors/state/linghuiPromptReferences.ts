@@ -446,7 +446,7 @@ export function getOrderedIncomingReferenceEdges(
     .map(item => item.edge);
 }
 
-function collectUpstreamNodeIds(
+export function collectOrderedUpstreamReferenceNodeIds(
   nodeId: string,
   edges: LinghuiPromptReferenceEdge[],
 ): string[] {
@@ -476,7 +476,7 @@ export function buildLinghuiPromptReferenceItems(params: {
 }): LinghuiPromptReferenceItem[] {
   const { nodeId, nodes, edges, getNodeResult } = params;
   const nodeMap = new Map(nodes.map(node => [node.id, node.data]));
-  const upstreamIds = collectUpstreamNodeIds(nodeId, edges);
+  const upstreamIds = collectOrderedUpstreamReferenceNodeIds(nodeId, edges);
   const refs: LinghuiPromptReferenceItem[] = [];
   const seenRefIds = new Set<string>();
 

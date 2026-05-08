@@ -42,10 +42,21 @@ function buildMediaSourceKey(source: MediaAssetSource | ProviderAssetInput): str
   if (typeof source === 'string') {
     return source;
   }
-  if (source && typeof source === 'object' && 'transport' in source && 'value' in source) {
+  if (isProviderAssetInput(source)) {
     return `${source.transport}:${source.value}`;
   }
   return source.remoteUrl || source.localPath || JSON.stringify(source);
+}
+
+function isProviderAssetInput(source: MediaAssetSource | ProviderAssetInput): source is ProviderAssetInput {
+  return typeof source === 'object'
+    && source !== null
+    && 'transport' in source
+    && 'value' in source;
+}
+
+function isMediaAssetSource(source: MediaAssetSource | ProviderAssetInput): source is MediaAssetSource {
+  return typeof source === 'string' || !isProviderAssetInput(source);
 }
 
 function collectSeedanceSelectedAssetReferences(plan: ShotVideoPlan): MediaAssetSource[] {
@@ -53,7 +64,7 @@ function collectSeedanceSelectedAssetReferences(plan: ShotVideoPlan): MediaAsset
   const dedupe = new Set<string>();
 
   for (const asset of plan.selectedAssetsForCompilation) {
-    if (!asset.source) {
+    if (!asset.source || !isMediaAssetSource(asset.source)) {
       continue;
     }
     const key = buildMediaSourceKey(asset.source);

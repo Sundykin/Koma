@@ -225,6 +225,77 @@
       background: color-mix(in srgb, var(--token-bg-app) 78%, transparent);
     }
   }
+
+  &SeamDiagnostics {
+    margin: 10px 14px 12px;
+    padding: 10px 12px;
+    border: 1px solid color-mix(in srgb, var(--token-text-primary) 8%, transparent);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--token-bg-app) 90%, transparent);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  &SeamHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  &SeamTitle {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--token-text-secondary);
+  }
+
+  &SeamScore {
+    font-size: 11px;
+    font-weight: 700;
+
+    &.isRisk-low {
+      color: var(--token-status-success);
+    }
+
+    &.isRisk-medium {
+      color: var(--token-status-warning);
+    }
+
+    &.isRisk-high {
+      color: var(--token-status-error);
+    }
+
+    &.isRisk-unknown {
+      color: var(--token-text-muted);
+    }
+  }
+
+  &SeamHint {
+    font-size: 11px;
+    color: var(--token-text-muted);
+    padding: 4px 0;
+  }
+
+  &SeamRow {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  &SeamRowLabel {
+    font-size: 10px;
+    color: var(--token-text-muted);
+    letter-spacing: 0.02em;
+  }
+
+  &SeamCanvas {
+    width: 100%;
+    height: 96px;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--token-bg-app) 70%, transparent);
+    image-rendering: pixelated;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--token-text-primary) 6%, transparent);
+  }
 }
 
 .linghuiReferenceDropzone {

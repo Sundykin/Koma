@@ -66,7 +66,7 @@ describe('projectOpenService pending media task handling', () => {
 
   function readPersistedTasks(): AsyncTask[] {
     return Array.from(store.values()).map(record => ({
-      ...(record.payload as AsyncTask),
+      ...(record.payload as unknown as AsyncTask),
       status: record.status as AsyncTask['status'],
       progress: record.progress,
       error: record.error ?? undefined,

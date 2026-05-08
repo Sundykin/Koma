@@ -442,17 +442,23 @@ function retargetLinghuiWorkspaceRecords(
   workspaceId: string,
   importedIds: {
     nodeIds?: Map<string, string>;
+    groupIds?: Map<string, string>;
   } = {},
 ): LinghuiWorkspaceExportRecords {
   return {
     workflowTemplates: records.workflowTemplates.map(record => {
       const id = randomLinghuiId();
       const remappedSnapshot = remapLinghuiSubgraphSnapshot(record.snapshot);
+      const sourceGroupId = record.sourceGroupId
+        ? (remappedSnapshot.groupIds.get(record.sourceGroupId)
+          ?? importedIds.groupIds?.get(record.sourceGroupId)
+          ?? record.sourceGroupId)
+        : undefined;
       return {
         ...record,
         id,
         workspaceId,
-        sourceGroupId: mapLinghuiId(record.sourceGroupId, remappedSnapshot.groupIds),
+        sourceGroupId,
         snapshotPath: buildLinghuiTemplateSnapshotKey(workspaceId, id),
         snapshot: remappedSnapshot.snapshot,
       };
