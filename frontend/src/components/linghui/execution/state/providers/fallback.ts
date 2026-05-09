@@ -1,9 +1,35 @@
 import type { AppSettings } from '../../../../../types';
 import { listCapabilityFallbackCandidates } from '../../../../../providers/channel/resolver';
+import { getRegistry } from '../../../../../providers/registry';
 import { isLinghuiExecutionCancelledError, throwIfExecutionAborted } from '../linghuiExecutionShared';
 import { getExecutionErrorMessage } from './shared';
 
 const MAX_PROVIDER_FALLBACK_ATTEMPTS = 3;
+
+/**
+ * 按 preferred provider 的 fallbackPolicy 过滤候选清单。
+ *
+ *  - 'lock-to-selection'：只保留首位（用户原选），失败就抛错
+ *  - 'lock-to-provider-type'：保留与 preferred 同 providerType 的候选
+ *  - 'cross-provider'（缺省）：保留全部
+ */
+function applyFallbackPolicy<C extends { providerType: string }>(
+  candidates: ReadonlyArray<C>,
+  category: 'tti' | 'itv',
+): C[] {
+  if (candidates.length === 0) return [];
+  const preferred = candidates[0];
+  const def = getRegistry(category).get(preferred.providerType);
+  const policy = def?.fallbackPolicy ?? 'cross-provider';
+
+  if (policy === 'lock-to-selection') {
+    return [preferred];
+  }
+  if (policy === 'lock-to-provider-type') {
+    return candidates.filter(c => c.providerType === preferred.providerType);
+  }
+  return [...candidates];
+}
 
 export type LinghuiProviderFallbackCandidate = ReturnType<typeof listCapabilityFallbackCandidates>[number];
 
@@ -100,12 +126,14 @@ export async function executeWithProviderFallback<TProvider, TResult>(params: {
   validateProvider: (provider: TProvider) => boolean;
   execute: (provider: TProvider, candidate: LinghuiProviderFallbackCandidate) => Promise<TResult>;
 }): Promise<CompletedFallbackExecution<TResult>> {
-  const candidates = listCapabilityFallbackCandidates(
+  const allCandidates = listCapabilityFallbackCandidates(
     params.settings,
     params.category,
     params.capability as never,
     params.preferredSelection,
-  ).slice(0, MAX_PROVIDER_FALLBACK_ATTEMPTS);
+  );
+  const policyFiltered = applyFallbackPolicy(allCandidates, params.category);
+  const candidates = policyFiltered.slice(0, MAX_PROVIDER_FALLBACK_ATTEMPTS);
 
   const attempts: LinghuiProviderAttemptSummary[] = [];
   let lastError: unknown;

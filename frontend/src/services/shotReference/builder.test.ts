@@ -113,6 +113,76 @@ describe('buildShotReferenceBundle — normal mode', () => {
     expect(bundle.items.map(i => i.kind)).toEqual(['scene', 'character']);
   });
 
+  it('资产没有参考图时仍保留 mention fallback 标签', () => {
+    const propNoImage: Prop = {
+      id: 'prop-book',
+      name: '字典',
+      description: '',
+      prompt: '',
+      media: {},
+    } as unknown as Prop;
+    const shot = shotOf({
+      imageMode: 'normal',
+      props: ['prop-phone', 'prop-book'],
+    });
+
+    const bundle = buildShotReferenceBundle({
+      shot,
+      characters: [],
+      scenes: [],
+      props: [propPhone, propNoImage],
+    });
+
+    expect(bundle.items.map(item => item.mentionToken)).toEqual(['@prop_prop-phone']);
+    expect(bundle.mentionFallbacks).toEqual([
+      { mentionToken: '@prop_prop-phone', label: '手机' },
+      { mentionToken: '@prop_prop-book', label: '字典' },
+    ]);
+  });
+
+  it('真实资产 ID 已含类型前缀时，mentionToken 不重复拼接前缀', () => {
+    const prefixedScene: Scene = {
+      id: 'scene_1778207015305_2',
+      name: '深山木屋内部',
+      media: { previewImage: asset('https://example.com/scene-prefixed.png') },
+    } as unknown as Scene;
+    const prefixedChar: Character = {
+      id: 'char_1778207028644_0',
+      name: '我',
+      media: { costumePhoto: asset('https://example.com/char-prefixed.png') },
+    } as unknown as Character;
+    const prefixedProp: Prop = {
+      id: 'prop_1778207006838_1',
+      name: '红烧肉',
+      media: { previewImage: asset('https://example.com/prop-prefixed.png') },
+    } as unknown as Prop;
+    const shot = shotOf({
+      imageMode: 'normal',
+      characters: ['char_1778207028644_0'],
+      scenes: ['scene_1778207015305_2'],
+      props: ['prop_1778207006838_1'],
+    });
+
+    const bundle = buildShotReferenceBundle({
+      shot,
+      characters: [prefixedChar],
+      scenes: [prefixedScene],
+      props: [prefixedProp],
+    });
+
+    expect(bundle.items.map(item => item.mentionToken)).toEqual([
+      '@scene_1778207015305_2',
+      '@char_1778207028644_0',
+      '@prop_1778207006838_1',
+    ]);
+    expect(bundle.items.map(item => item.mentionToken).join(' ')).not.toContain('@prop_prop_');
+    expect(bundle.mentionFallbacks).toEqual([
+      { mentionToken: '@scene_1778207015305_2', label: '深山木屋内部' },
+      { mentionToken: '@char_1778207028644_0', label: '我' },
+      { mentionToken: '@prop_1778207006838_1', label: '红烧肉' },
+    ]);
+  });
+
   it('忽略 images[] 中带 metadata.gridCell 的拆分子图（历史路径）', () => {
     const shot = shotOf({
       imageMode: 'normal',

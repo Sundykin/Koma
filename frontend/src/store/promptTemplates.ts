@@ -238,14 +238,14 @@ const COMMON_VARIABLE_DEFINITIONS: Record<string, Omit<PromptTemplateVariable, '
     label: '场景引用表',
     description: '可插入到提示词中的场景引用清单，格式为场景名到 @scene_ID 的映射。',
     format: '多行文本',
-    example: '雨夜墓地: @scene_scene_001',
+    example: '雨夜墓地: @scene_001',
     required: true,
   },
   propRefs: {
     label: '道具引用表',
     description: '可插入到提示词中的道具引用清单，格式为道具名到 @prop_ID 的映射。',
     format: '多行文本',
-    example: '铁盆: @prop_prop_001',
+    example: '铁盆: @prop_001',
     required: true,
   },
   shotTypeHint: {
@@ -281,6 +281,20 @@ const COMMON_VARIABLE_DEFINITIONS: Record<string, Omit<PromptTemplateVariable, '
     description: '运行时根据当前 ITV 视频渠道给出的推荐默认时长（秒）。无法判断时使用。',
     format: '秒数字符串',
     example: '10',
+    required: false,
+  },
+  projectNarrativeMode: {
+    label: '项目叙事模式',
+    description: '项目设置中的叙事模式：剧情模式或解说模式。',
+    format: '短语',
+    example: '剧情模式',
+    required: false,
+  },
+  dialogueModeDirective: {
+    label: '台词模式约束',
+    description: '运行时根据项目叙事模式生成的台词改写约束。',
+    format: '多行文本',
+    example: '【项目叙事模式：剧情模式】...',
     required: false,
   },
   imageMode: {
@@ -482,14 +496,14 @@ const COMMON_VARIABLE_DEFINITIONS: Record<string, Omit<PromptTemplateVariable, '
     label: '上 2 分镜信息（多参模式专用）',
     description: '相邻向前第 2 个分镜的剧情 + 已生成的视频提示词；不存在则填"无"',
     format: '多行文本',
-    example: '剧情：顾行走到墓前停下\n已生成提示词：中景，顾行 @图片1 缓慢走至墓碑前 @图片3...',
+    example: '剧情：顾行走到墓前停下\n已生成提示词：中景，顾行 @Image 1 缓慢走至墓碑前 @Image 3...',
     required: false,
   },
   prevShot1Info: {
     label: '上 1 分镜信息（多参模式专用）',
     description: '相邻向前第 1 个分镜的剧情 + 已生成的视频提示词；不存在则填"无"',
     format: '多行文本',
-    example: '剧情：他蹲下点燃纸钱\n已生成提示词：近景，顾行 @图片1 蹲身将纸钱投入铁盆 @图片4...',
+    example: '剧情：他蹲下点燃纸钱\n已生成提示词：近景，顾行 @Image 1 蹲身将纸钱投入铁盆 @Image 4...',
     required: false,
   },
   prevShotInfo: {
@@ -638,9 +652,11 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 - cameraMovement: 运镜方式（static固定/pan摇镜/zoom-in推镜/tracking跟随/handheld手持）
 - duration: 预估时长（秒），{{durationConstraint}}，无法判断时填写 {{durationDefault}} 秒
 - characters: 出现的角色名列表
-- dialogue: 角色台词，格式为"角色名（情绪）：台词内容"
+- dialogue: 角色台词，格式为"角色名（情绪）：台词内容"，具体生成尺度必须遵守项目叙事模式
 - emotion: 画面情绪氛围
 - props: 出现的道具名列表
+
+{{dialogueModeDirective}}
 
 【情绪词列表】
 高兴、愤怒、悲伤、恐惧、反感、低落、惊讶、自然、急切、平静、激动、呵斥、关心、严肃
@@ -654,7 +670,12 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 6. 输出前自检：把所有 shot.scriptContent 连起来，应能覆盖原剧本的主干顺序；若发现遗漏，必须补齐后再返回。
 
 注意：不需要生成画面描述(description)提示词，这将在后续步骤生成。`,
-    variables: [variable('durationConstraint'), variable('durationDefault')],
+    variables: [
+      variable('durationConstraint'),
+      variable('durationDefault'),
+      variable('projectNarrativeMode', { required: false }),
+      variable('dialogueModeDirective', { required: false }),
+    ],
     isCustom: false,
   },
 
@@ -798,6 +819,9 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 已知场景：{{scenes}}
 已知道具：{{props}}
 
+项目叙事模式：{{projectNarrativeMode}}
+{{dialogueModeDirective}}
+
 【重要】characters、scenes、props 字段必须使用上方"已知角色/场景/道具"列表中的原始名称，不要自行编造或修改名称。如果某分镜涉及的元素不在列表中，则不填入对应字段。
 
 【字幕行剧本（逐行编号）】
@@ -808,7 +832,8 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 2. 出现下列任一信号时倾向"开新镜头"：新动作 / 新视线目标 / 新道具状态 / 新空间 / 新说话人 / 情绪转折 / 时间推进。
 3. 单镜分配的行数原则上 1–6 行；行数受 duration 约束（每行约 1.5–3 秒，按 duration 折算合理行数）。
 4. 不许出现空分镜（scriptLineIndices 为空）。
-5. 自检：把所有分镜的 scriptLineIndices 按顺序拼起来 = [1, 2, ..., N]，无遗漏、无重复、无乱序。
+5. dialogue 字段由项目叙事模式决定：剧情模式可从第一人称推文解说改写少量真实对白；解说模式只保留显式对白或极少必要短反应。
+6. 自检：把所有分镜的 scriptLineIndices 按顺序拼起来 = [1, 2, ..., N]，无遗漏、无重复、无乱序。
 
 【输出 JSON】
 \`\`\`json
@@ -832,6 +857,7 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 字段说明：
 - \`scriptLineIndices\`：1-based 字幕行号数组，必须连续（如 [3,4,5]），代表本分镜归属哪些行；下游会用这些索引从原剧本切片，不会读取其它字段去重建文本
 - 其它字段（shotType / cameraMovement / duration / dialogue / characters / scenes / props / emotion）描述本分镜的镜头语言与元素归属
+- \`dialogue\`：必须遵守项目叙事模式；剧情模式中可为第一人称推文素材生成短对白，解说模式不要强行补对白
 `,
     variables: [
       variable('script'),
@@ -840,6 +866,8 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
       variable('props'),
       variable('durationConstraint'),
       variable('durationDefault'),
+      variable('projectNarrativeMode', { required: false }),
+      variable('dialogueModeDirective', { required: false }),
     ],
     isCustom: false,
   },
@@ -849,33 +877,55 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     category: 'inference-image',
     name: '分镜图片提示词生成',
     description: '为分镜生成静态图片提示词',
-    template: `根据以下分镜信息生成一条静态分镜图片提示词。
+    template: `根据以下分镜信息生成一条静态分镜图片提示词。它必须能作为后续视频提示词的 0 秒画面锚点：同一场景、同一角色状态、同一道具位置、同一光影逻辑，视频只在这张图的基础上展开动作。
 
 {{referenceTable}}
 
 {{gridSequenceNotice}}
 
+> 角色参考图判断：如果上方【视觉参考集合】里列出角色参考图，角色外貌 / 发型 / 脸型 / 眼睛 / 体型 / 常规服装 / 常规配饰以参考图为唯一真相；图片提示词只写角色引用 + 当前静帧姿态、朝向、视线、表情、手部、口型和临时状态，禁止补写静态样貌，避免文字与参考图冲突。
+
 ## 输入
 
 剧本内容（唯一真理来源）：{{scriptContent}}
+台词字段（只用于判断口型、表情和说话状态；除非剧本明确要求字幕/气泡，否则不要把台词画成文字）：{{dialogueText}}
+{{dialogueModeDirective}}
 出场角色：{{characters}}
 出现场景：{{scenes}}
 出场道具：{{props}}
 情绪氛围：{{emotion}}
 风格前缀：{{stylePrefix}}
 推荐景别：{{shotTypeHint}}
+推荐运镜（只用于选择构图方向，不输出视频动作）：{{cameraMovementHint}}
+后续视频镜头结构参考（只用于选择首帧 / 关键锚定帧，不要原样输出）：{{shotsSection}}
 
 ## 核心规则
 
-1. **客观可见 only**：只描述静止画面中能”看见”的事实——人物外观 / 服装 / 姿态 / 手部动作 / 道具状态 / 空间关系 / 构图 / 光线。不复述剧情、不描述心理、不解释事件原因、不写旁白 / 解说 / 评价 / 总结句。
+1. **客观可见 only**：只描述静止画面中能看见的事实——姿态 / 手部动作 / 道具状态 / 空间关系 / 构图 / 光线。已有角色参考图时，不写人物静态外貌、常规服装和常规配饰；无参考图时才可按角色基准补充必要外观。不复述剧情、不描述心理、不解释事件原因、不写旁白 / 解说 / 评价 / 总结句。
 2. **解剖学正确（Anatomically correct）**：人物**必须真实人体可执行**——五指、双眼、双耳、四肢、对称面部、合理关节。**禁止**：手指数量错误 / 多肢体 / 关节反向 / 头身比例失真 / 手部畸形 / 面部扭曲 / 透视畸变。姿势必须有明确重心（脚是否着地 / 手是否扶物 / 坐姿支撑点）。
 3. **第三方评论 / 字幕 / 弹幕**：剧本里如有”网友评论””弹幕””字幕””新闻播报””短信””微博”等内容，**绝对不能让人物开口念出**——只能作为画面字幕 / 弹幕 / 手机屏幕等**纯视觉显示**，并写明”字幕：『内容』””手机屏幕显示『内容』”等形式。
-4. **空间精度**：场景含多个同类物体时（多张床 / 多排桌 / 多扇门等），先在画面描述里点明本镜头人物所在的**具体编号**（如”床#1 靠窗下铺”），不允许”宿舍内一张床”这种模糊位置。
-5. **情绪可见化**：把”情绪氛围”转成可见线索——表情 / 肢体张力 / 视线方向 / 色调 / 明暗对比 / 天气。
-6. **景别**：优先用推荐景别；如需微调只能选 {{shotTypeOptions}} 内的关键字。
-7. **引用编码**：所有人物 / 场景 / 道具引用**必须使用 \`@<id> <名称>\` 格式**——mention 协议字符串（\`@char_<id>\` / \`@scene_<id>\` / \`@prop_<id>\`）在前，空格分隔，再跟该对象的中文名称（如 \`@char_abc123 周明\`、\`@scene_xyz789 教室\`、\`@prop_def456 钥匙\`）。如分镜含锚定图，以 \`@shot_anchor 分镜锚定图\` 或 \`@grid_anchor 网格锚定图\` 形式引用。**禁止**只写 mention 不带名称、只写名称不带 mention，或写成 \`<名称> @图片N\` / \`@图片N <名称>\` / \`@角色 <名称>\` 等形式。同一元素每次出现都必须重复完整标注。
-8. **跨镜头一致**：人物外观（穿着 / 发型 / 持物 / 体型）与项目角色基准库严格一致；同一场景内的家具 / 陈设 / 光照在不同分镜间保持稳定，不得引入新元素。
-9. **输出格式**：一段连续中文，不分点、不加前言、不解释。避免空洞形容词（”epic / cinematic / 美轮美奂 / 大气磅礴”）——用具体动词 / 名词 / 颜色 / 光位代替。
+4. **画面层次**：画面描述必须有主空间 + 背景/远景 + 前景/近景三层；优先写可见材质、遮挡关系、地面物、光柱/阴影、手部/面部特写对象，避免空泛“氛围感”。
+5. **空间精度**：用自然定位词写清人物和道具位置（如“神像底座旁”“地面杂草前景”“门口左侧课桌”）。场景含多个同类物体时才使用编号；不要硬编不存在的床号 / 桌号 / 门号。
+6. **情绪可见化**：把”情绪氛围”转成可见线索——表情 / 肢体张力 / 视线方向 / 嘴角 / 眉眼 / 肩颈 / 手指 / 色调 / 明暗对比。
+7. **景别构图**：优先用推荐景别，并补一个服务动作的辅景别（如手部特写、眯眼特写、道具特写、系统气泡），让生图能支撑后续视频的主动作。
+8. **引用编码**：所有人物 / 场景 / 道具引用**必须使用 \`@<id> <名称>\` 格式**——mention 协议字符串（\`@char_<id>\` / \`@scene_<id>\` / \`@prop_<id>\`）在前，空格分隔，再跟该对象的中文名称（如 \`@char_abc123 周明\`、\`@scene_xyz789 教室\`、\`@prop_def456 钥匙\`）。只有当上方【视觉参考集合】明确列出真实分镜锚定图 / 宫格锚定图时，才允许写 \`@shot_anchor 分镜锚定图\` 或 \`@grid_anchor 网格锚定图\`；如果【视觉参考集合】提示无锚定图或纯文字推理，**禁止**输出 \`@shot_anchor\` / \`@grid_anchor\`。**禁止**只写 mention 不带名称、只写名称不带 mention，或写成 \`<名称> @Image N\` / \`@Image N <名称>\` / \`@角色 <名称>\` 等形式。同一元素每次出现都必须重复完整标注。
+9. **跨镜头一致**：已有角色参考图时，人物外观（穿着 / 发型 / 体型 / 常规配饰）只继承参考图，不在提示词里复述或改写；剧情关键持物写入道具或动作。同一场景内的家具 / 陈设 / 光照在不同分镜间保持稳定，不得引入新元素。
+10. **输出结构**：直接输出下面字段，字段为空写“无”，不要前言、解释、自检、Markdown checkbox。字段之间用中文句号或分号连接，可保留字段名，方便后续视频提示词对应。
+
+## 输出字段
+
+整体画风：[继承风格前缀；如明确，则写具体风格]
+景别构图：【主】[推荐景别/主构图]，【辅】[特写对象/中景/系统气泡等]
+画面描述：[主空间 + 背景/远景 + 前景/近景；写可见层次、材质、地面物、遮挡关系]
+角色提示词：[逐条写 @char_<id> <角色名> + 当前静帧姿态、朝向、视线、表情、手部、口型和临时状态；已有角色参考图时禁止写发型、脸型、眼睛、体型、常规服装颜色材质、常规配饰等静态样貌]
+系统/字幕提示词：[系统气泡、屏幕字、弹幕、字幕等纯视觉内容；无则“无”]
+道具提示词：[逐条写道具名 + 引用或可见位置/材质/状态；无则“无”]
+动作定格提示词：[选择最适合作为视频 0 秒的动作起手帧或关键锚定帧；写重心、接触点、视线、手部]
+对白视觉提示词：[只写口型/说话状态/嘴唇细节；不要把普通对白画成文字；无则“无”]
+情绪提示词：[角色名：可见情绪，用眉眼、嘴角、肩颈、手指、身体倾斜外化]
+光影氛围提示词：[光源方向、色温、明暗交替、灰尘/粒子/雾气等可见物理氛围]
+呼应提示词：[与上/下分镜的视觉反差、伏笔或末帧承接；无则“无”]
+负面约束：不生成多余角色，不生成无关文字，不改角色服装和场景结构，避免畸形手、错位眼、穿模、透视扭曲
 
 ## 引用列表
 
@@ -887,12 +937,29 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 `,
     variables: [
       variable('scriptContent'),
+      variable('dialogueText', {
+        label: '分镜台词',
+        description: '当前分镜的显式台词字段。图片模板只用它判断口型、表情、字幕/气泡，不应把普通对白画成文字。',
+        format: '多行台词文本或“无”',
+      }),
+      variable('dialogueModeDirective', { required: false }),
       variable('characters'),
       variable('scenes'),
       variable('props'),
       variable('emotion'),
       variable('stylePrefix'),
       variable('shotTypeHint'),
+      variable('cameraMovementHint', {
+        label: '推荐运镜',
+        description: '当前分镜的视频运镜提示，图片模板只用它选择静帧构图方向。',
+        format: '短语',
+      }),
+      variable('shotsSection', {
+        label: '视频镜头结构参考',
+        description: '后续视频镜头结构，只用于静态图选择 0 秒锚定帧或关键帧，不原样输出。',
+        format: '多行文本',
+        required: false,
+      }),
       variable('shotTypeOptions'),
       variable('characterRefs'),
       variable('sceneRefs'),
@@ -916,6 +983,7 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
       variable('characters'),
       variable('scenes'),
       variable('props'),
+      variable('dialogueModeDirective', { required: false }),
       variable('prevShot2Info', { required: false }),
       variable('prevShot1Info', { required: false }),
       variable('nextShotInfo', { required: false }),
@@ -937,6 +1005,7 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
       variable('characters'),
       variable('scenes'),
       variable('props'),
+      variable('dialogueModeDirective', { required: false }),
       variable('prevShot2Info', { required: false }),
       variable('prevShot1Info', { required: false }),
       variable('nextShotInfo', { required: false }),
@@ -958,6 +1027,7 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
       variable('characters'),
       variable('scenes'),
       variable('props'),
+      variable('dialogueModeDirective', { required: false }),
       variable('prevShot2Info', { required: false }),
       variable('prevShot1Info', { required: false }),
       variable('nextShotInfo', { required: false }),
@@ -979,6 +1049,7 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
       variable('characters'),
       variable('scenes'),
       variable('props'),
+      variable('dialogueModeDirective', { required: false }),
       variable('prevShot2Info', { required: false }),
       variable('prevShot1Info', { required: false }),
       variable('nextShotInfo', { required: false }),
@@ -1001,6 +1072,8 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
       variable('scriptContent'),
       variable('characters'),
       variable('scenes'),
+      variable('props'),
+      variable('dialogueModeDirective', { required: false }),
       variable('prevShotInfo', { required: false }),
       variable('nextShotInfo', { required: false }),
       variable('referenceTable', { required: false }),
@@ -1019,6 +1092,8 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
       variable('scriptContent'),
       variable('characters'),
       variable('scenes'),
+      variable('props'),
+      variable('dialogueModeDirective', { required: false }),
       variable('prevShotInfo', { required: false }),
       variable('nextShotInfo', { required: false }),
       variable('referenceTable', { required: false }),
@@ -1037,6 +1112,8 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
       variable('scriptContent'),
       variable('characters'),
       variable('scenes'),
+      variable('props'),
+      variable('dialogueModeDirective', { required: false }),
       variable('prevShotInfo', { required: false }),
       variable('nextShotInfo', { required: false }),
       variable('referenceTable', { required: false }),
@@ -1055,6 +1132,8 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
       variable('scriptContent'),
       variable('characters'),
       variable('scenes'),
+      variable('props'),
+      variable('dialogueModeDirective', { required: false }),
       variable('prevShotInfo', { required: false }),
       variable('nextShotInfo', { required: false }),
       variable('referenceTable', { required: false }),
@@ -1071,6 +1150,8 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     template: `根据以下分镜信息，把该分镜的剧情内容拆成 **9 个时间上连续的动作帧**，构成一条**单一动作链**——不是 9 个独立场景，不是同一情境的 9 个不同视角，而是 0 秒到结束 9 个连贯瞬间。
 
 剧本内容：{{scriptContent}}
+台词字段（只用于口型、表情、字幕/气泡判断；普通对白不要画成文字）：{{dialogueText}}
+{{dialogueModeDirective}}
 出场角色：{{characters}}
 出现场景：{{scenes}}
 出场道具：{{props}}
@@ -1087,13 +1168,14 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
    - 转折帧（06-07）：动作 / 情绪关键节奏切点，可能是反应、回应、新动作起手
    - 收束帧（08-09）：动作完成、姿态归位、情绪余波；09 必须能作为下一分镜的起点（人物姿态 / 视线 / 持物 / 光影都稳定）
 4. **画面要素一致**：9 帧人物外观、服装、体型、面部特征、整体色调、光照、固定陈设、道具状态全程一致；**只允许人物动作 / 姿态 / 表情 / 镜头远近角度发生变化**。
-5. **景别变化服务叙事**：远 / 中 / 近 / 特写 不与编号绑定，按节奏切换（如 01 中景定场 → 04 近景捕捉手部细节 → 07 特写表情 → 09 中景收束），**禁止 9 帧用同一景别**也禁止"每帧都换景别"的碎切。
-6. **镜头机位 / 角度禁令**：除非剧情明示，禁止人物直面镜头；禁止 0° 纯正面机位；优先 30°-60° 侧拍 / 过肩 OTS。
-7. **严禁孤立画面拼接**：禁止把 9 帧写成"角色 A 的 9 张特写"、"场景的 9 个不同角度"、"同一姿势的 9 种细节"——这些都是错误用法。
+5. **画面层次一致**：每帧都写出主空间 + 背景/远景 + 前景/近景中的至少两层；需要特写时明确特写对象（手、眼、道具、系统气泡），不要只写“特写表情”。
+6. **景别变化服务叙事**：远 / 中 / 近 / 特写 不与编号绑定，按节奏切换（如 01 中景定场 → 04 近景捕捉手部细节 → 07 特写表情 → 09 中景收束），**禁止 9 帧用同一景别**也禁止"每帧都换景别"的碎切。
+7. **镜头机位 / 角度禁令**：除非剧情明示，禁止人物直面镜头；禁止 0° 纯正面机位；优先 30°-60° 侧拍 / 过肩 OTS。
+8. **严禁孤立画面拼接**：禁止把 9 帧写成"角色 A 的 9 张特写"、"场景的 9 个不同角度"、"同一姿势的 9 种细节"——这些都是错误用法。
 
-8. **解剖学正确（Anatomically correct）**：每帧人物动作必须**真实人体可执行**——五指、双眼、对称面部、合理关节、有明确重心 / 接触点。**禁止**：手指数量错误 / 多肢体 / 关节反向 / 头身比例失真 / 手穿过实体 / 同时执行两个相反动作 / 透视畸变。
+9. **解剖学正确（Anatomically correct）**：每帧人物动作必须**真实人体可执行**——五指、双眼、对称面部、合理关节、有明确重心 / 接触点。**禁止**：手指数量错误 / 多肢体 / 关节反向 / 头身比例失真 / 手穿过实体 / 同时执行两个相反动作 / 透视畸变。
 
-9. **第三方评论 / 字幕 / 弹幕禁入主角动作链**：剧本里若有"网友评论""弹幕""字幕"等内容，9 帧**绝不能拍成主角对镜头念出来**——只能在某帧画面里作为字幕 / 手机屏幕 / 弹幕等纯视觉元素呈现。
+10. **第三方评论 / 字幕 / 弹幕禁入主角动作链**：剧本里若有"网友评论""弹幕""字幕"等内容，9 帧**绝不能拍成主角对镜头念出来**——只能在某帧画面里作为字幕 / 手机屏幕 / 弹幕等纯视觉元素呈现。
 
 # 文案精简规则
 1. 每帧描述 ≤ 80 字，整段总长度 ≤ 800 字。
@@ -1111,19 +1193,25 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 可用道具引用：
 {{propRefs}}
 
-输出格式（严格按此格式输出，不要有前言或解释）：
-镜头01：[起手帧 / 静态锚点描述]
-镜头02：[第一个变化]
-镜头03：[变化推进]
-镜头04：[动作中段]
-镜头05：[情绪 / 动作主峰]
-镜头06：[节奏切点 / 反应起势]
-镜头07：[反应中段]
-镜头08：[收势铺垫]
-镜头09：[动作完成、归位、可作为下一分镜起点的稳定态]
+输出格式（严格按此格式输出，不要有前言或解释；每帧都包含景别/画面层次/角色动作/光影）：
+镜头01：[景别；起手帧 / 静态锚点；主空间 + 背景/前景；角色姿态与光影]
+镜头02：[景别；第一个变化；手部/视线/重心；可见环境层次]
+镜头03：[景别；变化推进；表情和微动作；道具/前景]
+镜头04：[景别；动作中段；特写对象或中景关系；光影变化]
+镜头05：[景别；情绪 / 动作主峰；口型/手部/道具状态]
+镜头06：[景别；节奏切点 / 反应起势；空间锚点保持]
+镜头07：[景别；反应中段；表情细节和身体重心]
+镜头08：[景别；收势铺垫；前景/背景呼应]
+镜头09：[景别；动作完成、归位、可作为下一分镜起点的稳定态；末帧光影]
 `,
     variables: [
       variable('scriptContent'),
+      variable('dialogueText', {
+        label: '分镜台词',
+        description: '当前分镜的显式台词字段。九宫格只用它判断口型、表情、字幕/气泡。',
+        format: '多行台词文本或“无”',
+      }),
+      variable('dialogueModeDirective', { required: false }),
       variable('characters'),
       variable('scenes'),
       variable('props'),
@@ -1146,6 +1234,8 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 相比九宫格，四宫格只挑 4 个**最关键**的瞬间——起手 / 第一节奏切点 / 第二节奏切点 / 收束。**少切换、强稳定、节奏简洁**——适合人物对话、关键动作起承转合、情绪渐进等不需要碎切的镜头。
 
 剧本内容：{{scriptContent}}
+台词字段（只用于口型、表情、字幕/气泡判断；普通对白不要画成文字）：{{dialogueText}}
+{{dialogueModeDirective}}
 出场角色：{{characters}}
 出现场景：{{scenes}}
 出场道具：{{props}}
@@ -1161,13 +1251,14 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
    - 镜头 03：第二节奏切点——动作中段或情绪主峰、新动作起手
    - 镜头 04：收束帧——动作完成、姿态归位、情绪余波；必须能作为下一分镜起点
 4. **画面要素一致**：4 帧人物外观、服装、体型、面部特征、整体色调、光照、固定陈设、道具状态全程一致；**只允许人物动作 / 姿态 / 表情 / 镜头远近角度发生变化**。
-5. **景别变化服务叙事**：远 / 中 / 近 / 特写 不与编号绑定，按节奏切换（如 01 中景定场 → 03 近景捕捉关键动作 → 04 中景收束）；4 帧不要用同一景别，也不要每帧都换。
-6. **机位 / 角度禁令**：除非剧情明示，禁止人物直面镜头；禁止 0° 纯正面；优先 30°-60° 侧拍 / 过肩 OTS。
-7. **严禁孤立画面拼接**：不写"4 张同一姿势的特写"、"场景的 4 个角度"、"角色的 4 个表情"——这些都是错误用法。
+5. **画面层次一致**：每帧都写出主空间 + 背景/远景 + 前景/近景中的至少两层；需要特写时明确特写对象（手、眼、道具、系统气泡）。
+6. **景别变化服务叙事**：远 / 中 / 近 / 特写 不与编号绑定，按节奏切换（如 01 中景定场 → 03 近景捕捉关键动作 → 04 中景收束）；4 帧不要用同一景别，也不要每帧都换。
+7. **机位 / 角度禁令**：除非剧情明示，禁止人物直面镜头；禁止 0° 纯正面；优先 30°-60° 侧拍 / 过肩 OTS。
+8. **严禁孤立画面拼接**：不写"4 张同一姿势的特写"、"场景的 4 个角度"、"角色的 4 个表情"——这些都是错误用法。
 
-8. **解剖学正确（Anatomically correct）**：每帧人物动作必须**真实人体可执行**——五指、双眼、对称面部、合理关节、有明确重心 / 接触点。**禁止**：手指数量错误 / 多肢体 / 关节反向 / 头身比例失真 / 手穿过实体 / 同时执行两个相反动作 / 透视畸变。
+9. **解剖学正确（Anatomically correct）**：每帧人物动作必须**真实人体可执行**——五指、双眼、对称面部、合理关节、有明确重心 / 接触点。**禁止**：手指数量错误 / 多肢体 / 关节反向 / 头身比例失真 / 手穿过实体 / 同时执行两个相反动作 / 透视畸变。
 
-9. **第三方评论 / 字幕 / 弹幕禁入主角动作链**：剧本里若有"网友评论""弹幕""字幕""新闻播报"等内容，4 帧**绝不能拍成主角对镜头念出来**——只能作为字幕 / 手机屏幕 / 弹幕等纯视觉元素呈现。
+10. **第三方评论 / 字幕 / 弹幕禁入主角动作链**：剧本里若有"网友评论""弹幕""字幕""新闻播报"等内容，4 帧**绝不能拍成主角对镜头念出来**——只能作为字幕 / 手机屏幕 / 弹幕等纯视觉元素呈现。
 
 # 文案精简规则
 1. 每帧描述 ≤ 100 字，整段总长度 ≤ 500 字。
@@ -1185,14 +1276,20 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 可用道具引用：
 {{propRefs}}
 
-输出格式（严格按此格式输出，不要有前言或解释）：
-镜头01：[起手帧 / 静态锚点]
-镜头02：[第一节奏切点 / 动作起势]
-镜头03：[第二节奏切点 / 动作主峰]
-镜头04：[收束帧 / 可作为下一分镜起点的稳定态]
+输出格式（严格按此格式输出，不要有前言或解释；每帧都包含景别/画面层次/角色动作/光影）：
+镜头01：[景别；起手帧 / 静态锚点；主空间 + 背景/前景；角色姿态与光影]
+镜头02：[景别；第一节奏切点 / 动作起势；手部/视线/重心；可见环境层次]
+镜头03：[景别；第二节奏切点 / 动作主峰；特写对象或中景关系；光影变化]
+镜头04：[景别；收束帧 / 可作为下一分镜起点的稳定态；前景/背景呼应]
 `,
     variables: [
       variable('scriptContent'),
+      variable('dialogueText', {
+        label: '分镜台词',
+        description: '当前分镜的显式台词字段。四宫格只用它判断口型、表情、字幕/气泡。',
+        format: '多行台词文本或“无”',
+      }),
+      variable('dialogueModeDirective', { required: false }),
       variable('characters'),
       variable('scenes'),
       variable('props'),
@@ -1907,7 +2004,7 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     category: 'tti',
     name: '分镜图片',
     description: '生成分镜预览图',
-    template: '{{stylePrefix}}, {{shotType}}, objective still frame, {{description}}, visible emotion cues: {{emotion}}, cinematic lighting, layered composition, detailed environment, high quality, 4k, art style lock: render in the SAME art style as the project character / scene / prop reference images already established (color palette, lighting, brush/line work, textures, atmosphere, rendering technique); do NOT drift toward photorealism / live-action / a different aesthetic, do NOT change the established art style of any character, scene or prop visible in the shot',
+    template: '{{stylePrefix}}, storyboard still frame and video anchor frame, {{shotType}}, objective visible image only, use the structured description exactly: {{description}}, visible emotion cues: {{emotion}}, clear foreground / midground / background layering, readable character silhouettes and hand poses, stable spatial continuity for later video generation, cinematic lighting with explicit light direction and shadow shape, detailed environment, high quality, 4k, do not render ordinary dialogue as text unless the description explicitly asks for subtitle / system bubble / screen text, art style lock: render in the SAME art style as the project character / scene / prop reference images already established (color palette, lighting, brush/line work, textures, atmosphere, rendering technique); do NOT drift toward photorealism / live-action / a different aesthetic, do NOT change the established art style of any character, scene or prop visible in the shot',
     variables: [
       variable('stylePrefix'),
       variable('description', {
@@ -1931,7 +2028,7 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     category: 'tti',
     name: '九宫格分镜图片',
     description: '生成 3×3 九宫格网格分镜图',
-    template: `{{stylePrefix}}, 根据{{shotDescription}}, 生成一张具有凝聚力的 3×3 网格图像, 包含在同一环境中的 9 个不同摄像机镜头, 严格保持人物/物体、服装和光线的一致性, 每个网格画面的比例保持为{{aspectRatio}}, {{resolution}}分辨率, {{aspectRatio}}画幅。
+    template: `{{stylePrefix}}, 根据{{shotDescription}}, 生成一张具有凝聚力的 3×3 连续动作网格图像, 9 个格子是同一环境、同一人物、同一道具状态沿时间推进的分镜锚点，不是 9 个无关画面；每格都要有清楚的前景 / 中景 / 背景层次、可读的角色轮廓、手部姿态和光影方向；严格保持人物/物体、服装、空间结构和光线的一致性, 每个网格画面的比例保持为{{aspectRatio}}, {{resolution}}分辨率, {{aspectRatio}}画幅。
 
 {{gridPrompt}}`,
     variables: [
@@ -1949,7 +2046,7 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     category: 'tti',
     name: '四宫格分镜图片',
     description: '生成 2×2 四宫格网格分镜图（更适合稳定镜头与少切换叙事）',
-    template: `{{stylePrefix}}, 根据{{shotDescription}}, 生成一张具有凝聚力的 2×2 网格图像, 包含在同一环境中的 4 个连续镜头, 严格保持人物/物体、服装和光线的一致性, 每个网格画面的比例保持为{{aspectRatio}}, {{resolution}}分辨率, {{aspectRatio}}画幅。
+    template: `{{stylePrefix}}, 根据{{shotDescription}}, 生成一张具有凝聚力的 2×2 连续动作网格图像, 4 个格子是同一环境、同一人物、同一道具状态的起手 / 节奏切点 / 动作主峰 / 收束锚点；每格都要有清楚的前景 / 中景 / 背景层次、可读的角色轮廓、手部姿态和光影方向；严格保持人物/物体、服装、空间结构和光线的一致性, 每个网格画面的比例保持为{{aspectRatio}}, {{resolution}}分辨率, {{aspectRatio}}画幅。
 
 {{gridPrompt}}`,
     variables: [

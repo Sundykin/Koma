@@ -11,6 +11,9 @@ import { getThemeStylePrefix } from '../config/themePresets';
 import { logTTICall } from '../store/aiCallLogger';
 import { createLogger } from '../store/logger';
 import { mediaGenerationService } from '../services/MediaGenerationService';
+import { buildShotReferenceBundle } from '../services/shotReference/builder';
+import { compileShotPromptToBundle } from '../services/shotReference/compile';
+import { summarizeBundle } from '../services/shotReference/render';
 import {
   normalizeCharactersMediaState,
   normalizePropsMediaState,
@@ -18,7 +21,6 @@ import {
   normalizeShotMediaState,
 } from '../store/project/mediaState';
 import { buildShotImageTemplateVariables } from './promptVariableBuilders';
-import { buildShotAssetReferences } from './assetReferenceBuilder';
 import type { StyleSnapshotLike } from '../utils/promptNormalize';
 
 const logger = createLogger('ShotImageWorkflow');
@@ -59,21 +61,6 @@ export async function shotImageWorkflow(params: {
   const finalAspectRatio = aspectRatio || project?.aspectRatio || '16:9';
 
   onProgress?.(0, '准备生成分镜图片...');
-
-  // Shot 自身的参考图
-  const references: Array<string | StoredMediaAsset> = [];
-  for (const ref of normalizedShot.media?.references || []) {
-    references.push(ref);
-  }
-
-  // 关联资产参考图（角色/场景/道具）
-  const { mediaReferences, compilationAssets: selectedAssetsForCompilation } = buildShotAssetReferences(
-    normalizedShot,
-    normalizedCharacters,
-    normalizedScenes,
-    props,
-  );
-  references.push(...mediaReferences);
 
   // 构建提示词：统一走同一条生图 workflow。
   // 九宫格模式仅在最终提交给 TTI 前套用九宫格终稿模板，不影响存储与工作流分支。
@@ -120,12 +107,36 @@ export async function shotImageWorkflow(params: {
     promptSource = resolved.source;
   }
 
-  logger.info(`分镜 ${normalizedShot.id} prompt: ${prompt}`);
+  const referenceBundle = buildShotReferenceBundle({
+    shot: normalizedShot,
+    characters: normalizedCharacters,
+    scenes: normalizedScenes,
+    props,
+  });
+  const compiledPromptResult = compileShotPromptToBundle({
+    prompt,
+    bundle: referenceBundle,
+  });
+  const compiledPrompt = compiledPromptResult.compiledPrompt;
+  const references = [...compiledPromptResult.references];
+
+  if (compiledPromptResult.debug.unmappedTokens.length > 0
+    || compiledPromptResult.debug.overflowImageNumbers.length > 0) {
+    logger.warn('分镜生图 prompt 编译存在未匹配 / 越界 token', {
+      shotId: normalizedShot.id,
+      unmappedTokens: compiledPromptResult.debug.unmappedTokens,
+      overflowImageNumbers: compiledPromptResult.debug.overflowImageNumbers,
+      bundleSize: referenceBundle.items.length,
+      bundle: summarizeBundle(referenceBundle),
+    });
+  }
+
+  logger.info(`分镜 ${normalizedShot.id} prompt: ${compiledPrompt}`);
 
   // 日志记录（references 仅记录来源，实际传入 Provider 前会被 resolver 规范化）
   logTTICall(
     'TTI',
-    prompt,
+    compiledPrompt,
     {
       aspectRatio: finalAspectRatio,
       references: references.map(r => (typeof r === 'string' ? r : getMediaAssetDisplaySource(r) || '')).filter(Boolean),
@@ -151,12 +162,9 @@ export async function shotImageWorkflow(params: {
       episodeId,
     },
     request: {
-      prompt,
+      prompt: compiledPrompt,
       references,
       options: { aspectRatio: finalAspectRatio },
-    },
-    promptCompilation: {
-      selectedAssets: selectedAssetsForCompilation,
     },
     ttiSelection,
     taskName: `分镜图片: ${normalizedShot.id}`,

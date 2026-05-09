@@ -78,11 +78,11 @@ function hasMatchingEdge(
   edges: Edge[],
   target: Pick<Edge, 'source' | 'sourceHandle' | 'target' | 'targetHandle'>,
 ): boolean {
+  void target.sourceHandle;
+  void target.targetHandle;
   return edges.some(edge => (
     edge.source === target.source &&
-    (edge.sourceHandle ?? 'output-0') === (target.sourceHandle ?? 'output-0') &&
-    edge.target === target.target &&
-    (edge.targetHandle ?? 'input-0') === (target.targetHandle ?? 'input-0')
+    edge.target === target.target
   ));
 }
 
@@ -247,8 +247,8 @@ export function useLinghuiCanvasDocumentOps({
         id: `e-${nanoid(8)}`,
         source,
         target,
-        sourceHandle: edge.sourceHandle,
-        targetHandle: edge.targetHandle,
+          sourceHandle: 'output-0',
+          targetHandle: 'input-0',
         type: edge.type ?? 'linghui-edge',
         data: cloneSnapshotValue((edge.data ?? {}) as Record<string, unknown>),
       }];
@@ -594,7 +594,7 @@ export function useLinghuiCanvasDocumentOps({
         source: scriptNodeId,
         sourceHandle: 'output-0',
         target: nodeId,
-        targetHandle: 'input-1',
+        targetHandle: 'input-0',
       };
       if (!hasMatchingEdge(nextEdges, edgeShape)) {
         nextEdges.push({

@@ -3,7 +3,6 @@ import {
   isImageToVideoRequest,
   isReferenceToVideoRequest,
 } from '../types';
-import type { PromptCompilationInput } from '../services/promptCompilation/types';
 import { resolvePromptTemplate } from '../store/promptTemplates';
 import {
   buildShotVideoRequest,
@@ -33,7 +32,6 @@ function coerceRequestDurationSeconds(value: unknown): number {
 export interface CompiledVideoGenerationRequest {
   prompt: string;
   request: ITVRequest<MediaAssetSource>;
-  promptCompilation?: PromptCompilationInput;
   templateId?: string;
   promptSource?: 'default' | 'custom' | 'finalized';
 }
@@ -42,46 +40,41 @@ function buildMediaSourceKey(source: MediaAssetSource | ProviderAssetInput): str
   if (typeof source === 'string') {
     return source;
   }
-  if (source && typeof source === 'object' && 'transport' in source && 'value' in source) {
+  if (isProviderAssetInput(source)) {
     return `${source.transport}:${source.value}`;
   }
   return source.remoteUrl || source.localPath || JSON.stringify(source);
 }
 
-function collectSeedanceSelectedAssetReferences(plan: ShotVideoPlan): MediaAssetSource[] {
-  const references: MediaAssetSource[] = [];
-  const dedupe = new Set<string>();
+function isProviderAssetInput(source: MediaAssetSource | ProviderAssetInput): source is ProviderAssetInput {
+  return typeof source === 'object'
+    && source !== null
+    && 'transport' in source
+    && 'value' in source;
+}
 
-  for (const asset of plan.selectedAssetsForCompilation) {
-    if (!asset.source) {
-      continue;
-    }
-    const key = buildMediaSourceKey(asset.source);
-    if (dedupe.has(key)) {
-      continue;
-    }
-    dedupe.add(key);
-    references.push(asset.source);
-  }
-
-  return references;
+function isMediaAssetSource(source: MediaAssetSource | ProviderAssetInput): source is MediaAssetSource {
+  return typeof source === 'string' || !isProviderAssetInput(source);
 }
 
 function mergeSeedanceShotReferences(
   request: ITVRequest<MediaAssetSource>,
   plan: ShotVideoPlan,
 ): ITVRequest<MediaAssetSource> {
-  const assetReferences = collectSeedanceSelectedAssetReferences(plan);
-  if (!assetReferences.length) {
+  const bundleReferences = plan.bundle.items
+    .map(item => item.source)
+    .filter(isMediaAssetSource);
+  if (!bundleReferences.length) {
     return request;
   }
 
   if (isImageToVideoRequest(request)) {
-    const primaryKey = buildMediaSourceKey(request.primaryImage);
-    const dedupe = new Set<string>([primaryKey]);
+    const [bundlePrimary, ...bundleAdditional] = bundleReferences;
+    const primaryImage = bundlePrimary || request.primaryImage;
+    const dedupe = new Set<string>([buildMediaSourceKey(primaryImage)]);
     const mergedAdditional: MediaAssetSource[] = [];
 
-    for (const source of [...assetReferences, ...(request.additionalReferences || [])]) {
+    for (const source of [...bundleAdditional, ...(request.additionalReferences || [])]) {
       const key = buildMediaSourceKey(source);
       if (dedupe.has(key)) {
         continue;
@@ -92,22 +85,16 @@ function mergeSeedanceShotReferences(
 
     return {
       ...request,
+      primaryImage,
       additionalReferences: mergedAdditional,
     };
   }
 
   if (isReferenceToVideoRequest(request)) {
-    const [primaryReference, ...restReferences] = request.referenceImages;
     const dedupe = new Set<string>();
     const mergedReferences: MediaAssetSource[] = [];
 
-    if (primaryReference) {
-      const key = buildMediaSourceKey(primaryReference);
-      dedupe.add(key);
-      mergedReferences.push(primaryReference);
-    }
-
-    for (const source of [...assetReferences, ...restReferences]) {
+    for (const source of [...bundleReferences, ...request.referenceImages]) {
       const key = buildMediaSourceKey(source);
       if (dedupe.has(key)) {
         continue;
@@ -143,10 +130,10 @@ export function compileShotVideoGenerationRequest(params: {
   providerType?: string;
 }): CompiledVideoGenerationRequest {
   // 阶段 4：bundle-aware 编译。把 prompt 中的 @shot_anchor / @grid_anchor /
-  // @char_xxx / @scene_xxx / @prop_xxx / @user_<idx> 全部翻译为 @图片N，N 严格
+  // @char_xxx / @scene_xxx / @prop_xxx / @user_<idx> 全部翻译为 @Image N，N 严格
   // 对应 plan.bundle.items 的位置。provider 拿到的 prompt 是位置编码，无需自己
-  // 解析 mention 协议；老协议的兼容编译（compileGrokITV）由下游 promptCompilation
-  // 字段保留给历史路径用。
+  // 解析 mention 协议；这一条分镜链路已经完成 bundle-aware 编译，不能再交给
+  // 老 selectedAssets 编译器二次重排引用顺序。
   const compiledPromptResult = compileShotPromptToBundle({
     prompt: params.prompt,
     bundle: params.plan.bundle,
@@ -173,21 +160,15 @@ export function compileShotVideoGenerationRequest(params: {
     capability: params.capability,
   });
 
-  // Seedance 系 provider 把角色 / 场景 / 道具资产图按顺序并入 references 是固有特性。
-  // 老 'seedance' 已下线（channel 收敛），现役入口是 'koma-suihe-itv'（komaapi.com 网关
-  // 转发到穗禾 Seedance 上游），所以这两个 providerType 都要触发资产合并。
+  // Seedance 系 provider 需要把 bundle 内视觉源完整交给 references。这里只能按
+  // plan.bundle.items 顺序补齐，不能再用旧 selectedAssets 顺序重排，否则 @Image N
+  // 会指向错图。
   const isSeedanceFamily = params.providerType === 'seedance' || params.providerType === 'koma-suihe-itv';
   return {
     prompt: finalPrompt,
     request: isSeedanceFamily
       ? mergeSeedanceShotReferences(request, params.plan)
       : request,
-    promptCompilation: {
-      selectedAssets: params.plan.selectedAssetsForCompilation,
-      primaryReferenceSource: params.capability === 'video.reference-to-video'
-        ? params.plan.primaryImageInput
-        : undefined,
-    },
   };
 }
 

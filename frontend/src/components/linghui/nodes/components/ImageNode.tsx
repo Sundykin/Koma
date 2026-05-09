@@ -1,6 +1,6 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { App } from 'antd';
-import { Position, type NodeProps, useUpdateNodeInternals } from '@xyflow/react';
+import { type NodeProps, useUpdateNodeInternals } from '@xyflow/react';
 import { Download, Image as ImageIcon } from 'lucide-react';
 import type {
   LinghuiImageNodeMode,
@@ -17,6 +17,7 @@ import {
 } from '../state/LinghuiNodeRunsContext';
 import { LinghuiNodeEditor } from '../../editors/components/LinghuiNodeEditor';
 import { PanoramaViewer, PanoramaViewport } from '../../panorama/PanoramaViewer';
+import { resolvePanoramaProjectionMode } from '../../panorama/panoramaProjection';
 import { electronService } from '../../../../services/electronService';
 import { toFileSystemDisplayUrl } from '../../../../services/fileSystemPort';
 import { stripDataHeader } from '../../../../utils/encoding';
@@ -31,7 +32,7 @@ import {
 import { resolveMediaCardSize } from '../state/linghuiNodeCardSizing';
 import { cssVars } from '../../../../theme/runtime';
 import { LinghuiNodeRunError } from './LinghuiNodeRunError';
-import { LinghuiNodeHandle } from './LinghuiNodeHandle';
+import { LinghuiNodePorts } from './LinghuiNodeHandle';
 
 const STATUS_COLORS: Record<LinghuiRunStatus, string> = {
   idle: 'var(--token-text-muted)',
@@ -50,12 +51,6 @@ function resolveImageNodeMode(props: LinghuiImageNodeProperties): LinghuiImageNo
     return props.mode;
   }
   return String(props.source ?? '').trim() ? 'import' : 'generate';
-}
-
-function resolveHandleTop(index: number, total: number): string {
-  if (total <= 1) return '50%';
-  const step = 100 / (total + 1);
-  return `${step * (index + 1)}%`;
 }
 
 function sanitizeFileSegment(value: string, fallback: string): string {
@@ -311,6 +306,10 @@ function ImageNodeInner({ id, data, selected }: NodeProps) {
   const editorNodeType = isPanoramaNode ? 'linghui/panorama' : 'linghui/image';
   const isEditorVisible = useLinghuiNodeEditorVisibility(id, editorNodeType);
   const [isPanoramaFullscreen, setIsPanoramaFullscreen] = useState(false);
+  const panoramaProjectionMode = isPanoramaNode
+    ? resolvePanoramaProjectionMode((props as { projectionMode?: unknown }).projectionMode)
+    : undefined;
+  const panoramaRatioString = isPanoramaNode ? String(props.aspectRatio ?? '') : undefined;
 
   const collection = resolveLinghuiImageCollection(props, runState?.result);
   const importItems = useMemo(() => getLinghuiImageImportItems(props), [props]);
@@ -550,27 +549,7 @@ function ImageNodeInner({ id, data, selected }: NodeProps) {
       style={nodeStyle}
       {...interactionHandlers}
     >
-      {nodeData.inputs.map((slot, index) => (
-        <LinghuiNodeHandle
-          key={`input-${index}`}
-          type="target"
-          position={Position.Left}
-          id={`input-${index}`}
-          dataType={slot.dataType}
-          accent={nodeData.accent}
-          top={resolveHandleTop(index, nodeData.inputs.length)}
-          title={slot.name}
-        />
-      ))}
-
-      <LinghuiNodeHandle
-        type="source"
-        position={Position.Right}
-        id="output-0"
-        dataType={nodeData.outputs[0]?.dataType}
-        accent={nodeData.accent}
-        title={nodeData.outputs[0]?.name}
-      />
+      <LinghuiNodePorts accent={nodeData.accent} inputs={nodeData.inputs} outputs={nodeData.outputs} />
 
       {/* 缩略图 */}
       <div className="linghuiCompactThumb">
@@ -585,6 +564,8 @@ function ImageNodeInner({ id, data, selected }: NodeProps) {
               mountReady
               showFovHint={false}
               onRequestFullscreen={() => setIsPanoramaFullscreen(true)}
+              projectionMode={panoramaProjectionMode}
+              ratioString={panoramaRatioString}
             />
           </div>
         ) : gridSplitOverlay && primaryDisplayItem && gridSplitPreviewLayout ? (
@@ -742,8 +723,10 @@ function ImageNodeInner({ id, data, selected }: NodeProps) {
         <PanoramaViewer
           open={isPanoramaFullscreen}
           imageUrl={primaryDisplayItem.preview}
-          title={`${nodeData.label || '全景'} · 720° 预览`}
+          title={`${nodeData.label || '全景'} · 全景预览`}
           onClose={() => setIsPanoramaFullscreen(false)}
+          projectionMode={panoramaProjectionMode}
+          ratioString={panoramaRatioString}
         />
       )}
     </div>

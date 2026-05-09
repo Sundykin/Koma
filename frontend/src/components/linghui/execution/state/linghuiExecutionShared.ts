@@ -11,6 +11,7 @@ import type {
   LinghuiNodeType,
   LinghuiRFNodeSnapshot,
   LinghuiScriptNodeProperties,
+  LinghuiSlotDataType,
   LinghuiTextNodeProperties,
   LinghuiVideoNodeProperties,
 } from '../../../../types/linghui';
@@ -139,49 +140,20 @@ export interface ExecutionNodeView {
   getPromptReferences: () => LinghuiPromptReferenceItem[];
 }
 
-function resolveAllInputResults(context: LinghuiExecutionContext, nodeId: string, handleId = 'input-0'): LinghuiNodeResult[] {
-  return getOrderedIncomingReferenceEdges(nodeId, context.edges)
-    .filter(edge => edge.targetHandle === handleId)
-    .map(edge => {
-      const sourceNode = context.nodes.find(node => node.id === edge.source);
-      const result = context.nodeOutputs[edge.source] ?? resolveStaticNodeResult(sourceNode);
-      if (result && !context.nodeOutputs[edge.source]) {
-        context.nodeOutputs[edge.source] = result;
-      }
-      if (!result) {
-        return undefined;
-      }
-
-      if (sourceNode?.data.linghuiType !== 'linghui/image' && sourceNode?.data.linghuiType !== 'linghui/panorama') {
-        return result;
-      }
-
-      return resolveLinghuiImageResultWithSelectedPrimary(
-        sourceNode.data.properties as unknown as LinghuiImageNodeProperties,
-        result,
-      );
-    })
-    .filter(Boolean) as LinghuiNodeResult[];
-}
-
-function resolveInputData(context: LinghuiExecutionContext, nodeId: string, inputSlotIndex: number): LinghuiNodeResult | undefined {
-  const targetHandle = `input-${inputSlotIndex}`;
-  const edge = getOrderedIncomingReferenceEdges(nodeId, context.edges)
-    .find(item => item.targetHandle === targetHandle);
-  if (!edge) {
+function resolveNodeResultForInput(context: LinghuiExecutionContext, sourceNode: LinghuiRFNodeSnapshot | undefined): LinghuiNodeResult | undefined {
+  if (!sourceNode) {
     return undefined;
   }
 
-  const sourceNode = context.nodes.find(node => node.id === edge.source);
-  const result = context.nodeOutputs[edge.source] ?? resolveStaticNodeResult(sourceNode);
-  if (result && !context.nodeOutputs[edge.source]) {
-    context.nodeOutputs[edge.source] = result;
+  const result = context.nodeOutputs[sourceNode.id] ?? resolveStaticNodeResult(sourceNode);
+  if (result && !context.nodeOutputs[sourceNode.id]) {
+    context.nodeOutputs[sourceNode.id] = result;
   }
   if (!result) {
     return undefined;
   }
 
-  if (sourceNode?.data.linghuiType !== 'linghui/image' && sourceNode?.data.linghuiType !== 'linghui/panorama') {
+  if (sourceNode.data.linghuiType !== 'linghui/image' && sourceNode.data.linghuiType !== 'linghui/panorama') {
     return result;
   }
 
@@ -191,8 +163,100 @@ function resolveInputData(context: LinghuiExecutionContext, nodeId: string, inpu
   );
 }
 
+function resolveAllUpstreamResults(context: LinghuiExecutionContext, nodeId: string): LinghuiNodeResult[] {
+  const nodeMap = new Map(context.nodes.map(node => [node.id, node] as const));
+  const queue = getOrderedIncomingReferenceEdges(nodeId, context.edges).map(edge => edge.source);
+  const seenNodes = new Set<string>();
+  const seenResults = new Set<string>();
+  const results: LinghuiNodeResult[] = [];
+
+  while (queue.length > 0) {
+    const sourceNodeId = queue.shift()!;
+    if (seenNodes.has(sourceNodeId)) {
+      continue;
+    }
+    seenNodes.add(sourceNodeId);
+
+    const sourceNode = nodeMap.get(sourceNodeId);
+    const result = resolveNodeResultForInput(context, sourceNode);
+    if (result) {
+      const resultKey = JSON.stringify({
+        kind: result.kind,
+        text: getLinghuiResultText(result),
+        media: getLinghuiResultPrimaryMedia(result)?.source,
+        items: getLinghuiResultItems(result).map(item => item.source).filter(Boolean),
+      });
+      if (!seenResults.has(resultKey)) {
+        seenResults.add(resultKey);
+        results.push(result);
+      }
+    }
+
+    queue.push(...getOrderedIncomingReferenceEdges(sourceNodeId, context.edges).map(edge => edge.source));
+  }
+
+  return results;
+}
+
+function resultMatchesSlotDataType(result: LinghuiNodeResult, dataType?: string): boolean {
+  if (!dataType) return true;
+  if (dataType === 'text') {
+    return Boolean(String(getLinghuiResultText(result) || getLinghuiResultDescriptionText(result) || '').trim());
+  }
+  if (dataType === 'storyboard') {
+    return result.kind === 'storyboard';
+  }
+  if (dataType === 'shot') {
+    return result.kind === 'shot';
+  }
+  if (dataType === 'images') {
+    return result.kind === 'images' || result.kind === 'grid';
+  }
+
+  const primary = getLinghuiResultPrimaryMedia(result);
+  if (primary?.kind === dataType) {
+    return true;
+  }
+  return getLinghuiResultItems(result).some(item => item.kind === dataType);
+}
+
+function resolveInputResults(
+  snapshot: LinghuiRFNodeSnapshot,
+  upstreamResults: LinghuiNodeResult[],
+  inputSlotIndex: number,
+): LinghuiNodeResult[] {
+  const dataType = snapshot.data.inputs[inputSlotIndex]?.dataType;
+  if (!dataType) {
+    return [];
+  }
+  return upstreamResults.filter(result => resultMatchesSlotDataType(result, dataType));
+}
+
+function resolveResultsByDataType(
+  upstreamResults: LinghuiNodeResult[],
+  dataType: LinghuiSlotDataType,
+): LinghuiNodeResult[] {
+  return upstreamResults.filter(result => resultMatchesSlotDataType(result, dataType));
+}
+
+function resolveInputData(
+  snapshot: LinghuiRFNodeSnapshot,
+  upstreamResults: LinghuiNodeResult[],
+  inputSlotIndex: number,
+): LinghuiNodeResult | undefined {
+  return resolveInputResults(snapshot, upstreamResults, inputSlotIndex)[0];
+}
+
 export function createNodeView(context: LinghuiExecutionContext, snapshot: LinghuiRFNodeSnapshot): ExecutionNodeView {
   const nodeId = snapshot.id;
+  let upstreamResultsCache: LinghuiNodeResult[] | null = null;
+  const getUpstreamResults = () => {
+    if (!upstreamResultsCache) {
+      upstreamResultsCache = resolveAllUpstreamResults(context, nodeId);
+    }
+    return upstreamResultsCache;
+  };
+
   return {
     id: nodeId,
     type: snapshot.data.linghuiType,
@@ -200,13 +264,13 @@ export function createNodeView(context: LinghuiExecutionContext, snapshot: Lingh
     title: snapshot.data.label,
     settingsSnapshot: context.settingsSnapshot,
     getAllInputResults(slot) {
-      return resolveAllInputResults(context, nodeId, `input-${slot}`);
+      return resolveInputResults(snapshot, getUpstreamResults(), slot);
     },
     getAllInputImages() {
-      return resolveAllInputResults(context, nodeId);
+      return resolveResultsByDataType(getUpstreamResults(), 'image');
     },
     getInputResult(slot) {
-      return resolveInputData(context, nodeId, slot);
+      return resolveInputData(snapshot, getUpstreamResults(), slot);
     },
     getPromptReferences() {
       return buildLinghuiPromptReferenceItems({

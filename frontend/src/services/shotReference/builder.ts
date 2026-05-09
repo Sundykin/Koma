@@ -11,6 +11,7 @@
  * 不读取 shot.media.images 中带 metadata.gridCell 的拆分子图（历史路径）。
  */
 import type { Character, Prop, Scene, Shot, StoredMediaAsset } from '../../types';
+import { createMentionString } from '../../editor/mentionTypes';
 import { normalizeShotMediaState } from '../../store/project/mediaState';
 import type {
   ShotReferenceBundle,
@@ -47,6 +48,7 @@ export function buildShotReferenceBundle(params: BuildParams): ShotReferenceBund
   const maxRefs = Math.max(1, params.options?.maxRefs ?? DEFAULT_MAX_REFS);
 
   const items: ShotReferenceItem[] = [];
+  const mentionFallbacks: Array<{ mentionToken: string; label: string }> = [];
   const seen = new Set<string>();
 
   // 1. 锚点：grid-anchor 或 shot-anchor，单选
@@ -56,6 +58,8 @@ export function buildShotReferenceBundle(params: BuildParams): ShotReferenceBund
   for (const sceneId of normalized.scenes || []) {
     const scene = params.scenes.find(s => s.id === sceneId);
     if (!scene) continue;
+    const mentionToken = createMentionString('scene', scene.id);
+    pushFallback(mentionFallbacks, mentionToken, scene.name);
     const source = scene.media?.previewImage;
     if (!source) continue;
     pushItem(items, seen, {
@@ -63,7 +67,7 @@ export function buildShotReferenceBundle(params: BuildParams): ShotReferenceBund
       id: scene.id,
       label: `场景：${scene.name}`,
       source,
-      mentionToken: `@scene_${scene.id}`,
+      mentionToken,
       priority: PRIORITY.SCENE,
       assetId: scene.id,
     });
@@ -73,6 +77,8 @@ export function buildShotReferenceBundle(params: BuildParams): ShotReferenceBund
   (normalized.characters || []).forEach((charId, idx) => {
     const char = params.characters.find(c => c.id === charId);
     if (!char) return;
+    const mentionToken = createMentionString('char', char.id);
+    pushFallback(mentionFallbacks, mentionToken, char.name);
     const source = pickCharacterVisual(char);
     if (!source) return;
     pushItem(items, seen, {
@@ -80,7 +86,7 @@ export function buildShotReferenceBundle(params: BuildParams): ShotReferenceBund
       id: char.id,
       label: `角色：${char.name}`,
       source,
-      mentionToken: `@char_${char.id}`,
+      mentionToken,
       priority: idx === 0 ? PRIORITY.CHARACTER_LEAD : PRIORITY.CHARACTER_SUPPORT,
       assetId: char.id,
     });
@@ -90,6 +96,8 @@ export function buildShotReferenceBundle(params: BuildParams): ShotReferenceBund
   (normalized.props || []).forEach((propId, idx) => {
     const prop = params.props.find(p => p.id === propId);
     if (!prop) return;
+    const mentionToken = createMentionString('prop', prop.id);
+    pushFallback(mentionFallbacks, mentionToken, prop.name);
     const source = pickPropVisual(prop);
     if (!source) return;
     pushItem(items, seen, {
@@ -97,7 +105,7 @@ export function buildShotReferenceBundle(params: BuildParams): ShotReferenceBund
       id: prop.id,
       label: `道具：${prop.name}`,
       source,
-      mentionToken: `@prop_${prop.id}`,
+      mentionToken,
       priority: idx === 0 ? PRIORITY.PROP_PRIMARY : PRIORITY.PROP_SECONDARY,
       assetId: prop.id,
     });
@@ -133,6 +141,7 @@ export function buildShotReferenceBundle(params: BuildParams): ShotReferenceBund
 
   return {
     items: orderedItems,
+    mentionFallbacks,
     hasGridAnchor,
     gridCellCount,
     hasShotImage,
@@ -142,6 +151,17 @@ export function buildShotReferenceBundle(params: BuildParams): ShotReferenceBund
       truncatedKinds: truncated.map(item => item.kind),
     },
   };
+}
+
+function pushFallback(
+  fallbacks: Array<{ mentionToken: string; label: string }>,
+  mentionToken: string,
+  label: string,
+): void {
+  const cleanLabel = label.trim();
+  if (!cleanLabel) return;
+  if (fallbacks.some(item => item.mentionToken === mentionToken)) return;
+  fallbacks.push({ mentionToken, label: cleanLabel });
 }
 
 function pushAnchor(shot: Shot, items: ShotReferenceItem[], seen: Set<string>): void {

@@ -5,6 +5,7 @@ import { ImageNode } from './components/ImageNode';
 import { VideoNode } from './components/VideoNode';
 import { AudioNode } from './components/AudioNode';
 import { ScriptNode } from './components/ScriptNode';
+import { Director3DNode } from './components/Director3DNode';
 import { CanvasGroupNode } from './components/CanvasGroupNode';
 
 export const linghuiNodeTypes: NodeTypes = {
@@ -18,6 +19,7 @@ export const linghuiNodeTypes: NodeTypes = {
   'linghui-video': VideoNode,
   'linghui-audio': AudioNode,
   'linghui-script': ScriptNode,
+  'linghui-director3d': Director3DNode,
 };
 
 export {

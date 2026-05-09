@@ -2,7 +2,7 @@
  * 分镜统一引用集合（ShotReferenceBundle）
  *
  * 让生图（TTI）和生视频（ITV multi-ref）共用同一份 references 数组、同一套
- * @图片N 索引协议。bundle 是单一事实来源；下游构造 provider 请求时严格按 items
+ * @Image N 索引协议。bundle 是单一事实来源；下游构造 provider 请求时严格按 items
  * 的位置顺序展开 references[0..N]。
  *
  * 设计决策：
@@ -36,7 +36,7 @@ export interface ShotReferenceItem {
   source: MediaAssetSource;
   /**
    * Mention token，用于在提示词中引用该项的标记。Provider 端的
-   * grok-image-index 协议编译时会把 token 替换为具体的 `@图片N`，N 严格
+   * grok-image-index 协议编译时会把 token 替换为具体的 `@Image N`，N 严格
    * 对应 references 数组的位置。
    *
    * 约定：
@@ -51,8 +51,8 @@ export interface ShotReferenceItem {
   /** 配额裁剪用的优先级。数值越大越保留。 */
   priority: number;
   /**
-   * 该项的源资产 ID（仅 character/scene/prop 有效，用于跟 PromptCompilationAsset
-   * 对齐）。shot-anchor / grid-anchor / user-upload 留空。
+   * 该项的源资产 ID（仅 character/scene/prop 有效，用于诊断和跨流程对齐）。
+   * shot-anchor / grid-anchor / user-upload 留空。
    */
   assetId?: string;
 }
@@ -60,6 +60,12 @@ export interface ShotReferenceItem {
 export interface ShotReferenceBundle {
   /** 严格按位置排序，对应 references[0], [1], ... 全 bundle 共享同一索引空间。 */
   items: ReadonlyArray<ShotReferenceItem>;
+  /**
+   * 资产 mention 的可读降级表。资产存在但没有可用参考图、或因模型引用图上限被裁掉时，
+   * compile 层用这里的标签替换 raw `@char_*` / `@scene_*` / `@prop_*`，避免把机器 ID
+   * 泄漏给 provider。
+   */
+  mentionFallbacks?: ReadonlyArray<{ mentionToken: string; label: string }>;
   /**
    * bundle 是否含 grid-anchor。提示词模板用此 flag 决定是否渲染
    * {{gridSequenceNotice}} 段（九宫格时序约定）。

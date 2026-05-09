@@ -1,5 +1,5 @@
 import React, { memo } from 'react';
-import { Position, type NodeProps } from '@xyflow/react';
+import { type NodeProps } from '@xyflow/react';
 import type {
   LinghuiNodeData,
   LinghuiRunStatus,
@@ -13,7 +13,7 @@ import { resolveLinghuiNodeViewMode } from '../../editors/state/linghuiNodeViewM
 import { resolveDefaultCompactNodeStyle } from '../state/linghuiNodeCardSizing';
 import { cssVars } from '../../../../theme/runtime';
 import { LinghuiNodeRunError } from './LinghuiNodeRunError';
-import { LinghuiNodeHandle } from './LinghuiNodeHandle';
+import { LinghuiNodePorts } from './LinghuiNodeHandle';
 
 const STATUS_COLORS: Record<LinghuiRunStatus, string> = {
   idle: 'var(--token-text-muted)',
@@ -22,12 +22,6 @@ const STATUS_COLORS: Record<LinghuiRunStatus, string> = {
   failed: 'var(--token-status-error)',
   stale: 'var(--token-status-warning)',
 };
-
-function resolveHandleTop(index: number, total: number): string {
-  if (total <= 1) return '50%';
-  const step = 100 / (total + 1);
-  return `${step * (index + 1)}%`;
-}
 
 function TextNodeInner({ id, data, selected }: NodeProps) {
   const nodeData = data as unknown as LinghuiNodeData;
@@ -58,27 +52,7 @@ function TextNodeInner({ id, data, selected }: NodeProps) {
       style={nodeStyle}
       {...interactionHandlers}
     >
-      {nodeData.inputs.map((slot, index) => (
-        <LinghuiNodeHandle
-          key={`input-${index}`}
-          type="target"
-          position={Position.Left}
-          id={`input-${index}`}
-          dataType={slot.dataType}
-          accent={nodeData.accent}
-          top={resolveHandleTop(index, nodeData.inputs.length)}
-          title={slot.name}
-        />
-      ))}
-
-      <LinghuiNodeHandle
-        type="source"
-        position={Position.Right}
-        id="output-0"
-        dataType={nodeData.outputs[0]?.dataType}
-        accent={nodeData.accent}
-        title={nodeData.outputs[0]?.name}
-      />
+      <LinghuiNodePorts accent={nodeData.accent} inputs={nodeData.inputs} outputs={nodeData.outputs} />
 
       <div className="linghuiCompactThumb linghuiCompactTextThumb">
         <div className="linghuiCompactTextGlyph linghuiCompactAccentText">

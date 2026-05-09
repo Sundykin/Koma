@@ -149,7 +149,7 @@ function createCanvasContext(width: number, height: number): CanvasRenderingCont
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
-  return canvas.getContext('2d', { willReadFrequently: true } as any);
+  return canvas.getContext('2d', { willReadFrequently: true });
 }
 
 async function loadImageElement(source: string): Promise<HTMLImageElement | null> {

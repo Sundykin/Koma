@@ -1,13 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const bindOwnerRefMediaMock = vi.fn();
-const isElectronMock = vi.fn(() => true);
+const mocks = vi.hoisted(() => ({
+  bindOwnerRefMedia: vi.fn(),
+  appendRendererLog: vi.fn(),
+  isElectron: vi.fn(() => true),
+}));
 
 vi.mock('../services/electronService', () => ({
   electronService: {
-    isElectron: (...args: unknown[]) => isElectronMock(...args),
+    isElectron: mocks.isElectron,
     project: {
-      bindOwnerRefMedia: (...args: unknown[]) => bindOwnerRefMediaMock(...args),
+      bindOwnerRefMedia: mocks.bindOwnerRefMedia,
+    },
+    diagnostics: {
+      appendRendererLog: mocks.appendRendererLog,
     },
   },
 }));
@@ -16,10 +22,12 @@ import { bindCompletedMediaTask, bindOwnerRefMedia } from './mediaTaskBindingSer
 
 describe('mediaTaskBindingService', () => {
   beforeEach(() => {
-    bindOwnerRefMediaMock.mockReset();
-    isElectronMock.mockReset();
-    isElectronMock.mockReturnValue(true);
-    bindOwnerRefMediaMock.mockResolvedValue({ success: true });
+    mocks.bindOwnerRefMedia.mockReset();
+    mocks.appendRendererLog.mockReset();
+    mocks.isElectron.mockReset();
+    mocks.isElectron.mockReturnValue(true);
+    mocks.bindOwnerRefMedia.mockResolvedValue({ success: true });
+    mocks.appendRendererLog.mockResolvedValue({ success: true });
   });
 
   it('delegates owner media binding to electron project service', async () => {
@@ -40,7 +48,7 @@ describe('mediaTaskBindingService', () => {
 
     await bindOwnerRefMedia('project-1', ownerRef, asset);
 
-    expect(bindOwnerRefMediaMock).toHaveBeenCalledWith('project-1', ownerRef, asset);
+    expect(mocks.bindOwnerRefMedia).toHaveBeenCalledWith('project-1', ownerRef, asset);
   });
 
   it('bindCompletedMediaTask forwards valid owner refs and ignores mismatched projects', async () => {
@@ -85,8 +93,8 @@ describe('mediaTaskBindingService', () => {
       },
     } as any, asset);
 
-    expect(bindOwnerRefMediaMock).toHaveBeenCalledTimes(1);
-    expect(bindOwnerRefMediaMock).toHaveBeenCalledWith(
+    expect(mocks.bindOwnerRefMedia).toHaveBeenCalledTimes(1);
+    expect(mocks.bindOwnerRefMedia).toHaveBeenCalledWith(
       'project-1',
       expect.objectContaining({
         projectId: 'project-1',

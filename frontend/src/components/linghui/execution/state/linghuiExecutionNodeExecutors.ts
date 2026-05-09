@@ -33,9 +33,10 @@ import {
   resolveLinghuiImagePrimaryImportItem,
 } from '../../editors/state/linghuiImageCollections';
 import {
-  wrapWithPanoramaTemplate,
+  compilePanoramaPrompt,
   type PanoramaTemplateKind,
 } from '../../panorama/panoramaPromptTemplate';
+import { resolvePanoramaProjectionMode } from '../../panorama/panoramaProjection';
 import {
   generateAudioWithProvider,
   generateImageVariantsWithProvider,
@@ -69,6 +70,8 @@ const LINGHUI_NODE_TASK_SUBTYPE: Record<string, TaskSubType> = {
   'linghui/video': 'linghui-video',
   'linghui/audio': 'linghui-audio',
   'linghui/script': 'linghui-script',
+  // 3D 导演不真正调远程 provider，按 image subtype 分组（导出 lineart 走渲染器）
+  'linghui/director3d': 'linghui-image',
 };
 
 const DEFAULT_SCRIPT_SYSTEM_PROMPT = [
@@ -892,7 +895,8 @@ export async function executePanoramaNode(
   const templateKind: PanoramaTemplateKind = rawTemplate === 'indoor' || rawTemplate === 'outdoor'
     ? rawTemplate
     : 'auto';
-  const wrappedPrompt = wrapWithPanoramaTemplate(originalPrompt, templateKind);
+  const projectionMode = resolvePanoramaProjectionMode(node.properties.projectionMode);
+  const wrappedPrompt = compilePanoramaPrompt(originalPrompt, { templateKind, projectionMode });
   const wrappedNode: ExecutionNodeView = {
     ...node,
     properties: { ...node.properties, prompt: wrappedPrompt },
@@ -905,6 +909,7 @@ export async function executePanoramaNode(
       ...(result.metadata ?? {}),
       mode: 'panorama',
       panoramaTemplate: templateKind,
+      panoramaProjection: projectionMode,
       originalPrompt: originalPrompt.trim(),
     },
   } as LinghuiNodeResult;
@@ -1174,6 +1179,59 @@ export async function executeAudioNode(
   };
 }
 
+/**
+ * 3D 导演节点执行：把编辑器导出的 lineartDataUrl 当作主输出。
+ *
+ * 不调用任何远程 provider —— 渲染发生在编辑器里（Director3DViewport.captureCurrentView），
+ * 用户点击「导出线稿参考」按钮即可写入 properties.lineartDataUrl。
+ * 这里执行节点 = 把已经写入的 dataUrl 包装成 LinghuiNodeResult，让下游图片节点能引用。
+ *
+ * 如果还没导出，节点会失败并提示用户先在编辑器里导出。
+ */
+export async function executeDirector3DNode(
+  node: ExecutionNodeView,
+  _onProgress?: NodeExecutionProgressHandler,
+  _signal?: AbortSignal,
+): Promise<LinghuiNodeResult> {
+  const properties = node.properties as Record<string, unknown> | undefined;
+  const lineartDataUrl = typeof properties?.lineartDataUrl === 'string' ? properties.lineartDataUrl : '';
+  const directorPromptFragment = typeof properties?.directorPromptFragment === 'string' ? properties.directorPromptFragment : '';
+  if (!lineartDataUrl) {
+    throw new Error('请先在 3D 导演工作台编辑器里点击「导出线稿参考」');
+  }
+
+  const sceneJson = (() => {
+    try {
+      return JSON.stringify(properties?.scene ?? {});
+    } catch {
+      return '';
+    }
+  })();
+
+  return {
+    kind: 'image',
+    status: 'succeeded',
+    label: '3D 导演线稿',
+    items: [{
+      id: `director3d-${node.id}`,
+      source: lineartDataUrl,
+      mimeType: 'image/png',
+      label: '3D 导演线稿',
+    }],
+    primary: {
+      id: `director3d-${node.id}`,
+      source: lineartDataUrl,
+      mimeType: 'image/png',
+      label: '3D 导演线稿',
+    },
+    metadata: {
+      mode: 'director3d',
+      directorPromptFragment,
+      scene: sceneJson,
+    },
+  } as unknown as LinghuiNodeResult;
+}
+
 async function executeNodeInner(
   node: ExecutionNodeView,
   onProgress?: NodeExecutionProgressHandler,
@@ -1194,6 +1252,8 @@ async function executeNodeInner(
       return executeAudioNode(node, onProgress, signal);
     case 'linghui/script':
       return executeScriptNode(node, onProgress, signal);
+    case 'linghui/director3d':
+      return executeDirector3DNode(node, onProgress, signal);
     default:
       throw new Error(`暂不支持执行节点类型：${node.type}`);
   }

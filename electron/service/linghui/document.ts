@@ -18,6 +18,7 @@ const CURRENT_LINGHUI_TYPES: readonly LinghuiNodeType[] = [
   'linghui/video',
   'linghui/audio',
   'linghui/script',
+  'linghui/director3d',
 ] as const;
 
 const CURRENT_RF_TYPES: readonly LinghuiRFNodeTypeKey[] = [
@@ -28,6 +29,7 @@ const CURRENT_RF_TYPES: readonly LinghuiRFNodeTypeKey[] = [
   'linghui-video',
   'linghui-audio',
   'linghui-script',
+  'linghui-director3d',
 ] as const;
 
 const DEFAULT_LINGHUI_VIEWPORT: LinghuiViewportState = {
@@ -54,6 +56,7 @@ const LINGHUI_TYPE_TO_RF_TYPE_MAP: Record<LinghuiNodeType, LinghuiRFNodeTypeKey>
   'linghui/video': 'linghui-video',
   'linghui/audio': 'linghui-audio',
   'linghui/script': 'linghui-script',
+  'linghui/director3d': 'linghui-director3d',
 };
 
 const RF_TYPE_TO_LINGHUI_TYPE_MAP: Record<LinghuiRFNodeTypeKey, LinghuiNodeType> = {
@@ -64,6 +67,7 @@ const RF_TYPE_TO_LINGHUI_TYPE_MAP: Record<LinghuiRFNodeTypeKey, LinghuiNodeType>
   'linghui-video': 'linghui/video',
   'linghui-audio': 'linghui/audio',
   'linghui-script': 'linghui/script',
+  'linghui-director3d': 'linghui/director3d',
 };
 
 function clone<T>(value: T): T {
@@ -129,11 +133,6 @@ function normalizeCurrentNode(node: LinghuiRFNodeSnapshot, index: number): Lingh
   }
 
   const expectedRFType = linghuiTypeToRFType(node.data.linghuiType);
-  if (node.type !== expectedRFType) {
-    throw new Error(
-      `Linghui workspace 节点类型不匹配: node[${index}] expects ${expectedRFType} but received ${node.type}`,
-    );
-  }
 
   return {
     ...node,

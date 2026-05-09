@@ -22,7 +22,7 @@ function bundle(items: ShotReferenceItem[]): ShotReferenceBundle {
 }
 
 describe('compileShotPromptToBundle — 基础 token 翻译', () => {
-  it('@shot_anchor / @scene_xx / @char_xx / @prop_xx 翻译为对应位置的 @图片N', () => {
+  it('@shot_anchor / @scene_xx / @char_xx / @prop_xx 翻译为对应位置的 @Image N', () => {
     const bdl = bundle([
       item({ kind: 'shot-anchor', mentionToken: '@shot_anchor' }),
       item({ kind: 'scene', mentionToken: '@scene_dorm' }),
@@ -35,12 +35,12 @@ describe('compileShotPromptToBundle — 基础 token 翻译', () => {
       bundle: bdl,
     });
 
-    expect(result.compiledPrompt).toBe('@图片1 中，@图片3 坐在 @图片2 床上玩 @图片4');
+    expect(result.compiledPrompt).toBe('@Image 1 中，@Image 3 坐在 @Image 2 床上玩 @Image 4');
     expect(result.references).toHaveLength(4);
     expect(result.debug.unmappedTokens).toEqual([]);
   });
 
-  it('@grid_anchor 翻译为 references[N=对应位置] 的 @图片N', () => {
+  it('@grid_anchor 翻译为 references[N=对应位置] 的 @Image N', () => {
     const bdl = bundle([
       item({ kind: 'grid-anchor', mentionToken: '@grid_anchor' }),
       item({ kind: 'character', mentionToken: '@char_zhouming' }),
@@ -51,13 +51,13 @@ describe('compileShotPromptToBundle — 基础 token 翻译', () => {
       bundle: bdl,
     });
 
-    expect(result.compiledPrompt).toContain('@图片1');
-    expect(result.compiledPrompt).toContain('@图片2');
+    expect(result.compiledPrompt).toContain('@Image 1');
+    expect(result.compiledPrompt).toContain('@Image 2');
     expect(result.compiledPrompt).not.toContain('@grid_anchor');
     expect(result.compiledPrompt).not.toContain('@char_');
   });
 
-  it('@user_<idx> 翻译为对应位置的 @图片N', () => {
+  it('@user_<idx> 翻译为对应位置的 @Image N', () => {
     const bdl = bundle([
       item({ kind: 'shot-anchor', mentionToken: '@shot_anchor' }),
       item({ kind: 'user-upload', mentionToken: '@user_0' }),
@@ -69,44 +69,44 @@ describe('compileShotPromptToBundle — 基础 token 翻译', () => {
       bundle: bdl,
     });
 
-    expect(result.compiledPrompt).toBe('主图 @图片1 + 用户参考 @图片2 与 @图片3');
+    expect(result.compiledPrompt).toBe('主图 @Image 1 + 用户参考 @Image 2 与 @Image 3');
   });
 });
 
-describe('compileShotPromptToBundle — 已经是 @图片N 的处理', () => {
-  it('合法的 @图片N 原样保留并归一化空格', () => {
+describe('compileShotPromptToBundle — 已经是 @Image N / @图片N 的处理', () => {
+  it('合法的位置编码原样保留并归一化协议', () => {
     const bdl = bundle([
       item({ kind: 'shot-anchor', mentionToken: '@shot_anchor' }),
       item({ kind: 'scene', mentionToken: '@scene_x' }),
     ]);
 
     const result = compileShotPromptToBundle({
-      prompt: '使用 @图片1 与 @图片 2 做参考',
+      prompt: '使用 @Image1 与 @图片 2 做参考',
       bundle: bdl,
     });
 
-    expect(result.compiledPrompt).toBe('使用 @图片1 与 @图片2 做参考');
+    expect(result.compiledPrompt).toBe('使用 @Image 1 与 @Image 2 做参考');
     expect(result.debug.overflowImageNumbers).toEqual([]);
   });
 
-  it('越界的 @图片N（N > items.length）被剥离并记录', () => {
+  it('越界的位置编码（N > items.length）被剥离并记录', () => {
     const bdl = bundle([
       item({ kind: 'shot-anchor', mentionToken: '@shot_anchor' }),
     ]);
 
     const result = compileShotPromptToBundle({
-      prompt: '@shot_anchor 是主图，@图片3 不存在',
+      prompt: '@shot_anchor 是主图，@Image 3 不存在',
       bundle: bdl,
     });
 
-    // @shot_anchor → @图片1；@图片3 越界被剥离
-    expect(result.compiledPrompt).toBe('@图片1 是主图， 不存在');
+    // @shot_anchor → @Image 1；@Image 3 越界被剥离
+    expect(result.compiledPrompt).toBe('@Image 1 是主图， 不存在');
     expect(result.debug.overflowImageNumbers).toEqual([3]);
   });
 });
 
 describe('compileShotPromptToBundle — 未匹配 token', () => {
-  it('未在 bundle 中找到的 token 原样保留并记录', () => {
+  it('未在 bundle 中找到且无 fallback 的 token 会被剥离并记录', () => {
     const bdl = bundle([
       item({ kind: 'shot-anchor', mentionToken: '@shot_anchor' }),
     ]);
@@ -116,9 +116,30 @@ describe('compileShotPromptToBundle — 未匹配 token', () => {
       bundle: bdl,
     });
 
-    expect(result.compiledPrompt).toContain('@图片1');
-    expect(result.compiledPrompt).toContain('@char_unknown_id'); // 留原样
+    expect(result.compiledPrompt).toContain('@Image 1');
+    expect(result.compiledPrompt).not.toContain('@char_unknown_id');
     expect(result.debug.unmappedTokens).toContain('@char_unknown_id');
+  });
+
+  it('资产存在但没有图片时，用 mentionFallbacks 降级为可读名称', () => {
+    const bdl: ShotReferenceBundle = {
+      ...bundle([
+        item({ kind: 'grid-anchor', mentionToken: '@grid_anchor' }),
+      ]),
+      mentionFallbacks: [
+        { mentionToken: '@prop_meat', label: '红烧肉' },
+        { mentionToken: '@prop_book', label: '字典' },
+      ],
+    };
+
+    const result = compileShotPromptToBundle({
+      prompt: '@grid_anchor 中，@prop_meat 红烧肉 放在桌面，随后举起 @prop_book。',
+      bundle: bdl,
+    });
+
+    expect(result.compiledPrompt).toBe('@Image 1 中， 红烧肉 放在桌面，随后举起 字典。');
+    expect(result.compiledPrompt).not.toContain('@prop_');
+    expect(result.debug.unmappedTokens).toEqual(['@prop_meat', '@prop_book']);
   });
 
   it('多次出现的同一未匹配 token 在 unmappedTokens 中只算一次', () => {

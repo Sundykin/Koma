@@ -1,9 +1,9 @@
 import type { MediaAssetSource, ProviderAssetInput } from '../../types';
-import { parseMentions } from '../../editor/mentionTypes';
-import type { MentionType, ParsedMention } from '../../editor/mentionTypes';
+import { isAssetMentionType, parseMentions } from '../../editor/mentionTypes';
+import type { AssetMentionType, ParsedMention } from '../../editor/mentionTypes';
 import type { PromptCompilationDebug, PromptCompilationInput } from './types';
 
-function buildMatchIds(type: MentionType, assetId: string, altIds?: string[]): Set<string> {
+function buildMatchIds(type: AssetMentionType, assetId: string, altIds?: string[]): Set<string> {
   const ids = new Set<string>();
 
   const add = (id?: string) => {
@@ -37,6 +37,36 @@ function refKey(ref: MediaAssetSource | ProviderAssetInput): string {
   return anyRef?.remoteUrl || anyRef?.localPath || JSON.stringify(anyRef);
 }
 
+function getReadableAssetLabel(asset: NonNullable<PromptCompilationInput['selectedAssets']>[number]): string {
+  return String(asset.name || asset.textValue || '').trim();
+}
+
+function buildReadableMentionReplacement(params: {
+  prompt: string;
+  mention: ParsedMention;
+  fallbackLabel?: string;
+}): string {
+  const fallbackLabel = params.fallbackLabel?.trim();
+  if (!fallbackLabel) return '';
+
+  const afterMention = params.prompt.slice(params.mention.to);
+  if (afterMention.trimStart().startsWith(fallbackLabel)) {
+    return '';
+  }
+  return fallbackLabel;
+}
+
+function applyMentionReplacements(
+  prompt: string,
+  replacements: Array<{ from: number; to: number; replacement: string }>,
+): string {
+  let compiledPrompt = prompt;
+  for (const item of replacements.sort((left, right) => right.from - left.from)) {
+    compiledPrompt = compiledPrompt.slice(0, item.from) + item.replacement + compiledPrompt.slice(item.to);
+  }
+  return compiledPrompt;
+}
+
 export function compileGrokTTI(params: {
   prompt: string;
   selectedAssets: PromptCompilationInput['selectedAssets'];
@@ -58,28 +88,40 @@ export function compileGrokTTI(params: {
     asset: a,
     matchIds: buildMatchIds(a.type, a.assetId, a.altIds),
   }));
+  const allAssetMatchIds = params.selectedAssets.map(a => ({
+    asset: a,
+    matchIds: buildMatchIds(a.type, a.assetId, a.altIds),
+  }));
 
-  const mentionToIndex: Array<{ mention: ParsedMention; index: number }> = [];
+  const replacements: Array<{ from: number; to: number; replacement: string }> = [];
   const unmappedMentions: PromptCompilationDebug['unmappedMentions'] = [];
 
   for (const mention of mentions) {
+    if (!isAssetMentionType(mention.type)) {
+      continue;
+    }
     const hit = assetMatchIds.find(({ asset, matchIds }) => asset.type === mention.type && matchIds.has(mention.id));
     if (!hit) {
       unmappedMentions.push({ type: mention.type, id: mention.id, fullMatch: mention.fullMatch });
+      const knownAsset = allAssetMatchIds.find(({ asset, matchIds }) => asset.type === mention.type && matchIds.has(mention.id));
+      replacements.push({
+        from: mention.from,
+        to: mention.to,
+        replacement: buildReadableMentionReplacement({
+          prompt: params.prompt,
+          mention,
+          fallbackLabel: knownAsset ? getReadableAssetLabel(knownAsset.asset) : undefined,
+        }),
+      });
       continue;
     }
     const idx = usableAssets.findIndex(a => a === hit.asset);
     if (idx >= 0) {
-      mentionToIndex.push({ mention, index: idx + 1 }); // @Image 1..N
+      replacements.push({ from: mention.from, to: mention.to, replacement: `@Image ${idx + 1}` }); // @Image 1..N
     }
   }
 
-  // Replace mentions from tail to head to avoid index shifts.
-  const sorted = [...mentionToIndex].sort((a, b) => b.mention.from - a.mention.from);
-  let compiledPrompt = params.prompt;
-  for (const { mention, index } of sorted) {
-    compiledPrompt = compiledPrompt.slice(0, mention.from) + `@Image ${index}` + compiledPrompt.slice(mention.to);
-  }
+  const compiledPrompt = applyMentionReplacements(params.prompt, replacements);
 
   const selectedRefs = usableAssets.map(a => a.source!).filter(Boolean);
   const selectedKeys = new Set(selectedRefs.map(refKey));
@@ -131,33 +173,41 @@ export function compileGrokITV(params: {
     asset: a,
     matchIds: buildMatchIds(a.type, a.assetId, a.altIds),
   }));
+  const allAssetMatchIds = params.selectedAssets.map(a => ({
+    asset: a,
+    matchIds: buildMatchIds(a.type, a.assetId, a.altIds),
+  }));
 
-  const mentionToIndex: Array<{ mention: ParsedMention; index: number }> = [];
+  const replacements: Array<{ from: number; to: number; replacement: string }> = [];
   const unmappedMentions: PromptCompilationDebug['unmappedMentions'] = [];
 
   for (const mention of mentions) {
+    if (!isAssetMentionType(mention.type)) {
+      continue;
+    }
     const hit = assetMatchIds.find(({ asset, matchIds }) => asset.type === mention.type && matchIds.has(mention.id));
     if (!hit) {
       unmappedMentions.push({ type: mention.type, id: mention.id, fullMatch: mention.fullMatch });
+      const knownAsset = allAssetMatchIds.find(({ asset, matchIds }) => asset.type === mention.type && matchIds.has(mention.id));
+      replacements.push({
+        from: mention.from,
+        to: mention.to,
+        replacement: buildReadableMentionReplacement({
+          prompt: params.prompt,
+          mention,
+          fallbackLabel: knownAsset ? getReadableAssetLabel(knownAsset.asset) : undefined,
+        }),
+      });
       continue;
     }
     const idx = usableAssets.findIndex(a => a === hit.asset);
     if (idx >= 0) {
       // @Image 1 reserved for primary image; assets start from @Image 2
-      mentionToIndex.push({ mention, index: idx + 2 });
+      replacements.push({ from: mention.from, to: mention.to, replacement: `@Image ${idx + 2}` });
     }
   }
 
-  const sorted = [...mentionToIndex].sort((a, b) => b.mention.from - a.mention.from);
-  let compiledPrompt = params.prompt;
-  for (const { mention, index } of sorted) {
-    compiledPrompt = compiledPrompt.slice(0, mention.from) + `@Image ${index}` + compiledPrompt.slice(mention.to);
-  }
-
-  // Ensure primary image is explicitly referenced as @Image 1.
-  if (!/\@Image\s+1\b/.test(compiledPrompt)) {
-    compiledPrompt = `@Image 1 ${compiledPrompt}`.trim();
-  }
+  const compiledPrompt = applyMentionReplacements(params.prompt, replacements);
 
   // Provider API separates primary image from additional refs.
   // We align indices by:
@@ -178,7 +228,7 @@ export function compileGrokITV(params: {
     compiledPrompt,
     mentions,
     assetToImageIndex: [
-      { type: 'scene' as any, assetId: '(primary-image)', image: '@Image 1' },
+      { type: 'scene', assetId: '(primary-image)', image: '@Image 1' },
       ...usableAssets.map((a, i) => ({
         type: a.type,
         assetId: a.assetId,

@@ -90,6 +90,12 @@ function createCanvasContext() {
   return { ctx, alphaSnapshots };
 }
 
+function mockCanvas2DContext(ctx: CanvasRenderingContext2D) {
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation((
+    (contextId: string) => (contextId === '2d' ? ctx : null)
+  ) as HTMLCanvasElement['getContext']);
+}
+
 function createExportRenderer() {
   return new SimpleExportRenderer({
     width: 1920,
@@ -104,7 +110,7 @@ function createExportRenderer() {
 describe('SimpleVideoRenderer preview/export alignment', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
-    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(() => createCanvasContext().ctx);
+    mockCanvas2DContext(createCanvasContext().ctx);
   });
 
   it('matches visible clips during overlap with export renderer', () => {
@@ -139,7 +145,7 @@ describe('SimpleVideoRenderer preview/export alignment', () => {
     } as unknown as HTMLCanvasElement;
     const previewEngine = new SimpleMediaEngine(8);
     const previewRenderer = new SimpleVideoRenderer(previewEngine, previewCanvas) as any;
-    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(exportContext.ctx);
+    mockCanvas2DContext(exportContext.ctx);
     const exportRenderer = createExportRenderer() as any;
     const track = createTrack();
     const checkpoints = [2.25, 2.5, 2.75];
@@ -175,7 +181,7 @@ describe('SimpleVideoRenderer preview/export alignment', () => {
     } as unknown as HTMLCanvasElement;
     const previewEngine = new SimpleMediaEngine(8);
     const previewRenderer = new SimpleVideoRenderer(previewEngine, previewCanvas) as any;
-    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(exportContext.ctx);
+    mockCanvas2DContext(exportContext.ctx);
     const exportRenderer = createExportRenderer() as any;
     const track = createTrack();
     const resolved = resolveTrackTimeline(track);

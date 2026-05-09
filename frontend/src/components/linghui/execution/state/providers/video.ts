@@ -173,6 +173,7 @@ async function executeVideoProviderAttempt(
       transportSupport,
       maxAdditionalReferences,
       preferLocalAssetInput: provider.config?.provider === 'seedance',
+      fallbackToSourceOnRequiredUploadFailure: false,
       messages: {
         missingPrimaryImage: '缺少主图输入',
         missingReferenceImages: '缺少参考图输入',

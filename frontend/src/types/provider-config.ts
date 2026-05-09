@@ -163,6 +163,11 @@ export interface ITVConfig {
    * (e.g. 'grok-image-index' rewrites `@角色名` → `@Image N` and caps additionalReferences to 3).
    */
   promptProtocol?: 'grok-image-index';
+  /**
+   * 渠道模型上的 defaults（durationMin / durationMax / durationStep / durationValues 等）。
+   * 用户通过设置面板编辑模型时填入，运行时由 Provider 读取（例如 OpenAIVideoITVProvider 的时长 spec）。
+   */
+  modelDefaults?: Record<string, unknown>;
 }
 
 export interface AppSettings {

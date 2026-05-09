@@ -21,6 +21,8 @@ function getMentionTypeLabel(type: MentionType): string {
     case 'char': return '🎬 角色';
     case 'prop': return '🎬 道具';
     case 'scene': return '场景';
+    case 'shot': return '分镜锚点';
+    case 'grid': return '网格锚点';
     default: return '';
   }
 }

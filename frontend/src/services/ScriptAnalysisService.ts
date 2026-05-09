@@ -27,6 +27,11 @@ import {
   type ScriptAnalysisChunkFailure,
 } from './scriptAnalysisErrorSummary';
 import { normalizeVideoDurationSeconds } from '../utils/videoDuration';
+import { formatSpecPromptHint } from '../providers/itv/durationSpec';
+import {
+  buildShotBreakdownDialogueModeDirective,
+  formatProjectNarrativeMode,
+} from './narrativeMode';
 
 const logger = createLogger('ScriptAnalysisService');
 
@@ -619,6 +624,10 @@ export class ScriptAnalysisService {
         characters: characters.map(c => c.name).join(', '),
         scenes: scenes.map(s => s.name).join(', '),
         props: props.map(p => p.name).join(', '),
+        durationConstraint: formatSpecPromptHint(this.ctx.itvDurationSpec),
+        durationDefault: String(this.ctx.itvDurationSpec.default),
+        projectNarrativeMode: formatProjectNarrativeMode(this.ctx.projectMode),
+        dialogueModeDirective: buildShotBreakdownDialogueModeDirective(this.ctx.projectMode),
       });
 
       const styledPrompt = this.appendStyleRequirement(resolvedPrompt.prompt);

@@ -137,4 +137,14 @@ export interface ProviderDefinition<T = any> {
    * 缺省与 type 相同。
    */
   runtimeProviderType?: string;
+  /**
+   * 跨渠道回退策略。当用户主动选中此 provider 的某个渠道，但请求失败时：
+   *  - 'cross-provider'（缺省）：按 listCapabilityFallbackCandidates 顺位换其他渠道，包括其他 providerType
+   *  - 'lock-to-provider-type'：仅在同 providerType 的其他渠道里回退
+   *  - 'lock-to-selection'：完全不回退，原样把错误抛给用户
+   *
+   * 用于像 openai-video 这种"用户期望明确"的渠道，避免失败被静默换成完全不同上游
+   * （比如用户选 OpenAI 但实际跑了 Grok）。
+   */
+  fallbackPolicy?: 'cross-provider' | 'lock-to-provider-type' | 'lock-to-selection';
 }

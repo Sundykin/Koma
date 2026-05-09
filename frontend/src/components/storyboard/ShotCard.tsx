@@ -253,10 +253,37 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
     return videos[idx] || videos[videos.length - 1];
   }, [videos, shot.media?.currentVideoIndex]);
 
+  const selectedImageIndex = useMemo(() => {
+    const rawIndex = shot.media?.currentImageIndex;
+    if (!Number.isInteger(rawIndex)) return 0;
+    return Math.min(Math.max(rawIndex as number, 0), Math.max(images.length - 1, 0));
+  }, [images.length, shot.media?.currentImageIndex]);
+
   const currentImage = useMemo(() => {
     if (!images.length) return null;
-    return images[shot.media?.currentImageIndex || 0];
-  }, [images, shot.media?.currentImageIndex]);
+    return images[selectedImageIndex] || null;
+  }, [images, selectedImageIndex]);
+
+  const promptMentionItems = useMemo<MentionItem[]>(() => {
+    const anchorPreview = currentImage ? getMediaAssetDisplaySource(currentImage) : undefined;
+    if (!anchorPreview) return mentionItems;
+
+    const isGridMode = isGridImageMode(shot.imageMode);
+    const anchorItem: MentionItem = {
+      id: 'anchor',
+      type: isGridMode ? 'grid' : 'shot',
+      name: isGridMode ? '网格锚定图' : '分镜锚定图',
+      description: isGridMode
+        ? '当前分镜已生成的四宫格/九宫格时序锚定图。'
+        : '当前分镜已生成的首帧锚定图。',
+      previewImage: anchorPreview,
+    };
+
+    return [
+      ...mentionItems.filter(item => !(item.type === anchorItem.type && item.id === anchorItem.id)),
+      anchorItem,
+    ];
+  }, [currentImage, mentionItems, shot.imageMode]);
 
   /** 当前选中的配音资产（默认指向最新一条）。
       currentAudioSrc / handleToggleAudio / useEffect 因为依赖 getDisplaySrc
@@ -775,7 +802,7 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
                   value={shot.imagePrompt || ''}
                   onChange={(value) => onImagePromptChange(shot.id, value)}
                   placeholder="画面描述提示词..."
-                  mentionItems={mentionItems}
+                  mentionItems={promptMentionItems}
                   enableCameraCommands={true}
                   showLineNumbers={false}
                   darkTheme={isDarkTheme}
@@ -812,7 +839,7 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
               <div className="flex-1 min-w-0 p-1 bg-bg-surface/15 relative">
                 <ImageCardGrid
                   images={imageSources}
-                  selectedIndex={shot.media?.currentImageIndex || 0}
+                  selectedIndex={selectedImageIndex}
                   onSelect={handleImageSelect}
                   onAdd={handleImageAdd}
                   onDelete={handleImageDelete}
@@ -880,7 +907,7 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
                   value={shot.videoPrompt || ''}
                   onChange={(value) => onVideoPromptChange(shot.id, value)}
                   placeholder="运动/转场描述..."
-                  mentionItems={mentionItems}
+                  mentionItems={promptMentionItems}
                   enableCameraCommands={true}
                   showLineNumbers={false}
                   darkTheme={isDarkTheme}

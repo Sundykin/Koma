@@ -1,5 +1,174 @@
 # Task Plan
 
+## Session: 2026-05-08 Linghui Panorama + Director3D Stabilization
+
+### Goal
+- 修复 `linghui/director3d` 节点无法进入编辑的问题。
+- 在不回滚现有半成品改动的前提下，优先打通节点创建、画布卡片、编辑器挂载和基础验证。
+- 继续以 `docs/linghui-panorama-and-3d-director-workbench-plan.md` 为产品方向，后续再推进全景投影契约与导演台能力增强。
+
+### Scope
+- `frontend/src/types/linghui.ts`
+- `frontend/src/components/linghui/library/state/linghuiNodeDefs.ts`
+- `frontend/src/components/linghui/nodes/**`
+- `frontend/src/components/linghui/editors/components/**`
+- `frontend/src/components/linghui/director3d/**`
+- `frontend/src/components/linghui/page/styles/**`
+- 必要测试与本地烟测
+
+### Phases
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Current State Recovery | complete | 读取计划文档、现有未提交改动和 director3d 接入点 |
+| 2. Edit Entry Diagnosis | complete | 定位无法进入编辑的入口断点：节点类型映射、交互 hook、编辑器可见性、渲染异常 |
+| 3. Targeted Fix | complete | 小范围修复 director3d 编辑入口，必要时补齐类型/样式/默认值 |
+| 4. Validation | complete | 运行针对性测试/构建，必要时启动页面烟测 |
+
+### Acceptance Criteria
+- `linghui/director3d` 节点在画布上可创建/展示。
+- 双击或已有节点编辑入口能打开 3D 导演工作台编辑器。
+- 编辑器打开后不因运行时异常白屏或被交互逻辑拦截。
+- 修复不破坏现有全景节点接入。
+
+### Error Log
+| Error | Attempt | Resolution |
+|------|---------|------------|
+| DevTools MCP 无法接管 Chrome profile | 1 | 改为补 `useLinghuiCanvasNodeInteractions` hook 测试，直接覆盖 director3d 打开编辑入口 |
+| `npm run check:style-discipline` failed | 1 | 首次失败包含新增 director3d/panorama 路径；已收敛新增路径颜色/inline style，复跑后剩余仅为既有 project/settings/storyboard/chat/theme/index 债务 |
+| 统一端口目标测试中脚本分镜时长断言仍期望 10 秒 | 1 | 当前 `normalizeVideoDurationSeconds` 会归一到允许档位 12 秒；更新测试断言为当前行为 |
+
+### Follow-up: Fullscreen Director3D Workbench
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Fullscreen Editor | complete | `linghui/director3d` 编辑器改为独立全屏 Modal，不再作为节点下方 inline 面板出现 |
+| 2. Real View Camera | complete | 移除虚拟相机/画幅标注，工作台编辑视角即真实取景视角 |
+| 3. Current View Export | complete | 导出线稿时使用当前工作台视角，并将该视角写回 scene camera / prompt fragment |
+| 4. Validation | complete | 运行目标测试、生产构建、样式纪律边界和 diff check |
+
+### Follow-up: Fullscreen Height + Actor Interaction
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Height Fix | complete | 覆盖 AntD Modal root/wrap/modal/content/body，并让 director3d layout 按 100vh 撑满 |
+| 2. Selection Fix | complete | actor pointer down 后抑制下一次 viewport click，避免点击假人后立刻失活 |
+| 3. Drag Fix | complete | actor 拖动改用累计 pointer 位移计算，支持连续自由拖动 |
+| 4. Validation | complete | 运行目标测试、生产构建、样式纪律边界和 diff check |
+
+### Follow-up: Ray-Plane Actor Drag
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Drag Model Redesign | complete | 假人拖动从屏幕 delta 估算改为当前相机 ray-plane 求交 |
+| 2. Direction/Follow Fix | complete | 用鼠标地面交点 + 点击偏移量设置 actor position，解决 X 方向反和不跟手 |
+| 3. Validation | complete | 运行目标测试、生产构建、样式纪律边界和 diff check |
+
+### Follow-up: Live-Camera Actor Drag
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Root Cause Check | complete | 确认现有 ray-plane 拖动仍通过重建 cameraStateRef 相机计算，可能与真实 R3F camera 滞后 |
+| 2. Drag Controller Refactor | complete | 将假人拖动控制下沉到 Canvas 内部，使用 useThree 的真实 camera/gl 射线；拖动中局部预览，松手一次写回 |
+| 3. Validation | complete | 运行目标测试、构建和 diff check；记录样式脚本/tsc 既有失败边界 |
+
+### Follow-up: Panorama + Director3D Restore Operability
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Persistence Diagnosis | complete | 定位保存恢复后不可操作的风险：旧半成品 RF 类型不一致、恢复时未补默认 slots/properties、上次 running 状态持久化 |
+| 2. Restore Repair | complete | 后端 normalize 修正已知语义节点 RF 类型；前端快照恢复合并当前节点默认结构；激活工作区时中断 running 转 stale |
+| 3. Validation | complete | 目标测试、前端构建、Electron 构建、样式边界和 diff check |
+
+### Follow-up: Panorama + Director3D SQLite Restore Type Regression
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Regression Diagnosis | complete | 定位重新进入后退化成文本节点的根因：SQLite row → snapshot 的 Electron persistence helper 旧映射缺 `linghui-panorama` / `linghui-director3d` |
+| 2. Restore Mapping Fix | complete | 补齐 row type 映射，并用属性指纹恢复已误保存为 `linghui-text` 的全景/导演台节点 |
+| 3. Validation | complete | 运行 persistence/document/canvas/type 目标测试、root/frontend tsc、Electron build、frontend build 和 diff check |
+
+### Follow-up: Unified Linghui Node Ports
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Current Port/Execution Audit | complete | 审计节点 handle 渲染、连接校验、快照持久化、执行输入聚合和提示词引用排序 |
+| 2. Unified Port UI | complete | 所有节点只暴露一个输入点和一个输出点，减少多端口蜘蛛网 |
+| 3. Semantic Upstream Filtering | complete | 连接允许按节点级上游传递，执行时由节点自身按类型过滤需要的上游结果 |
+| 4. Legacy Edge Compatibility | complete | 兼容旧 `input-N` / `output-N` 边，保存时规范化到统一 handle |
+| 5. Validation | complete | 跑连接/执行/canvas 相关测试、tsc、构建与 diff check |
+
+### Follow-up: Full TSC Debt Cleanup
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Error Inventory | complete | 重新跑 `frontend npx tsc --noEmit --project tsconfig.json` 和 root `npx tsc --noEmit --project tsconfig.json`，归类剩余类型错误 |
+| 2. Runtime Type Fixes | complete | 修复业务代码中的类型不匹配、IPC 类型缺口、union 收窄问题 |
+| 3. Test Type Fixes | complete | 修复测试 mock / fixture 类型错误，不改变被测逻辑 |
+| 4. Validation | complete | 复跑 root/frontend tsc、目标测试、构建和 diff check |
+
+### Follow-up: Storyboard Video Prompt Template Cleanup
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Template Audit | complete | 检查全部 `shot_video_*` reasoning 模板与 grid shots section，定位会诱导模型输出自检清单的段落 |
+| 2. Template Repair | complete | 移除视频模板里的输出前自检清单，统一最终视频字段为结构化中文提示词格式 |
+| 3. Dialogue Repair | complete | 视频生成路径显式合并 `shot.dialogue`，并在模型漏写时补回 `对白提示词` |
+| 4. Validation | complete | 跑目标单测、root/frontend tsc、frontend build、diff check |
+
+### Follow-up: Storyboard Image/Video Prompt Visual Alignment
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Reference Prompt Analysis | complete | 参考用户给的三段样例，提炼画面字段：画风、景别、多机位运镜、视频运动、画面描述、角色/道具、呼应、动作、对白、情绪、音效、BGM、光影 |
+| 2. Image Prompt Alignment | complete | 生图推理模板改为视频 0 秒锚点结构，并接入 `shot.dialogue` / 视频镜头结构参考 |
+| 3. Video Prompt Alignment | complete | 8 个视频模板统一增加 `画面描述`、`呼应提示词`、`多机位运镜` 和更强前中后景/特写约束 |
+| 4. Grid/TTI Alignment | complete | 九/四宫格推理和 TTI 直拼模板增强连续动作、画面层次、手部姿态、光影一致性 |
+| 5. Validation | complete | 跑模板/提示词目标测试、root/frontend tsc、frontend build、diff check |
+
+### Follow-up: First-Person Narration To Scene Dialogue
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Failure Analysis | complete | 明确 `她自称天道，说要帮我夺回气运` 不是旁白输出目标，也不是原台词，而是要转成真实剧情对白 |
+| 2. Service Guard Fix | complete | 台词兜底区分显式对白与叙述转写；第一人称叙述/转述只补改写后的真实剧情对白，不补来源句 |
+| 3. Template Education | complete | 8 个视频模板新增 `NARRATIVE_TO_SCENE` 规则，但不再暴露具体来源句/错误示例，避免模型照抄 |
+| 4. Validation | complete | 跑目标测试、root/frontend tsc、frontend build、diff check |
+
+### Follow-up: Video Prompt Single Output Pass
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Duplicate Diagnosis | complete | 定位 `镜头1-镜头4` 出现两遍的原因：多参模板把 `shotsSection` 内部参考复制成第二套逐镜头 Markdown 输出 |
+| 2. Template Constraint | complete | 多参模板明确 `shotsSection` 只作内部参考，最终只允许输出一组字段，镜头顺序必须合并进 `角色动作提示词` |
+| 3. Non-destructive Guard | complete | 撤掉 `精确时长` 后截断逻辑；仅保留去掉开头 `镜头1-镜头4` 前缀和对白里的来源叙述泄漏 |
+| 4. Validation | complete | 跑目标测试、root/frontend tsc、frontend build、diff check |
+
+### Follow-up: Anchor Mention Highlight + No Fake Grid Anchor
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Mention Highlight | complete | `@shot_anchor` / `@grid_anchor` 纳入 ScriptEditor mention parser、tooltip、chip 样式和补全标签，不依赖资产列表也能高亮 |
+| 2. Asset Type Safety | complete | 资产同步和 prompt compilation 明确跳过 shot/grid 内置锚点，避免把锚点当成角色/场景/道具资产 |
+| 3. No-Image Prompt Mode | complete | 没有真实生成分镜图时忽略 `imageMode=grid` 的宫格 shotsSection，回到 normal / 多参考模式，不注入不存在的 `@grid_anchor` |
+| 4. Template Guard | complete | 生图/视频模板和 reference table 增加锚点存在性判断：无真实锚定图时禁止输出 `@shot_anchor` / `@grid_anchor` |
+| 5. Validation | complete | 跑 mention/shotReference/prompt 模板目标测试、root/frontend tsc、frontend build 和 diff check |
+
+### Follow-up: Prompt Compilation Fallback + Anchor Preview
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Compile Failure Diagnosis | complete | 检查 `@prop_*` 未进入 reference bundle 后如何漏到最终 provider prompt |
+| 2. Unmapped Asset Fallback | complete | 对缺图/超限导致无法映射的资产 mention 做可读标签降级，避免 raw `@prop_*` 污染最终提示词 |
+| 3. Selected Anchor Tooltip | complete | `@grid_anchor` / `@shot_anchor` 悬浮预览使用当前选中的分镜图，而不是无图内置 fallback |
+| 4. Prefixed Mention Token Fix | complete | bundle builder 统一用 `createMentionString()` 生成角色/场景/道具 token，修复 `prop_...` 被拼成 `@prop_prop_...` 导致无法编译的问题 |
+| 5. Single Bundle Compilation | complete | 分镜生图/视频统一由 `ShotReferenceBundle` 编译一次；删除分镜视频旧 `selectedAssetsForCompilation` 重排路径 |
+| 6. Validation | complete | 补目标测试并运行 frontend/root tsc、frontend build 与 diff check |
+
+### Follow-up: Tweet Narration Dialogue Mode
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Mode Propagation | complete | 将项目 `drama` / `narration` 模式加入 `CreationContext`，传到分镜拆解、生图、视频提示词链路 |
+| 2. Breakdown Template Update | complete | 分镜拆解模板按项目叙事模式约束 `dialogue` 字段：剧情模式可少量剧情化对白，解说模式保持旁白主导 |
+| 3. Video/Image Prompt Update | complete | 生图、宫格、视频推理模板注入 `dialogueModeDirective`，让图片锚点与视频对白策略一致 |
+| 4. Service Guard Update | complete | 视频台词兜底仅在剧情模式改写第一人称推文解说；解说模式不强行补对白 |
+| 5. Validation | complete | 跑提示词目标测试、root/frontend tsc、frontend build 和 diff check |
+
+### Follow-up: Storyboard Video ITV Upload Protocol
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. TTS Side-effect Removal | complete | 分镜视频生成链路移除自动语音生成副作用，视频生成只提交 ITV 任务 |
+| 2. Remote Reference Upload Policy | complete | URL-only 视频 provider 默认强制图床上传成功，不再静默 fallback 到 data-url |
+| 3. OpenAI Placeholder Mapping | complete | `openai-video` 在 prompt 使用 `@Image N` 时把主图和参考图统一写入 `images` 数组 |
+| 4. Grok URL-array Wire Protocol | complete | Koma 官方 Grok 内部仍用 `@Image N` 编译，但 `/v1/videos` URL-array 出站 prompt 改写为 `图片N` 并补 `metadata.function_mode` |
+| 5. Reference Capacity + Prompt Cleanup | complete | Grok 默认参考图上限提升到 7；分镜视频执行前清洗旧脏 prompt，并用编译后 prompt 记录日志/版本 |
+| 6. Validation | complete | 跑 ITV/provider/分镜链路目标测试、root/frontend tsc、frontend build、Electron build 和 diff check |
+
 ## Session: 2026-05-06 Linghui Tapnow-Base Capability Audit
 
 ### Goal

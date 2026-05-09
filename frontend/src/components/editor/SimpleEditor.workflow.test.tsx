@@ -42,6 +42,7 @@ vi.mock('./SimpleTimeline', () => ({
     return (
       <div>
         <div data-testid="timeline-clip-name">{firstClip?.name ?? 'no-clip'}</div>
+        <div data-testid="timeline-clip-src">{firstClip?.src ?? 'no-src'}</div>
         <div data-testid="timeline-transition-count">{transitions.length}</div>
         <button
           type="button"
@@ -126,8 +127,22 @@ vi.mock('../../store/logger', () => ({
 }));
 
 vi.mock('../../utils/mediaSelectors', () => ({
-  getShotCurrentImageSource: vi.fn(() => null),
-  getShotCurrentVideoSource: vi.fn(() => null),
+  getShotCurrentImageSource: vi.fn((shot: any) => {
+    const images = shot?.media?.images || [];
+    return images[shot?.media?.currentImageIndex ?? 0]?.localPath ?? null;
+  }),
+  getShotCurrentVideoSource: vi.fn((shot: any) => {
+    const videos = shot?.media?.videos || [];
+    return videos[shot?.media?.currentVideoIndex ?? 0]?.localPath ?? null;
+  }),
+  getShotCurrentAudioAsset: vi.fn((shot: any) => {
+    const audios = shot?.media?.audios || [];
+    return audios[shot?.media?.currentAudioIndex ?? 0];
+  }),
+  getShotCurrentAudioSource: vi.fn((shot: any) => {
+    const audios = shot?.media?.audios || [];
+    return audios[shot?.media?.currentAudioIndex ?? 0]?.localPath ?? null;
+  }),
 }));
 
 function createPersistedTimeline(overrides?: Partial<EpisodeTimelinePayload>): EpisodeTimelinePayload {
@@ -306,5 +321,63 @@ describe('SimpleEditor supported workflow evidence', () => {
     });
 
     expect(messageErrorMock).not.toHaveBeenCalled();
+  });
+
+  it('updates an existing shot clip source to the selected storyboard video version', async () => {
+    persistedTimeline = createPersistedTimeline({
+      tracks: [
+        {
+          id: 'video-main',
+          type: 'video',
+          order: 0,
+          isMainTrack: true,
+          clips: [
+            {
+              id: 'clip-shot-1',
+              assetId: 'asset-shot-1',
+              trackId: 'video-main',
+              start: 0,
+              duration: 3,
+              offset: 0,
+              sourceDuration: 3,
+              name: 'Loaded clip name',
+              type: MediaType.VIDEO,
+              src: '/versions/v1/video.mp4',
+              x: 0,
+              y: 0,
+              scale: 1,
+              rotation: 0,
+              opacity: 1,
+            },
+          ],
+        },
+      ],
+    });
+
+    render(
+      <SimpleEditor
+        projectId="project-1"
+        episodeId="episode-1"
+        shots={[
+          {
+            id: 'shot-1',
+            scriptLines: [],
+            duration: 3,
+            characters: [],
+            media: {
+              videos: [
+                { kind: 'video', localPath: '/versions/v1/video.mp4', createdAt: 1 },
+                { kind: 'video', localPath: '/versions/v2/video.mp4', createdAt: 2 },
+              ],
+              currentVideoIndex: 1,
+            },
+          } as any,
+        ]}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('timeline-clip-src').textContent).toBe('/versions/v2/video.mp4');
+    });
   });
 });

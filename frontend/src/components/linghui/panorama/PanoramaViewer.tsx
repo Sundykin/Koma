@@ -20,18 +20,40 @@ import { Maximize2 } from 'lucide-react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { safeFetch } from '../../../utils/safeFetch';
+import {
+  resolvePanoramaViewerMode,
+  type PanoramaProjectionMode,
+  type PanoramaViewerMode,
+} from './panoramaProjection';
 
 /* ============================== 几何 / 视觉常量 ============================== */
 
 const SPHERE_RADIUS = 50;
-const SPHERE_THETA_START = Math.PI * 0.2;   // 离北极 36°
-const SPHERE_THETA_LENGTH = Math.PI * 0.6;  // 跨度 108°（赤道 ±54°）
-const PITCH_LIMIT = (Math.PI / 180) * 50;    // ±50°，留少许余量到带边缘但不越界
+// 球带（sphere-band）：赤道 ±54°，去掉极点几何避免漩涡
+const SPHERE_BAND_THETA_START = Math.PI * 0.2;
+const SPHERE_BAND_THETA_LENGTH = Math.PI * 0.6;
+// 完整球（equirect-sphere）：用整个球
+const SPHERE_FULL_THETA_START = 0;
+const SPHERE_FULL_THETA_LENGTH = Math.PI;
+// 圆柱（cylinder-band）：高度按 21:9 / 16:9 出图比例换算，避免上下被无限拉伸
+const CYLINDER_RADIUS = SPHERE_RADIUS;
+
+const PITCH_LIMIT_BAND = (Math.PI / 180) * 30;    // 圆柱带：±30°
+const PITCH_LIMIT_SPHERE_BAND = (Math.PI / 180) * 50;  // 球带：±50°
+const PITCH_LIMIT_FULL = (Math.PI / 180) * 75;   // 完整球：±75°
+
 const FOV_INITIAL = 75;
 const FOV_MIN = 35;
 const FOV_MAX = 100;
 const AUTO_ROTATE_DURATION_MS = 2400;
 const SCENE_BG_COLOR = 0x1a2530;             // 深蓝灰，模拟带外天空 / 地面
+
+function pitchLimitForViewerMode(mode: PanoramaViewerMode): number {
+  if (mode === 'equirect-sphere') return PITCH_LIMIT_FULL;
+  if (mode === 'sphere-band') return PITCH_LIMIT_SPHERE_BAND;
+  if (mode === 'cylinder-band') return PITCH_LIMIT_BAND;
+  return 0; // flat：不允许 pitch
+}
 
 /* ============================== 纹理加载（处理 HTTP CORS 问题） ============================== */
 
@@ -133,27 +155,81 @@ function usePanoramaTexture(imageUrl: string): PanoramaTextureState {
   return state;
 }
 
-/* ============================== 球面带状几何（接收已加载的 texture） ============================== */
+/* ============================== 几何分发（按 viewerMode） ============================== */
 
-function PanoramaSphere({ texture }: { texture: THREE.Texture }) {
-  const geometryArgs = useMemo<[number, number, number, number, number, number, number]>(
-    () => [
-      SPHERE_RADIUS,
-      64,
-      32,
-      0,
-      Math.PI * 2,
-      SPHERE_THETA_START,
-      SPHERE_THETA_LENGTH,
-    ],
+function PanoramaSphereBand({ texture }: { texture: THREE.Texture }) {
+  const args = useMemo<[number, number, number, number, number, number, number]>(
+    () => [SPHERE_RADIUS, 64, 32, 0, Math.PI * 2, SPHERE_BAND_THETA_START, SPHERE_BAND_THETA_LENGTH],
     [],
   );
   return (
     <mesh scale={[-1, 1, 1]}>
-      <sphereGeometry args={geometryArgs} />
+      <sphereGeometry args={args} />
       <meshBasicMaterial map={texture} side={THREE.BackSide} toneMapped={false} />
     </mesh>
   );
+}
+
+function PanoramaSphereFull({ texture }: { texture: THREE.Texture }) {
+  const args = useMemo<[number, number, number, number, number, number, number]>(
+    () => [SPHERE_RADIUS, 96, 48, 0, Math.PI * 2, SPHERE_FULL_THETA_START, SPHERE_FULL_THETA_LENGTH],
+    [],
+  );
+  return (
+    <mesh scale={[-1, 1, 1]}>
+      <sphereGeometry args={args} />
+      <meshBasicMaterial map={texture} side={THREE.BackSide} toneMapped={false} />
+    </mesh>
+  );
+}
+
+/**
+ * 圆柱内壁，高度根据图像比例换算（避免上下方被无限拉伸）。
+ * height = circumference / aspectRatio，确保贴图 1:1 不变形。
+ */
+function readTextureAspect(texture: THREE.Texture, fallback = 16 / 9): number {
+  const img = texture.image as { width?: number; height?: number } | undefined;
+  if (img && typeof img.width === 'number' && typeof img.height === 'number' && img.height > 0) {
+    return img.width / img.height;
+  }
+  return fallback;
+}
+
+function PanoramaCylinder({ texture }: { texture: THREE.Texture }) {
+  const args = useMemo<[number, number, number, number, number, boolean]>(() => {
+    const aspect = readTextureAspect(texture, 21 / 9);
+    const circumference = 2 * Math.PI * CYLINDER_RADIUS;
+    const height = circumference / Math.max(aspect, 0.5);
+    return [CYLINDER_RADIUS, CYLINDER_RADIUS, height, 64, 1, true];
+  }, [texture]);
+  return (
+    <mesh scale={[-1, 1, 1]}>
+      <cylinderGeometry args={args} />
+      <meshBasicMaterial map={texture} side={THREE.BackSide} toneMapped={false} />
+    </mesh>
+  );
+}
+
+/** 平面：把图直接铺一张大平面，用 yaw 控制视角左右；不做环绕。 */
+function PanoramaFlatPlane({ texture }: { texture: THREE.Texture }) {
+  const args = useMemo<[number, number]>(() => {
+    const aspect = readTextureAspect(texture, 16 / 9);
+    const height = 60;
+    return [height * aspect, height];
+  }, [texture]);
+  return (
+    <mesh position={[0, 0, -SPHERE_RADIUS * 0.6]}>
+      <planeGeometry args={args} />
+      <meshBasicMaterial map={texture} side={THREE.DoubleSide} toneMapped={false} />
+    </mesh>
+  );
+}
+
+function PanoramaGeometry({ texture, viewerMode }: { texture: THREE.Texture; viewerMode: PanoramaViewerMode }) {
+  if (viewerMode === 'equirect-sphere') return <PanoramaSphereFull texture={texture} />;
+  if (viewerMode === 'sphere-band') return <PanoramaSphereBand texture={texture} />;
+  if (viewerMode === 'cylinder-band') return <PanoramaCylinder texture={texture} />;
+  return <PanoramaFlatPlane texture={texture} />;
 }
 
 /** 设置场景背景色，避免带外纯黑突兀 */
@@ -246,6 +322,15 @@ export interface PanoramaViewportProps {
   showFovHint?: boolean;
   /** 提供后会渲染右上角「全屏」按钮，点击触发回调（一般用来打开 PanoramaViewer Modal） */
   onRequestFullscreen?: () => void;
+  /**
+   * 投影模式（来自全景节点 properties.projectionMode 或 result.metadata.panoramaProjection）。
+   * 缺省时按图像比例兜底推断。
+   */
+  projectionMode?: PanoramaProjectionMode;
+  /** 显式声明展示算法；若给了，就不再按 projectionMode/比例推断。 */
+  viewerMode?: PanoramaViewerMode;
+  /** 出图比例字符串（"21:9" / "16:9" / "2:1"），帮助比例兜底。 */
+  ratioString?: string;
 }
 
 /**
@@ -258,6 +343,9 @@ export const PanoramaViewport: React.FC<PanoramaViewportProps> = ({
   placeholder,
   showFovHint = true,
   onRequestFullscreen,
+  projectionMode,
+  viewerMode: viewerModeOverride,
+  ratioString,
 }) => {
   const yawTargetRef = useRef(0);
   const pitchTargetRef = useRef(0);
@@ -271,6 +359,21 @@ export const PanoramaViewport: React.FC<PanoramaViewportProps> = ({
   const [, forceFovTick] = useState(0);
   // 纹理加载在 Canvas 外面做（避免 Suspense 抛错），ready 后再喂给 PanoramaSphere
   const textureState = usePanoramaTexture(mountReady ? imageUrl : '');
+
+  // 实际展示算法：override > projectionMode 推断 > 图像比例兜底
+  const viewerMode: PanoramaViewerMode = useMemo(() => {
+    if (viewerModeOverride) return viewerModeOverride;
+    const tex = textureState.texture;
+    const img = tex?.image as { width?: number; height?: number } | undefined;
+    return resolvePanoramaViewerMode({
+      projectionMode,
+      width: img?.width,
+      height: img?.height,
+      ratioString,
+    });
+  }, [projectionMode, ratioString, textureState.texture, viewerModeOverride]);
+
+  const pitchLimit = useMemo(() => pitchLimitForViewerMode(viewerMode), [viewerMode]);
 
   // 首次挂载（mountReady 由 false→true）：重置视角 + 启动 2.4s 入场旋转
   useEffect(() => {
@@ -301,10 +404,15 @@ export const PanoramaViewport: React.FC<PanoramaViewportProps> = ({
     const dy = e.clientY - lastPointer.current.y;
     lastPointer.current = { x: e.clientX, y: e.clientY };
     const sensitivity = (fovRef.current / FOV_INITIAL) * 0.005;
-    yawTargetRef.current += -dx * sensitivity;
+    // flat 模式不允许 yaw 环绕（图本身不连续），改成有限幅 pan
+    if (viewerMode === 'flat') {
+      yawTargetRef.current = Math.max(-Math.PI / 6, Math.min(Math.PI / 6, yawTargetRef.current - dx * sensitivity));
+    } else {
+      yawTargetRef.current += -dx * sensitivity;
+    }
     const next = pitchTargetRef.current + dy * sensitivity;
-    pitchTargetRef.current = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, next));
-  }, []);
+    pitchTargetRef.current = Math.max(-pitchLimit, Math.min(pitchLimit, next));
+  }, [pitchLimit, viewerMode]);
 
   const onPointerUp = useCallback(() => {
     lastPointer.current = null;
@@ -341,7 +449,7 @@ export const PanoramaViewport: React.FC<PanoramaViewportProps> = ({
           >
             <SceneBackdrop />
             <ambientLight intensity={1} />
-            <PanoramaSphere texture={textureState.texture} />
+            <PanoramaGeometry texture={textureState.texture} viewerMode={viewerMode} />
             <CameraRig
               yawTargetRef={yawTargetRef}
               pitchTargetRef={pitchTargetRef}
@@ -396,9 +504,20 @@ interface PanoramaViewerProps {
   imageUrl: string;
   title?: string;
   onClose: () => void;
+  projectionMode?: PanoramaProjectionMode;
+  viewerMode?: PanoramaViewerMode;
+  ratioString?: string;
 }
 
-export const PanoramaViewer: React.FC<PanoramaViewerProps> = ({ open, imageUrl, title, onClose }) => {
+export const PanoramaViewer: React.FC<PanoramaViewerProps> = ({
+  open,
+  imageUrl,
+  title,
+  onClose,
+  projectionMode,
+  viewerMode,
+  ratioString,
+}) => {
   // mountReady 由 antd Modal 的 afterOpenChange 驱动 —— 动画结束后才挂 Canvas，
   // 避免 r3f 用动画中途的小尺寸初始化 GL buffer 导致右下黑边
   const [mountReady, setMountReady] = useState(false);
@@ -408,7 +527,7 @@ export const PanoramaViewer: React.FC<PanoramaViewerProps> = ({ open, imageUrl, 
 
   return (
     <Modal
-      title={title || '全景 720° 预览'}
+      title={title || '全景预览'}
       open={open}
       onCancel={onClose}
       footer={null}
@@ -420,7 +539,13 @@ export const PanoramaViewer: React.FC<PanoramaViewerProps> = ({ open, imageUrl, 
       afterOpenChange={handleAfterOpenChange}
     >
       <div className="linghuiPanoramaModalViewport">
-        <PanoramaViewport imageUrl={imageUrl} mountReady={mountReady} />
+        <PanoramaViewport
+          imageUrl={imageUrl}
+          mountReady={mountReady}
+          projectionMode={projectionMode}
+          viewerMode={viewerMode}
+          ratioString={ratioString}
+        />
       </div>
     </Modal>
   );

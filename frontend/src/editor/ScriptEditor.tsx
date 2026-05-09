@@ -13,7 +13,7 @@ import { createMentionTooltip, tooltipTheme } from './mentionTooltip';
 import { createCombinedAutocomplete, combinedAutocompleteTheme } from './combinedAutocomplete';
 import { createKeywordHighlightPlugin, createKeywordTooltip, createKeywordAtomicDelete, keywordHighlightTheme } from './keywordHighlightPlugin';
 import type { MentionItem, MentionType } from './mentionTypes';
-import { normalizeMentionId } from './mentionTypes';
+import { normalizeMentionId, resolveBuiltInMentionItem } from './mentionTypes';
 
 import './ScriptEditor.scss';
 
@@ -74,12 +74,19 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
     (type: MentionType, id: string): MentionItem | undefined => {
       // 规范化查找的 ID
       const normalizedSearchId = normalizeMentionId(type, id);
-      return mentionItems.find((item) => {
+      const explicitItem = mentionItems.find((item) => {
         if (item.type !== type) return false;
         // 规范化 item 的 ID 进行比较
         const normalizedItemId = normalizeMentionId(type, item.id);
         return normalizedItemId === normalizedSearchId || item.id === id;
       });
+
+      if (explicitItem) return explicitItem;
+
+      const builtIn = resolveBuiltInMentionItem(type, id);
+      if (builtIn) return builtIn;
+
+      return undefined;
     },
     [mentionItems]
   );

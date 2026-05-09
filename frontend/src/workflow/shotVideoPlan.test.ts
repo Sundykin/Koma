@@ -138,7 +138,7 @@ function createReferenceOnlySettings(): AppSettings {
 }
 
 describe('shotVideoPlan', () => {
-  it('有选中主图时按图生视频执行，角色资产只保留在提示词编译上下文', () => {
+  it('有选中主图且未传模型能力时按图生视频执行，资产留在 bundle 中但不直接进 additional', () => {
     const character: Character = {
       id: 'char-1',
       name: '角色A',
@@ -172,13 +172,10 @@ describe('shotVideoPlan', () => {
     expect(plan.additionalReferenceImages).toEqual([
       createImageAsset('https://cdn.example.com/manual-ref.png'),
     ]);
-    expect(plan.selectedAssetsForCompilation).toEqual([
-      expect.objectContaining({
-        type: 'char',
-        assetId: 'char-1',
-        name: '角色A',
-        textValue: 'hero',
-      }),
+    expect(plan.bundle.items.map(item => item.kind)).toEqual([
+      'shot-anchor',
+      'character',
+      'user-upload',
     ]);
 
     expect(buildShotVideoRequest({
@@ -230,7 +227,7 @@ describe('shotVideoPlan', () => {
     });
   });
 
-  it('角色场景道具仅参与提示词编译，不直接变成视频参考图', () => {
+  it('未传模型能力时，只有道具资产不会把视频强制改成多参考请求', () => {
     const prop: Prop = {
       id: 'prop-1',
       name: '道具A',
@@ -252,14 +249,8 @@ describe('shotVideoPlan', () => {
 
     expect(plan.capability).toBe('video.text-to-video');
     expect(plan.additionalReferenceImages).toEqual([]);
-    expect(plan.selectedAssetsForCompilation).toEqual([
-      expect.objectContaining({
-        type: 'prop',
-        assetId: 'prop-1',
-        name: '道具A',
-        textValue: 'sword',
-      }),
-    ]);
+    expect(plan.bundle.items.map(item => item.kind)).toEqual(['prop']);
+    expect(plan.bundle.items[0].mentionToken).toBe('@prop_prop-1');
     expect(buildShotVideoRequest({
       plan,
       prompt: '展示道具细节',

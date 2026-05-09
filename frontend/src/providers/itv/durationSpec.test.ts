@@ -187,4 +187,50 @@ describe('getDurationSpecForITVSelection', () => {
     const spec = getDurationSpecForITVSelection('ch-grok', channels);
     expect(spec.kind).toBe('enum');
   });
+
+  it('model defaults durationMin/Max override provider fallback', () => {
+    const customChannels = [
+      {
+        id: 'ch-openai',
+        providerType: 'openai-video',
+        models: [
+          {
+            id: 'sora-2',
+            providerModelName: 'sora-2',
+            defaults: { durationMin: 4, durationMax: 20, durationStep: 2, defaultDuration: 8 },
+          },
+        ],
+      },
+    ];
+    const spec = getDurationSpecForITVSelection('ch-openai::sora-2', customChannels);
+    expect(spec.kind).toBe('range');
+    if (spec.kind === 'range') {
+      expect(spec.min).toBe(4);
+      expect(spec.max).toBe(20);
+      expect(spec.step).toBe(2);
+      expect(spec.default).toBe(8);
+    }
+  });
+
+  it('model defaults durationValues falls back to enum spec', () => {
+    const customChannels = [
+      {
+        id: 'ch-openai',
+        providerType: 'openai-video',
+        models: [
+          {
+            id: 'sora-2',
+            providerModelName: 'sora-2',
+            defaults: { durationValues: [4, 8, 12, 20], defaultDuration: 8 },
+          },
+        ],
+      },
+    ];
+    const spec = getDurationSpecForITVSelection('ch-openai::sora-2', customChannels);
+    expect(spec.kind).toBe('enum');
+    if (spec.kind === 'enum') {
+      expect(spec.values).toEqual([4, 8, 12, 20]);
+      expect(spec.default).toBe(8);
+    }
+  });
 });

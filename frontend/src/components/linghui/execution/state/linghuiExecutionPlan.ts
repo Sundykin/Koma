@@ -17,6 +17,8 @@ const DEFAULT_NODE_DURATION_SEC: Record<LinghuiNodeType, number> = {
   'linghui/video': 45,
   'linghui/audio': 15,
   'linghui/script': 14,
+  // 3D 导演节点本地导出 lineart，几乎瞬时完成
+  'linghui/director3d': 2,
 };
 
 export type LinghuiExecutionPlanCostStatus = 'available' | 'unavailable';

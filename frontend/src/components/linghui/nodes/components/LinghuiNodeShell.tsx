@@ -1,11 +1,10 @@
 import React, { type PropsWithChildren } from 'react';
-import { Position } from '@xyflow/react';
 import type { LinghuiNodeData, LinghuiRunStatus } from '../../../../types/linghui';
 import { useLinghuiNodeInteraction, useNodeRunState } from '../state/LinghuiNodeRunsContext';
 import { resolveLinghuiNodeViewMode } from '../../editors/state/linghuiNodeViewMode';
 import { cssVars } from '../../../../theme/runtime';
 import { LinghuiNodeRunError } from './LinghuiNodeRunError';
-import { LinghuiNodeHandle } from './LinghuiNodeHandle';
+import { LinghuiNodePorts } from './LinghuiNodeHandle';
 
 const STATUS_COLORS: Record<LinghuiRunStatus, string> = {
   idle: 'var(--token-text-muted)',
@@ -86,33 +85,7 @@ export const LinghuiNodeShell: React.FC<PropsWithChildren<LinghuiNodeShellProps>
         </div>
       )}
 
-      {/* Input handles */}
-      {data.inputs.map((slot, index) => (
-        <LinghuiNodeHandle
-          key={`input-${index}`}
-          type="target"
-          position={Position.Left}
-          id={`input-${index}`}
-          dataType={slot.dataType}
-          accent={data.accent}
-          top={`${52 + index * 28}px`}
-          title={slot.name}
-        />
-      ))}
-
-      {/* Output handles */}
-      {data.outputs.map((slot, index) => (
-        <LinghuiNodeHandle
-          key={`output-${index}`}
-          type="source"
-          position={Position.Right}
-          id={`output-${index}`}
-          dataType={slot.dataType}
-          accent={data.accent}
-          top={`${52 + index * 28}px`}
-          title={slot.name}
-        />
-      ))}
+      <LinghuiNodePorts accent={data.accent} inputs={data.inputs} outputs={data.outputs} />
 
       {/* Node content */}
       <div className="linghuiRFNodeBody">

@@ -4,7 +4,7 @@
  */
 import { EditorView, hoverTooltip } from '@codemirror/view';
 import type { MentionItem, MentionType } from './mentionTypes';
-import { MENTION_REGEX } from './mentionTypes';
+import { parseMentions } from './mentionTypes';
 import { electronService } from '../services/electronService';
 
 // Mention 解析器
@@ -20,18 +20,14 @@ export function createMentionTooltip(resolver: MentionResolver) {
     const text = line.text;
     const lineStart = line.from;
 
-    // 在当前行查找 Mention
-    const regex = new RegExp(MENTION_REGEX.source, 'g');
-    let match: RegExpExecArray | null;
-
-    while ((match = regex.exec(text)) !== null) {
-      const from = lineStart + match.index;
-      const to = from + match[0].length;
+    // 在当前行查找 Mention。使用 parseMentions，避免正则分组变化后
+    // @shot_anchor / @grid_anchor 这类内置锚点解析错位。
+    for (const parsed of parseMentions(text)) {
+      const from = lineStart + parsed.from;
+      const to = lineStart + parsed.to;
 
       if (pos >= from && pos <= to) {
-        const type = match[1] as MentionType;
-        const id = match[2];
-        const item = resolver(type, id);
+        const item = resolver(parsed.type, parsed.id);
 
         if (item) {
           return {
@@ -144,6 +140,10 @@ function getTypeLabel(type: MentionType): string {
       return '道具';
     case 'scene':
       return '场景';
+    case 'shot':
+      return '分镜锚点';
+    case 'grid':
+      return '网格锚点';
     default:
       return '';
   }
@@ -165,6 +165,16 @@ function getTypeColor(type: MentionType): { bg: string; text: string } {
       return {
         bg: 'color-mix(in srgb, var(--token-status-success) 18%, transparent)',
         text: 'var(--token-status-success)',
+      };
+    case 'shot':
+      return {
+        bg: 'color-mix(in srgb, var(--token-accent-base) 18%, transparent)',
+        text: 'var(--token-accent-base)',
+      };
+    case 'grid':
+      return {
+        bg: 'color-mix(in srgb, var(--token-status-info) 14%, transparent)',
+        text: 'var(--token-status-info)',
       };
     default:
       return {

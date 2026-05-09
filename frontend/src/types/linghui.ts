@@ -8,7 +8,8 @@ export type LinghuiNodeType =
   | 'linghui/panorama'
   | 'linghui/video'
   | 'linghui/audio'
-  | 'linghui/script';
+  | 'linghui/script'
+  | 'linghui/director3d';
 
 export type LinghuiRFNodeTypeKey =
   | 'linghui-text'
@@ -17,7 +18,8 @@ export type LinghuiRFNodeTypeKey =
   | 'linghui-panorama'
   | 'linghui-video'
   | 'linghui-audio'
-  | 'linghui-script';
+  | 'linghui-script'
+  | 'linghui-director3d';
 
 export type LinghuiNodeCategory = 'creation' | 'storyboard';
 export type LinghuiSlotDataType = 'image' | 'text' | 'video' | 'audio' | 'images' | 'shot' | 'storyboard';
@@ -78,6 +80,7 @@ export interface LinghuiScriptNodeProperties {
 
 export type LinghuiGridType = 'none' | '2x2' | '3x3' | '4x4' | '5x5';
 export type LinghuiPanoramaTemplateKind = 'auto' | 'indoor' | 'outdoor';
+export type LinghuiPanoramaProjectionMode = 'ar720-band' | 'equirectangular-2to1' | 'flat-wide';
 
 export interface LinghuiImageAssetItem {
   id: string;
@@ -106,6 +109,12 @@ export interface LinghuiImageNodeProperties extends LinghuiScriptDerivedProperti
 
 export interface LinghuiPanoramaNodeProperties extends LinghuiImageNodeProperties {
   panoramaTemplate: LinghuiPanoramaTemplateKind;
+  /**
+   * 投影契约：决定提示词、出图比例、展示几何。缺省 'ar720-band'，等同于产品里的"全景"。
+   * 'equirectangular-2to1' 仅在用户主动切到「真 360°×180° 球面」时启用。
+   * 'flat-wide' 是兜底，模型不支持环绕全景时把它当宽幅图。
+   */
+  projectionMode?: LinghuiPanoramaProjectionMode;
 }
 
 export interface LinghuiMultiAngleConfig {
@@ -137,6 +146,79 @@ export interface LinghuiVideoNodeProperties extends LinghuiScriptDerivedProperti
   aspectRatio: string;
   resolution: string;
   duration: number;
+}
+
+// --- 3D 导演工作台节点 ---
+
+export type LinghuiDirector3DActorType = 'mannequin';
+export type LinghuiDirector3DActorPose =
+  | 'idle'
+  | 'walk'
+  | 'run'
+  | 'sit'
+  | 'wave'
+  | 'point';
+export type LinghuiDirector3DBackgroundMode = 'none' | 'color' | 'image-plane' | 'panorama';
+export type LinghuiDirector3DRenderMode = 'lineart' | 'silhouette' | 'depth' | 'composition';
+
+export interface LinghuiDirector3DActor {
+  id: string;
+  label: string;
+  type: LinghuiDirector3DActorType;
+  /** 世界坐标 [x,y,z]，y=0 为地面，单位米 */
+  position: [number, number, number];
+  /** 绕 Y 轴朝向，弧度 */
+  rotationY: number;
+  /** 整体缩放，1.0 = 默认身高 1.75m */
+  scale: number;
+  /** 颜色（参考图区分用），CSS 颜色串 */
+  color: string;
+  posePreset: LinghuiDirector3DActorPose;
+}
+
+export interface LinghuiDirector3DCamera {
+  position: [number, number, number];
+  /** LookAt 目标点 */
+  target: [number, number, number];
+  /** 视场角，单位度 */
+  fov: number;
+  /** 倾斜（roll），单位度 */
+  roll: number;
+  aspectRatio: string;
+}
+
+export interface LinghuiDirector3DBackground {
+  mode: LinghuiDirector3DBackgroundMode;
+  /** image-plane 模式下的图片 URL */
+  source?: string;
+  /** panorama 模式下绑定的上游全景节点 id（运行时按其结果贴几何） */
+  sourceNodeId?: string;
+  /** 投影模式（panorama 模式下决定贴圆柱/球带/球体） */
+  projectionMode?: LinghuiPanoramaProjectionMode;
+  /** 纯色背景（color 模式） */
+  color?: string;
+  /** 全景背景的 yaw 偏移，弧度 */
+  yawOffset?: number;
+}
+
+export interface LinghuiDirector3DScene {
+  version: 1;
+  background: LinghuiDirector3DBackground;
+  camera: LinghuiDirector3DCamera;
+  actors: LinghuiDirector3DActor[];
+  render: {
+    mode: LinghuiDirector3DRenderMode;
+    showGrid: boolean;
+    showCameraFrame: boolean;
+    transparentBackground: boolean;
+  };
+}
+
+export interface LinghuiDirector3DNodeProperties {
+  /** 完整 3D 场景描述。会随节点一起持久化。 */
+  scene: LinghuiDirector3DScene;
+  /** 用户输入的额外说明，编译为 prompt fragment 时拼到末尾。 */
+  prompt: string;
 }
 
 // --- 音频节点 ---
@@ -527,6 +609,7 @@ const LINGHUI_TYPE_TO_RF_TYPE_MAP: Record<LinghuiNodeType, LinghuiRFNodeTypeKey>
   'linghui/video': 'linghui-video',
   'linghui/audio': 'linghui-audio',
   'linghui/script': 'linghui-script',
+  'linghui/director3d': 'linghui-director3d',
 };
 
 const RF_TYPE_TO_LINGHUI_TYPE_MAP: Record<LinghuiRFNodeTypeKey, LinghuiNodeType> = {
@@ -537,6 +620,7 @@ const RF_TYPE_TO_LINGHUI_TYPE_MAP: Record<LinghuiRFNodeTypeKey, LinghuiNodeType>
   'linghui-video': 'linghui/video',
   'linghui-audio': 'linghui/audio',
   'linghui-script': 'linghui/script',
+  'linghui-director3d': 'linghui/director3d',
 };
 
 export function linghuiTypeToRFType(type: LinghuiNodeType): LinghuiRFNodeTypeKey {

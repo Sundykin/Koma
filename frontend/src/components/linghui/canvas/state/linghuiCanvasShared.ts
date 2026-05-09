@@ -112,6 +112,7 @@ const LINGHUI_RF_TYPE_TO_NODE_TYPE: Record<string, LinghuiNodeType> = {
   'linghui-video': 'linghui/video',
   'linghui-audio': 'linghui/audio',
   'linghui-script': 'linghui/script',
+  'linghui-director3d': 'linghui/director3d',
 };
 
 function isKnownLinghuiNodeType(value: unknown): value is LinghuiNodeType {
@@ -175,8 +176,8 @@ export function toEdgeSnapshot(edge: Edge): LinghuiRFEdgeSnapshot {
     id: edge.id,
     source: edge.source,
     target: edge.target,
-    sourceHandle: edge.sourceHandle ?? 'output-0',
-    targetHandle: edge.targetHandle ?? 'input-0',
+    sourceHandle: 'output-0',
+    targetHandle: 'input-0',
     type: edge.type,
     data: cloneSnapshotValue((edge.data ?? {}) as LinghuiEdgeData),
   };
@@ -316,16 +317,35 @@ export function buildRFNodesFromSnapshot(snapshot: LinghuiCanvasDocumentSnapshot
     draggable: true,
     selected: false,
   }));
-  const childNodes: Node[] = (snapNodes ?? []).map(node => ({
-    id: node.id,
-    type: node.type,
-    position: node.position,
-    data: cloneLinghuiNodeData(node.data) as unknown as Record<string, unknown>,
-    parentId: node.parentId,
-    extent: resolveParentExtent(node.parentId),
-    draggable: false,
-    selected: false,
-  }));
+  const childNodes: Node[] = (snapNodes ?? []).map((node) => {
+    const nodeType = isKnownLinghuiNodeType(node.data?.linghuiType)
+      ? node.data.linghuiType
+      : LINGHUI_RF_TYPE_TO_NODE_TYPE[node.type] ?? node.data.linghuiType;
+    const fallbackData = createNewNodeData(nodeType);
+    const data: LinghuiNodeData = {
+      ...fallbackData,
+      ...node.data,
+      linghuiType: nodeType,
+      inputs: Array.isArray(node.data?.inputs) && node.data.inputs.length > 0 ? node.data.inputs : fallbackData.inputs,
+      outputs: Array.isArray(node.data?.outputs) && node.data.outputs.length > 0 ? node.data.outputs : fallbackData.outputs,
+      properties: {
+        ...fallbackData.properties,
+        ...(node.data?.properties ?? {}),
+      },
+      active: false,
+    };
+
+    return {
+      id: node.id,
+      type: linghuiTypeToRFType(nodeType),
+      position: node.position,
+      data: cloneLinghuiNodeData(data) as unknown as Record<string, unknown>,
+      parentId: node.parentId,
+      extent: resolveParentExtent(node.parentId),
+      draggable: false,
+      selected: false,
+    };
+  });
 
   return [
     ...groupNodes,
@@ -338,8 +358,8 @@ export function buildRFEdgesFromSnapshot(snapshot: LinghuiCanvasDocumentSnapshot
     id: edge.id,
     source: edge.source,
     target: edge.target,
-    sourceHandle: edge.sourceHandle,
-    targetHandle: edge.targetHandle,
+    sourceHandle: 'output-0',
+    targetHandle: 'input-0',
     type: edge.type ?? 'linghui-edge',
     data: cloneSnapshotValue((edge.data ?? {}) as Record<string, unknown>),
   })) satisfies Edge[];
@@ -413,8 +433,8 @@ export function resolveCompatibleTargetHandleId(
   sourceDataType: LinghuiSlotDataType,
 ): string | null {
   const draftNodeData = createNewNodeData(type);
-  const targetSlotIndex = draftNodeData.inputs.findIndex(slot => slot.dataType === sourceDataType);
-  return targetSlotIndex >= 0 ? `input-${targetSlotIndex}` : null;
+  void sourceDataType;
+  return draftNodeData.inputs.length > 0 ? 'input-0' : null;
 }
 
 export function isEditableEventTarget(target: EventTarget | null): boolean {

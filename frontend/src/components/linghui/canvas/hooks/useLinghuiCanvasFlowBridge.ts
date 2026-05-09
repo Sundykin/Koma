@@ -4,7 +4,7 @@ import { useCallback } from 'react';
 import type { Dispatch, MutableRefObject, RefObject, SetStateAction } from 'react';
 import type { LinghuiCanvasSelection, LinghuiNodeData } from '../../../../types/linghui';
 import { resolveLinghuiWorkflowBlockLabel } from '../../../../constants/linghuiWorkflowBlock';
-import { isLinghuiConnectionValid, parseHandleId } from '../../library/state/linghuiNodeDefs';
+import { isLinghuiConnectionValid } from '../../library/state/linghuiNodeDefs';
 import {
   clampNodePositionToParentBounds,
   type PendingConnectionCreateState,
@@ -163,13 +163,15 @@ export function useLinghuiCanvasFlowBridge({
 
   const handleConnect = useCallback((connection: Connection) => {
     pendingConnectionCreateRef.current = null;
+    const source = connection.source ?? '';
+    const target = connection.target ?? '';
     const allNodes = reactFlow.getNodes();
     const validation = isLinghuiConnectionValid(
       {
-        source: connection.source ?? '',
-        target: connection.target ?? '',
-        sourceHandle: connection.sourceHandle,
-        targetHandle: connection.targetHandle,
+        source,
+        target,
+        sourceHandle: 'output-0',
+        targetHandle: 'input-0',
       },
       allNodes.map(node => ({ id: node.id, data: node.data as unknown as LinghuiNodeData })),
     );
@@ -179,11 +181,19 @@ export function useLinghuiCanvasFlowBridge({
       return;
     }
 
-    setEdges(currentEdges => addEdge({
-      ...connection,
-      type: 'linghui-edge',
-      id: `e-${nanoid(8)}`,
-    }, currentEdges));
+    setEdges((currentEdges) => {
+      if (currentEdges.some(edge => edge.source === source && edge.target === target)) {
+        return currentEdges;
+      }
+      return addEdge({
+        source,
+        target,
+        sourceHandle: 'output-0',
+        targetHandle: 'input-0',
+        type: 'linghui-edge',
+        id: `e-${nanoid(8)}`,
+      }, currentEdges);
+    });
     scheduleSnapshot();
   }, [onConnectionErrorRef, pendingConnectionCreateRef, reactFlow, scheduleSnapshot, setEdges]);
 
@@ -193,8 +203,8 @@ export function useLinghuiCanvasFlowBridge({
       {
         source: connection.source ?? '',
         target: connection.target ?? '',
-        sourceHandle: connection.sourceHandle,
-        targetHandle: connection.targetHandle,
+        sourceHandle: 'output-0',
+        targetHandle: 'input-0',
       },
       allNodes.map(node => ({ id: node.id, data: node.data as unknown as LinghuiNodeData })),
     );
@@ -226,10 +236,7 @@ export function useLinghuiCanvasFlowBridge({
 
     const sourceNode = reactFlow.getNode(params.nodeId);
     const sourceNodeData = sourceNode?.data as unknown as LinghuiNodeData | undefined;
-    const parsedHandle = parseHandleId(params.handleId ?? 'output-0');
-    const sourceSlot = parsedHandle && parsedHandle.direction === 'output'
-      ? sourceNodeData?.outputs?.[parsedHandle.index]
-      : sourceNodeData?.outputs?.[0];
+    const sourceSlot = sourceNodeData?.outputs?.[0];
 
     if (!sourceSlot) {
       pendingConnectionCreateRef.current = null;
@@ -238,7 +245,7 @@ export function useLinghuiCanvasFlowBridge({
 
     pendingConnectionCreateRef.current = {
       sourceNodeId: params.nodeId,
-      sourceHandleId: params.handleId ?? 'output-0',
+      sourceHandleId: 'output-0',
       sourceDataType: sourceSlot.dataType,
     };
   }, [pendingConnectionCreateRef, reactFlow]);

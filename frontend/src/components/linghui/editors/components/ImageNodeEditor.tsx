@@ -92,8 +92,11 @@ export interface ImageNodeEditorProps {
   aspectRatioOptions?: Array<{ value: string; label: string }>;
   /** 是否隐藏「出图数量」（全景节点单图为主，避免一次出多张全景） */
   hideBatchCount?: boolean;
-  /** 设置弹层底部追加的额外配置块，按 ImageNodeEditorExtraSettingsBlock 渲染 */
-  extraSettings?: ImageNodeEditorExtraSettingsBlock;
+  /**
+   * 设置弹层底部追加的额外配置块；可以传单段或多段，依次渲染。
+   * 全景节点用这个挂"投影模式 + 场景类型"两段。
+   */
+  extraSettings?: ImageNodeEditorExtraSettingsBlock | ImageNodeEditorExtraSettingsBlock[];
 }
 
 export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
@@ -380,16 +383,16 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
         </div>
       )}
 
-      {extraSettings && (
-        <div className="linghuiEditorSettingsBlock">
-          <div className="linghuiEditorSettingsLabel">{extraSettings.label}</div>
+      {extraSettings && (Array.isArray(extraSettings) ? extraSettings : [extraSettings]).map((block, index) => (
+        <div key={`${block.label}-${index}`} className="linghuiEditorSettingsBlock">
+          <div className="linghuiEditorSettingsLabel">{block.label}</div>
           <div className="linghuiEditorOptionGrid">
-            {extraSettings.options.map(option => (
+            {block.options.map(option => (
               <button
                 key={option.value}
                 type="button"
-                className={`linghuiEditorOptionTile ${extraSettings.value === option.value ? 'isActive' : ''}`}
-                onClick={() => extraSettings.onChange(option.value)}
+                className={`linghuiEditorOptionTile ${block.value === option.value ? 'isActive' : ''}`}
+                onClick={() => block.onChange(option.value)}
                 title={option.hint}
               >
                 {option.label}
@@ -397,7 +400,7 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
             ))}
           </div>
         </div>
-      )}
+      ))}
     </div>
   );
 

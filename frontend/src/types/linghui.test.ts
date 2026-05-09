@@ -14,8 +14,12 @@ describe('linghui type mapping', () => {
   it('uses explicit known mappings in both directions', () => {
     expect(linghuiTypeToRFType('linghui/video')).toBe('linghui-video');
     expect(linghuiTypeToRFType('linghui/script')).toBe('linghui-script');
+    expect(linghuiTypeToRFType('linghui/panorama')).toBe('linghui-panorama');
+    expect(linghuiTypeToRFType('linghui/director3d')).toBe('linghui-director3d');
     expect(rfTypeToLinghuiType('linghui-audio')).toBe('linghui/audio');
     expect(rfTypeToLinghuiType('linghui-text')).toBe('linghui/text');
+    expect(rfTypeToLinghuiType('linghui-panorama')).toBe('linghui/panorama');
+    expect(rfTypeToLinghuiType('linghui-director3d')).toBe('linghui/director3d');
   });
 
   it('returns a stable fallback for unknown rf node types', () => {

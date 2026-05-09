@@ -1,10 +1,10 @@
 import type { MediaAssetSource, ProviderAssetInput } from '../../types';
-import type { MentionType, ParsedMention } from '../../editor/mentionTypes';
+import type { AssetMentionType, MentionType, ParsedMention } from '../../editor/mentionTypes';
 
 export type PromptCompilationProtocol = 'grok-image-index';
 
 export interface PromptCompilationAsset {
-  type: MentionType;
+  type: AssetMentionType;
   name?: string;
   textValue?: string;
   /**
@@ -59,7 +59,7 @@ export interface PromptCompilationDebug {
   /**
    * `@Image N` mapping for each selected asset (if the asset is usable / has source).
    */
-  assetToImageIndex: Array<{ type: MentionType; assetId: string; image: string }>;
+  assetToImageIndex: Array<{ type: AssetMentionType; assetId: string; image: string }>;
   /**
    * Mentions that could not be mapped to selected assets.
    */

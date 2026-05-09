@@ -1,18 +1,19 @@
 /**
- * AR720 全景环境板提示词模板（auto / indoor / outdoor 三档）。
+ * 全景提示词编译器。
  *
- * 每档模板都形如「长指令 + 【用户自定义提示词】占位 + 通用质量尾巴」，
- * 渲染时会把 `【用户自定义提示词】` 占位符替换成用户在节点里实际输入的内容；
- * 占位符本身不会出现在最终发给 TTI 的 prompt 里。
+ * 设计原则（参考 docs/linghui-panorama-and-3d-director-workbench-plan.md）：
+ *  1. 不再用一段超长统一模板覆盖所有情况，而是按 projectionMode 拆出三档投影契约：
+ *      - ar720-band：21:9 / 16:9 环境带，强调左右无缝、淡极区
+ *      - equirectangular-2to1：真 2:1 经纬展开，强约束极区
+ *      - flat-wide：宽幅平面，不做环绕承诺
+ *  2. panoramaTemplate（auto / indoor / outdoor）作为「场景子类型」，不再是投影模式本身
+ *  3. 编译顺序：projection contract + scene specialization + user prompt + safety + quality tail
  *
- * 三档差异：
- *  - auto：通用全景，不强制室内/室外，适合不确定时
- *  - indoor：强制室内封闭空间（房间、走廊、殿宇内部……）
- *  - outdoor：强制开放外景（街景、地形、自然环境……）
- *
- * 内容由 `template_/{自动|室内|室外}全景.md` 同步过来；不要在文中加风格 / 主体描述
- *（这些由用户自定义提示词承担）。
+ * 旧 API（wrapWithPanoramaTemplate / PANORAMA_USER_PROMPT_PLACEHOLDER）保留以向后兼容，
+ * 内部全部走新的 compilePanoramaPrompt。
  */
+
+import type { LinghuiPanoramaProjectionMode } from '../../../types/linghui';
 
 export type PanoramaTemplateKind = 'auto' | 'indoor' | 'outdoor';
 
@@ -45,30 +46,93 @@ export const PANORAMA_TEMPLATE_OPTIONS: Array<{ value: PanoramaTemplateKind; lab
   { value: 'outdoor', label: '室外', hint: '开放外景：街景 / 自然 / 地形' },
 ];
 
-/** 取已确定档位的模板原文（含占位符），主要用于调试/预览。 */
+/* ---------- 投影契约 prompt 片段 ---------- */
+
+const AR720_BAND_CONTRACT = `Generate one continuous wraparound horizontal panoramic environment band suitable for AR720-style surround preview. Treat the image as an ultra-wide environment plate, not a true equirectangular sphere. Keep the horizon centered, keep verticals calm, keep camera height stable across the full width. The left and right edges are seam-critical wraparound boundaries: they must connect naturally with no duplicated objects, mirrored artifacts, broken perspective, or lighting mismatch. Do not place dominant subjects, faces, vehicles, signs, or critical structure at the extreme left/right. Treat the upper and lower bands as distortion-sensitive zones: keep them broad, calm, and free from important readable detail; avoid dense decorations, thin beams, hanging fixtures, or tiled micro-patterns near the top/bottom. Do not promise a true 360x180 sphere, do not write equirectangular, do not produce extreme top-down or bottom-up convergence.`;
+
+const EQUIRECTANGULAR_2TO1_CONTRACT = `Generate a true 2:1 equirectangular panorama covering full 360 degrees horizontally and full 180 degrees vertically. The output must be a valid equirectangular projection plate where the left and right edges seamlessly wrap into a continuous sphere, the top edge represents the zenith pole and the bottom edge represents the nadir pole. Keep the horizon centered along the vertical midline of the image. Treat the zenith and nadir as pole-sensitive regions: keep them simple, broad, and structurally safe for sphere remapping; do not place readable subjects, faces, text, vehicles, or critical structure near the extreme top or bottom rows; ground and ceiling should remain coherent and should not melt, fold, spiral, or break into warped texture noise. The composition must support full surround viewing in any direction, not poster-style hero framing.`;
+
+const FLAT_WIDE_CONTRACT = `Generate a single wide cinematic environment plate. Do not promise 360-degree wraparound. Do not promise equirectangular projection. Keep camera position stable and perspective consistent across the full width. Use believable foreground / midground / background depth and a coherent horizon line, but the image is read as one wide flat scene rather than a panoramic sphere.`;
+
+/* ---------- 场景子类型 prompt 片段（精简版，给三种投影契约共用） ---------- */
+
+const AUTO_SCENE = `Compose one believable continuous environment with stable horizon logic, stable camera height, and one coherent layout. Indoor enclosed scenes should include doors, corridors, passages or exits; outdoor open scenes should keep horizon, terrain layers and pathways coherent.`;
+
+const INDOOR_SCENE = `This is an enclosed indoor environment. The space must feel architecturally complete and traversable. Use stable room-scale perspective, readable wall-to-floor transitions, and believable openings such as doors, corridors, arches, passages or exits. Keep ceilings broad and simple, avoid dense overhead fixtures. Keep floors coherent and avoid stretched tiles, warped planks or noisy micro-patterns near the lower edge.`;
+
+const OUTDOOR_SCENE = `This is an open outdoor environment. The world must feel continuous and geographically coherent. Keep the skyline, terrain layering and pathways stable and readable with believable depth separation. Keep the sky broad and continuous in the upper region, the ground broad and coherent in the lower region. Avoid placing trees, poles, signs or thin high-contrast structures at the extreme top/bottom where they warp under panorama remapping.`;
+
+/* ---------- 通用安全规则 + 质量尾巴 ---------- */
+
+const SEAM_SAFETY = `Edge policy: keep the left and right boundaries naturally continuous, no hard cut between scene halves, no important subjects parked across the extreme edges, no visually different mini-scenes glued together.`;
+
+const ZENITH_NADIR_SAFETY = `Pole policy: keep top and bottom regions simple and broad, no important faces / text / signs / critical structures near the extreme top or extreme bottom; avoid radial twisting, tunnel-like stretching, collapsed ceilings, melted floors, or spiral artifacts in the pole zones.`;
+
+const COMMON_QUALITY_TAIL = `masterpiece, best quality, ultra detailed, panoramic environment plate, seam-safe edges, wraparound composition, centered horizon, stable verticals, coherent zenith and nadir, consistent exposure, physically based lighting, global illumination, realistic atmosphere, clean spatial composition`;
+
+/* ---------- 公共 API ---------- */
+
+export interface CompilePanoramaPromptOptions {
+  /** 投影契约：决定整体 prompt 风格。缺省 ar720-band。 */
+  projectionMode?: LinghuiPanoramaProjectionMode;
+  /** 场景子类型：auto / indoor / outdoor。缺省 auto。 */
+  templateKind?: PanoramaTemplateKind;
+}
+
+function resolveProjectionContract(mode: LinghuiPanoramaProjectionMode): string {
+  if (mode === 'equirectangular-2to1') return EQUIRECTANGULAR_2TO1_CONTRACT;
+  if (mode === 'flat-wide') return FLAT_WIDE_CONTRACT;
+  return AR720_BAND_CONTRACT;
+}
+
+function resolveSceneSpecialization(kind: PanoramaTemplateKind): string {
+  if (kind === 'indoor') return INDOOR_SCENE;
+  if (kind === 'outdoor') return OUTDOOR_SCENE;
+  return AUTO_SCENE;
+}
+
+/**
+ * 新版编译入口：按 projection contract + scene + user prompt + safety + quality tail 拼装。
+ *
+ *  - userPrompt 为空时，整段 user prompt 占位会被跳过
+ *  - flat-wide 模式不输出 zenith/nadir / seam 安全规则（它根本不是球面）
+ */
+export function compilePanoramaPrompt(
+  userPrompt: string,
+  options: CompilePanoramaPromptOptions = {},
+): string {
+  const projectionMode = options.projectionMode ?? 'ar720-band';
+  const templateKind = options.templateKind ?? 'auto';
+  const userTail = String(userPrompt || '').trim();
+  const segments: string[] = [resolveProjectionContract(projectionMode), resolveSceneSpecialization(templateKind)];
+  if (userTail) segments.push(userTail);
+  if (projectionMode !== 'flat-wide') {
+    segments.push(SEAM_SAFETY);
+    segments.push(ZENITH_NADIR_SAFETY);
+  }
+  segments.push(COMMON_QUALITY_TAIL);
+  return segments
+    .map(s => s.trim())
+    .filter(Boolean)
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** 取已确定档位的模板原文（用旧 auto/indoor/outdoor 模板，主要用于调试/预览）。 */
 export function getPanoramaTemplateBody(kind: PanoramaTemplateKind): string {
   return PANORAMA_TEMPLATE_BODIES[kind] ?? PANORAMA_TEMPLATE_BODIES.auto;
 }
 
 /**
- * 把用户输入与指定档位的全景模板拼装成最终发给 TTI 的 prompt。
+ * 旧 API：把用户输入与指定档位拼装成最终 prompt。
  *
- * 关键行为：
- *  1. 用 `userPrompt` 替换模板里的 `【用户自定义提示词】` 占位符
- *  2. 若 `userPrompt` 为空（trim 后为空串），则把占位符整段移除（含两侧多余空格），
- *     避免最终 prompt 里出现「【用户自定义提示词】」这种字面量
+ * 现在内部走 compilePanoramaPrompt（projection contract = ar720-band），
+ * 行为跟旧版整体一致但更紧凑、按模式更精确。保留接口避免下游同步改动。
  */
 export function wrapWithPanoramaTemplate(userPrompt: string, kind: PanoramaTemplateKind = 'auto'): string {
-  const trimmed = String(userPrompt || '').trim();
-  const body = getPanoramaTemplateBody(kind);
-
-  if (!trimmed) {
-    // 占位符 + 两侧紧邻的空白塌缩：` 【...】 ` → ` `，避免遗留两个连续空格
-    return body.replace(new RegExp(`\\s*${PANORAMA_USER_PROMPT_PLACEHOLDER}\\s*`, 'g'), ' ').replace(/\s+/g, ' ').trim();
-  }
-
-  return body.split(PANORAMA_USER_PROMPT_PLACEHOLDER).join(trimmed);
+  return compilePanoramaPrompt(userPrompt, { templateKind: kind, projectionMode: 'ar720-band' });
 }
 
-/** 兼容旧引用（可能仍有人 import 这个常量）。其他位置应改用 wrapWithPanoramaTemplate。 */
-export const PANORAMA_SYSTEM_PROMPT = `${COMMON_PANORAMA_BASE} ${AUTO_SPECIALIZATION}`;
+/** 兼容旧引用。新代码请使用 compilePanoramaPrompt({ projectionMode, templateKind })。 */
+export const PANORAMA_SYSTEM_PROMPT = `${AR720_BAND_CONTRACT} ${AUTO_SCENE}`;

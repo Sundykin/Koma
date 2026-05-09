@@ -29,19 +29,29 @@ describe('renderShotReferenceTable', () => {
   it('空 bundle 输出无视觉参考说明', () => {
     const out = renderShotReferenceTable(bundle([]));
     expect(out).toContain('本镜头无任何视觉参考');
+    expect(out).toContain('不要使用 @shot_anchor / @grid_anchor');
   });
 
-  it('每项映射成 references[N] / @图片N 一行', () => {
+  it('只有资产参考但无分镜图时明确禁止锚点 token', () => {
+    const out = renderShotReferenceTable(bundle([
+      item({ kind: 'scene', mentionToken: '@scene_xx', label: '场景：宿舍' }),
+      item({ kind: 'character', mentionToken: '@char_zhouming', label: '角色：周明' }),
+    ]));
+    expect(out).toContain('本集合不含真实分镜锚定图 / 宫格锚定图');
+    expect(out).toContain('不要使用 @shot_anchor / @grid_anchor');
+  });
+
+  it('每项映射成 references[N] / @Image N 一行', () => {
     const out = renderShotReferenceTable(bundle([
       item({ kind: 'shot-anchor', mentionToken: '@shot_anchor', label: '分镜锚点首帧' }),
       item({ kind: 'scene', mentionToken: '@scene_xx', label: '场景：宿舍' }),
       item({ kind: 'character', mentionToken: '@char_zhouming', label: '角色：周明' }),
     ]));
-    expect(out).toContain('references[0] / @图片1：分镜锚点首帧');
-    expect(out).toContain('references[1] / @图片2：场景：宿舍');
-    expect(out).toContain('references[2] / @图片3：角色：周明');
-    // 提醒 LLM 用 @图片N 严格引用
-    expect(out).toContain('@图片N');
+    expect(out).toContain('references[0] / @Image 1：分镜锚点首帧');
+    expect(out).toContain('references[1] / @Image 2：场景：宿舍');
+    expect(out).toContain('references[2] / @Image 3：角色：周明');
+    // 提醒 LLM 用 @Image N 严格引用
+    expect(out).toContain('@Image N');
   });
 
   it('含截断时输出备注', () => {
@@ -69,7 +79,7 @@ describe('renderGridSequenceNotice', () => {
     b.gridCellCount = 9;
     const out = renderGridSequenceNotice(b);
     expect(out).toContain('九宫格锚点专属说明');
-    expect(out).toContain('references[0] / @图片1');
+    expect(out).toContain('references[0] / @Image 1');
     expect(out).toContain('3×3 九宫格图');
     expect(out).toContain('左→右、上→下');
     expect(out).toContain('9 个镜头硬切结构');

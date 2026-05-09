@@ -4,11 +4,10 @@ import {
   useNodes,
   useNodesData,
 } from '@xyflow/react';
-import { Button, Dropdown, Tooltip } from 'antd';
+import { Button, Dropdown, Modal, Tooltip } from 'antd';
 import type { MenuProps } from 'antd';
 import { X } from 'lucide-react';
 import type {
-  LinghuiAudioNodeProperties,
   LinghuiGridType,
   LinghuiImageAssetItem,
   LinghuiImageNodeProperties,
@@ -23,6 +22,7 @@ import { AgentNodeEditor } from './AgentNodeEditor';
 import { AudioNodeEditor } from './AudioNodeEditor';
 import { ImageNodeEditor } from './ImageNodeEditor';
 import { PanoramaNodeEditor } from './PanoramaNodeEditor';
+import { Director3DNodeEditor } from './Director3DNodeEditor';
 import { ScriptNodeEditor } from './ScriptNodeEditor';
 import { TextNodeEditor } from './TextNodeEditor';
 import { VideoNodeEditor } from './VideoNodeEditor';
@@ -34,9 +34,10 @@ import {
 } from '../../nodes/state/LinghuiNodeRunsContext';
 import {
   buildLinghuiPromptReferenceItems,
-  getOrderedIncomingReferenceEdges,
+  collectOrderedUpstreamReferenceNodeIds,
 } from '../state/linghuiPromptReferences';
 import { resolveLinghuiImagePrimaryForNode } from '../state/linghuiImageCollections';
+import { buildLinghuiReferenceMediaBuckets } from '../state/linghuiReferenceMedia';
 import { VIDEO_TOOL_PRESETS } from '../state/videoNodeEditorShared';
 import { cssVars } from '../../../../theme/runtime';
 
@@ -158,13 +159,6 @@ const IMAGE_TOOL_PRESETS: Record<LinghuiImageToolKey, {
 const PANEL_GAP = 8;
 const TOOLBAR_STANDOFF = 6;
 
-function resolveImageFallbackMode(properties: LinghuiImageNodeProperties): 'import' | 'generate' {
-  if (properties.mode === 'import' || properties.mode === 'generate') {
-    return properties.mode;
-  }
-  return String(properties.source ?? '').trim() ? 'import' : 'generate';
-}
-
 function getNodeTypeLabel(nodeType: LinghuiNodeType): string {
   switch (nodeType) {
     case 'linghui/image':
@@ -181,6 +175,8 @@ function getNodeTypeLabel(nodeType: LinghuiNodeType): string {
       return '脚本节点';
     case 'linghui/text':
       return '文本节点';
+    case 'linghui/director3d':
+      return '3D 导演工作台';
     default:
       return '节点编辑';
   }
@@ -190,6 +186,7 @@ function getPanelWidth(nodeType: LinghuiNodeType): number {
   if (nodeType === 'linghui/script') return 760;
   if (nodeType === 'linghui/audio') return 540;
   if (nodeType === 'linghui/agent') return 620;
+  if (nodeType === 'linghui/director3d') return 1080;
   return 560;
 }
 
@@ -197,6 +194,7 @@ function getPanelMaxHeight(nodeType: LinghuiNodeType): number {
   if (nodeType === 'linghui/script') return 760;
   if (nodeType === 'linghui/agent') return 640;
   if (nodeType === 'linghui/text') return 520;
+  if (nodeType === 'linghui/director3d') return 720;
   return 620;
 }
 
@@ -246,112 +244,30 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
   const nodeDataMap = useMemo(() => (
     new Map(nodes.map(node => [node.id, node.data as unknown as LinghuiNodeData]))
   ), [nodes]);
+  const referenceEdges = useMemo(() => (
+    edges.map(edge => ({
+      source: edge.source,
+      target: edge.target,
+      sourceHandle: edge.sourceHandle,
+      targetHandle: edge.targetHandle,
+    }))
+  ), [edges]);
+  const upstreamNodeIds = useMemo(() => (
+    collectOrderedUpstreamReferenceNodeIds(nodeId, referenceEdges)
+  ), [nodeId, referenceEdges]);
 
-  const referenceImages = useMemo(() => {
-    const refs: Array<{ source?: string; label?: string }> = [];
-    const dedupe = new Set<string>();
-
-    for (const edge of getOrderedIncomingReferenceEdges(
-      nodeId,
-      edges.map(edge => ({
-        source: edge.source,
-        target: edge.target,
-        sourceHandle: edge.sourceHandle,
-        targetHandle: edge.targetHandle,
-      })),
-    )) {
-      if (edge.targetHandle !== 'input-0') continue;
-
-      const result = nodeRuns[edge.source]?.result;
-      const sourceNodeData = nodeDataMap.get(edge.source);
-      const sourceNodeProps = sourceNodeData?.properties as unknown as LinghuiImageNodeProperties | undefined;
-      const fallbackSource = (sourceNodeData?.linghuiType === 'linghui/image' || sourceNodeData?.linghuiType === 'linghui/panorama')
-        && sourceNodeProps
-        && resolveImageFallbackMode(sourceNodeProps) === 'import'
-        ? String(sourceNodeProps.source ?? '').trim()
-        : '';
-      const primaryImage = sourceNodeData ? resolveLinghuiImagePrimaryForNode(sourceNodeData, result) : null;
-      const source = primaryImage?.source || fallbackSource;
-
-      if (!source || dedupe.has(source)) continue;
-
-      dedupe.add(source);
-      refs.push({
-        source,
-        label: primaryImage?.label || sourceNodeData?.label || `参考 ${refs.length + 1}`,
-      });
-    }
-
-    return refs;
-  }, [edges, nodeDataMap, nodeId, nodeRuns]);
-
-  const referenceVideos = useMemo(() => {
-    const refs: Array<{ source?: string; posterSource?: string; label?: string }> = [];
-    const dedupe = new Set<string>();
-
-    for (const edge of getOrderedIncomingReferenceEdges(
-      nodeId,
-      edges.map(edge => ({
-        source: edge.source,
-        target: edge.target,
-        sourceHandle: edge.sourceHandle,
-        targetHandle: edge.targetHandle,
-      })),
-    )) {
-      if (edge.targetHandle !== 'input-3') continue;
-
-      const result = nodeRuns[edge.source]?.result;
-      const primary = getLinghuiResultPrimaryMedia(result);
-      const sourceNodeData = nodeDataMap.get(edge.source);
-      const props = sourceNodeData?.properties as unknown as LinghuiVideoNodeProperties | undefined;
-      const source = String(primary?.source ?? props?.source ?? '').trim();
-      const posterSource = String(primary?.posterSource ?? props?.posterSource ?? '').trim();
-      const key = posterSource || source;
-
-      if (!key || dedupe.has(key)) continue;
-
-      dedupe.add(key);
-      refs.push({
-        source,
-        posterSource,
-        label: primary?.label || sourceNodeData?.label || `视频 ${refs.length + 1}`,
-      });
-    }
-
-    return refs;
-  }, [edges, nodeDataMap, nodeId, nodeRuns]);
-
-  const referenceAudios = useMemo(() => {
-    const refs: Array<{ source?: string; label?: string }> = [];
-    const dedupe = new Set<string>();
-
-    for (const edge of getOrderedIncomingReferenceEdges(
-      nodeId,
-      edges.map(edge => ({
-        source: edge.source,
-        target: edge.target,
-        sourceHandle: edge.sourceHandle,
-        targetHandle: edge.targetHandle,
-      })),
-    )) {
-      if (edge.targetHandle !== 'input-2') continue;
-
-      const result = nodeRuns[edge.source]?.result;
-      const primary = getLinghuiResultPrimaryMedia(result);
-      const sourceNodeData = nodeDataMap.get(edge.source);
-      const props = sourceNodeData?.properties as unknown as LinghuiAudioNodeProperties | undefined;
-      const source = String(primary?.source ?? props?.source ?? '').trim();
-      if (!source || dedupe.has(source)) continue;
-
-      dedupe.add(source);
-      refs.push({
-        source,
-        label: primary?.label || sourceNodeData?.label || `音频 ${refs.length + 1}`,
-      });
-    }
-
-    return refs;
-  }, [edges, nodeDataMap, nodeId, nodeRuns]);
+  const referenceMedia = useMemo(() => (
+    buildLinghuiReferenceMediaBuckets({
+      upstreamNodeIds,
+      nodeDataMap,
+      getNodeResult(upstreamNodeId) {
+        return nodeRuns[upstreamNodeId]?.result;
+      },
+    })
+  ), [nodeDataMap, nodeRuns, upstreamNodeIds]);
+  const referenceImages = referenceMedia.images;
+  const referenceVideos = referenceMedia.videos;
+  const referenceAudios = referenceMedia.audios;
 
   const promptReferences = useMemo(() => (
     buildLinghuiPromptReferenceItems({
@@ -360,17 +276,12 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
         id: node.id,
         data: node.data as unknown as LinghuiNodeData,
       })),
-      edges: edges.map(edge => ({
-        source: edge.source,
-        target: edge.target,
-        sourceHandle: edge.sourceHandle,
-        targetHandle: edge.targetHandle,
-      })),
+      edges: referenceEdges,
       getNodeResult(upstreamNodeId) {
         return nodeRuns[upstreamNodeId]?.result;
       },
     })
-  ), [edges, nodeId, nodeRuns, nodes]);
+  ), [nodeId, nodeRuns, nodes, referenceEdges]);
   const currentPrimaryImage = useMemo(() => (
     nodeData ? resolveLinghuiImagePrimaryForNode(nodeData, nodeRuns[nodeId]?.result) : null
   ), [nodeData, nodeId, nodeRuns]);
@@ -533,6 +444,28 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
 
   if (!isVisible || !nodeData) {
     return null;
+  }
+
+  if (nodeType === 'linghui/director3d') {
+    return (
+      <Modal
+        open
+        onCancel={handleClose}
+        footer={null}
+        width="100vw"
+        centered={false}
+        destroyOnClose
+        className="linghuiDirector3DModal"
+        rootClassName="linghuiDirector3DModal"
+      >
+        <Director3DNodeEditor
+          nodeId={nodeId}
+          nodeData={nodeData}
+          nodeRun={nodeRuns[nodeId]}
+          onRun={() => onRunNode(nodeId)}
+        />
+      </Modal>
+    );
   }
 
   const renderToolbar = () => {

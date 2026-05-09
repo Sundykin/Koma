@@ -8,10 +8,22 @@ import { getProjectPath } from './core';
 import { remapTimelineClipSourcesToLocal } from './mediaUrlRemap';
 import { saveEpisode } from './episodes';
 import { normalizeShotsMediaState } from './mediaState';
+import { listShots } from './shots';
 import { migrateTimelineData, prepareTimelineForSave } from '../../features/transition/core';
+import { syncShotsSelectionFromVersionMetas } from '../../utils/shotVersionSelection';
 
 function shouldRethrowTimelineError(error: unknown): boolean {
   return error instanceof Error && error.message.startsWith('Unsupported timeline version:');
+}
+
+async function hydrateShotVersionSelections(projectId: string, shots: Shot[]): Promise<Shot[]> {
+  if (!shots.length) return shots;
+  try {
+    const metas = await listShots(projectId);
+    return syncShotsSelectionFromVersionMetas(shots, metas);
+  } catch {
+    return shots;
+  }
 }
 
 export async function saveEpisodeAnalysis(
@@ -59,9 +71,13 @@ export async function loadEpisodeAnalysis(
   try {
     const parsed = await batchApi.loadAnalysis(projectId, episodeId);
     if (!parsed) return null;
+    const shots = await hydrateShotVersionSelections(
+      projectId,
+      normalizeShotsMediaState(parsed.shots || []),
+    );
     return {
       ...parsed,
-      shots: normalizeShotsMediaState(parsed.shots || []),
+      shots,
     };
   } catch {
     return null;

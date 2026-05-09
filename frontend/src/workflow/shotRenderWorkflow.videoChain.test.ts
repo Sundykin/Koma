@@ -251,6 +251,7 @@ describe('shotRenderWorkflow video chain', () => {
     );
 
     expect(result.success).toBe(true);
+    expect(mediaGenerationService.generateAudio).not.toHaveBeenCalled();
     expect(mediaGenerationService.generateVideo).toHaveBeenCalledWith(
       expect.objectContaining({
         projectId: 'project-1',
@@ -352,22 +353,20 @@ describe('shotRenderWorkflow video chain', () => {
     );
 
     expect(result.success).toBe(true);
-    // 阶段 2 架构升级：模型支持 reference-to-video + 多参模式 + 有锚定图 →
-    // 走 reference-to-video（不是 image-to-video）。bundle 把所有视觉源（锚点 +
-    // 角色 + 场景 + 道具 + 用户上传）按位置编号串到 referenceImages 数组里，
-    // mergeSeedanceShotReferences 进一步把"selectedAssetsForCompilation"
-    // 里的角色/场景/道具去重合并到末尾。
+    // 模型支持 reference-to-video + 多参模式 + 有锚定图 → 走 reference-to-video。
+    // request 图片顺序必须严格等于 bundle 顺序：锚点 / 场景 / 角色 / 道具 / 用户上传。
+    // 这也是最终提示词中 @Image 1..N 的唯一索引来源。
     expect(mediaGenerationService.generateVideo).toHaveBeenCalledWith(
       expect.objectContaining({
         request: expect.objectContaining({
           capability: 'video.reference-to-video',
-          referenceImages: expect.arrayContaining([
+          referenceImages: [
             shotImage,
-            characterImage,
             sceneImage,
+            characterImage,
             propImage,
             manualReference,
-          ]),
+          ],
         }),
         itvSelection: 'seedance-main::seedance-2.0-r-full',
         allowCapabilityFallback: false,
