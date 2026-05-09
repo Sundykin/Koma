@@ -18,8 +18,8 @@ import {
   LoadingOutlined,
   RobotOutlined,
 } from '@ant-design/icons';
-import type { Shot, ShotScriptLine, Character, Scene, Prop, AppSettings, StoredMediaAsset, ProjectStyleSnapshot } from '../../types';
-import { loadEpisodeShots, saveEpisodeShots, loadCharacters, loadScenes, loadProps, loadEpisodeAnalysis } from '../../store/projectStore';
+import type { Shot, ShotScriptLine, Character, Scene, Prop, AppSettings, StoredMediaAsset, ProjectStyleSnapshot, ShotMeta } from '../../types';
+import { loadEpisodeShots, saveEpisodeShots, loadCharacters, loadScenes, loadProps, loadEpisodeAnalysis, listShots } from '../../store/projectStore';
 import { generateShotImage, batchGenerateShotImages } from '../../services/ShotGenerationService';
 import { mediaGenerationService } from '../../services/MediaGenerationService';
 import { runWithConcurrency } from '../../utils/concurrency';
@@ -63,6 +63,7 @@ import { getModelMaxReferenceImages } from '../../providers/itv/modelCatalog';
 import './Storyboard.scss';
 import './ShotListEditor.scss';
 import { getMediaAssetDisplaySource, scriptLinesFromText, getShotScriptText } from '../../types';
+import { findVersionNumberForVideoAsset } from '../../utils/shotVersionSelection';
 
 const logger = createLogger('Storyboard');
 
@@ -149,6 +150,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   const isDarkTheme = theme.meta.mode === 'dark';
   const [effectiveSettings, setEffectiveSettings] = useState<AppSettings>(settings);
   const [shots, setShots] = useState<Shot[]>([]);
+  const [shotMetas, setShotMetas] = useState<ShotMeta[]>([]);
   const [characters, setCharacters] = useState<Character[]>([]);
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [props, setProps] = useState<Prop[]>([]);
@@ -400,11 +402,12 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     setLoading(true);
     try {
       const loadedShots = episodeId ? await loadEpisodeShots(projectId, episodeId) : [];
-      const [loadedCharacters, loadedScenes, loadedProps, episodeAnalysis] = await Promise.all([
+      const [loadedCharacters, loadedScenes, loadedProps, episodeAnalysis, loadedShotMetas] = await Promise.all([
         loadCharacters(projectId),
         loadScenes(projectId),
         loadProps(projectId),
         episodeId ? loadEpisodeAnalysis(projectId, episodeId) : Promise.resolve(null),
+        listShots(projectId),
       ]);
 
       // 根据剧集分析结果筛选资产
@@ -440,6 +443,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       // 一刀切：移除旧数据迁移/修复逻辑。分镜资产绑定与提示词 @mention 统一使用项目内 ID。
       // duration 按当前 ITV 渠道 spec 吸附（grok 枚举 / seedance 范围），不再固定 grok
       setShots(loadedShots.map(shot => ({ ...shot, duration: clampDurationToSpec(shot.duration, itvDurationSpec) })));
+      setShotMetas(loadedShotMetas);
       setCharacters(filteredCharacters);
       setScenes(filteredScenes);
       setProps(filteredProps);
@@ -456,8 +460,12 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     if (!projectId || !episodeId) {
       return;
     }
-    const latestShots = await loadEpisodeShots(projectId, episodeId);
+    const [latestShots, latestShotMetas] = await Promise.all([
+      loadEpisodeShots(projectId, episodeId),
+      listShots(projectId),
+    ]);
     setShots(latestShots.map(shot => ({ ...shot, duration: clampDurationToSpec(shot.duration, itvDurationSpec) })));
+    setShotMetas(latestShotMetas);
   }, [projectId, episodeId, itvDurationSpec]);
 
   useEffect(() => {
@@ -937,9 +945,14 @@ export const Storyboard: React.FC<StoryboardProps> = ({
 
   // 多视频变更
   const handleVideosChange = useCallback((shotId: string, videos: StoredMediaAsset[], currentVideoIndex: number) => {
+    const selectedVersion = findVersionNumberForVideoAsset(
+      shotMetas.find(meta => meta.id === shotId),
+      videos[currentVideoIndex],
+    );
     const updatedShots = shots.map(s =>
       s.id === shotId ? {
         ...s,
+        currentVersion: selectedVersion ?? s.currentVersion,
         media: {
           ...(s.media || {}),
           videos,
@@ -948,7 +961,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       } : s
     );
     saveAllShots(updatedShots);
-  }, [shots, saveAllShots]);
+  }, [shots, saveAllShots, shotMetas]);
 
   // 向上合并
   const handleMergeUp = useCallback(async (shotId: string) => {

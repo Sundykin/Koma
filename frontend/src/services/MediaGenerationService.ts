@@ -858,6 +858,7 @@ export class MediaGenerationService {
       transportSupport,
       maxAdditionalReferences,
       preferLocalAssetInput: provider.config?.provider === 'seedance',
+      fallbackToSourceOnRequiredUploadFailure: false,
     });
     const tracedProviderRequest = withVideoTrace(providerRequest, traceContext);
 

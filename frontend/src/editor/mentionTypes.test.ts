@@ -33,6 +33,22 @@ describe('parseMentions', () => {
     expect(result[2]).toMatchObject({ type: 'prop', id: 'sword1' });
   });
 
+  it('应解析内置分镜锚点 mention', () => {
+    const text = '基于 @grid_anchor 的四宫格，以及 @shot_anchor 首帧继续生成';
+    const result = parseMentions(text);
+    expect(result).toHaveLength(2);
+    expect(result[0]).toMatchObject({
+      type: 'grid',
+      id: 'anchor',
+      fullMatch: '@grid_anchor',
+    });
+    expect(result[1]).toMatchObject({
+      type: 'shot',
+      id: 'anchor',
+      fullMatch: '@shot_anchor',
+    });
+  });
+
   it('应解析包含连字符和下划线的 ID', () => {
     const text = '@char_abc-def_123';
     const result = parseMentions(text);
@@ -65,6 +81,8 @@ describe('parseMentions', () => {
   it('不支持的类型前缀不应被解析', () => {
     expect(parseMentions('@unknown_abc')).toEqual([]);
     expect(parseMentions('@item_abc')).toEqual([]);
+    expect(parseMentions('@grid_foo')).toEqual([]);
+    expect(parseMentions('@shot_foo')).toEqual([]);
   });
 
   // === 边界条件 ===
@@ -95,6 +113,11 @@ describe('createMentionString', () => {
     expect(createMentionString('char', 'abc123')).toBe('@char_abc123');
     expect(createMentionString('scene', 'forest')).toBe('@scene_forest');
     expect(createMentionString('prop', 'sword')).toBe('@prop_sword');
+  });
+
+  it('应生成内置锚点 mention 字符串', () => {
+    expect(createMentionString('grid', 'anything')).toBe('@grid_anchor');
+    expect(createMentionString('shot', 'anything')).toBe('@shot_anchor');
   });
 
   it('应避免双前缀（ID 已包含类型前缀时）', () => {
@@ -128,6 +151,11 @@ describe('parseMentionId', () => {
     expect(result).toEqual({ type: 'char', id: 'abc123' });
   });
 
+  it('应解析内置锚点 mention 字符串', () => {
+    expect(parseMentionId('@grid_anchor')).toEqual({ type: 'grid', id: 'anchor' });
+    expect(parseMentionId('@shot_anchor')).toEqual({ type: 'shot', id: 'anchor' });
+  });
+
   it('应容错处理双前缀格式', () => {
     const result = parseMentionId('@char_char_abc');
     expect(result).not.toBeNull();
@@ -147,9 +175,13 @@ describe('MENTION_REGEX', () => {
     expect('@char_abc').toMatch(new RegExp(MENTION_REGEX.source));
     expect('@prop_abc').toMatch(new RegExp(MENTION_REGEX.source));
     expect('@scene_abc').toMatch(new RegExp(MENTION_REGEX.source));
+    expect('@grid_anchor').toMatch(new RegExp(MENTION_REGEX.source));
+    expect('@shot_anchor').toMatch(new RegExp(MENTION_REGEX.source));
   });
 
   it('不应匹配无效类型', () => {
     expect('@item_abc').not.toMatch(new RegExp(MENTION_REGEX.source));
+    expect('@grid_foo').not.toMatch(new RegExp(MENTION_REGEX.source));
+    expect('@shot_foo').not.toMatch(new RegExp(MENTION_REGEX.source));
   });
 });

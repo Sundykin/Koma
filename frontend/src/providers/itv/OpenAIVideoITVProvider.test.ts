@@ -74,6 +74,29 @@ describe('OpenAIVideoITVProvider', () => {
     expect(body.seconds).toBe('5');
   });
 
+  it('image-to-video 若 prompt 使用 @Image 占位符，则 images 数组包含主图和附加参考图', async () => {
+    fetchMock.mockResolvedValueOnce(makeJsonResponse({ id: 'task-2b', status: 'queued' }));
+
+    const provider = new OpenAIVideoITVProvider(makeConfig());
+    const request: ITVRequest = {
+      capability: 'video.image-to-video',
+      prompt: '让 @Image 1 中的人物参考 @Image 2 的服装动作',
+      primaryImage: { transport: 'remote-url', value: 'https://cdn.example.com/shot.png' },
+      additionalReferences: [
+        { transport: 'remote-url', value: 'https://cdn.example.com/ref.png' },
+      ],
+      options: { duration: 5 },
+    };
+
+    await provider.start(request);
+    const body = JSON.parse(fetchMock.mock.calls[0][1]?.body as string);
+    expect(body.image).toBe('https://cdn.example.com/shot.png');
+    expect(body.images).toEqual([
+      'https://cdn.example.com/shot.png',
+      'https://cdn.example.com/ref.png',
+    ]);
+  });
+
   it('reference-to-video 把多张图放进 images 数组', async () => {
     fetchMock.mockResolvedValueOnce(makeJsonResponse({ id: 'task-ref', status: 'queued' }));
 

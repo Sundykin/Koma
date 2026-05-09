@@ -35,10 +35,7 @@ describe('MediaGenerationService.generateVideo - ITV input policy matrix', () =>
     vi.clearAllMocks();
   });
 
-  it('URL-only providers: required remoteUrl falls back to data-url when upload fails (commit 3f22932)', async () => {
-    // 产品行为：图床上传失败时回退到 data-url 而非抛错（见
-    // mapVideoRequestToProviderRequest.fallbackToSourceOnRequiredUploadFailure 默认 true）。
-    // 让 url-only provider 也能继续工作（provider 自行处理 data-url；mock 中无校验）。
+  it('URL-only providers: required remoteUrl fails clearly when image-hosting upload fails', async () => {
     const { getProjectITVProvider } = await import('../providers');
     const { uploadBytesToImageHostingWithRetry } = await import('./imageHostingService');
 
@@ -59,7 +56,7 @@ describe('MediaGenerationService.generateVideo - ITV input policy matrix', () =>
     const { MediaGenerationService } = await import('./MediaGenerationService');
     const svc = new MediaGenerationService();
 
-    const out = await svc.generateVideo({
+    await expect(svc.generateVideo({
       projectId: 'p1',
       ownerRef: { projectId: 'p1', ownerType: 'shot', ownerId: 's1', slot: 'video' },
       request: {
@@ -69,10 +66,9 @@ describe('MediaGenerationService.generateVideo - ITV input policy matrix', () =>
         additionalReferences: [],
         options: {},
       } as any,
-    });
+    })).rejects.toThrow('no hosting');
 
-    expect(start).toHaveBeenCalled();
-    expect(out.kind).toBe('video');
+    expect(start).not.toHaveBeenCalled();
   });
 
   it('data-url-capable providers: best-effort remoteUrl -> continues with data-url when upload fails', async () => {

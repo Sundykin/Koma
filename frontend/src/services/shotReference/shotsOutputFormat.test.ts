@@ -39,11 +39,10 @@ describe('decideShotsMode', () => {
     expect(decideShotsMode(bundle([]))).toBe('normal');
   });
 
-  it('explicitCellCount 优先级最高，即使 bundle 没有 grid-anchor 也按用户意图渲染', () => {
-    // 用户选了 grid-4 但还没生成图：bundle 没有 anchor，但应该按 grid-4 渲染
-    expect(decideShotsMode(bundle([]), 4)).toBe('grid-4');
-    expect(decideShotsMode(bundle([]), 9)).toBe('grid-9');
-    expect(decideShotsMode(bundle([shotAnchor()]), 4)).toBe('grid-4');
+  it('没有 grid-anchor 时忽略 explicitCellCount，避免内置不存在的宫格锚点', () => {
+    expect(decideShotsMode(bundle([]), 4)).toBe('normal');
+    expect(decideShotsMode(bundle([]), 9)).toBe('normal');
+    expect(decideShotsMode(bundle([shotAnchor()]), 4)).toBe('normal');
   });
 
   it('bundle 含 grid-anchor + cellCount=9 → grid-9', () => {
@@ -116,14 +115,10 @@ describe('renderShotsSection — grid-9', () => {
   });
 });
 
-describe('e2e: 用户选了 grid-4 但还没生成图，整链路必须按 4 镜头渲染', () => {
-  it('imageMode=grid-4 + 无 anchor 图 → bundle.hasGridAnchor=false 但 shotsSection 仍按 grid-4 输出 4 镜头', () => {
-    // 这是用户报告的 bug 场景。模拟整链路：
-    //   1. shot.imageMode='grid-4' 但 shot.media.images 为空（没生成图）
-    //   2. buildShotReferenceBundle → bundle.hasGridAnchor=false
-    //   3. ShotPromptService 派生 explicitCellCount=4 from shot.imageMode
-    //   4. decideShotsMode(bundle, 4) → 'grid-4'（不再被 hasGridAnchor=false 截胡）
-    //   5. shotsSection 渲染 4 镜头
+describe('e2e: 用户选了 grid 但还没生成图，整链路必须回到无锚点模式', () => {
+  it('imageMode=grid-4 + 无 anchor 图 → bundle.hasGridAnchor=false，shotsSection 走 normal', () => {
+    // 没有真实生成图时，不能只凭 imageMode 输出 4 镜头宫格结构，
+    // 否则模型会写出不存在的 @grid_anchor / cell 对应关系。
     const emptyBundle: ShotReferenceBundle = {
       items: [],
       hasGridAnchor: false,
@@ -137,21 +132,15 @@ describe('e2e: 用户选了 grid-4 但还没生成图，整链路必须按 4 镜
       : (shotImageMode === 'grid-9') ? 9
       : undefined;
     const mode = decideShotsMode(emptyBundle, explicitCellCount);
-    expect(mode).toBe('grid-4');
+    expect(mode).toBe('normal');
 
     const section = renderShotsSection({ mode, duration: 6 });
-    expect(section).toContain('4 镜头硬切结构');
-    expect(section).toContain('必须输出 4 个镜头');
-    // 4 个独立镜头 header
-    expect(section).toContain('镜头 1（');
-    expect(section).toContain('镜头 2（');
-    expect(section).toContain('镜头 3（');
-    expect(section).toContain('镜头 4（');
-    // 不能多 也不能少
-    expect(section).not.toContain('镜头 5');
+    expect(section).toContain('2-3个镜头时长总和必须精确为6秒');
+    expect(section).not.toContain('4 镜头硬切结构');
+    expect(section).not.toContain('cell 1');
   });
 
-  it('imageMode=grid-9 + 无 anchor 图 → 仍按 grid-9 输出 9 镜头', () => {
+  it('imageMode=grid-9 + 无 anchor 图 → 仍走 normal，不输出 9 镜头宫格结构', () => {
     const emptyBundle: ShotReferenceBundle = {
       items: [],
       hasGridAnchor: false,
@@ -159,13 +148,10 @@ describe('e2e: 用户选了 grid-4 但还没生成图，整链路必须按 4 镜
       capacity: { maxRefs: 6, truncatedCount: 0, truncatedKinds: [] },
     };
     const mode = decideShotsMode(emptyBundle, 9);
-    expect(mode).toBe('grid-9');
+    expect(mode).toBe('normal');
     const section = renderShotsSection({ mode, duration: 9 });
-    expect(section).toContain('9 镜头硬切结构');
-    expect(section).toContain('必须输出 9 个镜头');
-    for (let n = 1; n <= 9; n += 1) {
-      expect(section).toContain(`镜头 ${n}（`);
-    }
+    expect(section).toContain('2-3个镜头时长总和必须精确为9秒');
+    expect(section).not.toContain('9 镜头硬切结构');
   });
 
   it('imageMode=normal → 走 normal 2-3 镜头骨架（不退化）', () => {
@@ -202,6 +188,6 @@ describe('renderShotsSection — grid-4', () => {
   it('禁止心理 / 旁白 / 解说被显式写入画面槽位说明', () => {
     const out = renderShotsSection({ mode: 'grid-4', duration: 6 });
     expect(out).toContain('禁止写心理 / 旁白 / 解说');
-    expect(out).toContain('没有写任何心理 / 旁白 / 解说 / 评价句');
+    expect(out).toContain('最终答案不要输出检查清单或规则复述');
   });
 });

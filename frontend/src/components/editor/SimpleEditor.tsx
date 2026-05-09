@@ -131,6 +131,94 @@ function shotsToTracks(shots: Shot[]): Track[] {
   return [videoTrack, audioTrack, textTrack].filter(t => t.clips.length > 0 || t.isMainTrack);
 }
 
+function resolveShotVisualSelection(shot: Shot): { src: string; type: MediaType; duration: number; name: string } | null {
+  const shotDuration = shot.duration || 3;
+  const videoPath = getShotCurrentVideoSource(shot);
+  const imagePath = getShotCurrentImageSource(shot);
+  const src = videoPath || imagePath;
+  if (!src) return null;
+
+  return {
+    src,
+    type: videoPath ? MediaType.VIDEO : MediaType.IMAGE,
+    duration: shotDuration,
+    name: getShotScriptText(shot).slice(0, 20) || `镜头 ${shot.id}`,
+  };
+}
+
+function resolveShotAudioSelection(shot: Shot): { src: string; duration: number; name: string } | null {
+  const shotDuration = shot.duration || 3;
+  const audioAsset = getShotCurrentAudioAsset(shot);
+  const audioPath = getShotCurrentAudioSource(shot);
+  if (!audioPath) return null;
+
+  return {
+    src: audioPath,
+    duration: audioAsset?.durationMs && audioAsset.durationMs > 0
+      ? audioAsset.durationMs / 1000
+      : shotDuration,
+    name: `${(getShotScriptText(shot).slice(0, 16) || shot.id)} - 配音`,
+  };
+}
+
+export function syncShotSelectionsIntoTracks(tracks: Track[], shots: Shot[]): Track[] {
+  if (!tracks.length || !shots.length) return tracks;
+  const shotById = new Map(shots.map(shot => [shot.id, shot]));
+  let changed = false;
+
+  const nextTracks = tracks.map(track => {
+    let trackChanged = false;
+    const clips = track.clips.map(clip => {
+      if (clip.id.startsWith('clip-')) {
+        const shotId = clip.id.slice('clip-'.length);
+        const shot = shotById.get(shotId);
+        const selection = shot ? resolveShotVisualSelection(shot) : null;
+        if (!selection) return clip;
+        if (
+          clip.src === selection.src
+          && clip.type === selection.type
+          && clip.sourceDuration === selection.duration
+        ) {
+          return clip;
+        }
+        trackChanged = true;
+        changed = true;
+        return {
+          ...clip,
+          src: selection.src,
+          type: selection.type,
+          sourceDuration: selection.duration,
+          name: clip.name || selection.name,
+        };
+      }
+
+      if (clip.id.startsWith('audio-clip-')) {
+        const shotId = clip.id.slice('audio-clip-'.length);
+        const shot = shotById.get(shotId);
+        const selection = shot ? resolveShotAudioSelection(shot) : null;
+        if (!selection) return clip;
+        if (clip.src === selection.src && clip.sourceDuration === selection.duration) {
+          return clip;
+        }
+        trackChanged = true;
+        changed = true;
+        return {
+          ...clip,
+          src: selection.src,
+          sourceDuration: selection.duration,
+          name: clip.name || selection.name,
+        };
+      }
+
+      return clip;
+    });
+
+    return trackChanged ? { ...track, clips } : track;
+  });
+
+  return changed ? nextTracks : tracks;
+}
+
 export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectId, episodeId, aspectRatio: projectAspectRatio }) => {
   const { message } = App.useApp();
   const [tracks, setTracks] = useState<Track[]>([]);
@@ -265,6 +353,18 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
     return hasClips ? getTimelineDuration(tracks) : 1;
   }, [tracks]);
 
+  const shotSelectionSignature = useMemo(
+    () => shots.map(shot => [
+      shot.id,
+      shot.currentVersion ?? '',
+      getShotCurrentVideoSource(shot) ?? '',
+      getShotCurrentImageSource(shot) ?? '',
+      getShotCurrentAudioSource(shot) ?? '',
+      shot.duration ?? '',
+    ].join('\u001f')).join('\u001e'),
+    [shots],
+  );
+
   // 加载已保存的时间线
   useEffect(() => {
     const loadTimeline = async () => {
@@ -286,7 +386,7 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
         // 让"从分镜入剪辑→已选版本自动落轨"在重进时仍然生效。
         const savedHasClips = savedTracks.some((t) => Array.isArray(t.clips) && t.clips.length > 0);
         if (savedHasClips) {
-          setTracks(normalizeTimelineTracks(savedTracks));
+          setTracks(normalizeTimelineTracks(syncShotSelectionsIntoTracks(savedTracks, shots)));
           timelineCreatedAtRef.current = savedData!.createdAt || Date.now();
         } else if (shots.length > 0) {
           // 没保存过 OR 保存过但已被清空 → 从 shots 选中版本初始化（视频 / 音频 / 字幕全落轨）
@@ -313,7 +413,7 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
     };
 
     loadTimeline();
-  }, [projectId, episodeId]); // 仅在 projectId/episodeId 变化时加载
+  }, [projectId, episodeId, shots, shotSelectionSignature]); // 分镜当前版本变更时同步自动生成的 clip 源
 
   // 自动保存（防抖 1 秒）
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);

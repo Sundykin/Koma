@@ -4,8 +4,8 @@
  */
 import { useCallback, useEffect, useRef } from 'react';
 import type { Character, Scene, Prop } from '../types';
-import { parseMentions, createMentionString } from '../editor/mentionTypes';
-import type { MentionType, ParsedMention } from '../editor/mentionTypes';
+import { parseMentions, createMentionString, isAssetMentionType } from '../editor/mentionTypes';
+import type { AssetMentionType, ParsedMention } from '../editor/mentionTypes';
 
 export interface ShotAssetSyncState {
   selectedCharacters: string[];
@@ -31,8 +31,8 @@ export interface ShotAssetSyncActions {
     selectedScenes: string[],
     selectedProps: string[]
   ) => {
-    toAdd: { type: MentionType; id: string; name: string }[];
-    toRemove: { type: MentionType; id: string }[];
+    toAdd: { type: AssetMentionType; id: string; name: string }[];
+    toRemove: { type: AssetMentionType; id: string }[];
   };
 }
 
@@ -52,7 +52,7 @@ function getAssetMentionId(
  * 从 Mention ID 反查资产 ID
  */
 function getAssetIdFromMention(
-  type: MentionType,
+  type: AssetMentionType,
   mentionId: string,
   assets: { characters: Character[]; scenes: Scene[]; props: Prop[] }
 ): string | null {
@@ -81,8 +81,8 @@ function getAssetIdFromMention(
 /**
  * 类型映射
  */
-function assetTypeToMentionType(type: 'character' | 'scene' | 'prop'): MentionType {
-  const map: Record<string, MentionType> = {
+function assetTypeToMentionType(type: 'character' | 'scene' | 'prop'): AssetMentionType {
+  const map: Record<string, AssetMentionType> = {
     character: 'char',
     scene: 'scene',
     prop: 'prop',
@@ -90,8 +90,8 @@ function assetTypeToMentionType(type: 'character' | 'scene' | 'prop'): MentionTy
   return map[type];
 }
 
-function _mentionTypeToAssetType(type: MentionType): 'character' | 'scene' | 'prop' {
-  const map: Record<MentionType, 'character' | 'scene' | 'prop'> = {
+function _mentionTypeToAssetType(type: AssetMentionType): 'character' | 'scene' | 'prop' {
+  const map: Record<AssetMentionType, 'character' | 'scene' | 'prop'> = {
     char: 'character',
     scene: 'scene',
     prop: 'prop',
@@ -117,6 +117,7 @@ export function useShotAssetSync(
       const selectedProps: string[] = [];
 
       for (const mention of mentions) {
+        if (!isAssetMentionType(mention.type)) continue;
         const assetId = getAssetIdFromMention(mention.type, mention.id, assets);
         if (!assetId) continue;
 
@@ -150,8 +151,8 @@ export function useShotAssetSync(
       selectedProps: string[]
     ) => {
       const mentions = parseMentions(prompt);
-      const toAdd: { type: MentionType; id: string; name: string }[] = [];
-      const toRemove: { type: MentionType; id: string }[] = [];
+      const toAdd: { type: AssetMentionType; id: string; name: string }[] = [];
+      const toRemove: { type: AssetMentionType; id: string }[] = [];
 
       // 检查是否有新增的资产（选中但不在提示词中）
       for (const charId of selectedCharacters) {
@@ -185,6 +186,7 @@ export function useShotAssetSync(
 
       // 检查是否有需要移除的（在提示词中但未选中）
       for (const mention of mentions) {
+        if (!isAssetMentionType(mention.type)) continue;
         const assetId = getAssetIdFromMention(mention.type, mention.id, assets);
         if (!assetId) continue;
 
@@ -222,7 +224,10 @@ export function useShotAssetSync(
 
       // 获取当前提示词中该类型的所有 mentions
       const mentions = parseMentions(currentPrompt);
-      const currentMentions = mentions.filter(m => m.type === mentionType);
+      const currentMentions = mentions.filter(
+        (m): m is ParsedMention & { type: AssetMentionType } =>
+          isAssetMentionType(m.type) && m.type === mentionType,
+      );
 
       // 获取当前提示词中已有的资产 ID
       const currentAssetIds = currentMentions

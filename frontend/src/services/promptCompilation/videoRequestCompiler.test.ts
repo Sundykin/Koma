@@ -88,7 +88,7 @@ describe('videoRequestCompiler', () => {
       maxAdditionalReferences: 3,
     });
 
-    expect(compiled.request.prompt).toContain('@Image 1');
+    expect(compiled.request.prompt).not.toContain('@Image 1');
     expect(compiled.request.prompt).toContain('@Image 2');
     expect(compiled.request.prompt).toContain('@Image 3');
     expect(compiled.request.additionalReferences?.length).toBeLessThanOrEqual(3);
@@ -117,7 +117,7 @@ describe('videoRequestCompiler', () => {
       maxAdditionalReferences: 3,
     });
 
-    expect(compiled.request.prompt).toContain('@Image 1');
+    expect(compiled.request.prompt).not.toContain('@Image 1');
     expect(compiled.request.prompt).toContain('@Image 2');
     expect(compiled.request.prompt).toContain('@Image 3');
     expect(compiled.request.referenceImages).toEqual([
@@ -161,13 +161,45 @@ describe('videoRequestCompiler', () => {
       protocol: 'grok-image-index',
       provider: {
         config: {
+          provider: 'grok2api-imagine-itv',
+        },
+      },
+    })).toBe(6);
+
+    expect(resolveVideoProtocolCompilationLimit({
+      protocol: 'grok-image-index',
+      provider: {
+        config: {
           maxAdditionalReferences: 5,
         },
       },
     })).toBe(5);
   });
 
-  it('mapVideoRequestToProviderRequest: falls back to data-url when required image-hosting upload fails', async () => {
+  it('mapVideoRequestToProviderRequest: URL-only providers require image-hosting upload success by default', async () => {
+    await expect(mapVideoRequestToProviderRequest({
+      projectId: 'p1',
+      request: buildVideoCapabilityRequest({
+        capability: 'video.image-to-video',
+        prompt: 'demo',
+        primaryImage: { transport: 'data-url', value: 'data:image/png;base64,AA==' },
+        additionalReferences: [
+          { transport: 'data-url', value: 'data:image/png;base64,AQ==' },
+        ],
+      }),
+      transportSupport: {
+        primary: false,
+        additional: false,
+        reference: true,
+        start: true,
+        end: true,
+      },
+    })).rejects.toThrow('HTTP 404');
+
+    expect(uploadBytesToImageHostingWithRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it('mapVideoRequestToProviderRequest: can explicitly opt into data-url fallback when required upload fails', async () => {
     const request = await mapVideoRequestToProviderRequest({
       projectId: 'p1',
       request: buildVideoCapabilityRequest({
@@ -185,6 +217,7 @@ describe('videoRequestCompiler', () => {
         start: true,
         end: true,
       },
+      fallbackToSourceOnRequiredUploadFailure: true,
     });
 
     expect(uploadBytesToImageHostingWithRetry).toHaveBeenCalledTimes(2);

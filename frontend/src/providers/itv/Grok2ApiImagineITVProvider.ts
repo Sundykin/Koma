@@ -30,6 +30,39 @@ const GROK_MAX_REFERENCE_IMAGES = 7;
 type VideoCreateResponse = Record<string, unknown>;
 type VideoTaskResponse = Record<string, unknown>;
 
+function normalizePromptImagePlaceholders(prompt: string): string {
+  // Grok / OpenAI-video 兼容上游以 @Image N 作为参考图占位协议。
+  // 这里只做协议规范化：@图片3 / @Image3 -> @Image 3，不把占位符改成自然语言。
+  return prompt.replace(/@(?:Image|图片)\s*(\d+)/gu, '@Image $1');
+}
+
+function createCacheBustNonce(): string {
+  const cryptoLike = globalThis.crypto;
+  if (cryptoLike?.getRandomValues) {
+    const bytes = new Uint8Array(14);
+    cryptoLike.getRandomValues(bytes);
+    return Array.from(bytes, byte => byte.toString(32).padStart(2, '0')).join('').slice(0, 22);
+  }
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 14)}`;
+}
+
+function bustUrlCache(url: string): string {
+  if (!/^https?:\/\//i.test(url)) return url;
+  const hashIndex = url.indexOf('#');
+  const main = hashIndex >= 0 ? url.slice(0, hashIndex) : url;
+  const hash = hashIndex >= 0 ? url.slice(hashIndex) : '';
+  const sep = main.includes('?') ? '&' : '?';
+  return `${main}${sep}_r=${createCacheBustNonce()}${hash}`;
+}
+
+function toGrokQuality(value: unknown): 'high' | 'standard' {
+  const raw = String(value || '').trim().toLowerCase();
+  if (['720p', '1080p', 'hd', 'high', '高清', '1280x720', '720x1280', '1920x1080', '1080x1920'].includes(raw)) {
+    return 'high';
+  }
+  return 'standard';
+}
+
 function joinUrl(baseUrl: string, path: string): string {
   const b = baseUrl.replace(/\/+$/, '');
   const p = path.startsWith('/') ? path : `/${path}`;
@@ -338,17 +371,24 @@ export class Grok2ApiImagineITVProvider implements ITVProvider {
     ) || this.normalizeAspectRatio(resolutionRaw) || '16:9';
     const size = this.resolveGrokSize(aspectRatio);
 
-    // new-api /v1/videos (TaskSubmitReq) 使用 images: string[]，不是 Python 疾刃插件的
-    // image_reference 对象数组。字段对齐 relay/common/relay_info.go:TaskSubmitReq。
+    // 对齐 template_/video_plugin_疾刃API_v1.1.8 的 Grok 路径：
+    // /v1/videos 需要 image_reference 对象数组，prompt 保持 @Image N 协议。
     const images = imageInputs.map(imageInput => imageInput.value);
+    const prompt = images.length > 0
+      ? normalizePromptImagePlaceholders(request.prompt)
+      : request.prompt;
     const body: Record<string, any> = {
       model: modelName,
-      prompt: request.prompt,
+      prompt,
       size,
       seconds: String(duration),
+      quality: toGrokQuality(resolutionRaw || '720p'),
     };
     if (images.length > 0) {
-      body.images = images;
+      body.image_reference = images.map(url => ({
+        type: 'image_url',
+        image_url: { url: bustUrlCache(url) },
+      }));
     }
 
     if (debugBody) {
@@ -365,6 +405,7 @@ export class Grok2ApiImagineITVProvider implements ITVProvider {
         requestedResolution: resolutionRaw,
         normalizedSize: size,
         imagesCount: images.length,
+        imageReferenceCount: body.image_reference?.length || 0,
         body: sanitizeBodyForLog(body),
       });
     }

@@ -1,7 +1,82 @@
 import { describe, expect, it } from 'vitest';
-import { buildDialogueGuardNote } from './ShotPromptService';
+import {
+  buildDialogueGuardNote,
+  ensureExplicitDialogueInVideoPrompt,
+  formatCharacterMappingBaseline,
+  sanitizeVideoPromptResult,
+} from './ShotPromptService';
+import type { ShotReferenceBundle } from './shotReference/types';
+import type { Character } from '../types';
 
 describe('buildDialogueGuardNote', () => {
+  it('does not expose static character appearance in multi-ref baseline when a reference image exists', () => {
+    const character = {
+      id: '1778207028644_1',
+      name: '小白',
+      role: 'supporting',
+      prompt: '小白',
+      appearance: '银白色齐腰长发披散，浅紫色大眼睛，脸颊带婴儿肥，身穿淡粉色丝绸交领短袖短衫，白色百褶短裙。',
+      media: {
+        costumePhoto: { url: 'https://example.com/xiaobai.png' },
+      },
+    } as unknown as Character;
+
+    const baseline = formatCharacterMappingBaseline([character], 'multi-ref');
+
+    expect(baseline).toContain('@char_1778207028644_1 小白');
+    expect(baseline).toContain('外观身份以绑定参考图为准');
+    expect(baseline).toContain('禁止展开发型、脸型、眼睛、体型、常规服装颜色材质、常规配饰');
+    expect(baseline).not.toContain('银白色齐腰长发');
+    expect(baseline).not.toContain('浅紫色大眼睛');
+    expect(baseline).not.toContain('淡粉色丝绸交领短袖短衫');
+  });
+
+  it('uses the reference bundle as the source of truth for suppressing character appearance', () => {
+    const character = {
+      id: '1778207028644_1',
+      name: '小白',
+      role: 'supporting',
+      prompt: '小白',
+      appearance: '银白色齐腰长发披散，浅紫色大眼睛，身穿淡粉色短衫。',
+    } as unknown as Character;
+    const referenceBundle: ShotReferenceBundle = {
+      items: [{
+        kind: 'character',
+        id: character.id,
+        label: '小白（角色）',
+        source: 'https://example.com/xiaobai.png',
+        mentionToken: '@char_1778207028644_1',
+        priority: 80,
+        assetId: character.id,
+      }],
+      hasGridAnchor: false,
+      hasShotImage: false,
+      capacity: { maxRefs: 6, truncatedCount: 0, truncatedKinds: [] },
+    };
+
+    const baseline = formatCharacterMappingBaseline([character], 'multi-ref', referenceBundle);
+
+    expect(baseline).toContain('外观身份以绑定参考图为准');
+    expect(baseline).not.toContain('银白色齐腰长发');
+    expect(baseline).not.toContain('浅紫色大眼睛');
+  });
+
+  it('keeps fallback appearance in multi-ref baseline when no character reference image exists', () => {
+    const character = {
+      id: '1778207028644_0',
+      name: '我',
+      role: 'protagonist',
+      prompt: '我',
+      appearance: '白色亚麻交领长袖武袍，黑色棉质灯笼裤。',
+    } as unknown as Character;
+
+    const baseline = formatCharacterMappingBaseline([character], 'multi-ref');
+
+    expect(baseline).toContain('@char_1778207028644_0 我');
+    expect(baseline).toContain('白色亚麻交领长袖武袍');
+    expect(baseline).not.toContain('外观身份以绑定参考图为准');
+  });
+
   it('treats third-person narration as non-spoken text', () => {
     const note = buildDialogueGuardNote(
       '沈鹿睁开眼，心里一沉。哪里不对。这不是她的卧室。',
@@ -9,8 +84,8 @@ describe('buildDialogueGuardNote', () => {
     );
 
     expect(note).toContain('本分镜显式口播台词（DIALOGUE）：无');
-    expect(note).toContain('这不是她的卧室');
     expect(note).toContain('不得补写台词');
+    expect(note).toContain('第一人称叙述、转述句、心理活动、认知句、环境说明、作者说明都不能原句塞进对白');
   });
 
   it('extracts explicit spoken dialogue from role-prefix lines', () => {
@@ -19,10 +94,73 @@ describe('buildDialogueGuardNote', () => {
       ['沈鹿'],
     );
 
-    expect(note).toContain('本分镜显式口播台词（DIALOGUE）：');
-    expect(note).toContain('- 这不是我的卧室。');
+    expect(note).toContain('本分镜显式口播台词（DIALOGUE，必须逐字进入最终"对白提示词"字段）：');
+    expect(note).toContain('- 沈鹿：这不是我的卧室。');
     expect(note).toContain('本分镜显式 OS/OV / 旁白（VOICEOVER');
     expect(note).toContain('- 她瞬间清醒。');
+  });
+
+  it('keeps shot.dialogue as explicit dialogue even when scriptLines do not include it', () => {
+    const note = buildDialogueGuardNote(
+      '陈玄整理道袍，把书递给李应陵。',
+      ['陈玄', '李应陵'],
+      '李应陵：师傅，换一本呗？\n陈玄：修了就知道。',
+    );
+
+    expect(note).toContain('必须逐字进入最终"对白提示词"字段');
+    expect(note).toContain('- 李应陵：师傅，换一本呗？');
+    expect(note).toContain('- 陈玄：修了就知道。');
+  });
+
+  it('requires first-person narrated reports to become real scene dialogue with corrected pronouns', () => {
+    const note = buildDialogueGuardNote(
+      '小白悬在半空，抬手指向我。',
+      ['我', '小白'],
+      '她自称天道，说要帮我夺回气运',
+    );
+
+    expect(note).toContain('本分镜已转写的本源剧情对白 / 动作素材');
+    expect(note).toContain('小白：我是天道，我可以帮你夺回气运');
+    expect(note).not.toContain('→');
+    expect(note).not.toContain('改写为真实剧情对白');
+    expect(note).not.toContain('她自称天道，说要帮我夺回气运');
+  });
+
+  it('in drama mode rewrites first-person tweet narration into short protagonist dialogue', () => {
+    const note = buildDialogueGuardNote(
+      '我忽然意识到，这不是我的房间。\n我不能就这么认命。',
+      ['我', '小白'],
+      '',
+      'drama',
+    );
+
+    expect(note).toContain('【项目叙事模式：剧情模式】');
+    expect(note).toContain('我：不对，这不对劲。');
+    expect(note).toContain('我：我不能就这么认命。');
+  });
+
+  it('in narration mode does not force first-person tweet narration into dialogue', () => {
+    const note = buildDialogueGuardNote(
+      '我忽然意识到，这不是我的房间。\n我不能就这么认命。',
+      ['我', '小白'],
+      '',
+      'narration',
+    );
+
+    expect(note).toContain('【项目叙事模式：解说模式】');
+    expect(note).toContain('不主动把第一人称解说改写成角色对白');
+    expect(note).not.toContain('我：不对，这不对劲。');
+    expect(note).not.toContain('我：我不能就这么认命。');
+  });
+
+  it('does not duplicate shot.dialogue when it is also appended to script content', () => {
+    const note = buildDialogueGuardNote(
+      '陈玄整理道袍。\n【分镜台词字段】\n李应陵：师傅，换一本呗？',
+      ['李应陵'],
+      '李应陵：师傅，换一本呗？',
+    );
+
+    expect(note.match(/李应陵：师傅，换一本呗？/g)).toHaveLength(1);
   });
 
   it('extracts explicit self-talk only when a speech cue exists', () => {
@@ -46,5 +184,101 @@ describe('buildDialogueGuardNote', () => {
     expect(note).toContain('- 这剧情666');
     expect(note).toContain('- 第三日');
     expect(note).toContain('禁止改写为角色对白');
+  });
+
+  it('strips leaked self-check blocks from video prompt responses', () => {
+    const cleaned = sanitizeVideoPromptResult([
+      '整体画风：中国古代卡通3D风格。',
+      '对白提示词：陈玄：修了就知道。',
+      '精确时长：15秒',
+      '',
+      '【自检】',
+      '- [x] 总字数 ≤ 1500',
+      '- [x] 没有心理描写',
+    ].join('\n'));
+
+    expect(cleaned).toBe([
+      '整体画风：中国古代卡通3D风格。',
+      '对白提示词：陈玄：修了就知道。',
+      '精确时长：15秒',
+    ].join('\n'));
+  });
+
+  it('patches missing explicit shot dialogue into the final video prompt', () => {
+    const prompt = ensureExplicitDialogueInVideoPrompt(
+      '整体画风：中国古代卡通3D风格。\n对白提示词：无\n精确时长：15秒',
+      '李应陵：师傅，换一本呗？',
+    );
+
+    expect(prompt).toContain('对白提示词：李应陵：师傅，换一本呗？');
+    expect(prompt).not.toContain('对白提示词：无');
+  });
+
+  it('patches first-person narration as corrected scene dialogue instead of verbatim narration', () => {
+    const prompt = ensureExplicitDialogueInVideoPrompt(
+      '整体画风：中国古代卡通3D风格。\n对白提示词：无\n精确时长：15秒',
+      '她自称天道，说要帮我夺回气运',
+      ['我', '小白'],
+    );
+
+    expect(prompt).toContain('对白提示词：小白：我是天道，我可以帮你夺回气运');
+    expect(prompt).not.toContain('她自称天道，说要帮我夺回气运');
+  });
+
+  it('does not duplicate corrected narration dialogue when the speech text already exists', () => {
+    const prompt = ensureExplicitDialogueInVideoPrompt(
+      '整体画风：中国古代卡通3D风格。\n对白提示词：角色 @char_x 小白 对 角色 @char_me 我 台词：『我是天道，我可以帮你夺回气运』\n精确时长：15秒',
+      '她自称天道，说要帮我夺回气运',
+      ['我', '小白'],
+    );
+
+    expect(prompt.match(/我是天道，我可以帮你夺回气运/g)).toHaveLength(1);
+    expect(prompt).not.toContain('她自称天道，说要帮我夺回气运');
+  });
+
+  it('does not patch first-person narration as dialogue in narration mode', () => {
+    const prompt = ensureExplicitDialogueInVideoPrompt(
+      '整体画风：中国古代卡通3D风格。\n对白提示词：无\n精确时长：15秒',
+      '她自称天道，说要帮我夺回气运',
+      ['我', '小白'],
+      'narration',
+    );
+
+    expect(prompt).toContain('对白提示词：无');
+    expect(prompt).not.toContain('小白：我是天道，我可以帮你夺回气运');
+    expect(prompt).not.toContain('她自称天道，说要帮我夺回气运');
+  });
+
+  it('removes leaked narrative report fragments from dialogue prompt output', () => {
+    const cleaned = sanitizeVideoPromptResult(
+      '整体画风：玄幻写实风格。\n对白提示词：小白（急切）：「她自称天道，说要帮我夺回气运；我（反感）：「你说的这些词，怎么可能组成一句话；她自称天道，说要帮我夺回气运\n精确时长：15秒',
+    );
+
+    expect(cleaned).toContain('对白提示词：我（反感）：「你说的这些词，怎么可能组成一句话');
+    expect(cleaned).not.toContain('她自称天道，说要帮我夺回气运');
+  });
+
+  it('does not truncate content after exact duration while cleaning only the bad prefix', () => {
+    const cleaned = sanitizeVideoPromptResult([
+      '镜头1-镜头4 整体画风：玄幻写实风格。',
+      '角色动作提示词：镜头1 侧躺；镜头2 睁眼；镜头3 戒指特写；镜头4 坐起。',
+      '对白提示词：无',
+      '精确时长：15秒',
+      '',
+      '镜头 1（3.75 秒，对应 2×2 四宫格 左上 = cell 1）：',
+      '- 景别 + 机位：中景，30度侧拍。',
+      '- 台词：无',
+    ].join('\n'));
+
+    expect(cleaned).toBe([
+      '整体画风：玄幻写实风格。',
+      '角色动作提示词：镜头1 侧躺；镜头2 睁眼；镜头3 戒指特写；镜头4 坐起。',
+      '对白提示词：无',
+      '精确时长：15秒',
+      '',
+      '镜头 1（3.75 秒，对应 2×2 四宫格 左上 = cell 1）：',
+      '- 景别 + 机位：中景，30度侧拍。',
+      '- 台词：无',
+    ].join('\n'));
   });
 });

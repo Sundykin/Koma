@@ -5,7 +5,7 @@ import {
   isStartEndToVideoRequest,
   isTextToVideoRequest,
 } from '../../types';
-import { parseMentions } from '../../editor/mentionTypes';
+import { isAssetMentionType, parseMentions } from '../../editor/mentionTypes';
 import { resolveProviderAssetInput } from '../mediaAssetResolver';
 import { compileGrokITV, compileGrokTTI } from './grokImageIndexCompiler';
 import { compilePromptReferences } from './promptReferenceCompiler';
@@ -100,6 +100,9 @@ function compileReadableSelectedAssetMentions(params: {
   }
 
   const replacements = mentions.map(mention => {
+    if (!isAssetMentionType(mention.type)) {
+      return null;
+    }
     const hit = params.selectedAssets.find(asset => {
       if (asset.type !== mention.type) {
         return false;
@@ -337,6 +340,11 @@ export function resolveVideoProtocolCompilationLimit(params: {
   if (configured) {
     return configured;
   }
+  if ((providerConfig as Record<string, unknown>).provider === 'grok2api-imagine-itv') {
+    // Grok video URL-array 协议最多 7 张图；这里返回“额外参考图”上限，
+    // reference-to-video 会在映射层再 +1 得到总图数 7。
+    return 6;
+  }
   if (params.protocol === 'grok-image-index') {
     return 3;
   }
@@ -562,9 +570,8 @@ export async function mapVideoRequestToProviderRequest(params: {
   fallbackToSourceOnRequiredUploadFailure?: boolean;
 }): Promise<ITVRequest<ProviderAssetInput>> {
   const { projectId, request, transportSupport, maxAdditionalReferences } = params;
-  // Scheme B: if required image-hosting upload fails, keep the source and allow data-url fallback.
   const fallbackToSourceOnRequiredUploadFailure =
-    params.fallbackToSourceOnRequiredUploadFailure ?? true;
+    params.fallbackToSourceOnRequiredUploadFailure ?? false;
   const messages: Required<VideoMappingMessageOverrides> = {
     missingPrimaryImage: params.messages?.missingPrimaryImage || '缺少主图输入',
     missingReferenceImages: params.messages?.missingReferenceImages || '缺少参考图输入',

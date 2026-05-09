@@ -100,6 +100,10 @@ function resolveVideosPath(config: ITVConfig): string {
   );
 }
 
+function promptUsesImagePlaceholders(prompt: string): boolean {
+  return /@(?:Image|图片)\s*\d+/u.test(prompt);
+}
+
 /**
  * 把上游嵌套的 fail_to_fetch_task / Express 默认 HTML 404 / multi-layer JSON 错误展平成一行人话。
  * 多次出现 fail_to_fetch_task 会被压缩为一次。HTML body 里若识别到 "Cannot POST /xxx" 这类
@@ -194,13 +198,14 @@ export class OpenAIVideoITVProvider implements ITVProvider {
   type = 'openai-video' as const;
   config: ITVConfig;
 
-  // OpenAI 标准的 image 字段同时接受 URL / data URL；远程 URL 体积更小、上游更友好，优先选它。
+  // 统一要求上游可访问的远程 URL。分镜提示词会使用 @Image N 占位符，兼容网关通常只把
+  // body.images 里的“已上传图片”纳入占位符索引；data-url 体积过大且容易被上游判为未上传图片。
   assetTransports = {
-    primaryImage: ['remote-url', 'data-url'] as const,
-    additionalReferences: ['remote-url', 'data-url'] as const,
-    referenceImages: ['remote-url', 'data-url'] as const,
-    startFrame: ['remote-url', 'data-url'] as const,
-    endFrame: ['remote-url', 'data-url'] as const,
+    primaryImage: ['remote-url'] as const,
+    additionalReferences: ['remote-url'] as const,
+    referenceImages: ['remote-url'] as const,
+    startFrame: ['remote-url'] as const,
+    endFrame: ['remote-url'] as const,
   };
 
   constructor(config: ITVConfig) {
@@ -293,14 +298,21 @@ export class OpenAIVideoITVProvider implements ITVProvider {
     }
 
     if (request.capability === 'video.image-to-video') {
-      // OpenAI 标准：image 字段携带单张起始帧 URL / data URL。
-      if (request.primaryImage?.value) {
-        body.image = request.primaryImage.value;
+      // OpenAI 标准：image 字段携带单张起始帧 URL；若 prompt 中使用 @Image N，
+      // 兼容网关还需要 images 数组承载完整占位符索引（主图必须是 images[0]）。
+      const primary = request.primaryImage?.value;
+      if (primary) {
+        body.image = primary;
       }
       const additional = (request.additionalReferences || [])
         .map(ref => ref?.value)
         .filter((value): value is string => Boolean(value));
-      if (additional.length) {
+      if (promptUsesImagePlaceholders(request.prompt)) {
+        const images = [primary, ...additional].filter((value): value is string => Boolean(value));
+        if (images.length) {
+          body.images = images;
+        }
+      } else if (additional.length) {
         body.images = additional;
       }
     } else if (request.capability === 'video.reference-to-video') {

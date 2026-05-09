@@ -17,6 +17,7 @@ import {
   type VideoDurationSpec,
 } from '../providers/itv/durationSpec';
 import { serializeMediaSelection } from '../providers/channel/resolver';
+import { normalizeProjectNarrativeMode, type ProjectNarrativeMode } from './narrativeMode';
 
 /** 实体摘要（用于 chunk 间上下文传递） */
 export interface EntitySummary {
@@ -44,6 +45,9 @@ export interface CreationContext {
 
   /** 风格配置 */
   styleSnapshot?: Partial<ProjectStyleSnapshot>;
+
+  /** 项目叙事模式：剧情模式会把推文解说剧情化，解说模式保留旁白主导 */
+  projectMode: ProjectNarrativeMode;
 
   /** LLM 配置（避免每个服务各自 setLLMConfig） */
   llmConfig: LLMModelConfig;
@@ -128,6 +132,7 @@ export async function createCreationContext(
     scenes,
     props,
     styleSnapshot: options?.styleSnapshot,
+    projectMode: normalizeProjectNarrativeMode(projectMeta?.mode),
     llmConfig,
     llmProvider,
     itvDurationSpec,

@@ -154,14 +154,7 @@ export function compilePromptReferences(params: {
     compiledPrompt = compiledPrompt.slice(0, item.from) + item.replacement + compiledPrompt.slice(item.to);
   }
 
-  if (
-    replacementStrategy === 'image-index' &&
-    ensurePrimaryReference &&
-    primaryReferenceId &&
-    !/\@Image\s+1\b/.test(compiledPrompt)
-  ) {
-    compiledPrompt = `@Image 1 ${compiledPrompt}`.trim();
-  }
+  void ensurePrimaryReference;
 
   const compiledReferences = orderedVisualRefs
     .filter(item => item.key !== primarySourceKey)

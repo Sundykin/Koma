@@ -218,7 +218,7 @@ export function getITVModelDurations(model: ChannelModelDefinition | undefined |
  */
 const PROVIDER_DEFAULT_MAX_REFS: Record<string, number> = {
   // ITV 内置（komaapi 网关）
-  'grok2api-imagine-itv': 4,
+  'grok2api-imagine-itv': 7,
   'koma-suihe-itv': 4,
   // ITV 老遗留（仍可能在 SQLite 里）
   'runway': 1,

@@ -13,10 +13,9 @@ import {
   type Shot,
   type ShotVersion,
 } from '../types';
-import { getProjectTTSProvider } from '../providers';
 import { saveShotVersion, loadShotMeta, loadCharacters, loadProps, loadScenes } from '../store/projectStore';
 import { createLogger } from '../store/logger';
-import { logITVCall, logTTSCall } from '../store/aiCallLogger';
+import { logITVCall } from '../store/aiCallLogger';
 import { resolvePromptTemplate } from '../store/promptTemplates';
 import { getThemeStylePrefixAsync } from '../config/themePresets';
 import {
@@ -26,6 +25,11 @@ import {
   normalizeShotMediaState,
 } from '../store/project/mediaState';
 import { mediaGenerationService } from '../services/MediaGenerationService';
+import {
+  ensureExplicitDialogueInVideoPrompt,
+  sanitizeVideoPromptResult,
+} from '../services/ShotPromptService';
+import { normalizeProjectNarrativeMode } from '../services/narrativeMode';
 import { runWithTask } from '../services/taskRunner';
 import { buildShotVideoTemplateVariables } from './promptVariableBuilders';
 import {
@@ -54,7 +58,7 @@ interface ShotRenderParams {
   theme?: string;
   stylePrompt?: string;
   styleSnapshot?: StyleSnapshotLike;
-  project?: { styleSnapshot?: StyleSnapshotLike; aspectRatio?: '16:9' | '9:16' };
+  project?: { styleSnapshot?: StyleSnapshotLike; aspectRatio?: '16:9' | '9:16'; mode?: 'drama' | 'narration' };
 }
 
 interface ShotRenderResult {
@@ -78,7 +82,7 @@ interface BatchRenderParams {
   theme?: string;
   stylePrompt?: string;
   styleSnapshot?: StyleSnapshotLike;
-  project?: { styleSnapshot?: StyleSnapshotLike; aspectRatio?: '16:9' | '9:16' };
+  project?: { styleSnapshot?: StyleSnapshotLike; aspectRatio?: '16:9' | '9:16'; mode?: 'drama' | 'narration' };
   concurrency?: number;
 }
 
@@ -220,6 +224,15 @@ export async function shotRenderWorkflow(
       templateId = resolvedPrompt.template.id;
       promptSource = resolvedPrompt.source;
     }
+    const shotCharacterNames = (normalizedShot.characters || [])
+      .map(charId => characters.find(char => char.id === charId)?.name)
+      .filter((name): name is string => Boolean(name));
+    videoPrompt = ensureExplicitDialogueInVideoPrompt(
+      sanitizeVideoPromptResult(videoPrompt),
+      String(normalizedShot.dialogue || ''),
+      shotCharacterNames,
+      normalizeProjectNarrativeMode(params.project?.mode),
+    );
 
     const providerType = capabilitySupport?.resolvedContext?.definition.runtimeProviderType
       || capabilitySupport?.resolvedContext?.channelConfig.providerType;
@@ -239,7 +252,7 @@ export async function shotRenderWorkflow(
         ? Math.max(0, compiledVideoRequest.request.referenceImages.length - 1)
         : 0;
 
-    logger.info(`视频 prompt: ${videoPrompt}`);
+    logger.info(`视频 prompt: ${compiledVideoRequest.prompt}`);
     if (providerSideReferenceCount > 0) {
       logger.info('额外参考图', {
         count: providerSideReferenceCount,
@@ -254,7 +267,7 @@ export async function shotRenderWorkflow(
       resolvedVideoPlan.primaryImageSource
         || getMediaAssetDisplaySource(resolvedVideoPlan.additionalReferenceImages[0] as any)
         || String(resolvedVideoPlan.additionalReferenceImages[0] || ''),
-      videoPrompt,
+      compiledVideoRequest.prompt,
       {
         duration: videoDuration,
         motionPrompt: normalizedShot.cameraMovement,
@@ -275,56 +288,14 @@ export async function shotRenderWorkflow(
       media: {
         image: resolvedVideoPlan.selectedImageAsset,
       },
-      prompt: videoPrompt,
+      prompt: compiledVideoRequest.prompt,
       seed: normalizedShot.seed || Math.floor(Math.random() * 1000000),
       model: itvProviderName,
     });
     const versionId = `v${baseVersion.version}`;
 
-    // 步骤1: 生成语音 (20-45%)
-    if (normalizedShot.dialogue) {
-      onProgress(25, '生成语音...');
-      try {
-        const preferredVoiceId = getPreferredShotVoiceId(normalizedShot, characters);
-        const voiceId = await resolveShotVoiceId(projectId, mediaSelections?.ttsSelection, preferredVoiceId);
-
-        logTTSCall(
-          'TTS',
-          normalizedShot.dialogue,
-          voiceId,
-          { rate: 1.0, pitch: 1.0 },
-          { projectId, targetId: normalizedShot.id, targetName: `分镜语音: ${normalizedShot.id}` }
-        );
-
-        await mediaGenerationService.generateAudio({
-          projectId,
-          ownerRef: {
-            projectId,
-            ownerType: 'shot-version',
-            ownerId: normalizedShot.id,
-            slot: 'audio',
-            versionId,
-          },
-          request: {
-            text: normalizedShot.dialogue,
-            voiceId,
-            options: { rate: 1.0, pitch: 1.0 },
-          },
-          ttsSelection: mediaSelections?.ttsSelection,
-          taskName: `分镜语音: ${normalizedShot.id}`,
-        });
-
-        onProgress(45, '语音生成完成');
-      } catch (err: any) {
-        logger.warn('语音生成失败', { error: err.message });
-        onProgress(45, '语音生成跳过');
-      }
-    } else {
-      onProgress(45, '无台词，跳过语音');
-    }
-
-    // 步骤2: 生成视频 (45-95%)
-    onProgress(45, `生成${effectiveCapabilityLabel}...`);
+    // 生成视频只负责 ITV，不触发 TTS。配音应由独立音频/配音流程处理。
+    onProgress(30, `生成${effectiveCapabilityLabel}...`);
 
     await mediaGenerationService.generateVideo({
       projectId,
@@ -337,7 +308,6 @@ export async function shotRenderWorkflow(
         versionId,
       },
       request: compiledVideoRequest.request,
-      promptCompilation: compiledVideoRequest.promptCompilation,
       itvSelection: effectiveITVSelection,
       taskName: `分镜视频: ${normalizedShot.id}`,
       allowCapabilityFallback: false,
@@ -365,26 +335,6 @@ export async function shotRenderWorkflow(
       error: err.message,
     };
   }
-}
-
-async function resolveShotVoiceId(
-  projectId: string,
-  ttsSelection: string | undefined,
-  preferredVoiceId: string | undefined
-): Promise<string> {
-  if (preferredVoiceId) return preferredVoiceId;
-
-  const provider = await getProjectTTSProvider(ttsSelection);
-  if (!provider) {
-    throw new Error('未配置 TTS 服务');
-  }
-
-  if (provider.config?.defaultVoice) {
-    return provider.config.defaultVoice;
-  }
-
-  const voices = await provider.listVoices();
-  return voices[0]?.id || 'default';
 }
 
 /**
@@ -466,16 +416,6 @@ function getCameraMovementDesc(movement?: string): string {
     'handheld': 'handheld camera movement',
   };
   return cameraDesc[movement] || movement;
-}
-
-function getPreferredShotVoiceId(shot: Shot, characters: Character[]): string | undefined {
-  for (const charId of shot.characters || []) {
-    const character = characters.find(char => char.id === charId);
-    if (character?.voiceId) {
-      return character.voiceId;
-    }
-  }
-  return undefined;
 }
 
 export default {

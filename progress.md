@@ -183,6 +183,168 @@
   - `npm run build-electron`：passed。
   - `git diff --check`：passed。
 
+### Follow-up: Storyboard Video Prompt Template Cleanup
+- **Status:** complete
+- Actions taken:
+  - 用户反馈分镜视频提示词里会输出 `【自检】` checkbox 段落，并且视频提示词缺台词。
+  - 检查全部 8 个视频 reasoning 模板：`shot_video_6s/10s/15s/20s_multi.md` 与 `shot_video_6s/10s/16s/20s_firstframe.md`。
+  - 移除模板里的 `输出前必须自检字数` 和末尾 `## 输出前自检（全过才提交）` checkbox 段落。
+  - 多参模板最终输出统一为：整体画风、景别、运镜、视频运动、场景描述、角色提示词、系统提示词、道具提示词、画面提示词、角色动作提示词、对白提示词、情绪提示词、音效提示词、背景音乐提示词、光影氛围提示词、精确时长。
+  - 首帧延展模板保留 `[图片提示词]` 首帧段，`[视频提示词]` 段改为同一套结构化字段。
+  - `shotsOutputFormat.ts` 把 grid `【自检】` 改成 `【结构约束】`，避免 shotsSection 诱导模型输出检查清单。
+  - `ShotPromptService.generateVideoPrompt()` 改为把 `shot.dialogue` 合并进视频模板上下文，并传入口播台词保护说明。
+  - 新增结果清洗兜底：删除泄漏的自检段和 markdown checkbox。
+  - 新增台词兜底：如果模型最终提示词漏掉显式 `shot.dialogue`，自动补入或追加到 `对白提示词`。
+  - 调整台词解析保留 `角色名：台词`，避免 `shot.dialogue` 被拆成无角色名台词并重复。
+- Validation:
+  - `npm run test -- --run src/services/ShotPromptService.test.ts`：1 file / 8 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json`（root）：passed。
+  - `npx tsc --noEmit --project tsconfig.json`（frontend）：passed。
+  - `npm run build`（frontend）：passed；保留既有 Vite dynamic import/chunk/chunk-size warnings。
+  - `git diff --check`：passed。
+
+### Follow-up: Storyboard Image/Video Prompt Visual Alignment
+- **Status:** complete
+- Actions taken:
+  - 根据用户给的三段目标提示词，继续优化分镜生图与视频提示词模板，使两者在画风、景别、画面描述、角色/道具、动作、情绪、光影和呼应字段上对应。
+  - `ShotPromptService` 的生图路径现在也使用合并后的 `scriptLines + shot.dialogue`，并额外传入 `dialogueText`，避免图片提示词缺台词事实。
+  - `shot_image_prompt_generation` 改成视频 0 秒画面锚点结构，新增 `景别构图`、`画面描述`、`系统/字幕提示词`、`动作定格提示词`、`对白视觉提示词`、`呼应提示词` 等字段。
+  - 8 个 `shot_video_*` 模板将最终字段升级为用户样例方向：`多机位运镜`、`画面描述`、`呼应提示词`，并强化前景/中景/背景层次、特写对象、角色可见状态、道具位置和光影变化。
+  - 首帧延展 4 个模板补齐 `{{props}}` 输入和变量声明，避免输出道具提示词时缺少道具上下文。
+  - 九宫格/四宫格推理模板增加台词字段、画面层次、特写对象和每帧景别/光影要求；TTI 九/四宫格直拼模板强调连续动作锚点，不再只是不同镜头集合。
+  - `tti_shot_image` 强化为 storyboard still frame / video anchor frame，明确普通对白不渲染为文字，只有字幕/系统气泡/屏幕字才画字。
+  - `promptTemplates.test.ts` 新增模板结构回归测试，并把旧分镜拆解断言同步到当前 `scriptLineIndices` 连续覆盖约束。
+- Validation:
+  - `npm run test -- --run src/store/promptTemplates.test.ts src/services/ShotPromptService.test.ts`：2 files / 15 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json`（root）：passed。
+  - `npx tsc --noEmit --project tsconfig.json`（frontend）：passed。
+  - `npm run build`（frontend）：passed；保留既有 Vite dynamic import/chunk-size warnings。
+  - `git diff --check`：passed。
+
+### Follow-up: First-Person Narration To Scene Dialogue
+- **Status:** complete
+- Actions taken:
+  - 用户指出：`她自称天道，说要帮我夺回气运` 不应该转成旁白，也不应该原句作为台词；应该改写成真实剧情对白，人称必须正确。
+  - `ensureExplicitDialogueInVideoPrompt()` 改为从 `explicitDialogueText` 中区分显式直接对白和叙述转写；第一人称转述只补改写后的真实剧情对白，不再把来源叙述句逐字补进 `对白提示词`。
+  - `buildDialogueGuardNote()` 增加 `NARRATIVE_TO_SCENE` 轨道，区分第一人称叙述/转述与真正角色对白。
+  - 新增转写启发式：第一人称转述在 `我 + 小白` 角色上下文中会转成 `小白：我是天道，我可以帮你夺回气运` 这类干净的真实对白。
+  - 8 个视频 reasoning 模板新增 `NARRATIVE_TO_SCENE` 规则，并把“台词逐字一致”改成“显式对白保留语义；转述句必须先做剧情化和人称转换”。
+  - 根据用户继续反馈，移除模板和 guard note 中的具体来源句/错误示例，不再输出“原句 → 改写”说明，避免污染视频模型。
+  - 处理 `镜头1-镜头4` 出现两遍：多参模板将 `shotsSection` 标为内部参考，最终只允许一组字段；`角色动作提示词` 承载镜头顺序，禁止 `精确时长` 后追加逐镜头 Markdown 段。
+  - 根据用户反馈“不要截断内容”，撤掉 `sanitizeVideoPromptResult()` 中按首个 `精确时长：N秒` 截断尾部的逻辑，避免误删有效补充内容。
+  - `sanitizeVideoPromptResult()` 仅保留非破坏性清洗：去掉开头 `镜头1-镜头4` 前缀、清洗 `对白提示词` 中的来源叙述泄漏、移除自检/checkbox 污染。
+  - 补回归测试：第一人称转述会补改写后的真实对白而不是原句；模型泄漏来源叙述会被清洗；`精确时长` 后内容不会被截断；模板不含具体坏句示例。
+- Validation:
+  - `npm run test -- --run src/services/ShotPromptService.test.ts src/store/promptTemplates.test.ts`：2 files / 20 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json`（root）：passed。
+  - `npx tsc --noEmit --project tsconfig.json`（frontend）：passed。
+
+### Follow-up: Prompt Compilation Fallback + Anchor Preview
+- **Status:** complete
+- Actions taken:
+  - 用户反馈最终提示词仍出现 raw `@prop_*`，且 `@grid_anchor` tooltip 没有显示选中图。
+  - 已开始复查 `shotReference/compile`、bundle builder 与 `ShotCard` 局部 mentionItems 链路。
+  - `buildShotReferenceBundle` 新增 `mentionFallbacks`，即使资产无图也保留 `@prop_x -> 道具名` 的降级信息。
+  - `compileShotPromptToBundle` 对未映射 token 改为可读降级/剥离，不再保留 raw `@prop_*` / 未知 `@char_*`。
+  - `compileGrokTTI` / `compileGrokITV` 对 selectedAssets 中无 source 的资产同样做可读降级，避免 TTI/ITV 二次编译继续泄漏 raw id。
+  - `ShotCard` 的 `@grid_anchor` / `@shot_anchor` tooltip 预览改为直接使用当前选中的图片，不再因为 `metadata.gridCell` 被排除。
+  - 根据用户继续反馈，移除 `compileGrokITV` 自动在提示词最前方 prepend `@Image 1` 的旧行为；primary image 仍保持在请求图片数组第 1 位，但正文只有显式写了 `@Image 1` 才保留。
+  - 根据用户反馈“高亮说明道具应进入 bundle”，定位到真实根因：`ShotPromptService` 用 `createMentionString()` 输出 `@prop_177...`，但 `buildShotReferenceBundle()` 旧代码把真实 ID 再拼一次前缀，变成 `@prop_prop_177...`，导致 compile 匹配失败。
+  - `buildShotReferenceBundle()` 统一改用 `createMentionString()` 生成 scene/char/prop mentionToken 和 mentionFallbacks，真实前缀 ID 不再重复拼接。
+  - 分镜视频删除旧 `selectedAssetsForCompilation` 视图和 `assetReferenceBuilder.ts`；Seedance 合并参考图改为严格使用 `plan.bundle.items` 顺序，避免 `@Image N` 索引被旧角色/场景/道具顺序重排。
+  - 分镜生图 `shotImageWorkflow` 改为 workflow 层直接用 `compileShotPromptToBundle()` 编译一次，并把同一份 `compiledPrompt` / `references` 传给 TTI；不再把分镜生图交给旧 selectedAssets 编译器二次处理。
+  - `CompiledVideoGenerationRequest` 移除 `promptCompilation` 字段，`shotRenderWorkflow` 不再把预编译后的分镜视频请求重新接入 `MediaGenerationService` 的旧 promptCompilation 路径。
+  - 新增 `videoGenerationRequests.test.ts`，覆盖真实前缀 ID 下 `@grid_anchor` / scene / char / prop / legacy `@图片1` 全部归一为同一 bundle 顺序的 `@Image N`，且不会自动在开头 prepend `@Image 1`。
+- Validation:
+  - `npm run test -- --run src/services/shotReference/compile.test.ts src/services/shotReference/builder.test.ts src/services/promptCompilation/grokImageIndexCompiler.test.ts`：3 files / 29 tests passed。
+  - `npm run test -- --run src/services/promptCompilation/videoRequestCompiler.test.ts src/services/ShotPromptService.test.ts src/store/promptTemplates.test.ts`：3 files / 30 tests passed。
+  - `npm run test -- --run src/services/promptCompilation/grokImageIndexCompiler.test.ts src/services/promptCompilation/videoRequestCompiler.test.ts src/services/shotReference/compile.test.ts`：3 files / 25 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json`（root）：passed。
+  - `npx tsc --noEmit --project tsconfig.json`（frontend）：passed。
+  - `npm run build`（frontend）：passed；仅保留既有 Vite dynamic import / chunk-size warnings。移除 `@Image 1` prepend 后已复跑。
+  - `git diff --check`：passed。
+  - `npm run build`（frontend）：passed；保留既有 Vite dynamic import/chunk-size warnings。
+  - `npm run test -- --run src/services/shotReference/builder.test.ts src/services/shotReference/compile.test.ts src/services/shotReference/render.test.ts src/workflow/videoGenerationRequests.test.ts src/workflow/shotVideoPlan.test.ts src/workflow/shotRenderWorkflow.videoChain.test.ts src/services/promptCompilation/grokImageIndexCompiler.test.ts src/services/promptCompilation/videoRequestCompiler.test.ts src/services/ShotPromptService.test.ts src/store/promptTemplates.test.ts`（frontend）：10 files / 89 tests passed。
+  - `npm run test -- --run src/workflow/videoGenerationRequests.test.ts src/workflow/shotVideoPlan.test.ts src/workflow/shotRenderWorkflow.videoChain.test.ts src/services/shotReference/builder.test.ts src/services/shotReference/compile.test.ts src/services/promptCompilation/videoRequestCompiler.test.ts`（frontend）：6 files / 53 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json`（root）：passed。
+  - `npx tsc --noEmit --project tsconfig.json`（frontend）：passed。
+  - `git diff --check`：passed。
+  - `npm run build`（frontend）：passed；保留既有 Vite dynamic import/chunk-size warnings。
+  - `git diff --check`：passed。
+
+### Follow-up: Tweet Narration Dialogue Mode
+- **Status:** complete
+- Actions taken:
+  - 用户要求推文化小说转分镜时，剧情模式能根据第一人称解说生成主角独白/角色对白，让无解说视频也能看懂；解说模式保持当前旁白主导，只需要少量台词。
+  - 新增 `narrativeMode` 工具，统一 `drama` / `narration` 的模式归一、中文标签和分镜/视频台词约束文案。
+  - `CreationContext` 读取项目 `mode` 并作为 `projectMode` 暴露给分镜拆解、生图和视频提示词服务。
+  - `ShotAnalysisService` 与旧 `ScriptAnalysisService.generateShots()` 都向 `shot_breakdown` 注入 `projectNarrativeMode` / `dialogueModeDirective`；模板仍要求 `scriptLineIndices` 完整覆盖原文，但 `dialogue` 字段按模式处理。
+  - 生图、九宫格/四宫格和 8 个视频 reasoning 模板都接入 `dialogueModeDirective`，保证图片锚点和视频对白策略一致。
+  - `ShotPromptService` 的台词证据提取增加模式参数：剧情模式会把“我意识到/我不能/她自称...”等第一人称推文素材转成短对白；解说模式不会强行把这些素材补进 `对白提示词`。
+  - 补充回归测试覆盖剧情模式主角独白、解说模式不对白化、以及视频兜底按模式分支。
+- Validation:
+  - `npm run test -- --run src/services/ShotPromptService.test.ts src/store/promptTemplates.test.ts`（frontend）：2 files / 25 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json`（frontend）：passed。
+  - `npx tsc --noEmit --project tsconfig.json`（root）：passed。
+  - `npm run build`（frontend）：passed；保留既有 Vite dynamic import/chunk-size warnings。
+  - `git diff --check`：passed。
+
+### Follow-up: Anchor Mention Highlight + No Fake Grid Anchor
+- **Status:** complete
+- Actions taken:
+  - 用户反馈 `@grid_anchor` 在提示词编辑器中没有高亮，并要求确认没有生成分镜图时不能内置该变量。
+  - 扩展 `mentionTypes`：新增 `AssetMentionType` / `AnchorMentionType`，解析 `@shot_anchor` / `@grid_anchor`，并提供 built-in mention item。
+  - `ScriptEditor` 解析器优先返回内置锚点 item；`mentionPlugin` / `mentionTooltip` / 补全标签补齐 shot/grid 样式和说明。
+  - `useShotAssetSync`、Grok prompt compilation、video request readable compilation 改为只处理资产 mention，跳过 shot/grid 锚点。
+  - `decideShotsMode()` 改为只有 `bundle.hasGridAnchor=true` 时才输出 grid-4/grid-9 shotsSection；无真实分镜图时走 normal shotsSection。
+  - `buildSpatialAnchorDirective()` 改为以 `referenceBundle.hasShotImage` 判断是否存在真实生成图，不再把 `shot.imagePrompt` 文本误当成视频可读图。
+  - 移除视频提示词生成时的隐藏 grid imagePrompt 预生成；没有真实生成图时直接使用文生/多参考模式，不生成假锚点上下文。
+  - `renderShotReferenceTable()`、生图模板、8 个视频推理模板增加“只有真实锚定图存在才允许 `@shot_anchor/@grid_anchor`”约束。
+  - 补测试覆盖 anchor mention 解析、无 anchor 时 shotsMode 回退 normal、referenceTable 禁止假锚点、模板锚点存在性约束。
+- Validation:
+  - `npm run test -- --run src/editor/mentionTypes.test.ts src/services/shotReference/builder.test.ts src/services/shotReference/render.test.ts src/services/shotReference/shotsOutputFormat.test.ts`（frontend）：4 files / 65 tests passed。
+  - `npm run test -- --run src/services/ShotPromptService.test.ts src/store/promptTemplates.test.ts`（frontend）：2 files / 21 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json`（root）：passed。
+  - `npx tsc --noEmit --project tsconfig.json`（frontend）：passed。
+  - `npm run build`（frontend）：passed；保留既有 Vite dynamic import/chunk-size warnings。
+  - `git diff --check`：passed。
+- Errors:
+  - 首次在 repo 根目录跑 `npm run test -- ...` 失败：根 package 没有 `test` script。改到 `frontend/` 目录后目标测试全部通过。
+
+### Follow-up: Anchor Tooltip Preview Image
+- **Status:** complete
+- Actions taken:
+  - 用户反馈 `@grid_anchor` 高亮悬浮窗中没有图片展示。
+  - `ScriptEditor` mention resolver 改为优先使用调用方传入的 mention item，找不到时才回退到 built-in anchor item，避免静态内置说明覆盖带 `previewImage` 的真实分镜锚点。
+  - `ShotCard` 根据当前分镜选中的有效生成图追加局部锚点 mention item：grid 模式为 `@grid_anchor`，普通模式为 `@shot_anchor`。
+  - 与 bundle 规则对齐：如果当前选中图是 `metadata.gridCell` 拆分子图，不作为锚点预览。
+- Validation:
+  - `npm run test -- --run src/editor/mentionTypes.test.ts src/services/shotReference/builder.test.ts src/services/shotReference/render.test.ts`（frontend）：3 files / 47 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json`（frontend）：passed。
+  - `npx tsc --noEmit --project tsconfig.json`（root）：passed。
+  - `git diff --check`：passed。
+
+### Follow-up: Storyboard Video ITV Upload Protocol
+- **Status:** complete
+- Actions taken:
+  - 用户反馈分镜视频生成会调用语音生成、Koma 官方 Grok 没有触发 qiniu 图床上传，并且自定义 `openai-video` 渠道上游报 `Reference placeholders require uploaded images`。
+  - `shotRenderWorkflow` 移除分镜视频完成后的 `generateAudio()` 调用和 TTS provider/logging 依赖；视频链路现在只创建视频版本并提交 ITV 生成。
+  - `videoRequestCompiler` / `MediaGenerationService` / 灵绘视频执行 provider 将 `fallbackToSourceOnRequiredUploadFailure` 默认和调用点统一为 `false`；URL-only provider 需要远程 URL 时必须图床上传成功，失败会在本地提前报错，不再把 data-url 发给上游。
+  - `OpenAIVideoITVProvider` 的图片传输能力收敛为 remote-url；当 prompt 使用 `@Image N` / `@图片N` 占位符时，image-to-video 请求同时保留 `image` 主图字段，并把 `[primaryImage, ...additionalReferences]` 写入 `images`，让占位符和上传图片数组一致。
+  - 根据真实运行日志继续修复：Koma 官方 Grok `/v1/videos` 走 URL-array JSON 协议，内部编译仍保持 `@Image N`，但最终 body.prompt 改为 `图片N`，避免 OpenAI-compatible 上游把 `@Image N` 当成 multipart 上传占位符并报 `Reference placeholders require uploaded images`。
+  - `Grok2ApiImagineITVProvider` 出站 body 增加 `metadata.function_mode`：图生视频为 `first_frame`，参考生视频为 `omni_reference`，让网关更明确地按图片参考模式处理。
+  - Grok 默认参考图数量从 4 提升到 provider 实际上限 7，并把 grok-image-index 的 provider 映射上限同步为 6 个额外参考图，避免 1 张锚点 + 场景/角色/道具时过早裁掉道具。
+  - 分镜视频执行前会对旧的 `shot.videoPrompt` 做 `sanitizeVideoPromptResult()` + `ensureExplicitDialogueInVideoPrompt()` 清洗，去掉来源叙述泄漏；`ShotRender` 日志、AI 调用日志和版本 prompt 改为记录编译后的最终 prompt。
+  - 补充回归测试覆盖：分镜视频不调用语音、URL-only 上传失败提前失败、可显式 opt-in data-url fallback、OpenAI 占位符请求包含主图和参考图、Grok URL-array 出站 prompt 不含 `@Image`、Grok 参考图上限为 7、旧脏对白不重复补台词。
+- Validation:
+  - `npm run test -- --run src/workflow/shotRenderWorkflow.videoChain.test.ts src/workflow/videoGenerationRequests.test.ts src/workflow/shotVideoPlan.test.ts src/services/shotReference/compile.test.ts src/services/promptCompilation/videoRequestCompiler.test.ts src/services/MediaGenerationService.itvPolicy.test.ts src/providers/itv/OpenAIVideoITVProvider.test.ts src/providers/itv/Grok2ApiImagineITVProvider.test.ts`（frontend）：8 files / 68 tests passed。
+  - `npm run test -- --run src/providers/itv/Grok2ApiImagineITVProvider.test.ts src/providers/itv/modelCatalog.test.ts src/services/promptCompilation/videoRequestCompiler.test.ts src/services/ShotPromptService.test.ts src/workflow/videoGenerationRequests.test.ts src/workflow/shotRenderWorkflow.videoChain.test.ts src/workflow/shotVideoPlan.test.ts`（frontend）：7 files / 60 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json`（root）：passed。
+  - `npx tsc --noEmit --project tsconfig.json`（frontend）：passed。
+  - `npm run build`（frontend）：passed；保留既有 Vite dynamic import/chunk-size warnings。
+  - `npm run build-electron`：passed。
+  - `git diff --check`：passed。
+
 ## Session: 2026-05-06 Linghui Tapnow-Base Capability Audit
 
 ### Phase 1: Reference Audit

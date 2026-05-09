@@ -50,6 +50,82 @@
 - `mediaTaskBindingService.test.ts` 的 `vi.mock` factory 必须使用 `vi.hoisted` mocks，否则 Vitest hoist 后会在初始化前读取普通顶层 mock 变量。
 - 当前验证结果：root `npx tsc --noEmit --project tsconfig.json` 通过；frontend `npx tsc --noEmit --project tsconfig.json` 通过；11 个目标测试文件共 54 个测试通过；frontend build、Electron build、`git diff --check` 通过。
 
+## 2026-05-08 Storyboard Video Prompt Template Cleanup
+
+- 视频提示词出现 `【自检】` 的直接来源是 8 个 `frontend/src/store/templates/videoReasoning/shot_video_*.md` 模板末尾的 `## 输出前自检（全过才提交）` 和 checkbox 列表；模型会把这类段落当成需要交付的内容一起输出。
+- `frontend/src/services/shotReference/shotsOutputFormat.ts` 的 grid shots section 也有 `【自检】输出前确认...`，虽然它是结构约束，但措辞会增加泄漏概率；改成 `【结构约束】` 并明确最终答案不要输出检查清单。
+- 视频提示词缺台词的根因在 `ShotPromptService.generateVideoPrompt()`：模板变量 `scriptContent` 原来只来自 `getShotScriptText(shot)`，没有把 `shot.dialogue` 作为独立事实输入；如果拆分结果把台词放在 `dialogue` 字段而不是 `scriptLines`，视频模板就看不到台词。
+- 修复后视频路径会构造 `videoScriptContent = scriptLines + 【分镜台词字段】 + shot.dialogue`，并把显式台词传给 `buildDialogueGuardNote()`；最终输出边界要求 DIALOGUE 必须进入 `对白提示词`。
+- 服务层保留两道兜底：`sanitizeVideoPromptResult()` 删除模型泄漏的 `【自检】` / checkbox 段落，`ensureExplicitDialogueInVideoPrompt()` 在模型漏写显式台词时直接补入或追加到 `对白提示词`。
+- 为避免 `shot.dialogue` 同时出现在脚本文案和显式保护里时重复，角色名前缀台词解析现在保留 `角色名：台词`，可与显式台词做精确去重，也更贴合目标输出格式。
+
+## 2026-05-08 Storyboard Image/Video Prompt Visual Alignment
+
+- 用户给的三段目标样例核心不是单纯换字段名，而是要求提示词具备可执行画面层次：主空间 + 背景/远景 + 前景/近景、特写对象、角色可见状态、道具位置、动作节奏、光影变化和上下文呼应。
+- 原 `shot_image_prompt_generation` 仍是旧“一段静态图提示词”结构，缺少 `对白视觉提示词`、`呼应提示词` 和视频结构参考；这会导致生图锚点和视频动作/对白不对应。
+- 生图推理现在接入 `shot.dialogue`，但只把它用于口型、表情、字幕/系统气泡判断；普通对白明确禁止画成文字，避免 TTI 把台词直接渲成乱字。
+- 首帧延展视频模板之前输出 `道具提示词`，但输入资产基准库没有 `{{props}}` 且模板变量也未声明 `props`；本轮补齐后首帧图/视频都能看到道具上下文。
+- 多参视频模板和首帧视频模板统一字段：`画面描述` 取代旧 `场景描述`，`多机位运镜` 取代旧泛化 `运镜`，新增 `呼应提示词`，强化前中后景、特写对象、系统气泡和物理反馈。
+- 九宫格/四宫格推理和 TTI 直拼模板也同步增强：每格必须是连续动作锚点，保持同一空间/服装/光影，并写清画面层次、手部姿态和光影方向。
+
+## 2026-05-08 First-Person Narration To Scene Dialogue
+
+- 用户纠正了关键语义：`她自称天道，说要帮我夺回气运` 不能作为旁白输出，也不能逐字变成 `小白 对 我 台词：她自称...`；它是第一人称叙述素材，需要被改写成真实剧情和正确人称对白，例如 `小白：我是天道，我可以帮你夺回气运`。
+- 旧服务兜底 `ensureExplicitDialogueInVideoPrompt()` 会把 `shot.dialogue` 逐字补进 `对白提示词`，这对真正对白有效，但对第一人称转述会放大错误；现在它只补显式直接对白。
+- `buildDialogueGuardNote()` 现在把台词证据分为 `DIALOGUE`、`NARRATIVE_TO_SCENE`、`VOICEOVER`、`COMMENTARY`。第一人称转述不会进 spoken，也不会把来源叙述句或“改写说明”暴露给模型最终输出，只给已经转写后的本源剧情对白/动作素材。
+- 新增启发式转写：当角色列表有 `我` 和另一个角色时，第一人称转述会转成对方当场开口的真实对白，例如让“小白”以自己的身份说出“我是天道，我可以帮你夺回气运”，用于压住模型照抄叙述句。
+- 8 个视频模板都新增 `NARRATIVE_TO_SCENE` 规则，并把原“台词逐字一致”改成“显式直接对白保留语义；第一人称叙述/转述必须先改写成人称正确的剧情对白”；模板中不再写具体坏句示例，避免提示污染。
+- `镜头1-镜头4` 出现两遍的根因是多参模板把 `{{shotsSection}}` 放在“镜头结构约束”中，虽然标了“不要原样输出”，模型仍可能把它复制为 `精确时长` 后的第二套逐镜头 Markdown 段。
+- 本轮把多参模板的 `shotsSection` 明确标成“内部参考，严禁原样输出”，要求镜头1/2/3/4动作只合并到 `角色动作提示词` 字段；用户明确指出不能按 `精确时长` 截断以免误删有效内容，因此去重依靠提示词约束，不做尾部截断。
+- 视频结果清洗还会移除开头的 `镜头1-镜头4 ` 前缀，以及 `对白提示词` 中的来源叙述片段；如果有可识别叙述转写，`ensureExplicitDialogueInVideoPrompt()` 会补回改写后的真实对白，而不是原句。
+
+## 2026-05-08 Anchor Mention Highlight + No Fake Grid Anchor
+
+- `@grid_anchor` / `@shot_anchor` 不是角色/场景/道具资产，而是只有真实分镜生成图存在时才有效的内置锚点。编辑器高亮需要认识它们，但资产同步和 selectedAssets 编译必须跳过它们。
+- `frontend/src/editor/mentionTypes.ts` 原先只解析 `@char_` / `@scene_` / `@prop_`，所以 `@grid_anchor` 在 ScriptEditor 里不会变成 mention chip；本轮新增 anchor mention 类型和内置 item resolver 后，不需要把锚点塞进项目资产列表也能高亮。
+- `mentionTooltip.ts` 不能继续手读 `MENTION_REGEX` 的固定分组；新增 anchor 备选分支后 `match[1]` / `match[2]` 对锚点为空，必须统一走 `parseMentions()`。
+- `ShotPromptService` 之前从 `shot.imageMode` 派生 `explicitCellCount` 并传给 `decideShotsMode()`，导致没有真实生成图时也会输出 4/9 宫格 shotsSection；这会诱导模型使用不存在的 `@grid_anchor` / cell 对应关系。
+- 正确规则是：`grid-4` / `grid-9` 只在 `referenceBundle.hasGridAnchor=true` 时启用；没有 `shot.media.images[currentImageIndex]` 的真实锚定图时，提示词走 normal shotsSection 和文生/多参考资产模式。
+- `buildSpatialAnchorDirective()` 不能把 `shot.imagePrompt` 文本当作“视频模型会直接读图”的证据；真实图像锚定应以 `referenceBundle.hasShotImage` 为准。否则只生成了图片提示词、但尚未生图时，也会错误进入有图约束。
+- `generateAndSaveShotPrompt()` 不再为了生成视频提示词而偷偷预生成并保存 grid imagePrompt。grid imagePrompt 只在本次确实要生成/优化图片提示词时更新，视频提示词不再靠假首帧文本触发锚定分支。
+- `renderShotReferenceTable()` 现在在空 bundle 或仅资产参考时明确写“不要使用 `@shot_anchor` / `@grid_anchor`”；8 个视频推理模板和生图模板也新增锚点存在性判断，约束模型不要输出不存在的锚点 token。
+- 锚点 tooltip 无图的根因是 `ScriptEditor` resolver 先返回静态 built-in mention item，导致 `ShotCard` 即使能提供当前分镜图片，也会被无 `previewImage` 的内置说明覆盖。应优先查调用方传入的 mentionItems，再 fallback 到 built-in。
+- `ShotCard` 能为当前分镜的有效锚定图构造局部 mention item：grid 模式提供 `@grid_anchor` 预览，普通模式提供 `@shot_anchor` 预览；带 `metadata.gridCell` 的拆分子图不应作为锚点预览，保持和 `buildShotReferenceBundle` 一致。
+
+## 2026-05-08 Prompt Compilation Fallback + Anchor Preview
+
+- 当前 `compileShotPromptToBundle()` 只按 `bundle.items` 替换 token；而 `buildShotReferenceBundle()` 只会把有 `media.previewImage` 的道具放入 items。道具存在但无图时，`@prop_*` 会被记录到 `unmappedTokens`，但仍原样进入最终提示词。
+- TTI/ITV 的 `compileGrokTTI()` / `compileGrokITV()` 也只用 `source` 存在的 selectedAssets 建立映射；有资产名但没有可用图片的道具会被视作 unmapped，当前同样保留 raw token。
+- 用户给的失败提示词里 `@prop_... 红烧肉` 属于“资产存在、可读名称已在提示词中、但缺视觉引用”的情况。正确降级是移除机器 token，保留已有中文名；如果 token 单独出现，则用资产名替代。
+- `@grid_anchor` tooltip 当前在 `ShotCard` 中仍排除了 `metadata.gridCell` 拆分子图。用户最新要求是悬浮图必须跟随“当前选中的图”，所以 UI tooltip 应使用 selected image；bundle 编译是否接受 split child 是另一层约束，不能影响悬浮预览。
+- 道具明明高亮但最终没有编译成 `@Image N` 的实际根因之一是 token 生成不一致：提示词输出端使用 `createMentionString()`，真实 ID 如 `prop_177..._1` 会输出 `@prop_177..._1`；但 bundle builder 旧代码直接拼 `@prop_${prop.id}`，会生成 `@prop_prop_177..._1`，导致 compile 查不到同一个 token。
+- 分镜视频旧的 `selectedAssetsForCompilation` 路径会在 Seedance 合并参考图时按角色/场景/道具旧顺序插队，可能打乱 `bundle.items` 的 @Image 顺序；分镜请求应只以 `ShotReferenceBundle.items` 为唯一索引事实来源。
+- 分镜生图也不应再走 `MediaGenerationService.generateImage()` 里的旧 selectedAssets 编译。正确模型是 workflow 层先用 `compileShotPromptToBundle()` 编译一次，并把同一份 `compiledPrompt` / `references` 交给 provider，避免二次编译和 `@图片N` / `@Image N` 两套协议并存。
+- `@grid_anchor` 在 bundle 中就是锚点图项，通常占 `@Image 1`；所谓“主图”只应来自该 bundle 顺序，不应再由旧 compiler 自动 prepend `@Image 1` 到正文开头。
+
+## 2026-05-08 Tweet Narration Dialogue Mode
+
+- 项目已有 `Project.mode?: 'drama' | 'narration'`，但 `CreationContext` 之前没有暴露给分镜和提示词服务，导致推文化第一人称解说在所有模式下都被同一套对白规则处理。
+- 剧情模式的目标是“无解说也能看懂”：第一人称推文解说中的认知、决定、质问、反应、转述可以被改写成少量主角独白或角色对白，但必须短、当场可说、人称正确，不能把来源叙述句照搬进 `对白提示词`。
+- 解说模式的目标不同：剧情主要由旁白/字幕承载，视频提示词不应主动把第一人称解说大规模对白化；只保留显式直接对白，或极少量确实需要口型同步的短反应。
+- 分镜拆解模板需要同时保持“行号覆盖不改写 scriptLines”和“dialogue 可按模式生成”的边界：`scriptLineIndices` 仍只负责连续覆盖原字幕行，`dialogue` 字段才承载剧情模式下的少量对白补足。
+- 生图、宫格生图和视频提示词必须共用同一 `dialogueModeDirective`，否则图片锚点可能按解说画面生成，而视频又按剧情对白推进，造成口型、表情和动作不一致。
+- 服务兜底已按模式分支：`ensureExplicitDialogueInVideoPrompt()` 只在剧情模式把第一人称转述补成真实对白；解说模式不会把 `她自称.../我意识到...` 这类推文解说强塞进对白。
+
+## 2026-05-08 Storyboard Video ITV Upload Protocol
+
+- 分镜视频生成调用语音生成的根因在 `shotRenderWorkflow`：视频版本保存后如果 `normalizedShot.dialogue` 存在，会直接调用 `mediaGenerationService.generateAudio()`。这属于跨媒体副作用，已移除；分镜视频现在只负责 ITV 视频生成。
+- Koma 官方 Grok provider 本身声明的是 URL-only 图片传输，应该触发 `ensureRemoteUrlForImageSource()` 和 qiniu/image-hosting 插件上传。之前 `openai-video` 等 provider 允许 `data-url` fallback，导致上传失败也可能继续把 data-url 或不完整图片数组发给上游。
+- 新策略是：需要 remote-url 的 provider 默认不允许 required upload fallback。图床/qiniu 插件不可用时，本地会提前以上传失败结束，不再等上游返回 `Reference placeholders require uploaded images` 这类低信号错误。
+- 自定义 `openai-video` 报错的另一层根因是 image-to-video 请求只把主图写入 `body.image`，附加参考写入 `body.images`；但 prompt 里的 `@Image 1` / `@Image 2` 占位符要求 `images` 数组本身包含完整上传图序列。现在 prompt 使用图片占位符时，`images` 会按 `[primary, ...additional]` 传入。
+- 保留 `body.image = primary` 是为了兼容标准 image-to-video 起始帧字段；额外补 `body.images` 是为了让 OpenAI-compatible 网关能把 `@Image N` 对齐到实际上传图片。
+- 用户最新日志说明 `MediaRemoteUrl` 已经进入 required 归一化，问题不再是“完全没上传”，而是 Grok `/v1/videos` URL-array 网关把 `@Image N` 识别成 multipart 上传图占位符；只有 URL 数组时就返回 `Reference placeholders require uploaded images`。
+- 因此 Koma 官方 Grok 的 wire protocol 需要和内部协议分层：内部编译、编辑器和 bundle 仍统一使用 `@Image N`；最终发给 `/v1/videos` 的 JSON body.prompt 转成自然语言索引 `图片N`，body.images 继续按同一顺序传远程 URL。
+- `metadata.function_mode` 对 Grok 视频也有必要：图生视频明确 `first_frame`，参考生视频明确 `omni_reference`，避免网关按纯文本或错误模式转发。
+- 旧默认参考图上限 4 会让 `@grid_anchor + scene + 两个角色 + 两个道具` 这种正常分镜只传 4 张，造成日志里的 `unmappedTokens` 和道具降级；Grok provider 实际 cap 是 7，默认上限已同步到 7。
+- 分镜视频执行时不能信任历史已保存的 `shot.videoPrompt` 一定干净。运行前需要再做非破坏性清洗和台词兜底，避免已持久化的来源叙述泄漏继续进入 provider。
+- 验证覆盖了 Grok request images 数组、Grok URL-array prompt 转 `图片N`、OpenAI placeholder images 数组、URL-only 上传失败提前失败、Grok 参考图上限 7、分镜视频不触发 `generateAudio`；root/frontend tsc、frontend build、Electron build、diff check 均通过。
+
 ## 2026-05-06 Linghui Tapnow-Base Capability Audit
 
 - 当前 Koma 工作树已有未提交灵绘改动，不能回滚：`linghui/panorama` 新编辑器/目录已出现，并且类型、节点定义、执行计划、共享执行、画布交互、图片节点和持久化文档都有修改。

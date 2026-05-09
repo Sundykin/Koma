@@ -13,7 +13,6 @@ import type {
 import { getMediaAssetDisplaySource } from '../types';
 import { normalizeVideoDurationSeconds } from '../utils/videoDuration';
 import type { ModelCapability } from '../providers/channel/types';
-import type { PromptCompilationAsset } from '../services/promptCompilation/types';
 import { buildVideoCapabilityRequest } from '../services/promptCompilation/videoRequestCompiler';
 import { normalizeShotMediaState } from '../store/project/mediaState';
 import {
@@ -21,7 +20,6 @@ import {
   resolveConfiguredChannelModel,
   type ResolvedChannelModelContext,
 } from '../providers/channel/resolver';
-import { buildShotAssetReferences } from './assetReferenceBuilder';
 import { buildShotReferenceBundle } from '../services/shotReference/builder';
 import type { ShotReferenceBundle, ShotReferenceItem } from '../services/shotReference/types';
 
@@ -47,7 +45,6 @@ export interface ShotVideoPlan {
   primaryImageSource?: string;
   visualReferenceInputs: MediaAssetSource[];
   additionalReferenceImages: MediaAssetSource[];
-  selectedAssetsForCompilation: PromptCompilationAsset[];
   capability: VideoGenerationCapability;
   capabilityLabel: string;
 }
@@ -113,13 +110,6 @@ export function collectShotVideoPlan(params: {
     options: { maxRefs: params.modelMaxRefs },
   });
 
-  const { compilationAssets } = buildShotAssetReferences(
-    normalizedShot,
-    params.characters,
-    params.scenes,
-    params.props,
-  );
-
   const knowsModelCaps = !!params.modelCapabilities;
   const supportsRefToVideo = params.modelCapabilities?.includes('video.reference-to-video') ?? false;
   const videoMode: ShotVideoMode = normalizedShot.videoMode ?? 'multi-ref';
@@ -140,7 +130,6 @@ export function collectShotVideoPlan(params: {
     primaryImageSource: getVisualReferenceSource(routed.primaryImageInput),
     visualReferenceInputs: routed.visualReferenceInputs,
     additionalReferenceImages: routed.additionalReferenceImages,
-    selectedAssetsForCompilation: compilationAssets,
     capability: routed.capability,
     capabilityLabel: SHOT_VIDEO_CAPABILITY_LABELS[routed.capability],
   };

@@ -81,6 +81,8 @@ vi.mock('../../store/logger', () => ({
 vi.mock('../../utils/mediaSelectors', () => ({
   getShotCurrentImageSource: vi.fn(() => null),
   getShotCurrentVideoSource: vi.fn(() => null),
+  getShotCurrentAudioAsset: vi.fn(() => undefined),
+  getShotCurrentAudioSource: vi.fn(() => null),
 }));
 
 describe('SimpleEditor incompatible timeline handling', () => {

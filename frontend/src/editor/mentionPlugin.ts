@@ -156,6 +156,14 @@ export const mentionTheme = EditorView.baseTheme({
     backgroundColor: 'color-mix(in srgb, var(--token-status-success) 18%, transparent)',
     color: 'var(--token-status-success)',
   },
+  '.mention-shot': {
+    backgroundColor: 'color-mix(in srgb, var(--token-accent-base) 18%, transparent)',
+    color: 'var(--token-accent-base)',
+  },
+  '.mention-grid': {
+    backgroundColor: 'color-mix(in srgb, var(--token-status-info) 14%, transparent)',
+    color: 'var(--token-status-info)',
+  },
 });
 
 /**

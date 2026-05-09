@@ -19,6 +19,10 @@ import {
   type AllowedVideoDurationSeconds,
 } from '../utils/videoDuration';
 import { clampDurationToSpec, formatSpecPromptHint } from '../providers/itv/durationSpec';
+import {
+  buildShotBreakdownDialogueModeDirective,
+  formatProjectNarrativeMode,
+} from './narrativeMode';
 
 const logger = createLogger('ShotAnalysis');
 const SHOT_ANALYSIS_LLM_TIMEOUT_MS = 300_000;
@@ -359,6 +363,8 @@ export class ShotAnalysisService {
     const durationSpec = this.ctx.itvDurationSpec;
     const durationConstraint = formatSpecPromptHint(durationSpec);
     const durationDefault = String(durationSpec.default);
+    const projectNarrativeMode = formatProjectNarrativeMode(this.ctx.projectMode);
+    const dialogueModeDirective = buildShotBreakdownDialogueModeDirective(this.ctx.projectMode);
     const { characters, scenes, props } = this.ctx;
     const chunkLabel = chunk.total > 1 ? `（第 ${chunk.index + 1}/${chunk.total} 段）` : '';
 
@@ -388,12 +394,16 @@ export class ShotAnalysisService {
         : '无',
       durationConstraint,
       durationDefault,
+      projectNarrativeMode,
+      dialogueModeDirective,
     });
     const styledPrompt = this.appendStyleRequirement(resolvedPrompt.prompt);
 
     const resolvedSystemPrompt = await resolvePromptTemplate('shot_breakdown_system', {
       durationConstraint,
       durationDefault,
+      projectNarrativeMode,
+      dialogueModeDirective,
     });
     const systemPrompt = resolvedSystemPrompt.prompt;
 
