@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ShotReferenceBundle, ShotReferenceItem } from './types';
 import {
   renderGridSequenceNotice,
+  renderShotMentionReferenceTable,
   renderShotReferenceTable,
   summarizeBundle,
 } from './render';
@@ -98,6 +99,23 @@ describe('renderGridSequenceNotice', () => {
     expect(out).toContain('镜头 1：起手');
     expect(out).toContain('镜头 4：收束');
     expect(out).not.toContain('镜头 5');
+  });
+});
+
+describe('renderShotMentionReferenceTable', () => {
+  it('故事板等可编辑提示词阶段只暴露语义 mention，不暴露 @Image N', () => {
+    const out = renderShotMentionReferenceTable(bundle([
+      item({ kind: 'previous-storyboard-anchor', mentionToken: '@previous_storyboard_anchor', label: '上一故事板锚点' }),
+      item({ kind: 'scene', mentionToken: '@scene_room', label: '场景：叶赎居所室内' }),
+      item({ kind: 'character', mentionToken: '@char_yeshu', label: '角色：叶赎' }),
+    ]));
+
+    expect(out).toContain('@previous_storyboard_anchor 上一故事板锚点');
+    expect(out).toContain('@scene_room 场景：叶赎居所室内');
+    expect(out).toContain('@char_yeshu 角色：叶赎');
+    expect(out).toContain('禁止输出 @Image N');
+    expect(out).not.toContain('references[0]');
+    expect(out).not.toContain('@Image 1');
   });
 });
 

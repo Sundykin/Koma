@@ -26,6 +26,7 @@ export type PromptTemplateType =
   | 'script_polish'            // 剧本润色
   | 'shot_breakdown'           // 分镜拆解
   | 'shot_image_prompt_generation' // 分镜图片提示词生成
+  | 'storyboard_shot_prompt_generation' // 故事板分镜提示词生成（电影级制作方案板）
   | 'shot_video_6s_multi'          // 分镜视频提示词 · 多参模式 · 6 秒
   | 'shot_video_10s_multi'         // 分镜视频提示词 · 多参模式 · 10 秒
   | 'shot_video_15s_multi'         // 分镜视频提示词 · 多参模式 · 15 秒
@@ -48,6 +49,7 @@ export type PromptTemplateType =
   | 'tti_shot_image'           // 分镜图片
   | 'tti_grid_shot_image'      // 九宫格分镜图片（3×3网格）
   | 'tti_grid_4_shot_image'    // 四宫格分镜图片（2×2网格）
+  | 'tti_storyboard_shot_image' // 故事板分镜图片（电影级制作方案板）
   // ITV 视频生成模板
   | 'itv_shot_video'           // 分镜视频
   | 'itv_character_motion'     // 角色动态视频
@@ -299,9 +301,30 @@ const COMMON_VARIABLE_DEFINITIONS: Record<string, Omit<PromptTemplateVariable, '
   },
   imageMode: {
     label: '图片模式',
-    description: '当前分镜的图片生成模式，值为 normal 或 grid。',
+    description: '当前分镜的图片生成模式，值为 normal、grid-4、grid-9 或 storyboard。',
     format: '枚举字符串',
-    example: 'grid',
+    example: 'storyboard',
+    required: true,
+  },
+  referenceTable: {
+    label: '视觉参考集合',
+    description: '运行时构造的视觉参考集合。视频模板使用 references 索引表；故事板等可编辑提示词模板只应使用语义 mention，禁止提前输出 @Image N。',
+    format: '多行文本',
+    example: '@char_abc 顾行',
+    required: false,
+  },
+  storyboardContinuityNotice: {
+    label: '故事板连续性说明',
+    description: '故事板模式下对上一故事板/当前故事板锚点的继承说明。',
+    format: '多行文本',
+    example: '上一故事板参考：@previous_storyboard_anchor ...',
+    required: false,
+  },
+  storyboardPrompt: {
+    label: '故事板推理结果',
+    description: '故事板提示词推理模板输出的结构化电影故事板方案。',
+    format: '多行文本',
+    example: '故事板类型：电影级制作方案板...',
     required: true,
   },
   gridSequencePrompt: {
@@ -1302,6 +1325,110 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     isCustom: false,
   },
 
+  storyboard_shot_prompt_generation: {
+    id: 'storyboard_shot_prompt_generation',
+    category: 'inference-image',
+    name: '故事板分镜提示词生成',
+    description: '将单个分镜整理成带制作笔记的电影级故事板/制作方案板提示词，强调剧情递进、情绪表演、光影、镜头衔接和视频 AI 可读性',
+    template: `根据以下分镜信息，生成一条用于“故事板模式”出图的图片提示词。目标是一张电影级故事板信息图 / 前期制作方案表：它不是单纯漂亮拼图，而是给后续视频 AI 读取剧情、动作、机位、光影、情绪和连续性的制作板。
+
+{{referenceTable}}
+
+{{storyboardContinuityNotice}}
+
+## 输入
+
+剧本内容（唯一真理来源）：{{scriptContent}}
+台词字段（只用于口型、表情和说话状态；普通对白不要画成文字）：{{dialogueText}}
+{{dialogueModeDirective}}
+出场角色：{{characters}}
+出现场景：{{scenes}}
+出场道具：{{props}}
+情绪氛围：{{emotion}}
+风格前缀：{{stylePrefix}}
+
+## 故事板核心目标
+
+1. **电影分镜信息图海报感**：画面像一张高度精细的电影分镜信息图海报 / 专业影视前期制作设定板。结构清晰，分区明确，信息密集但排版整洁，现代 UI 风格，深蓝色标题栏或等价的高级标题系统，电影级质感。
+2. **剧情驱动，不机械填格**：不要机械固定 8 镜头、2x2 或均匀网格。先判断剧情内容、角色数量、场景复杂度、时长和情绪转折，再决定 X 个镜头 / X 个角色 / 1 个或多个场景。镜头数量必须服务叙事节奏：短动作可 4-6 镜头，15 秒标准段落可 6-8 镜头，复杂调度可 8-12 镜头。
+3. **默认制作板模块**：默认生成“电影前期制作板”，稳定包含以下模块，但允许按剧情重要性调整面积和顺序：
+   - 【项目标题】项目名称、短片分镜设计、副标题、拍摄形式、类型、时长、限制条件（X 个镜头 / X 个角色 / 场景数量）；
+   - 【角色设计区】角色设定板，包含正面、背面、侧面、特写、动作姿态；保持人物一致性，展示服装、配饰、随身道具；
+   - 【场景设计区】电影级场景概念图，空间细节丰富，真实光影，电影剧照质感，环境氛围清晰；
+   - 【俯视镜头调度图】场景俯视平面图，按实际镜头数标注 1-N 编号镜头，箭头表示人物移动与镜头运动轨迹，像电影拍摄蓝图 / 建筑平面图；
+   - 【分镜故事区（N镜头）】N 个按时间顺序推进的镜头格，每格包含场景画面、极短制作笔记、镜头类型、焦段、运动方式；
+   - 【灯光与风格】电影级布光、冷暖/明暗/反差方案；
+   - 【情绪关键词】用短词或小图标表达紧张 / 轻松 / 浪漫 / 神秘 / 冲突 / 幽默等真实情绪；
+   - 【声音设计】环境音与背景音乐风格；
+   - 【摄影说明】镜头语言与叙事节奏；
+   - 【色彩方案】统一色板和主辅色关系。
+4. **剧情层层递进**：把当前分镜整理成 N 个关键视觉节拍，形成起因 / 触发 / 反应 / 转折 / 情绪主峰 / 收束。每个节拍都要有清晰的画面动作和角色状态，不写抽象剧情总结。
+5. **情绪表达到位**：把情绪转化为演员表演：微表情、视线、口型、肩颈张力、手指、身体重心、呼吸、犹豫或爆发瞬间。不要只写“悲伤/紧张/震惊”。
+6. **光影表达**：明确主光源、补光、反光、色温、阴影形状、烟雾/尘粒/蒸汽/水面反射等物理可见元素。光影必须推动情绪递进。
+7. **镜头语言**：为每个节拍安排景别、焦段（24mm / 35mm / 50mm / 85mm 等）、机位、运动方式（静止 / 跟拍 / 手持 / 推进 / 摇臂 / 横移）、构图重心、前景/中景/背景层次。相邻节拍之间要有视觉衔接，不要孤立拼贴。
+8. **项目风格注入**：整体画风必须继承“风格前缀”，人物 / 场景 / 道具与项目已有视觉参考保持同一美术体系。不得漂移到不相干写实、动漫或广告风格。
+9. **可读笔记文字**：故事板上必须有短笔记文字，用于给视频 AI 生成连贯剧情。允许并鼓励出现：面板编号、短标题、镜头标签、动作笔记、情绪笔记、光影笔记、声音笔记、转场/衔接笔记、角色路径箭头、机位编号、俯视平面图标注。文字要短、清楚、像制作板备注；不要写成长段说明。
+10. **不是字幕**：笔记文字不是对白字幕，也不是把台词贴在画面里。普通对白只转化为口型/表情/动作笔记；只有剧本明确要求屏幕字、弹幕、招牌、UI 时，才把那些文字作为画内文本。
+11. **版式决策系统**：故事板很复杂，绝不能默认固定 2x2 或均匀网格。默认采用“多区块电影前期制作板”；只有剧情正好是四段宣传漫画时才用 2x2。必须先判断当前分镜需要表达什么，再选择结构：
+   - 如果剧情正好是四段强递进，可用垂直 2x2 四格宣传漫画信息图；
+   - 如果有动作冲突、空间调度、追逐、对峙、多人关系，优先用电影级制作方案表：主场景大图 + 俯视平面图 + 角色路径箭头 + 编号机位 + 分镜脚本笔记；
+   - 如果是连续情绪或动作推进，用宽幅 4-8 面板电影故事板，每格下方有 camera/action/light/mood notes；
+   - 如果需要解释角色表演、道具、能量特效或关键姿态，可加入非对称研究区：角色表演小稿、道具/手部特写、光影色板、构图草图、动作弧线；
+   - 允许非对称、多区块、多尺寸面板、主大图 + 小缩略图、插入平面图和机位图；只要叙事清晰、制作可读、风格统一即可。
+12. **引用编码**：所有人物 / 场景 / 道具引用必须使用 \`@<id> <名称>\` 格式；故事板连续性引用只在上方参考集合真实存在时使用 \`@previous_storyboard_anchor 上一故事板锚点\` 或 \`@storyboard_anchor 当前故事板锚点\`。没有真实锚定图时禁止输出这些锚点。**严禁输出 \`@Image N\` / \`@图片N\` / \`references[N]\`**，这些只属于最终请求编译后的 provider 协议，不允许写入本地可编辑提示词。
+
+## 输出字段
+
+故事板类型：[例如：非对称电影级制作方案表 / 宽幅连续故事板 / 主场景+平面图+机位调度板 / 角色表演研究故事板 / 四格宣传漫画信息图；按当前剧情复杂度选择，禁止固定默认 2x2]
+整体画风：[继承风格前缀；说明摄影质感/绘制质感/色彩体系]
+【项目标题】：[项目名称可从剧情提炼或写“当前分镜”；副标题“短片分镜设计”；拍摄形式；类型；时长；限制条件：X 个镜头 / X 个角色 / X 个场景]
+版式构图：[电影分镜信息图海报；深蓝色标题栏或高级标题系统；结构清晰的网格布局但不机械等分；写清阅读顺序、边框风格、主场景大面板、连续小面板、俯视平面图、角色路径箭头、编号机位、角色/道具/手部/光影研究区、色彩条/灯光条]
+【角色设计区】：[角色设定板；按实际角色数展示正面/背面/侧面/特写/动作姿态中的关键视图；保持人物一致性；写实摄影风格或项目风格下的高细节面部；服装、配饰、随身道具展示]
+【场景设计区】：[电影级场景概念图；空间结构、前中后景、环境氛围、时间/天气/材质/真实光影；必须继承 @scene 引用]
+【俯视镜头调度图】：[场景俯视平面图；按实际镜头数标注 1-N 编号镜头；箭头表示人物移动与镜头运动轨迹；包含角色站位、关键道具、入口/出口、镜头方向]
+【分镜故事区（N镜头）】：[按 1-N 列出镜头，N 由剧情节奏决定。每个镜头必须包含：场景画面、极短对白/动作笔记（不是字幕）、镜头类型（远景/中景/特写）、焦段（24mm/35mm/50mm/85mm）、运动方式（静止/跟拍/手持/推进/摇臂/横移）、情绪变化、光影变化、与下一镜头的衔接]
+文字笔记层：[必须有短笔记；列出每个面板或研究区的短标题、camera/action/mood/light/sound/transition notes；说明文字是制作备注，不是对白字幕；避免长段文字墙]
+剧情节拍：[按时间顺序写 N 个节拍；每个节拍包含面板编号、短标题、景别、焦段、机位、角色动作、情绪变化、画面层次、衔接到下一节拍；镜头数由剧情决定，不机械补满]
+角色表演：[逐条写 @char_<id> <角色名> + 表情递进、微动作、视线、手部、重心和口型；有参考图时禁止改写常规外貌]
+场景与道具：[逐条写 @scene_<id> / @prop_<id> 的空间关系、材质状态、反光/遮挡/接触点]
+【灯光与风格】：[主光、补光、轮廓光、色温、反差、冷暖关系、高对比/柔光/低照度氛围；说明光影如何从开场推进到收束]
+【情绪关键词】：[用短词或图标式词组表达核心情绪，例如紧张 / 轻松 / 浪漫 / 神秘 / 冲突 / 幽默；必须和角色表演对应]
+【声音设计】：[环境音说明，如脚步声、风声、城市噪音、机器声、衣料摩擦、道具声；背景音乐风格，如现代/悬疑/古风/低频弦乐；声音只作为制作笔记，不画成字幕]
+【摄影说明】：[镜头语言说明：稳定推进 / 手持抖动 / 远景建立 / 特写情绪强化 / 过肩关系 / 横移揭示；强调电影感构图与叙事节奏]
+【色彩方案】：[统一色板，例如深蓝 / 灰黑 / 暖米色 / 冷青色点缀；写主色、辅色、情绪色和光源色，不要每格乱换色]
+连续性：[如存在上一故事板参考，写如何继承上一故事板的场景/人物/光影/末态；否则写“无上一故事板参考，按当前分镜建立起始状态”]
+负面约束：不要把普通对白画成字幕，不要长段文字墙，不要无关 logo / 水印，不新增无关角色，不改角色服装和场景结构，避免畸形手、错位眼、穿模、透视扭曲
+
+## 引用列表
+
+- 可用角色：{{characterRefs}}
+- 可用场景：{{sceneRefs}}
+- 可用道具：{{propRefs}}
+
+输出：直接输出提示词，不要任何说明。
+`,
+    variables: [
+      variable('scriptContent'),
+      variable('dialogueText', {
+        label: '分镜台词',
+        description: '当前分镜的显式台词字段。故事板只用它判断表情、口型和说话状态，不应把普通对白画成文字。',
+        format: '多行台词文本或“无”',
+      }),
+      variable('dialogueModeDirective', { required: false }),
+      variable('characters'),
+      variable('scenes'),
+      variable('props'),
+      variable('emotion'),
+      variable('stylePrefix'),
+      variable('characterRefs'),
+      variable('sceneRefs'),
+      variable('propRefs'),
+      variable('referenceTable', { required: false }),
+      variable('storyboardContinuityNotice', { required: false }),
+    ],
+    isCustom: false,
+  },
+
   character_extraction: {
     id: 'character_extraction',
     category: 'extraction',
@@ -2053,6 +2180,34 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
       variable('stylePrefix'),
       variable('shotDescription'),
       variable('gridPrompt'),
+      variable('resolution'),
+      variable('aspectRatio'),
+    ],
+    isCustom: false,
+  },
+
+  tti_storyboard_shot_image: {
+    id: 'tti_storyboard_shot_image',
+    category: 'tti',
+    name: '故事板分镜图片',
+    description: '生成带制作笔记的电影级故事板 / 前期制作方案板图片',
+    template: `{{globalPositivePrefix}}
+{{stylePrefix}}, highly detailed cinematic storyboard infographic poster, professional film pre-production design board, clear grid-based layout without mechanical equal panels, deep blue title bar or equivalent premium header system, modern UI visual design, information-dense but clean editorial layout, Behance style premium layout, ArtStation style production design quality, clear section hierarchy, thin borders, high-end commercial visual design, ultra detailed, 8K texture, cinematic lighting and emotional progression, consistent characters / scene / props across panels, {{aspectRatio}} composition, {{resolution}} quality.
+
+Required board sections: project title header with project name, subtitle, format, genre, duration, constraints; character design zone with front/back/side/close-up/action pose studies when characters are present; scene design zone with cinematic concept art and rich spatial detail; top-down blocking diagram / floor plan with camera positions numbered 1-N and arrows for character movement and camera motion; storyboard story zone with a story-driven N-shot sequence; lighting and style zone; emotion keywords zone; sound design zone; cinematography notes zone; unified color palette zone.
+
+Each storyboard panel must include: scene image, very short production note or action/dialogue beat, shot size label such as wide / medium / close-up, focal length label such as 24mm / 35mm / 50mm / 85mm, camera movement label such as static / tracking / handheld / push-in / crane / lateral move. The number of panels must follow the narrative rhythm, not a fixed count. These labels are production notes, not subtitles.
+
+Storyboard brief:
+{{storyboardPrompt}}
+
+Strict rendering rule: render short production-board notes, numbered camera marks, arrows, color swatches, lighting notes, sound notes, and shot labels as part of the storyboard sheet; these notes are not dialogue subtitles. Do not turn ordinary dialogue into subtitles or speech bubbles unless the brief explicitly asks for screen text / UI text / signage. Avoid long text walls, random unreadable filler, logos, and watermarks. Maintain project style exactly and preserve reference-image identity when references are provided.
+{{globalPositiveSuffix}}`,
+    variables: [
+      variable('globalPositivePrefix', { required: false }),
+      variable('globalPositiveSuffix', { required: false }),
+      variable('stylePrefix'),
+      variable('storyboardPrompt'),
       variable('resolution'),
       variable('aspectRatio'),
     ],

@@ -115,6 +115,35 @@ function withVariantImageMetadata(
   };
 }
 
+function buildImageReferenceSourceKey(source: MediaAssetSource | ProviderAssetInput): string {
+  if (typeof source === 'string') {
+    return source;
+  }
+  if (source && typeof source === 'object' && 'transport' in source && 'value' in source) {
+    return `${source.transport}:${source.value}`;
+  }
+
+  const asset = source as Exclude<MediaAssetSource, string>;
+  return asset.localPath || asset.remoteUrl || JSON.stringify(asset);
+}
+
+function dedupeImageReferenceSources(
+  sources: Array<MediaAssetSource | ProviderAssetInput | undefined>,
+): Array<MediaAssetSource | ProviderAssetInput> {
+  const seen = new Set<string>();
+  const deduped: Array<MediaAssetSource | ProviderAssetInput> = [];
+
+  for (const source of sources) {
+    if (!source) continue;
+    const key = buildImageReferenceSourceKey(source);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(source);
+  }
+
+  return deduped;
+}
+
 async function persistImageResult(
   output: ImageResult,
   provider: NonNullable<Awaited<ReturnType<typeof getProjectTTIProvider>>>,
@@ -256,28 +285,25 @@ async function executeImageProviderAttempt(
     // 这里先尝试把本地参考图上传到图床（best-effort），失败则回落到原始 data-url。
     const requiresRemoteUrlUpload = replacementStrategy === 'image-index';
     const [resolvedReferenceSources, resolvedSilentReferenceSources] = requiresRemoteUrlUpload
-      ? await Promise.all([
-          ensureRemoteUrlForImageSources({
+      ? await (async () => {
+          const combinedSources = [...referenceSources, ...silentReferenceSources];
+          const resolvedCombinedSources = await ensureRemoteUrlForImageSources({
             projectId: EXECUTION_PROJECT_ID,
-            sources: referenceSources,
+            sources: combinedSources,
             policy: 'best-effort',
-          }),
-          ensureRemoteUrlForImageSources({
-            projectId: EXECUTION_PROJECT_ID,
-            sources: silentReferenceSources,
-            policy: 'best-effort',
-          }),
-        ])
+          });
+          return [
+            resolvedCombinedSources.slice(0, referenceSources.length),
+            resolvedCombinedSources.slice(referenceSources.length),
+          ];
+        })()
       : [referenceSources, silentReferenceSources];
 
-    references = [
-      ...await ensureProviderAssetInputs(
-        resolvedReferenceSources.filter(Boolean) as Array<MediaAssetSource | ProviderAssetInput>,
-      ),
-      ...await ensureProviderAssetInputs(
-        resolvedSilentReferenceSources.filter(Boolean) as Array<MediaAssetSource | ProviderAssetInput>,
-      ),
-    ];
+    const providerReferenceSources = dedupeImageReferenceSources([
+      ...resolvedReferenceSources,
+      ...resolvedSilentReferenceSources,
+    ]);
+    references = await ensureProviderAssetInputs(providerReferenceSources);
 
     if (params.multiAngle && references.length === 0) {
       throw new Error('多角度生图无法读取上游参考图，请确认当前图片文件仍可访问');

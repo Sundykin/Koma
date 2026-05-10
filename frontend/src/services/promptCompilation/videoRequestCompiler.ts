@@ -197,6 +197,110 @@ async function ensureRemoteUrlForMultipleSources(params: {
   return ensureRemoteUrlForImageSources(params);
 }
 
+async function ensureRemoteUrlForImageToVideoSources(params: {
+  projectId: string;
+  primaryImage: VideoRequestAsset | undefined;
+  additionalReferences: VideoRequestAsset[];
+  primaryPolicy: 'best-effort' | 'required';
+  additionalPolicy: 'best-effort' | 'required';
+  fallbackToSourceOnUploadFailure?: boolean;
+}): Promise<{
+  primaryImage: VideoRequestAsset | undefined;
+  additionalReferences: Array<VideoRequestAsset | undefined>;
+}> {
+  if (params.primaryPolicy === 'required' && params.additionalPolicy === 'required') {
+    const [primaryImage, ...additionalReferences] = await ensureRemoteUrlForMultipleSources({
+      projectId: params.projectId,
+      sources: [
+        params.primaryImage as MediaAssetSource | ProviderAssetInput | undefined,
+        ...(params.additionalReferences as Array<MediaAssetSource | ProviderAssetInput>),
+      ],
+      policy: 'required',
+      fallbackToSourceOnUploadFailure: params.fallbackToSourceOnUploadFailure,
+    });
+    return {
+      primaryImage,
+      additionalReferences,
+    };
+  }
+
+  const [primaryImage, additionalReferences] = await Promise.all([
+    params.primaryPolicy === 'required'
+      ? ensureRemoteUrlForSingleSource({
+          projectId: params.projectId,
+          source: params.primaryImage as MediaAssetSource | ProviderAssetInput | undefined,
+          policy: 'required',
+          fallbackToSourceOnUploadFailure: params.fallbackToSourceOnUploadFailure,
+        })
+      : Promise.resolve(params.primaryImage),
+    params.additionalPolicy === 'required'
+      ? ensureRemoteUrlForMultipleSources({
+          projectId: params.projectId,
+          sources: params.additionalReferences as Array<MediaAssetSource | ProviderAssetInput>,
+          policy: 'required',
+          fallbackToSourceOnUploadFailure: params.fallbackToSourceOnUploadFailure,
+        })
+      : Promise.resolve(params.additionalReferences as Array<VideoRequestAsset | undefined>),
+  ]);
+
+  return {
+    primaryImage,
+    additionalReferences,
+  };
+}
+
+async function ensureRemoteUrlForStartEndSources(params: {
+  projectId: string;
+  startFrame: VideoRequestAsset | undefined;
+  endFrame: VideoRequestAsset | undefined;
+  startPolicy: 'best-effort' | 'required';
+  endPolicy: 'best-effort' | 'required';
+  fallbackToSourceOnUploadFailure?: boolean;
+}): Promise<{
+  startFrame: VideoRequestAsset | undefined;
+  endFrame: VideoRequestAsset | undefined;
+}> {
+  if (params.startPolicy === 'required' && params.endPolicy === 'required') {
+    const [startFrame, endFrame] = await ensureRemoteUrlForMultipleSources({
+      projectId: params.projectId,
+      sources: [
+        params.startFrame as MediaAssetSource | ProviderAssetInput | undefined,
+        params.endFrame as MediaAssetSource | ProviderAssetInput | undefined,
+      ],
+      policy: 'required',
+      fallbackToSourceOnUploadFailure: params.fallbackToSourceOnUploadFailure,
+    });
+    return {
+      startFrame,
+      endFrame,
+    };
+  }
+
+  const [startFrame, endFrame] = await Promise.all([
+    params.startPolicy === 'required'
+      ? ensureRemoteUrlForSingleSource({
+          projectId: params.projectId,
+          source: params.startFrame as MediaAssetSource | ProviderAssetInput | undefined,
+          policy: 'required',
+          fallbackToSourceOnUploadFailure: params.fallbackToSourceOnUploadFailure,
+        })
+      : Promise.resolve(params.startFrame),
+    params.endPolicy === 'required'
+      ? ensureRemoteUrlForSingleSource({
+          projectId: params.projectId,
+          source: params.endFrame as MediaAssetSource | ProviderAssetInput | undefined,
+          policy: 'required',
+          fallbackToSourceOnUploadFailure: params.fallbackToSourceOnUploadFailure,
+        })
+      : Promise.resolve(params.endFrame),
+  ]);
+
+  return {
+    startFrame,
+    endFrame,
+  };
+}
+
 function normalizeVideoRequestOptions(
   options?: Record<string, unknown>,
   durationSpec?: VideoDurationSpec,
@@ -598,22 +702,17 @@ export async function mapVideoRequestToProviderRequest(params: {
       ? (request.additionalReferences || []).slice(0, maxAdditionalReferences)
       : (request.additionalReferences || []);
 
-    const normalizedPrimary = primaryPolicy === 'required'
-      ? await ensureRemoteUrlForSingleSource({
-          projectId,
-          source: request.primaryImage as MediaAssetSource,
-          policy: primaryPolicy,
-          fallbackToSourceOnUploadFailure: fallbackToSourceOnRequiredUploadFailure,
-        })
-      : request.primaryImage;
-    const normalizedAdditional = additionalPolicy === 'required'
-      ? await ensureRemoteUrlForMultipleSources({
-          projectId,
-          sources: additionalInput as MediaAssetSource[],
-          policy: additionalPolicy,
-          fallbackToSourceOnUploadFailure: fallbackToSourceOnRequiredUploadFailure,
-        })
-      : additionalInput;
+    const {
+      primaryImage: normalizedPrimary,
+      additionalReferences: normalizedAdditional,
+    } = await ensureRemoteUrlForImageToVideoSources({
+      projectId,
+      primaryImage: request.primaryImage,
+      additionalReferences: additionalInput,
+      primaryPolicy,
+      additionalPolicy,
+      fallbackToSourceOnUploadFailure: fallbackToSourceOnRequiredUploadFailure,
+    });
 
     const primaryImage = await ensureProviderAssetInput(normalizedPrimary, {
       preferLocalFile: params.preferLocalAssetInput,
@@ -682,22 +781,17 @@ export async function mapVideoRequestToProviderRequest(params: {
   if (isStartEndToVideoRequest(request)) {
     const startPolicy = transportSupport.start ? 'best-effort' : 'required';
     const endPolicy = transportSupport.end ? 'best-effort' : 'required';
-    const normalizedStartFrame = startPolicy === 'required'
-      ? await ensureRemoteUrlForSingleSource({
-          projectId,
-          source: request.startFrame as MediaAssetSource,
-          policy: startPolicy,
-          fallbackToSourceOnUploadFailure: fallbackToSourceOnRequiredUploadFailure,
-        })
-      : request.startFrame;
-    const normalizedEndFrame = endPolicy === 'required'
-      ? await ensureRemoteUrlForSingleSource({
-          projectId,
-          source: request.endFrame as MediaAssetSource,
-          policy: endPolicy,
-          fallbackToSourceOnUploadFailure: fallbackToSourceOnRequiredUploadFailure,
-        })
-      : request.endFrame;
+    const {
+      startFrame: normalizedStartFrame,
+      endFrame: normalizedEndFrame,
+    } = await ensureRemoteUrlForStartEndSources({
+      projectId,
+      startFrame: request.startFrame,
+      endFrame: request.endFrame,
+      startPolicy,
+      endPolicy,
+      fallbackToSourceOnUploadFailure: fallbackToSourceOnRequiredUploadFailure,
+    });
     const startFrame = await ensureProviderAssetInput(normalizedStartFrame, {
       preferLocalFile: params.preferLocalAssetInput,
     });

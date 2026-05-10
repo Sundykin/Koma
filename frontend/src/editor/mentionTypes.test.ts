@@ -34,9 +34,9 @@ describe('parseMentions', () => {
   });
 
   it('应解析内置分镜锚点 mention', () => {
-    const text = '基于 @grid_anchor 的四宫格，以及 @shot_anchor 首帧继续生成';
+    const text = '基于 @grid_anchor 的四宫格，以及 @shot_anchor 首帧、@storyboard_anchor 当前故事板、@previous_storyboard_anchor 上一故事板继续生成';
     const result = parseMentions(text);
-    expect(result).toHaveLength(2);
+    expect(result).toHaveLength(4);
     expect(result[0]).toMatchObject({
       type: 'grid',
       id: 'anchor',
@@ -46,6 +46,16 @@ describe('parseMentions', () => {
       type: 'shot',
       id: 'anchor',
       fullMatch: '@shot_anchor',
+    });
+    expect(result[2]).toMatchObject({
+      type: 'storyboard',
+      id: 'anchor',
+      fullMatch: '@storyboard_anchor',
+    });
+    expect(result[3]).toMatchObject({
+      type: 'previous_storyboard',
+      id: 'anchor',
+      fullMatch: '@previous_storyboard_anchor',
     });
   });
 
@@ -118,6 +128,8 @@ describe('createMentionString', () => {
   it('应生成内置锚点 mention 字符串', () => {
     expect(createMentionString('grid', 'anything')).toBe('@grid_anchor');
     expect(createMentionString('shot', 'anything')).toBe('@shot_anchor');
+    expect(createMentionString('storyboard', 'anything')).toBe('@storyboard_anchor');
+    expect(createMentionString('previous_storyboard', 'anything')).toBe('@previous_storyboard_anchor');
   });
 
   it('应避免双前缀（ID 已包含类型前缀时）', () => {
@@ -154,6 +166,8 @@ describe('parseMentionId', () => {
   it('应解析内置锚点 mention 字符串', () => {
     expect(parseMentionId('@grid_anchor')).toEqual({ type: 'grid', id: 'anchor' });
     expect(parseMentionId('@shot_anchor')).toEqual({ type: 'shot', id: 'anchor' });
+    expect(parseMentionId('@storyboard_anchor')).toEqual({ type: 'storyboard', id: 'anchor' });
+    expect(parseMentionId('@previous_storyboard_anchor')).toEqual({ type: 'previous_storyboard', id: 'anchor' });
   });
 
   it('应容错处理双前缀格式', () => {
@@ -177,6 +191,8 @@ describe('MENTION_REGEX', () => {
     expect('@scene_abc').toMatch(new RegExp(MENTION_REGEX.source));
     expect('@grid_anchor').toMatch(new RegExp(MENTION_REGEX.source));
     expect('@shot_anchor').toMatch(new RegExp(MENTION_REGEX.source));
+    expect('@storyboard_anchor').toMatch(new RegExp(MENTION_REGEX.source));
+    expect('@previous_storyboard_anchor').toMatch(new RegExp(MENTION_REGEX.source));
   });
 
   it('不应匹配无效类型', () => {

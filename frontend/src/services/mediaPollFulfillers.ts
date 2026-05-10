@@ -125,6 +125,7 @@ export function registerMediaPollFulfillers(): void {
       projectId: args.projectId,
       kind: args.kind,
       source,
+      destPath: typeof args.extra?.destPath === 'string' ? args.extra.destPath : undefined,
       ownerRef: args.ownerRef,
       providerTaskId: args.providerTaskId,
       channelId: args.channelId,

@@ -15,6 +15,8 @@ const getPromptProtocolMock = vi.fn();
 const mapVideoRequestToProviderRequestMock = vi.fn();
 const resolveITVTransportSupportMock = vi.fn();
 const resolveVideoProtocolCompilationLimitMock = vi.fn();
+const ensureRemoteUrlForImageSourcesMock = vi.fn();
+const persistMediaAssetMock = vi.fn();
 const createSessionMock = vi.fn();
 const disposeSessionMock = vi.fn();
 const sendMessageStreamMock = vi.fn();
@@ -94,6 +96,14 @@ vi.mock('../../../../services/promptCompilation/videoRequestCompiler', () => ({
   resolveVideoProtocolCompilationLimit: (...args: unknown[]) => resolveVideoProtocolCompilationLimitMock(...args),
 }));
 
+vi.mock('../../../../services/mediaRemoteUrlService', () => ({
+  ensureRemoteUrlForImageSources: (...args: unknown[]) => ensureRemoteUrlForImageSourcesMock(...args),
+}));
+
+vi.mock('../../../../services/mediaPersistenceService', () => ({
+  persistMediaAsset: (...args: unknown[]) => persistMediaAssetMock(...args),
+}));
+
 describe('linghuiExecutionProviders', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -165,6 +175,19 @@ describe('linghuiExecutionProviders', () => {
     mapVideoRequestToProviderRequestMock.mockImplementation(async ({ request }) => request);
     resolveITVTransportSupportMock.mockReturnValue({});
     resolveVideoProtocolCompilationLimitMock.mockReturnValue(0);
+    ensureRemoteUrlForImageSourcesMock.mockImplementation(async ({ sources }) => sources);
+    persistMediaAssetMock.mockImplementation(async ({ kind, source, mimeType, provider, channelId, modelId, capability, metadata }) => ({
+      kind,
+      localPath: source,
+      remoteUrl: /^https?:\/\//i.test(String(source ?? '')) ? source : undefined,
+      mimeType,
+      provider,
+      channelId,
+      modelId,
+      capability,
+      metadata,
+      createdAt: 1,
+    }));
     buildLLMConfigFromContextMock.mockReturnValue({
       profileId: 'channel-llm',
       provider: 'openai-compatible',
@@ -402,6 +425,63 @@ describe('linghuiExecutionProviders', () => {
       }),
     }));
     expect(result.source).toBe('https://cdn.example.com/multi-angle.png');
+  });
+
+  it('grok 图片索引协议会合并归一化显式和静默参考，并在 provider references 中去重', async () => {
+    const provider = {
+      type: 'grok2api-imagine-tti',
+      config: { provider: 'grok2api-imagine-tti', promptProtocol: 'grok-image-index' },
+      validate: () => true,
+      start: vi.fn(async () => ({
+        mode: 'immediate' as const,
+        output: {
+          url: 'https://cdn.example.com/grok-image.png',
+        },
+      })),
+    };
+
+    getProjectTTIProviderMock.mockResolvedValue(provider);
+    getPromptProtocolMock.mockReturnValue('grok-image-index');
+    ensureRemoteUrlForImageSourcesMock.mockResolvedValue([
+      'https://cdn.example.com/shared.png',
+      'https://cdn.example.com/shared.png',
+    ]);
+
+    const { generateImageWithProvider } = await import('../state/linghuiExecutionProviders');
+
+    const result = await generateImageWithProvider({
+      prompt: '沿用 @ref_shared 的构图',
+      referenceSources: ['/tmp/shared.png'],
+      silentReferenceSources: ['/tmp/shared.png'],
+      promptReferences: [
+        {
+          id: 'shared',
+          nodeId: 'node-image-1',
+          kind: 'image',
+          name: '共享图',
+          source: '/tmp/shared.png',
+        },
+      ],
+      ttiSelection: 'channel-image::model-image',
+      placeholderTitle: 'grok refs',
+    });
+
+    expect(ensureRemoteUrlForImageSourcesMock).toHaveBeenCalledTimes(1);
+    expect(ensureRemoteUrlForImageSourcesMock).toHaveBeenCalledWith(expect.objectContaining({
+      projectId: 'linghui',
+      policy: 'best-effort',
+      sources: ['/tmp/shared.png', '/tmp/shared.png'],
+    }));
+    expect(provider.start).toHaveBeenCalledWith(expect.objectContaining({
+      prompt: '沿用 @Image 1 的构图',
+      references: [
+        expect.objectContaining({
+          transport: 'remote-url',
+          value: 'https://cdn.example.com/shared.png',
+        }),
+      ],
+    }));
+    expect(result.source).toBe('https://cdn.example.com/grok-image.png');
   });
 
   it('多角度图片请求会回退到通用图生图 provider，而不是复用原提示词', async () => {

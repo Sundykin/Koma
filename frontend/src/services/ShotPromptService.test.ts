@@ -3,12 +3,48 @@ import {
   buildDialogueGuardNote,
   ensureExplicitDialogueInVideoPrompt,
   formatCharacterMappingBaseline,
+  rewriteProviderImageTokensToMentions,
   sanitizeVideoPromptResult,
 } from './ShotPromptService';
 import type { ShotReferenceBundle } from './shotReference/types';
 import type { Character } from '../types';
 
 describe('buildDialogueGuardNote', () => {
+  it('rewrites provider @Image tokens back to semantic mentions before saving editable storyboard prompts', () => {
+    const bundle: ShotReferenceBundle = {
+      items: [
+        {
+          kind: 'scene',
+          id: 'scene_room',
+          label: '场景：叶赎居所室内',
+          source: 'https://example.com/scene.png',
+          mentionToken: '@scene_room',
+          priority: 80,
+        },
+        {
+          kind: 'character',
+          id: 'char_yeshu',
+          label: '角色：叶赎',
+          source: 'https://example.com/char.png',
+          mentionToken: '@char_yeshu',
+          priority: 70,
+        },
+      ],
+      hasGridAnchor: false,
+      hasShotImage: false,
+      capacity: { maxRefs: 6, truncatedCount: 0, truncatedKinds: [] },
+    };
+
+    const cleaned = rewriteProviderImageTokensToMentions(
+      '@Image 1 叶赎居所室内，@Image 2 叶赎抬头。@图片3 不存在。',
+      bundle,
+    );
+
+    expect(cleaned).toBe('@scene_room 叶赎居所室内，@char_yeshu 叶赎抬头。 不存在。');
+    expect(cleaned).not.toContain('@Image');
+    expect(cleaned).not.toContain('@图片');
+  });
+
   it('does not expose static character appearance in multi-ref baseline when a reference image exists', () => {
     const character = {
       id: '1778207028644_1',

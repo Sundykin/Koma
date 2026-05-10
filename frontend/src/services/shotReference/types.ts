@@ -21,6 +21,8 @@ import type { MediaAssetSource, StoredMediaAsset } from '../../types';
 export type ShotReferenceKind =
   | 'shot-anchor'    // normal 模式的已生成分镜首帧（shot.media.images[currentImageIndex]）
   | 'grid-anchor'    // grid 模式的 3×3 九宫格整图（shot.media.gridImage，不拆分）
+  | 'storyboard-anchor' // storyboard 模式的当前故事板整图
+  | 'previous-storyboard-anchor' // 上一分镜故事板整图，用于故事板连续性
   | 'scene'          // 场景资产图（按 shot.scenes 顺序）
   | 'character'      // 角色资产图（按 shot.characters 顺序，主角在前）
   | 'prop'           // 道具资产图（按 shot.props 顺序）
@@ -42,6 +44,8 @@ export interface ShotReferenceItem {
    * 约定：
    *  - shot-anchor: '@shot_anchor'
    *  - grid-anchor: '@grid_anchor'
+   *  - storyboard-anchor: '@storyboard_anchor'
+   *  - previous-storyboard-anchor: '@previous_storyboard_anchor'
    *  - scene:       '@scene_<sceneId>'
    *  - character:   '@char_<characterId>'
    *  - prop:        '@prop_<propId>'
@@ -79,7 +83,7 @@ export interface ShotReferenceBundle {
    * 据此决定渲染 9 帧还是 4 帧时序骨架。
    */
   gridCellCount?: 4 | 9;
-  /** 是否含 shot-anchor 或 grid-anchor 之一（用于决定能否走 image-to-video 兼容降级）。 */
+  /** 是否含当前分镜图锚点之一（用于决定能否走 image-to-video 兼容降级）。 */
   hasShotImage: boolean;
   /** 配额信息：实际产出的 items 数量、被裁掉的数量。用于诊断日志。 */
   capacity: {

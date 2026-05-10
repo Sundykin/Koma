@@ -18,6 +18,7 @@ vi.mock('../store/projectStore', () => ({
   loadCharacters: vi.fn(),
   loadProps: vi.fn(),
   loadScenes: vi.fn(),
+  loadEpisodeShots: vi.fn(),
 }));
 
 vi.mock('../store/promptTemplates', () => ({
@@ -191,8 +192,16 @@ function createSeedanceSettings(): AppSettings {
 }
 
 describe('shotRenderWorkflow video chain', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
+    const projectStore = await import('../store/projectStore');
+    vi.mocked(projectStore.loadCharacters).mockResolvedValue([]);
+    vi.mocked(projectStore.loadProps).mockResolvedValue([]);
+    vi.mocked(projectStore.loadScenes).mockResolvedValue([]);
+    vi.mocked(projectStore.loadEpisodeShots).mockResolvedValue([]);
+    vi.mocked(projectStore.loadShotMeta).mockResolvedValue({
+      versions: [],
+    } as any);
   });
 
   it('无真主图且模型支持参考生视频时，参考图和资产引用进入 reference-to-video', async () => {
@@ -510,5 +519,83 @@ describe('shotRenderWorkflow video chain', () => {
       }),
     );
     expect((vi.mocked(mediaGenerationService.generateVideo).mock.calls.at(-1)?.[0] as any)?.request.primaryImage).toBeUndefined();
+  });
+
+  it('批量渲染单项失败后继续后续分镜，并逐项触发完成回调', async () => {
+    const { batchRenderShots } = await import('./shotRenderWorkflow');
+    const { mediaGenerationService } = await import('../services/MediaGenerationService');
+    const projectStore = await import('../store/projectStore');
+
+    vi.mocked(projectStore.loadCharacters).mockResolvedValue([]);
+    vi.mocked(projectStore.loadProps).mockResolvedValue([]);
+    vi.mocked(projectStore.loadScenes).mockResolvedValue([]);
+    vi.mocked(projectStore.loadEpisodeShots).mockResolvedValue([]);
+    vi.mocked(projectStore.saveShotVersion)
+      .mockResolvedValueOnce({
+        version: 1,
+        prompt: '视频提示词 1',
+        seed: 1,
+        createdAt: 1,
+        model: 'test-model',
+        media: {},
+      } as any)
+      .mockResolvedValueOnce({
+        version: 2,
+        prompt: '视频提示词 2',
+        seed: 2,
+        createdAt: 2,
+        model: 'test-model',
+        media: {},
+      } as any);
+    vi.mocked(projectStore.loadShotMeta).mockResolvedValue({
+      versions: [{ version: 1 }, { version: 2 }],
+    } as any);
+    vi.mocked(mediaGenerationService.generateVideo)
+      .mockRejectedValueOnce(new Error('第一个视频失败'))
+      .mockResolvedValueOnce({
+        kind: 'video',
+        localPath: '/tmp/shot-2.mp4',
+        createdAt: 2,
+      } as any);
+
+    const onShotComplete = vi.fn();
+    const result = await batchRenderShots(
+      {
+        projectId: 'project-1',
+        episodeId: 'episode-1',
+        shots: [
+          createShot({
+            id: 'shot-1',
+            videoPrompt: '视频提示词 1',
+            media: {
+              images: [createImageAsset('https://cdn.example.com/shot-1.png')],
+              currentImageIndex: 0,
+            },
+          }),
+          createShot({
+            id: 'shot-2',
+            videoPrompt: '视频提示词 2',
+            media: {
+              images: [createImageAsset('https://cdn.example.com/shot-2.png')],
+              currentImageIndex: 0,
+            },
+          }),
+        ],
+        settings: createSettings('grok-main', 'grok-imagine-video'),
+        mediaSelections: { itvSelection: 'grok-main::grok-imagine-video' },
+        onShotComplete,
+      },
+      () => {},
+    );
+
+    expect(result.total).toBe(2);
+    expect(result.success).toBe(1);
+    expect(result.failed).toBe(1);
+    expect(result.results.map(item => item.shotId)).toEqual(['shot-1', 'shot-2']);
+    expect(result.results[0]).toMatchObject({ shotId: 'shot-1', success: false, error: '第一个视频失败' });
+    expect(result.results[1]).toMatchObject({ shotId: 'shot-2', success: true });
+    expect(mediaGenerationService.generateVideo).toHaveBeenCalledTimes(2);
+    expect(onShotComplete).toHaveBeenCalledTimes(2);
+    expect(onShotComplete.mock.calls.map(call => call[0].success)).toEqual([false, true]);
   });
 });

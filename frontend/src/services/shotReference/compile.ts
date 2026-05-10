@@ -2,7 +2,8 @@
  * 把分镜提示词中的 mention token 编译成 `@Image N` —— N 严格对应 bundle.items 的位置。
  *
  * 这一层是生图 / 生视频共用的 grok-image-index 协议落地点。LLM 推理时面对的是
- * `@shot_anchor` / `@grid_anchor` / `@char_xxx` / `@scene_xxx` / `@prop_xxx` /
+ * `@shot_anchor` / `@grid_anchor` / `@storyboard_anchor` /
+ * `@previous_storyboard_anchor` / `@char_xxx` / `@scene_xxx` / `@prop_xxx` /
  * `@user_<idx>` 这些有语义的 token；上游 provider（OpenAI gpt-image / grok2 /
  * gemini / seedance）真正需要的是位置编码 `@Image N`。这里在请求构造层做翻译，
  * provider 自己不感知 mention 协议。
@@ -18,6 +19,8 @@ import type { ShotReferenceBundle, ShotReferenceItem } from './types';
  * 支持的 token 形式（按 ShotReferenceItem.kind 派生）：
  *  - `@shot_anchor`   — 已生成分镜首帧
  *  - `@grid_anchor`   — 九宫格 3×3 锚点
+ *  - `@storyboard_anchor` — 当前故事板整图
+ *  - `@previous_storyboard_anchor` — 上一分镜故事板整图
  *  - `@char_<id>`     — 角色
  *  - `@scene_<id>`    — 场景
  *  - `@prop_<id>`     — 道具
@@ -42,7 +45,7 @@ export interface CompiledBundlePrompt {
   };
 }
 
-const MENTION_RE = /@(shot_anchor|grid_anchor|char_[A-Za-z0-9_-]+|scene_[A-Za-z0-9_-]+|prop_[A-Za-z0-9_-]+|user_\d+)\b/g;
+const MENTION_RE = /@(shot_anchor|grid_anchor|storyboard_anchor|previous_storyboard_anchor|char_[A-Za-z0-9_-]+|scene_[A-Za-z0-9_-]+|prop_[A-Za-z0-9_-]+|user_\d+)\b/g;
 const IMAGE_NUMBER_RE = /(?:@Image|@图片)\s*(\d+)/g;
 
 export function compileShotPromptToBundle(params: {

@@ -18,7 +18,7 @@ import {
   LoadingOutlined,
   RobotOutlined,
 } from '@ant-design/icons';
-import type { Shot, ShotScriptLine, Character, Scene, Prop, AppSettings, StoredMediaAsset, ProjectStyleSnapshot, ShotMeta } from '../../types';
+import type { Shot, ShotImageMode, ShotScriptLine, Character, Scene, Prop, AppSettings, StoredMediaAsset, ProjectStyleSnapshot, ShotMeta } from '../../types';
 import { loadEpisodeShots, saveEpisodeShots, loadCharacters, loadScenes, loadProps, loadEpisodeAnalysis, listShots } from '../../store/projectStore';
 import { generateShotImage, batchGenerateShotImages } from '../../services/ShotGenerationService';
 import { mediaGenerationService } from '../../services/MediaGenerationService';
@@ -84,6 +84,16 @@ const CAMERA_OPTIONS = [
   { label: '缓慢推镜', value: 'zoom-in' },
   { label: '手持晃动', value: 'handheld' },
 ];
+
+type EditableShotImageMode = Exclude<ShotImageMode, 'grid'>;
+
+function normalizeShotImageMode(mode?: ShotImageMode): EditableShotImageMode {
+  return mode === 'grid' ? 'grid-9' : (mode || 'normal');
+}
+
+function isMultiPanelImageMode(mode?: ShotImageMode): boolean {
+  return mode === 'grid' || mode === 'grid-9' || mode === 'grid-4' || mode === 'storyboard';
+}
 
 // 合并两个分镜（duration 按当前 ITV 渠道 spec 吸附；不再硬编码到 grok 枚举）
 function mergeShots(target: Shot, source: Shot, durationSpec: VideoDurationSpec): Shot {
@@ -228,6 +238,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number; step?: string } | undefined>();
   const queuedShotsSaveRef = useRef<{ projectId: string; episodeId: string; shots: Shot[] } | null>(null);
   const activeShotsSaveRef = useRef<Promise<void> | null>(null);
+  const shotStoreRefreshRef = useRef<Promise<void>>(Promise.resolve());
 
   // 预选资产弹窗
   const [presetModalOpen, setPresetModalOpen] = useState(false);
@@ -467,6 +478,19 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     setShots(latestShots.map(shot => ({ ...shot, duration: clampDurationToSpec(shot.duration, itvDurationSpec) })));
     setShotMetas(latestShotMetas);
   }, [projectId, episodeId, itvDurationSpec]);
+
+  const queueRefreshShotsFromStore = useCallback((): Promise<void> => {
+    const next = shotStoreRefreshRef.current
+      .catch(() => undefined)
+      .then(() => refreshShotsFromStore())
+      .catch((error: unknown) => {
+        logger.warn('刷新分镜存储失败', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+    shotStoreRefreshRef.current = next;
+    return next;
+  }, [refreshShotsFromStore]);
 
   useEffect(() => {
     loadData();
@@ -1404,22 +1428,21 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     await saveAllShots(updatedShots);
   }, [shots, saveAllShots, createNewShot]);
 
-  const handleShotImageModeChange = useCallback((shotId: string, mode: 'normal' | 'grid-9' | 'grid-4') => {
+  const handleShotImageModeChange = useCallback((shotId: string, mode: EditableShotImageMode) => {
     const updatedShots = shots.map(s => {
       if (s.id !== shotId) return s;
-      // 模式切换时，图片提示词模板（normal / grid-9 / grid-4）和 TTI 终稿模板都不一样，
+      // 模式切换时，图片提示词模板（normal / grid-9 / grid-4 / storyboard）和 TTI 终稿模板都不一样，
       // 视频提示词的 shotsSection 也按模式渲染不同骨架。继续使用旧的 prompt + 旧的 image
       // 会导致 UI 显示前一模式的旧图、新生成走错模板。所以模式切换时必须：
       //  - 清空 images / currentImageIndex（强制让用户重新生成）
       //  - 清空 imagePrompt / videoPrompt（强制重新 AI 推理新模板的提示词）
       // 老 'grid' 视作等同 'grid-9'，imageMode 一旦切到不同变体就触发清空。
-      const oldMode = s.imageMode === 'grid' ? 'grid-9' : (s.imageMode || 'normal');
+      const oldMode = normalizeShotImageMode(s.imageMode);
       const modeChanged = oldMode !== mode;
 
-      // 任一 grid 变体（grid-4 / grid-9）+ first-frame 都是非法组合（网格是 N 帧时序 vs
-      // 单图微动延展），切到 grid 时自动改回 multi-ref。
-      const isGridMode = mode === 'grid-9' || mode === 'grid-4';
-      const correctedVideoMode = (isGridMode && s.videoMode === 'first-frame')
+      // 任一多面板变体（grid / storyboard）+ first-frame 都是非法组合（整张多面板参考 vs
+      // 单图微动延展），切到多面板时自动改回 multi-ref。
+      const correctedVideoMode = (isMultiPanelImageMode(mode) && s.videoMode === 'first-frame')
         ? 'multi-ref' as const
         : s.videoMode;
 
@@ -1446,6 +1469,13 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     saveAllShots(updatedShots);
   }, [shots, saveAllShots]);
 
+  const handleStoryboardInheritPreviousChange = useCallback((shotId: string, enabled: boolean) => {
+    const updatedShots = shots.map(s =>
+      s.id === shotId ? { ...s, inheritPreviousStoryboard: enabled } : s
+    );
+    saveAllShots(updatedShots);
+  }, [shots, saveAllShots]);
+
   const handleShotVideoModeChange = useCallback((shotId: string, mode: 'multi-ref' | 'first-frame') => {
     const updatedShots = shots.map(s =>
       s.id === shotId ? { ...s, videoMode: mode } : s
@@ -1461,21 +1491,20 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   }, [shots, saveAllShots]);
 
   /**
-   * 批量切换：把当前剧集所有分镜的 imageMode 改为同一值（普通 / 四宫格 / 九宫格）。
+   * 批量切换：把当前剧集所有分镜的 imageMode 改为同一值（普通 / 四宫格 / 九宫格 / 故事板）。
    *
    * 行为必须与单镜 handleShotImageModeChange 完全一致 —— 模式切换会换模板，旧的
    * imagePrompt / videoPrompt / images 都得清掉重推，否则 UI 还在显示旧模式的图、
-   * 新生成又走错模板。同时 grid + first-frame 是非法组合,要顺手把 videoMode 修回
+   * 新生成又走错模板。同时多面板 + first-frame 是非法组合，要顺手把 videoMode 修回
    * multi-ref。这里逐镜应用单镜的同套规则。
    */
-  const handleBulkImageModeChange = useCallback((mode: 'normal' | 'grid-4' | 'grid-9') => {
+  const handleBulkImageModeChange = useCallback((mode: EditableShotImageMode) => {
     if (!shots.length) return;
     const updatedShots = shots.map(s => {
-      const oldMode = s.imageMode === 'grid' ? 'grid-9' : (s.imageMode || 'normal');
+      const oldMode = normalizeShotImageMode(s.imageMode);
       const modeChanged = oldMode !== mode;
 
-      const isGridMode = mode === 'grid-9' || mode === 'grid-4';
-      const correctedVideoMode = (isGridMode && s.videoMode === 'first-frame')
+      const correctedVideoMode = (isMultiPanelImageMode(mode) && s.videoMode === 'first-frame')
         ? 'multi-ref' as const
         : s.videoMode;
 
@@ -1842,6 +1871,16 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       const results = await batchGenerateShotImages(projectId, episodeId, shotIds, characters, scenes, ttiSelection, {
         aspectRatio,
         styleSnapshot,
+        onItemComplete: async (item) => {
+          setSubmittingShots(prev => {
+            const next = new Set(prev);
+            next.delete(item.shotId);
+            return next;
+          });
+          if (item.success) {
+            void queueRefreshShotsFromStore();
+          }
+        },
         onProgress: (_overall, current) => {
           const idx = (indexMap.get(current.shotId) ?? 0) + 1;
           setBatchProgress({
@@ -1852,22 +1891,10 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         },
       });
 
-      // 回写 UI 状态（shots state），避免依赖 TaskManager 监听
-      setShots(prev => prev.map(s => {
-        const hit = results.find(r => r.shotId === s.id && r.success && r.asset);
-        if (!hit?.asset) return s;
-        const existing = s.media?.images || [];
-        return {
-          ...s,
-          media: {
-            ...(s.media || {}),
-            images: [...existing, hit.asset],
-            currentImageIndex: existing.length,
-          },
-        };
-      }));
-
       const successCount = results.filter(r => r.success).length;
+      if (successCount > 0) {
+        await queueRefreshShotsFromStore();
+      }
       const failed = results.filter(r => !r.success);
       if (failed.length === 0) {
         message.success(`批量生成完成：成功 ${successCount}/${results.length}`);
@@ -1881,7 +1908,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       setSubmittingShots(new Set());
       setBatchProgress(undefined);
     }
-  }, [projectId, episodeId, shots, characters, scenes, ttiSelection, aspectRatio, styleSnapshot]);
+  }, [projectId, episodeId, shots, characters, scenes, ttiSelection, aspectRatio, styleSnapshot, queueRefreshShotsFromStore]);
 
   // 批量重新生成图片（强制重新生成已有图片的）
   const handleBatchReGenerateImages = useCallback(async (targetShotIds?: string[]) => {
@@ -1905,6 +1932,16 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       const results = await batchGenerateShotImages(projectId, episodeId, shotIds, characters, scenes, ttiSelection, {
         aspectRatio,
         styleSnapshot,
+        onItemComplete: async (item) => {
+          setSubmittingShots(prev => {
+            const next = new Set(prev);
+            next.delete(item.shotId);
+            return next;
+          });
+          if (item.success) {
+            void queueRefreshShotsFromStore();
+          }
+        },
         onProgress: (_overall, current) => {
           const idx = (indexMap.get(current.shotId) ?? 0) + 1;
           setBatchProgress({
@@ -1915,21 +1952,10 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         },
       });
 
-      setShots(prev => prev.map(s => {
-        const hit = results.find(r => r.shotId === s.id && r.success && r.asset);
-        if (!hit?.asset) return s;
-        const existing = s.media?.images || [];
-        return {
-          ...s,
-          media: {
-            ...(s.media || {}),
-            images: [...existing, hit.asset],
-            currentImageIndex: existing.length,
-          },
-        };
-      }));
-
       const successCount = results.filter(r => r.success).length;
+      if (successCount > 0) {
+        await queueRefreshShotsFromStore();
+      }
       const failed = results.filter(r => !r.success);
       if (failed.length === 0) {
         message.success(`批量重新生成完成：成功 ${successCount}/${results.length}`);
@@ -1942,7 +1968,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       setSubmittingShots(new Set());
       setBatchProgress(undefined);
     }
-  }, [projectId, episodeId, shots, characters, scenes, ttiSelection, aspectRatio, styleSnapshot]);
+  }, [projectId, episodeId, shots, characters, scenes, ttiSelection, aspectRatio, styleSnapshot, queueRefreshShotsFromStore]);
 
   // 批量渲染视频（生成空白项：仅渲染没有视频的分镜，与图片批量保持一致）
   const handleBatchRenderVideos = useCallback(async (targetShotIds?: string[]) => {
@@ -1986,6 +2012,16 @@ export const Storyboard: React.FC<StoryboardProps> = ({
               ttsSelection,
             },
             styleSnapshot,
+            onShotComplete: async (item) => {
+              setSubmittingRenderShots(prev => {
+                const next = new Set(prev);
+                next.delete(item.shotId);
+                return next;
+              });
+              if (item.success) {
+                void queueRefreshShotsFromStore();
+              }
+            },
           },
           (overall, current) => {
             const idx = (indexMap.get(current.shotId) ?? 0) + 1;
@@ -1998,7 +2034,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
           }
         ),
       });
-      await refreshShotsFromStore();
+      await queueRefreshShotsFromStore();
       message.success(`批量渲染完成: ${result.success} 成功, ${result.failed} 失败`);
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : String(err);
@@ -2007,7 +2043,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       setSubmittingRenderShots(new Set());
       setBatchProgress(undefined);
     }
-  }, [projectId, episodeId, shots, effectiveSettings, ttiSelection, itvSelection, ttsSelection, aspectRatio, styleSnapshot, buildUnsupportedShotVideoMessage, message, refreshShotsFromStore]);
+  }, [projectId, episodeId, shots, effectiveSettings, ttiSelection, itvSelection, ttsSelection, aspectRatio, styleSnapshot, buildUnsupportedShotVideoMessage, message, queueRefreshShotsFromStore]);
 
   // 批量重新生成视频（已有视频的）
   const handleBatchReGenerateVideos = useCallback(async (targetShotIds?: string[]) => {
@@ -2051,6 +2087,16 @@ export const Storyboard: React.FC<StoryboardProps> = ({
               ttsSelection,
             },
             styleSnapshot,
+            onShotComplete: async (item) => {
+              setSubmittingRenderShots(prev => {
+                const next = new Set(prev);
+                next.delete(item.shotId);
+                return next;
+              });
+              if (item.success) {
+                void queueRefreshShotsFromStore();
+              }
+            },
           },
           (overall, current) => {
             const idx = (indexMap.get(current.shotId) ?? 0) + 1;
@@ -2063,7 +2109,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
           }
         ),
       });
-      await refreshShotsFromStore();
+      await queueRefreshShotsFromStore();
       message.success(`批量重新渲染完成: ${result.success} 成功, ${result.failed} 失败`);
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : String(err);
@@ -2072,7 +2118,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       setSubmittingRenderShots(new Set());
       setBatchProgress(undefined);
     }
-  }, [projectId, episodeId, shots, effectiveSettings, ttiSelection, itvSelection, ttsSelection, aspectRatio, styleSnapshot, buildUnsupportedShotVideoMessage, message, refreshShotsFromStore]);
+  }, [projectId, episodeId, shots, effectiveSettings, ttiSelection, itvSelection, ttsSelection, aspectRatio, styleSnapshot, buildUnsupportedShotVideoMessage, message, queueRefreshShotsFromStore]);
 
   // ============ 渲染 ============
 
@@ -2180,6 +2226,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             onInsertAbove={handleInsertAbove}
             onInsertBelow={handleInsertBelow}
             onShotImageModeChange={handleShotImageModeChange}
+            onStoryboardInheritPreviousChange={handleStoryboardInheritPreviousChange}
             onShotVideoModeChange={handleShotVideoModeChange}
             onBulkVideoModeChange={handleBulkVideoModeChange}
             onBulkImageModeChange={handleBulkImageModeChange}

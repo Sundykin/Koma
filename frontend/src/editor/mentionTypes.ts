@@ -4,7 +4,7 @@
 
 // Mention 项目类型
 export type AssetMentionType = 'char' | 'prop' | 'scene';
-export type AnchorMentionType = 'shot' | 'grid';
+export type AnchorMentionType = 'shot' | 'grid' | 'storyboard' | 'previous_storyboard';
 export type MentionType = AssetMentionType | AnchorMentionType;
 
 // Mention 数据项
@@ -29,15 +29,15 @@ export interface ParsedMention {
 // Mention 正则匹配
 // 匹配格式:
 // - 资产: @char_xxx, @prop_xxx, @scene_xxx
-// - 分镜锚点: @shot_anchor, @grid_anchor
-export const MENTION_REGEX = /@(char|prop|scene)_([a-zA-Z0-9_-]+)|@(shot|grid)_anchor\b/g;
+// - 分镜锚点: @shot_anchor, @grid_anchor, @storyboard_anchor, @previous_storyboard_anchor
+export const MENTION_REGEX = /@(char|prop|scene)_([a-zA-Z0-9_-]+)|@(shot|grid|storyboard|previous_storyboard)_anchor\b/g;
 
 export function isAssetMentionType(type: MentionType): type is AssetMentionType {
   return type === 'char' || type === 'prop' || type === 'scene';
 }
 
 export function isAnchorMentionType(type: MentionType): type is AnchorMentionType {
-  return type === 'shot' || type === 'grid';
+  return type === 'shot' || type === 'grid' || type === 'storyboard' || type === 'previous_storyboard';
 }
 
 /**
@@ -78,14 +78,14 @@ export function normalizeMentionId(type: MentionType, id: string): string {
 
 /**
  * 生成 Mention 字符串
- * @param type - 类型 (char/prop/scene/shot/grid)
- * @param id - 资产 ID（项目内 ID）；shot/grid 会忽略 id 并生成内置 anchor token
- * @returns 格式为 @type_id 的字符串，如 @char_sora2xxx；锚点为 @shot_anchor / @grid_anchor
+ * @param type - 类型 (char/prop/scene/shot/grid/storyboard/previous_storyboard)
+ * @param id - 资产 ID（项目内 ID）；锚点类型会忽略 id 并生成内置 anchor token
+ * @returns 格式为 @type_id 的字符串，如 @char_sora2xxx；锚点为 @shot_anchor / @grid_anchor 等
  */
 export function createMentionString(type: MentionType, id: string): string {
   // 先规范化 ID，避免双前缀
   const normalizedId = normalizeMentionId(type, id);
-  if (type === 'shot' || type === 'grid') {
+  if (isAnchorMentionType(type)) {
     return `@${type}_anchor`;
   }
   return `@${type}_${normalizedId}`;
@@ -97,7 +97,7 @@ export function createMentionString(type: MentionType, id: string): string {
  */
 export function parseMentionId(mentionStr: string): { type: MentionType; id: string } | null {
   // 先尝试标准格式
-  const anchorMatch = mentionStr.match(/@(shot|grid)_anchor\b/);
+  const anchorMatch = mentionStr.match(/@(shot|grid|storyboard|previous_storyboard)_anchor\b/);
   if (anchorMatch) {
     return { type: anchorMatch[1] as MentionType, id: 'anchor' };
   }
@@ -133,6 +133,22 @@ export function resolveBuiltInMentionItem(type: MentionType, id: string): Mentio
       type: 'grid',
       name: '网格锚定图',
       description: '当前分镜已经生成的九宫格/四宫格时序锚定图。没有生成分镜图时不要使用。',
+    };
+  }
+  if (type === 'storyboard' && normalizedId === 'anchor') {
+    return {
+      id: 'anchor',
+      type: 'storyboard',
+      name: '故事板锚定图',
+      description: '当前分镜已经生成的电影故事板/制作方案板。只有存在真实故事板图引用时才应出现在提示词中。',
+    };
+  }
+  if (type === 'previous_storyboard' && normalizedId === 'anchor') {
+    return {
+      id: 'anchor',
+      type: 'previous_storyboard',
+      name: '上一故事板锚定图',
+      description: '上一分镜生成的故事板图，用于继承场景、人物、光影和情绪连续性。',
     };
   }
   return undefined;

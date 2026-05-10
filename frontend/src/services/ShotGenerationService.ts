@@ -9,6 +9,26 @@ import { shotImageWorkflow } from '../workflow/shotImageWorkflow';
 import { runWithConcurrency } from '../utils/concurrency';
 import type { StyleSnapshotLike } from '../utils/promptNormalize';
 import { runWithTask } from './taskRunner';
+import { createLogger } from '../store/logger';
+
+const logger = createLogger('ShotGenerationService');
+
+export interface BatchGenerateShotImageResult {
+  shotId: string;
+  success: boolean;
+  asset?: StoredMediaAsset;
+  error?: string;
+}
+
+interface BatchGenerateShotImageOptions {
+  aspectRatio?: '16:9' | '9:16';
+  theme?: string;
+  stylePrompt?: string;
+  styleSnapshot?: StyleSnapshotLike;
+  project?: { styleSnapshot?: StyleSnapshotLike; aspectRatio?: '16:9' | '9:16' };
+  onProgress?: (overall: number, current: { shotId: string; progress: number; step?: string }) => void;
+  onItemComplete?: (result: BatchGenerateShotImageResult) => void | Promise<void>;
+}
 
 export async function generateShotImage(
   projectId: string,
@@ -73,16 +93,22 @@ export async function batchGenerateShotImages(
   characters: Character[],
   scenes: Scene[],
   ttiSelection?: string,
-  styleOptions?: {
-    aspectRatio?: '16:9' | '9:16';
-    theme?: string;
-    stylePrompt?: string;
-    styleSnapshot?: StyleSnapshotLike;
-    project?: { styleSnapshot?: StyleSnapshotLike; aspectRatio?: '16:9' | '9:16' };
-    onProgress?: (overall: number, current: { shotId: string; progress: number; step?: string }) => void;
-  }
-): Promise<Array<{ shotId: string; success: boolean; asset?: StoredMediaAsset; error?: string }>> {
+  styleOptions?: BatchGenerateShotImageOptions
+): Promise<BatchGenerateShotImageResult[]> {
   if (shotIds.length === 0) return [];
+
+  const notifyItemComplete = async (item: BatchGenerateShotImageResult): Promise<void> => {
+    if (!styleOptions?.onItemComplete) return;
+    try {
+      await styleOptions.onItemComplete(item);
+    } catch (err) {
+      logger.warn('批量分镜图片单项完成回调失败', {
+        shotId: item.shotId,
+        success: item.success,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
 
   const { result } = await runWithTask({
     projectId,
@@ -100,33 +126,47 @@ export async function batchGenerateShotImages(
       let completedCount = 0;
       const tasks = shotIds.map((shotId) => async () => {
         const shot = allShots.find(s => s.id === shotId);
+        let item: BatchGenerateShotImageResult;
         if (!shot) {
-          completedCount++;
-          return { shotId, success: false as const, error: '分镜不存在' };
+          item = { shotId, success: false, error: '分镜不存在' };
+        } else {
+          try {
+            const workflowParams = {
+              projectId,
+              episodeId,
+              shot,
+              characters,
+              scenes,
+              ttiSelection,
+              aspectRatio: styleOptions?.aspectRatio,
+              theme: styleOptions?.theme,
+              stylePrompt: styleOptions?.stylePrompt,
+              styleSnapshot: styleOptions?.styleSnapshot,
+              project: styleOptions?.project,
+              onProgress: (progress: number, step?: string) => {
+                const overall = Math.round(((completedCount + progress / 100) / shotIds.length) * 100);
+                styleOptions?.onProgress?.(overall, { shotId, progress, step });
+                taskCtx.progress(overall, `${shotId.slice(-6)}: ${step || ''}`);
+              },
+            };
+
+            const asset = await shotImageWorkflow(workflowParams);
+            item = { shotId, success: true, asset };
+          } catch (err) {
+            item = {
+              shotId,
+              success: false,
+              error: err instanceof Error ? err.message : String(err),
+            };
+          }
         }
-
-        const workflowParams = {
-          projectId,
-          episodeId,
-          shot,
-          characters,
-          scenes,
-          ttiSelection,
-          aspectRatio: styleOptions?.aspectRatio,
-          theme: styleOptions?.theme,
-          stylePrompt: styleOptions?.stylePrompt,
-          styleSnapshot: styleOptions?.styleSnapshot,
-          project: styleOptions?.project,
-          onProgress: (progress: number, step?: string) => {
-            const overall = Math.round(((completedCount + progress / 100) / shotIds.length) * 100);
-            styleOptions?.onProgress?.(overall, { shotId, progress, step });
-            taskCtx.progress(overall, `${shotId.slice(-6)}: ${step || ''}`);
-          },
-        };
-
-        const asset = await shotImageWorkflow(workflowParams);
         completedCount++;
-        return { shotId, success: true as const, asset };
+        const overall = Math.round((completedCount / shotIds.length) * 100);
+        const step = item.success ? '完成' : '失败';
+        styleOptions?.onProgress?.(overall, { shotId, progress: 100, step });
+        taskCtx.progress(overall, `${shotId.slice(-6)}: ${step}`);
+        await notifyItemComplete(item);
+        return item;
       });
 
       const settled = await runWithConcurrency(tasks, 2);

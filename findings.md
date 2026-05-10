@@ -1,5 +1,33 @@
 # Findings
 
+## 2026-05-10 Storyboard Image Mode
+
+- 故事板模式应复用现有分镜引用 bundle，而不是新增独立上传/引用协议。这样 `@storyboard_anchor` / `@previous_storyboard_anchor` 会和角色、场景、道具、用户参考图共享同一个 references 顺序，并由 `compileShotPromptToBundle()` 统一编译成 `@Image N`。
+- “继承上一故事板”必须落到真实图片引用：实现时从同剧集 `allShots` 中向前查找最近一张 `imageMode === 'storyboard'` 且有当前图片的分镜；若用户关闭 `inheritPreviousStoryboard`，则不注入该 reference，也不允许模板输出 `@previous_storyboard_anchor`。
+- 上一故事板不是当前分镜锚点，所以 `previous-storyboard-anchor` 不参与 `hasShotImage`；当前 `storyboard-anchor` 才表示本分镜已有生成图，可作为多参考锚定。
+- 故事板模式和九/四宫格一样是多面板图片。视频链路不能把整张故事板当作单一首帧延展；UI 和 workflow 都应把它修正为多参 / reference-to-video 语义，并在视频提示词里提醒不要生成面板边框、箭头、制作表文本。
+- 提示词模板需要分两层：推理模板 `storyboard_shot_prompt_generation` 负责把用户分镜整理成电影级故事板 brief；TTI 模板 `tti_storyboard_shot_image` 负责最终出图包装，并再次强调不要渲染可读字幕、对白气泡、标题、项目符号、logo、水印。
+- 用户给的四类样例可以抽象为版式选择空间：电影制作方案表、4x4 连续故事板、非对称角色设计表、四格漫画信息图。但当前项目分镜不应固定某一种样式，应该按本分镜剧情自动选择最合适结构，并始终继承项目整体风格。
+
+## 2026-05-10 Storyboard Script Line Editing Stability
+
+- 分镜文本编辑入口在 `ShotScriptLines.tsx`：每行是受控 `<input value={line.text}>`，`onChange` 每个字符调用 `onLinesChange(shotId, lines.map(...))`。
+- 父级 `Storyboard.handleScriptLinesChange()` 每次都基于当前 `shots` 构造 `updatedShots` 并调用 `saveAllShots()`；`saveAllShots()` 会同步 `setShots(normalizedShots)` 并排队 `saveEpisodeShots()`。因此一个字符会触发整组 shots 引用更新、Virtuoso data 更新、ShotCard/ShotScriptLines 重渲染和异步保存排队。
+- `ShotListEditor` 已经用 `shotsForScrollRef` 避免 active shot 滚动 effect 在输入时重跑，说明该区域已有“输入时被 shots 状态刷新干扰”的历史问题。当前光标跳尾更像受控 input 在每个字符后收到父级重渲染值，浏览器 selection 被重置。
+- 最小修复方向：字幕行文本编辑在行组件内维护本地草稿，输入时只更新草稿；失焦/Enter 等提交时才调用父级保存。外部 line.text 变化时，如果该 input 未聚焦再同步草稿。添加/删除/插入/拖拽仍走父级即时保存。
+
+## 2026-05-09 Linghui Prompt Upload Deduplication
+
+- 本轮目标：灵绘提示词编译上传协议必须按“唯一图片源”去重，不应按 `@` 引用次数上传；上传后的远程地址需要写回本地元数据并与文件对应，只有链接失效时重新上传。
+- 初始搜索显示相关入口集中在 `frontend/src/components/linghui/**`、`frontend/src/services/promptCompilation/**`、`frontend/src/services/imageHostingService.ts` 和 `frontend/src/services/mediaRemoteUrlService.ts`；项目分镜近期也改过 ITV 上传协议，需要对照检查。
+- 当日日志 `logs/koma-20260509.log` / `logs/koma-error-20260509.log` / `logs/ee-core-20260509.log` 用宽泛关键词未直接命中上传错误，需要根据代码里的日志 tag 继续精确查找。
+- 根因一：`ensureRemoteUrlForImageSources()` 原来逐项调用 `ensureRemoteUrlForImageSource()`，没有按图片源 key 做批量去重，也没有本地远程 URL 缓存；同一个 data-url / local path 重复出现时会重复上传。
+- 根因二：灵绘图片 grok-image-index 路径把显式 `referenceSources` 和静默上游 `silentReferenceSources` 分两次远程归一化；同一张图同时作为 `@ref` 与静默上游参考时，会在同一个节点里触发多次上传，并且 provider references 可能重复携带同一张图。
+- 远程 URL 缓存现在写入项目目录 `metadata/media-remote-url-cache.json`，按本地路径、data-url 稳定 hash、provider input 或 StoredMediaAsset key 关联源图；复用缓存前会 HEAD 检测，遇到 403/405 再用 Range GET 兜底，失效则删除缓存并重传。
+- 项目分镜视频链路最终也走 `mapVideoRequestToProviderRequest()`；修复后 image-to-video 的主图+额外参考、start-end 的首尾帧在两边都需要 remote-url 时会合并为一次批量归一化，避免同一请求内靠磁盘缓存兜底去重。
+- 分镜引用 bundle 构造器本身已经对角色/场景/道具/锚点源做去重；本轮额外补的是 provider 映射阶段的上传去重，覆盖主图/参考图或首尾帧字段之间重复的情况。
+- 用户后续日志显示“缓存未生效”的直接原因是 `ensureRemoteUrlForImageAsset()` 对带 `localPath + remoteUrl` 的资产先检测旧 `asset.remoteUrl`，再查本地 sourceKey 缓存；旧链接每次 HEAD 卡 5 秒后才复用缓存，看起来像每次重新上传。修复后本地路径缓存优先，缓存命中时不再触碰旧 `remoteUrl`；无缓存但资产远程地址可访问时会把该地址写入本地缓存。
+
 ## 2026-05-08 Linghui Panorama + Director3D Stabilization
 
 - `docs/linghui-panorama-and-3d-director-workbench-plan.md` 已把近期优先级写清楚：先修全景 projection/prompt/viewer 契约，再做 `linghui/director3d` MVP；当前用户的阻塞点是 director3d 无法进入编辑，因此本轮先处理编辑入口。
@@ -272,3 +300,42 @@
 - `npm run lint:theme` is intentionally theme-focused and does not try to clear the repository's broader historical ESLint unused-import/unused-vars debt. Full `eslint src` still has unrelated legacy issues, but theme CI runs the dedicated discipline config plus the stricter custom script.
 - Browser smoke found and helped fix one runtime regression in `ScriptEditor.tsx` where `rootClassName` was accidentally left outside component scope. After the fix, the app mounted and root theme dataset/CSS variables were present.
 - Remaining color literals are outside business UI: theme author files, the `index.scss` first-paint token snapshot, immutable `AppLogo` artwork, and media/export defaults in rendering/export engines. These are documented in `docs/INLINE_STYLE_EXCEPTIONS.md` and allowlisted by exact path.
+
+## 2026-05-10 Storyboard Anchor Findings
+
+- `ImageCardGrid` 切换图片版本会调用 `onImagesChange(shot.id, images, idx)`，`Storyboard.handleImagesChange` 会把 `media.currentImageIndex` 写回 shot，因此选中版本具备持久化入口。
+- `buildShotReferenceBundle` 的 `pushPreviousStoryboardAnchor` 已经从上一故事板的 `previous.media.currentImageIndex ?? 0` 取图，生成链路理论上会跟随上一故事板当前选中版本。
+- 当前缺口在 UI 层：`ShotCard.promptMentionItems` 只注入当前分镜锚定图，没有注入 `@previous_storyboard_anchor` 的真实 `previewImage`，所以悬浮提示会退回内置文案而没有上一分镜选中图片。
+- UI 可用性应该和生成链路一致：只有当前分镜是 `storyboard` 且 `inheritPreviousStoryboard !== false` 时，才应给 `@previous_storyboard_anchor` 注入上一故事板预览。
+
+## 2026-05-10 Shot Video Version Playback Findings
+
+- `ShotCard` 的缩略格选择会调用 `onVideosChange(shot.id, videos, idx)`，`Storyboard.handleVideosChange` 会把 `media.currentVideoIndex` 写回，所以版本选择入口存在。
+- 播放弹窗使用 `StagePlayer`，但播放器组件内部有 xgplayer/native video 两条路径；在切换版本后需要让播放器节点带源 key，避免浏览器或播放器实例继续复用旧媒体状态。
+- 视频生成的异步任务路径需要显式透传 `destPath`。`shot-version` 视频应固定落到 `shots/<shotId>/versions/<versionId>/video.mp4`，否则主进程轮询恢复后可能走默认落盘路径，导致不同版本源身份不稳定。
+- `mediaPollFulfillers` 之前没有把 task extra 里的目标路径传给 `persistMediaAsset`；这会让 async ITV 持久化无法使用业务指定的版本路径。
+
+## 2026-05-10 Storyboard Batch Media Persistence
+
+- 用户反馈：分镜批量出图 / 批量生成视频没有逐个落盘，一个失败后前面成功的结果也会丢。
+- 排查：`Storyboard.handleBatchGenerate` / `handleBatchReGenerateImages` 在 `batchGenerateShotImages()` 整批返回后才一次性 `setShots`；如果父任务失败或用旧 `shots` 覆盖存储，成功项 UI/落盘都不可靠。
+- 排查：`Storyboard.handleBatchRenderVideos` / `handleBatchReGenerateVideos` 在 `batchRenderShots()` 整批返回后才 `refreshShotsFromStore()`；中途成功的视频不会马上刷新。
+- 排查：`batchRenderShots()` 顺序执行但没有外层 try/catch；`shotRenderWorkflow()` 大多会返回失败结果，但若其自身抛出未捕获异常会中断整批。
+- 实施方向：批量图片服务增加单项完成回调并在每个任务内 catch；批量视频 workflow 增加单项完成回调与失败隔离；Storyboard 通过单项回调逐个 `refreshShotsFromStore()`，成功一条显示/保存一条。
+
+- 实施结果：批量图片和批量视频现在都以单项完成回调驱动 UI 刷新；成功项在服务层已有媒体绑定落盘后会立即从项目存储重拉，不再等整批结束，也不再用旧 `shots` 合并覆盖最新媒体列表。
+- 失败隔离：图片批量每个 `shotImageWorkflow` 独立 catch；视频批量每个 `shotRenderWorkflow` 外层 catch。一个分镜失败会计入失败结果，但后续分镜继续执行。
+
+## 2026-05-10 Storyboard Prompt Template Production Board Upgrade
+
+- 用户反馈：当前故事板生成不统一，缺少稳定的场景设计区、俯视镜头调度图、8镜头分镜故事区、灯光/情绪/声音/摄影/色彩方案等制作板模块。
+- 排查：现有 `storyboard_shot_prompt_generation` 已强调“不固定 2x2”和制作笔记，但版式仍偏自由选择，没有把电影前期制作板作为默认骨架，也没有强制 8 镜头故事区与声音/摄影说明进入输出字段。
+- 方向：把默认模板升级为“电影级制作板骨架优先”，保留非 2x2/非均匀网格能力，但强制大多数分镜包含场景设计区、俯视调度图、8镜头故事区、灯光与风格、情绪关键词、声音设计、摄影说明、色彩方案。
+- 实施结果：故事板推理模板现在以“电影前期制作板”为默认骨架，不再只是自由选择版式；除非剧情极端适合四段宣传漫画，否则会引导模型生成多区块制作板。
+- 关键统一点：强制包含场景设计区、俯视镜头调度图、8镜头分镜故事区、灯光与风格、情绪关键词、声音设计、摄影说明、色彩方案；TTI 终稿模板也同步要求这些区域进入最终图片结构。
+
+## 2026-05-10 Storyboard Template Flexible Production Poster
+
+- 用户反馈：上一版故事板模板过于机械，尤其固定 8 镜头/固定组成；需要参考电影分镜信息图海报风格，保留项目标题、角色设计、场景设计、俯视调度、分镜故事、灯光、情绪、声音、摄影、色彩等区块，但镜头数量和版式应由剧情决定。
+- 方向：从“固定 8 镜头制作板”改为“剧情驱动的专业影视前期制作设定板”：用 X 个镜头 / X 个角色 / 1 个场景这类约束描述，而不是硬编码 8；TTI 终稿模板也改成 story-driven shot count。
+- 实施结果：故事板模板已经从“固定 8 镜头制作板”改为“剧情驱动 N 镜头的信息图海报”。模块仍稳定，但镜头数、角色区、调度区和故事区的比例由剧情内容决定，避免机械拼表。

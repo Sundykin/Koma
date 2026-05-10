@@ -13,7 +13,7 @@ import {
   type Shot,
   type ShotVersion,
 } from '../types';
-import { saveShotVersion, loadShotMeta, loadCharacters, loadProps, loadScenes } from '../store/projectStore';
+import { saveShotVersion, loadShotMeta, loadCharacters, loadProps, loadScenes, loadEpisodeShots } from '../store/projectStore';
 import { createLogger } from '../store/logger';
 import { logITVCall } from '../store/aiCallLogger';
 import { resolvePromptTemplate } from '../store/promptTemplates';
@@ -84,6 +84,7 @@ interface BatchRenderParams {
   styleSnapshot?: StyleSnapshotLike;
   project?: { styleSnapshot?: StyleSnapshotLike; aspectRatio?: '16:9' | '9:16'; mode?: 'drama' | 'narration' };
   concurrency?: number;
+  onShotComplete?: (result: ShotRenderResult) => void | Promise<void>;
 }
 
 interface BatchRenderResult {
@@ -103,6 +104,9 @@ export async function shotRenderWorkflow(
 ): Promise<ShotRenderResult> {
   const { projectId, episodeId, shot, settings, mediaSelections, theme, stylePrompt, styleSnapshot, project } = params;
   const normalizedShot = normalizeShotMediaState(shot);
+  const episodeShots = episodeId
+    ? await loadEpisodeShots(projectId, episodeId).catch(() => undefined)
+    : undefined;
 
   logger.info(`开始生成分镜视频 ${normalizedShot.id}`);
 
@@ -121,6 +125,7 @@ export async function shotRenderWorkflow(
     characters,
     scenes: [],
     props: [],
+    allShots: episodeShots,
   });
 
   try {
@@ -147,6 +152,7 @@ export async function shotRenderWorkflow(
       characters,
       scenes: projectScenes,
       props: projectProps,
+      allShots: episodeShots,
     });
     const selectedItvContext = settings
       ? resolveConfiguredChannelModel(settings, 'itv', mediaSelections?.itvSelection, initialVideoPlan.capability)
@@ -161,6 +167,7 @@ export async function shotRenderWorkflow(
       characters,
       scenes: projectScenes,
       props: projectProps,
+      allShots: episodeShots,
       modelCapabilities: selectedItvModelCapabilities,
       modelMaxRefs: selectedItvModelMaxRefs,
     });
@@ -356,6 +363,7 @@ export async function batchRenderShots(
     styleSnapshot,
     project,
     concurrency: _concurrency = 1,
+    onShotComplete,
   } = params;
 
   logger.info(`开始批量生成 ${shots.length} 个分镜视频`);
@@ -366,19 +374,45 @@ export async function batchRenderShots(
   for (let i = 0; i < shots.length; i++) {
     const shot = shots[i];
 
-    const result = await shotRenderWorkflow(
-      { projectId, episodeId, shot, settings, aspectRatio, mediaSelections, theme, stylePrompt, styleSnapshot, project },
-      (progress, step) => {
-        const overall = Math.round(((completed + progress / 100) / shots.length) * 100);
-        onProgress(overall, { shotId: shot.id, progress, step });
-      }
-    );
+    let result: ShotRenderResult;
+    try {
+      result = await shotRenderWorkflow(
+        { projectId, episodeId, shot, settings, aspectRatio, mediaSelections, theme, stylePrompt, styleSnapshot, project },
+        (progress, step) => {
+          const overall = Math.round(((completed + progress / 100) / shots.length) * 100);
+          onProgress(overall, { shotId: shot.id, progress, step });
+        }
+      );
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err);
+      logger.error('批量分镜视频单项异常，继续后续分镜', {
+        shotId: shot.id,
+        error,
+      });
+      result = {
+        shotId: shot.id,
+        version: {} as ShotVersion,
+        success: false,
+        error,
+      };
+    }
 
     results.push(result);
     completed++;
 
     const overall = Math.round((completed / shots.length) * 100);
     onProgress(overall, { shotId: shot.id, progress: 100, step: result.success ? '完成' : '失败' });
+    if (onShotComplete) {
+      try {
+        await onShotComplete(result);
+      } catch (err) {
+        logger.warn('批量分镜视频单项完成回调失败', {
+          shotId: shot.id,
+          success: result.success,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
   }
 
   const successCount = results.filter((r) => r.success).length;

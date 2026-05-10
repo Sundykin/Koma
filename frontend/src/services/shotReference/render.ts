@@ -22,7 +22,7 @@ export function renderShotReferenceTable(bundle: ShotReferenceBundle): string {
     lines.push(`- references[${idx}] / @Image ${imageNumber}：${item.label}`);
   });
   if (!bundle.hasShotImage) {
-    lines.push('- 本集合不含真实分镜锚定图 / 宫格锚定图；不要使用 @shot_anchor / @grid_anchor。');
+    lines.push('- 本集合不含真实分镜锚定图 / 宫格锚定图 / 故事板锚定图；不要使用 @shot_anchor / @grid_anchor / @storyboard_anchor。');
   }
   lines.push('');
   lines.push('正文中所有视觉描述必须使用 `@Image N` 引用上面对应位置的参考图。同一元素每次出现都必须重复标注，不允许写"如前所述"或省略。');
@@ -32,6 +32,40 @@ export function renderShotReferenceTable(bundle: ShotReferenceBundle): string {
     lines.push(
       `> 备注：本场景另有 ${bundle.capacity.truncatedCount} 项次要资产因模型引用图配额已被裁掉，不在本表内；`
       + '提示词不应引用未列出的位置。',
+    );
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * 渲染给“可编辑提示词推理阶段”看的语义引用表。
+ *
+ * 这里刻意不暴露 `@Image N` / `references[N]`，因为它们只属于最终 provider
+ * 请求编译后的传输协议。LLM 生成并保存到本地的提示词必须保持语义 mention：
+ * `@char_<id>` / `@scene_<id>` / `@prop_<id>` / `@storyboard_anchor` 等。
+ */
+export function renderShotMentionReferenceTable(bundle: ShotReferenceBundle): string {
+  if (bundle.items.length === 0) {
+    return '本镜头无任何视觉参考——纯文字推理生图；不要使用 @shot_anchor / @grid_anchor / @storyboard_anchor / @previous_storyboard_anchor，也不要输出 @Image N / @图片N。';
+  }
+
+  const lines: string[] = [];
+  lines.push('## 视觉参考集合（仅使用语义 mention，禁止输出 @Image N / @图片N）');
+  bundle.items.forEach((item) => {
+    lines.push(`- ${item.mentionToken} ${item.label}`);
+  });
+  if (!bundle.hasShotImage) {
+    lines.push('- 本集合不含真实分镜锚定图 / 宫格锚定图 / 故事板锚定图；不要使用 @shot_anchor / @grid_anchor / @storyboard_anchor。');
+  }
+  lines.push('');
+  lines.push('正文中所有视觉引用都必须使用上方语义 mention。`@Image N` / `@图片N` 只允许在最终请求编译之后出现，严禁写入当前可编辑提示词。');
+
+  if (bundle.capacity.truncatedCount > 0) {
+    lines.push('');
+    lines.push(
+      `> 备注：本场景另有 ${bundle.capacity.truncatedCount} 项次要资产因模型引用图配额已被裁掉，不在本表内；`
+      + '提示词不应引用未列出的视觉参考。',
     );
   }
 

@@ -9,7 +9,8 @@ import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
 import { StoryboardLayout } from './StoryboardLayout';
 import { ShotListHeader } from './ShotListHeader';
 import type { MentionItem } from '../../editor';
-import type { Shot, ShotScriptLine, Character, Scene, Prop, StoredMediaAsset } from '../../types';
+import type { Shot, ShotImageMode, ShotScriptLine, Character, Scene, Prop, StoredMediaAsset } from '../../types';
+import { getMediaAssetDisplaySource } from '../../types';
 import { ShotCard } from './ShotCard';
 
 const { Text } = Typography;
@@ -69,10 +70,11 @@ export interface ShotListEditorProps {
   onAddShot: () => void;
   onInsertAbove: (shotId: string) => void;
   onInsertBelow: (shotId: string) => void;
-  onShotImageModeChange: (shotId: string, mode: 'normal' | 'grid-9' | 'grid-4') => void;
+  onShotImageModeChange: (shotId: string, mode: Exclude<ShotImageMode, 'grid'>) => void;
+  onStoryboardInheritPreviousChange?: (shotId: string, enabled: boolean) => void;
   onShotVideoModeChange?: (shotId: string, mode: 'multi-ref' | 'first-frame') => void;
   onBulkVideoModeChange?: (mode: 'multi-ref' | 'first-frame') => void;
-  onBulkImageModeChange?: (mode: 'normal' | 'grid-4' | 'grid-9') => void;
+  onBulkImageModeChange?: (mode: Exclude<ShotImageMode, 'grid'>) => void;
   /** 当前项目选择的 ITV 渠道时长规格，透传给 ShotCard 决定时长控件渲染方式 */
   durationSpec?: import('../../providers/itv/durationSpec').VideoDurationSpec;
   /** 单镜头视频生成进度（按 shotId 聚合），透传给 ShotCard 渲染百分比与阶段文本 */
@@ -133,6 +135,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   onInsertAbove,
   onInsertBelow,
   onShotImageModeChange,
+  onStoryboardInheritPreviousChange,
   onShotVideoModeChange,
   onBulkVideoModeChange,
   onBulkImageModeChange,
@@ -234,59 +237,64 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   }, [activeShotId]);
 
   const renderShotRow = useCallback(
-    (index: number, shot: Shot) => (
-      <ShotCard
-        projectId={projectId}
-        shot={shot}
-        index={index}
-        totalCount={shots.length}
-        characters={characters}
-        scenes={scenes}
-        props={props}
-        mentionItems={mentionItems}
-        isSelected={selectedIds.has(shot.id)}
-        isActive={activeShotId === shot.id}
-        isGeneratingImagePrompt={generatingImagePrompts.has(shot.id)}
-        isGeneratingVideoPrompt={generatingVideoPrompts.has(shot.id)}
-        isGeneratingImage={generatingImages.has(shot.id)}
-        isGeneratingVideo={generatingVideos.has(shot.id)}
-        onSelectChange={handleSelectChange}
-        onActivate={onActiveShotChange}
-        onScriptLinesChange={onScriptLinesChange}
-        onImagePromptChange={onImagePromptChange}
-        onVideoPromptChange={onVideoPromptChange}
-        onDurationChange={onDurationChange}
-        onImageModeChange={onShotImageModeChange}
-        onVideoModeChange={onShotVideoModeChange}
-        onCharactersChange={onCharactersChange}
-        onScenesChange={onScenesChange}
-        onPropsChange={onPropsChange}
-        onReferenceImagesChange={onReferenceImagesChange}
-        onImagesChange={onImagesChange}
-        onVideosChange={onVideosChange}
-        onGenerateImagePrompt={onGenerateImagePrompt}
-        onGenerateVideoPrompt={onGenerateVideoPrompt}
-        onOptimizeImagePrompt={onOptimizeImagePrompt}
-        onOptimizeVideoPrompt={onOptimizeVideoPrompt}
-        onGenerateImage={onGenerateImage}
-        onGenerateVideo={onGenerateVideo}
-        onGenerateAudio={onGenerateAudio}
-        videoCapabilityLabel={getVideoCapabilityLabel?.(shot.id)}
-        videoGenerateDisabledReason={getVideoGenerateDisabledReason?.(shot.id)}
-        onDelete={onDelete}
-        onMergeUp={onMergeUp}
-        onMergeDown={onMergeDown}
-        onMoveUp={onMoveUp}
-        onMoveDown={onMoveDown}
-        onInsertAbove={onInsertAbove}
-        onInsertBelow={onInsertBelow}
-        durationSpec={durationSpec}
-        videoProgress={videoProgressMap?.get(shot.id)}
-      />
-    ),
+    (index: number, shot: Shot) => {
+      const latestShots = shotsForScrollRef.current;
+      const previousStoryboardMention = buildPreviousStoryboardMention(latestShots, index);
+      return (
+        <ShotCard
+          projectId={projectId}
+          shot={shot}
+          index={index}
+          totalCount={latestShots.length}
+          characters={characters}
+          scenes={scenes}
+          props={props}
+          mentionItems={mentionItems}
+          previousStoryboardMention={previousStoryboardMention}
+          isSelected={selectedIds.has(shot.id)}
+          isActive={activeShotId === shot.id}
+          isGeneratingImagePrompt={generatingImagePrompts.has(shot.id)}
+          isGeneratingVideoPrompt={generatingVideoPrompts.has(shot.id)}
+          isGeneratingImage={generatingImages.has(shot.id)}
+          isGeneratingVideo={generatingVideos.has(shot.id)}
+          onSelectChange={handleSelectChange}
+          onActivate={onActiveShotChange}
+          onScriptLinesChange={onScriptLinesChange}
+          onImagePromptChange={onImagePromptChange}
+          onVideoPromptChange={onVideoPromptChange}
+          onDurationChange={onDurationChange}
+          onImageModeChange={onShotImageModeChange}
+          onStoryboardInheritPreviousChange={onStoryboardInheritPreviousChange}
+          onVideoModeChange={onShotVideoModeChange}
+          onCharactersChange={onCharactersChange}
+          onScenesChange={onScenesChange}
+          onPropsChange={onPropsChange}
+          onReferenceImagesChange={onReferenceImagesChange}
+          onImagesChange={onImagesChange}
+          onVideosChange={onVideosChange}
+          onGenerateImagePrompt={onGenerateImagePrompt}
+          onGenerateVideoPrompt={onGenerateVideoPrompt}
+          onOptimizeImagePrompt={onOptimizeImagePrompt}
+          onOptimizeVideoPrompt={onOptimizeVideoPrompt}
+          onGenerateImage={onGenerateImage}
+          onGenerateVideo={onGenerateVideo}
+          onGenerateAudio={onGenerateAudio}
+          videoCapabilityLabel={getVideoCapabilityLabel?.(shot.id)}
+          videoGenerateDisabledReason={getVideoGenerateDisabledReason?.(shot.id)}
+          onDelete={onDelete}
+          onMergeUp={onMergeUp}
+          onMergeDown={onMergeDown}
+          onMoveUp={onMoveUp}
+          onMoveDown={onMoveDown}
+          onInsertAbove={onInsertAbove}
+          onInsertBelow={onInsertBelow}
+          durationSpec={durationSpec}
+          videoProgress={videoProgressMap?.get(shot.id)}
+        />
+      );
+    },
     [
       projectId,
-      shots.length,
       characters,
       scenes,
       props,
@@ -304,6 +312,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
       onVideoPromptChange,
       onDurationChange,
       onShotImageModeChange,
+      onStoryboardInheritPreviousChange,
       onShotVideoModeChange,
       onCharactersChange,
       onScenesChange,
@@ -327,6 +336,8 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
       onMoveDown,
       onInsertAbove,
       onInsertBelow,
+      durationSpec,
+      videoProgressMap,
     ],
   );
 
@@ -411,5 +422,33 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
     </StoryboardLayout>
   );
 };
+
+function buildPreviousStoryboardMention(shots: Shot[], currentIndex: number): MentionItem | undefined {
+  const current = shots[currentIndex];
+  if (current?.imageMode !== 'storyboard') return undefined;
+  if (current.inheritPreviousStoryboard === false) return undefined;
+
+  for (let i = currentIndex - 1; i >= 0; i -= 1) {
+    const candidate = shots[i];
+    if (candidate.imageMode !== 'storyboard') continue;
+    const images = candidate.media?.images || [];
+    if (!images.length) continue;
+    const rawIndex = candidate.media?.currentImageIndex;
+    const selectedIndex = Number.isInteger(rawIndex)
+      ? Math.min(Math.max(rawIndex as number, 0), images.length - 1)
+      : 0;
+    const selectedImage = images[selectedIndex];
+    const previewImage = getMediaAssetDisplaySource(selectedImage);
+    if (!previewImage) continue;
+    return {
+      id: 'anchor',
+      type: 'previous_storyboard',
+      name: '上一故事板锚定图',
+      description: `来自分镜 #${i + 1} 的当前选中故事板版本 v${selectedIndex + 1}，用于保持剧情、人物、场景和光影连续。`,
+      previewImage,
+    };
+  }
+  return undefined;
+}
 
 export default ShotListEditor;

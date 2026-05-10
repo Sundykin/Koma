@@ -410,6 +410,30 @@ describe('shotVideoPlan', () => {
     expect(plan.bundle.items[0].mentionToken).toBe('@grid_anchor');
   });
 
+  it('storyboard 模式 + multi-ref + 模型支持参考生视频 → 当前故事板作 reference anchor', () => {
+    const shot = createShot({
+      imageMode: 'storyboard',
+      videoMode: 'multi-ref',
+      media: {
+        images: [createImageAsset('https://cdn.example.com/storyboard.png')],
+        currentImageIndex: 0,
+      },
+    });
+
+    const plan = collectShotVideoPlan({
+      shot,
+      characters: [],
+      scenes: [],
+      props: [],
+      modelCapabilities: ['video.reference-to-video', 'video.image-to-video'],
+    });
+
+    expect(plan.capability).toBe('video.reference-to-video');
+    expect(plan.bundle.items[0].kind).toBe('storyboard-anchor');
+    expect(plan.bundle.items[0].mentionToken).toBe('@storyboard_anchor');
+    expect(plan.primaryImageInput).toEqual(createImageAsset('https://cdn.example.com/storyboard.png'));
+  });
+
   it('构建视频请求时会把任意时长归一到允许档位', () => {
     const plan = collectShotVideoPlan({
       shot: createShot(),

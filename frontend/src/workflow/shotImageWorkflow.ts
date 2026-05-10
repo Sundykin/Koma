@@ -5,7 +5,7 @@
  */
 import type { Character, Scene, Shot, StoredMediaAsset } from '../types';
 import { getMediaAssetDisplaySource, getShotScriptText } from '../types';
-import { loadProps } from '../store/projectStore';
+import { getProjectPath, loadEpisodeShots, loadProps } from '../store/projectStore';
 import { resolvePromptTemplate } from '../store/promptTemplates';
 import { getThemeStylePrefix } from '../config/themePresets';
 import { logTTICall } from '../store/aiCallLogger';
@@ -24,6 +24,10 @@ import { buildShotImageTemplateVariables } from './promptVariableBuilders';
 import type { StyleSnapshotLike } from '../utils/promptNormalize';
 
 const logger = createLogger('ShotImageWorkflow');
+
+function buildShotImageVersionId(): string {
+  return `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
 
 export async function shotImageWorkflow(params: {
   projectId: string;
@@ -59,6 +63,7 @@ export async function shotImageWorkflow(params: {
   const normalizedScenes = normalizeScenesMediaState(scenes);
   const props = normalizePropsMediaState(await loadProps(projectId).catch(() => []));
   const finalAspectRatio = aspectRatio || project?.aspectRatio || '16:9';
+  const allShots = await loadEpisodeShots(projectId, episodeId).catch(() => undefined);
 
   onProgress?.(0, '准备生成分镜图片...');
 
@@ -75,12 +80,18 @@ export async function shotImageWorkflow(params: {
       : (normalizedShot.imageMode === 'grid' || normalizedShot.imageMode === 'grid-9')
         ? 'grid-9'
         : null;
-    if (gridMode) {
-      const gridTemplateKey = gridMode === 'grid-4' ? 'tti_grid_4_shot_image' : 'tti_grid_shot_image';
-      const resolved = await resolvePromptTemplate(gridTemplateKey, {
+    const isStoryboardMode = normalizedShot.imageMode === 'storyboard';
+    if (gridMode || isStoryboardMode) {
+      const templateKey = isStoryboardMode
+        ? 'tti_storyboard_shot_image'
+        : gridMode === 'grid-4'
+          ? 'tti_grid_4_shot_image'
+          : 'tti_grid_shot_image';
+      const resolved = await resolvePromptTemplate(templateKey, {
         stylePrefix: stylePrefix || '',
         shotDescription: getShotScriptText(normalizedShot),
         gridPrompt: normalizedShot.imagePrompt,
+        storyboardPrompt: normalizedShot.imagePrompt,
         resolution: '8K',
         aspectRatio: finalAspectRatio,
       });
@@ -112,6 +123,7 @@ export async function shotImageWorkflow(params: {
     characters: normalizedCharacters,
     scenes: normalizedScenes,
     props,
+    allShots,
   });
   const compiledPromptResult = compileShotPromptToBundle({
     prompt,
@@ -152,6 +164,8 @@ export async function shotImageWorkflow(params: {
 
   onProgress?.(10, '调用 TTI 服务...');
 
+  const projectPath = await getProjectPath(projectId);
+  const imageVersionId = buildShotImageVersionId();
   const asset = await mediaGenerationService.generateImage({
     projectId,
     ownerRef: {
@@ -168,6 +182,7 @@ export async function shotImageWorkflow(params: {
     },
     ttiSelection,
     taskName: `分镜图片: ${normalizedShot.id}`,
+    destPath: `${projectPath}/assets/shots/${normalizedShot.id}/images/${imageVersionId}.png`,
   });
 
   onProgress?.(100, '完成');

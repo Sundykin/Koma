@@ -8,7 +8,7 @@
  * 本组件本身只负责单分镜内的渲染与逐块编辑回调；上下文（DndContext）
  * 由 Storyboard 提供，跨分镜拖动 onDragEnd 由父级捕获。
  */
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Plus, Trash2, GripVertical } from 'lucide-react';
 import {
   SortableContext,
@@ -30,12 +30,13 @@ interface ShotScriptLinesProps {
 interface SortableLineProps {
   shotId: string;
   line: ShotScriptLine;
-  onTextChange: (lineId: string, text: string) => void;
+  onDraftChange: (lineId: string, text: string) => void;
+  onTextCommit: (lineId: string, text: string) => void;
   onDelete: (lineId: string) => void;
   onInsertAbove: (lineId: string) => void;
 }
 
-function SortableLine({ shotId, line, onTextChange, onDelete, onInsertAbove }: SortableLineProps) {
+function SortableLine({ shotId, line, onDraftChange, onTextCommit, onDelete, onInsertAbove }: SortableLineProps) {
   // dnd-kit sortable id 必须全局唯一；用 shotId:lineId 编码使跨分镜拖动时父级能解析归属
   const sortableId = `${shotId}::${line.id}`;
   const {
@@ -49,6 +50,32 @@ function SortableLine({ shotId, line, onTextChange, onDelete, onInsertAbove }: S
     id: sortableId,
     data: { shotId, lineId: line.id },
   });
+  const [draftText, setDraftText] = useState(line.text);
+  const focusedRef = useRef(false);
+  const draftTextRef = useRef(line.text);
+  const latestLineTextRef = useRef(line.text);
+
+  useEffect(() => {
+    latestLineTextRef.current = line.text;
+    if (!focusedRef.current) {
+      draftTextRef.current = line.text;
+      setDraftText(line.text);
+    }
+  }, [line.text]);
+
+  const handleDraftChange = useCallback((text: string) => {
+    draftTextRef.current = text;
+    setDraftText(text);
+    onDraftChange(line.id, text);
+  }, [line.id, onDraftChange]);
+
+  const commitDraft = useCallback(() => {
+    const nextText = draftTextRef.current;
+    if (nextText !== latestLineTextRef.current) {
+      latestLineTextRef.current = nextText;
+      onTextCommit(line.id, nextText);
+    }
+  }, [line.id, onTextCommit]);
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -86,8 +113,21 @@ function SortableLine({ shotId, line, onTextChange, onDelete, onInsertAbove }: S
       {/* 行文本 */}
       <input
         type="text"
-        value={line.text}
-        onChange={(e) => onTextChange(line.id, e.target.value)}
+        value={draftText}
+        onChange={(e) => handleDraftChange(e.target.value)}
+        onFocus={() => {
+          focusedRef.current = true;
+        }}
+        onBlur={() => {
+          focusedRef.current = false;
+          commitDraft();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            commitDraft();
+            e.currentTarget.blur();
+          }
+        }}
         placeholder="字幕行..."
         className="flex-1 bg-transparent border-none outline-none text-xs text-text-primary placeholder-text-muted py-0.5"
       />
@@ -107,26 +147,72 @@ function SortableLine({ shotId, line, onTextChange, onDelete, onInsertAbove }: S
 
 export const ShotScriptLines: React.FC<ShotScriptLinesProps> = ({ shotId, lines, onLinesChange }) => {
   const sortableIds = lines.map(line => `${shotId}::${line.id}`);
+  const draftsRef = useRef(new Map<string, string>());
+  const latestLinesRef = useRef(lines);
+  const latestShotIdRef = useRef(shotId);
+  const latestOnLinesChangeRef = useRef(onLinesChange);
 
-  const handleTextChange = useCallback((lineId: string, text: string) => {
-    onLinesChange(shotId, lines.map(l => l.id === lineId ? { ...l, text } : l));
-  }, [shotId, lines, onLinesChange]);
+  useEffect(() => {
+    latestLinesRef.current = lines;
+    latestShotIdRef.current = shotId;
+    latestOnLinesChangeRef.current = onLinesChange;
+  });
+
+  useEffect(() => {
+    const lineIds = new Set(lines.map(line => line.id));
+    for (const [lineId, draftText] of draftsRef.current) {
+      const line = lines.find(item => item.id === lineId);
+      if (!lineIds.has(lineId) || line?.text === draftText) {
+        draftsRef.current.delete(lineId);
+      }
+    }
+  }, [lines]);
+
+  const materializeLinesWithDrafts = useCallback(() => (
+    lines.map(line => (
+      draftsRef.current.has(line.id)
+        ? { ...line, text: draftsRef.current.get(line.id) ?? line.text }
+        : line
+    ))
+  ), [lines]);
+
+  useEffect(() => () => {
+    if (draftsRef.current.size === 0) return;
+    const committedLines = latestLinesRef.current.map(line => (
+      draftsRef.current.has(line.id)
+        ? { ...line, text: draftsRef.current.get(line.id) ?? line.text }
+        : line
+    ));
+    draftsRef.current.clear();
+    latestOnLinesChangeRef.current(latestShotIdRef.current, committedLines);
+  }, []);
+
+  const handleDraftChange = useCallback((lineId: string, text: string) => {
+    draftsRef.current.set(lineId, text);
+  }, []);
+
+  const handleTextCommit = useCallback((lineId: string, text: string) => {
+    draftsRef.current.set(lineId, text);
+    onLinesChange(shotId, materializeLinesWithDrafts().map(l => l.id === lineId ? { ...l, text } : l));
+  }, [shotId, onLinesChange, materializeLinesWithDrafts]);
 
   const handleDelete = useCallback((lineId: string) => {
-    onLinesChange(shotId, lines.filter(l => l.id !== lineId));
-  }, [shotId, lines, onLinesChange]);
+    draftsRef.current.delete(lineId);
+    onLinesChange(shotId, materializeLinesWithDrafts().filter(l => l.id !== lineId));
+  }, [shotId, onLinesChange, materializeLinesWithDrafts]);
 
   const handleInsertAbove = useCallback((targetLineId: string) => {
-    const idx = lines.findIndex(l => l.id === targetLineId);
+    const materializedLines = materializeLinesWithDrafts();
+    const idx = materializedLines.findIndex(l => l.id === targetLineId);
     if (idx < 0) return;
     const inserted = createScriptLine('');
-    const next = [...lines.slice(0, idx), inserted, ...lines.slice(idx)];
+    const next = [...materializedLines.slice(0, idx), inserted, ...materializedLines.slice(idx)];
     onLinesChange(shotId, next);
-  }, [shotId, lines, onLinesChange]);
+  }, [shotId, onLinesChange, materializeLinesWithDrafts]);
 
   const handleAppend = useCallback(() => {
-    onLinesChange(shotId, [...lines, createScriptLine('')]);
-  }, [shotId, lines, onLinesChange]);
+    onLinesChange(shotId, [...materializeLinesWithDrafts(), createScriptLine('')]);
+  }, [shotId, onLinesChange, materializeLinesWithDrafts]);
 
   return (
     <div className="flex flex-col gap-0 h-full">
@@ -140,7 +226,8 @@ export const ShotScriptLines: React.FC<ShotScriptLinesProps> = ({ shotId, lines,
                 key={line.id}
                 shotId={shotId}
                 line={line}
-                onTextChange={handleTextChange}
+                onDraftChange={handleDraftChange}
+                onTextCommit={handleTextCommit}
                 onDelete={handleDelete}
                 onInsertAbove={handleInsertAbove}
               />

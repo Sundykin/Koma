@@ -1,5 +1,116 @@
 # Task Plan
 
+## Session: 2026-05-10 Storyboard Image Mode
+
+### Goal
+- 在分镜图片模式中，在普通 / 四宫格 / 九宫格基础上增加“故事板”模式。
+- 故事板模式用于生成电影级分镜 / 前期制作方案板，强调剧情递进、情绪表演、光影变化、镜头衔接和项目整体风格继承。
+- 下一张故事板可选继承上一张故事板图片，并且必须作为真实参考图传入生成链路，而不是只在文字里提及。
+- 故事板图片作为多面板参考，不应被视频链路当作单一首帧。
+
+### Scope
+- `frontend/src/types/scene-character.ts`
+- `electron/service/storage/projectPersistenceHelpers.ts`
+- `frontend/src/editor/mentionTypes.ts`
+- `frontend/src/services/shotReference/**`
+- `frontend/src/services/ShotPromptService.ts`
+- `frontend/src/workflow/shotImageWorkflow.ts`
+- `frontend/src/workflow/shotVideoPlan.ts`
+- `frontend/src/workflow/shotRenderWorkflow.ts`
+- `frontend/src/store/promptTemplates.ts`
+- `frontend/src/components/storyboard/**`
+- 相关测试
+
+### Phases
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Mode and Persistence | complete | 扩展分镜图片模式类型、SQLite row union、项目元数据读写和测试 |
+| 2. Reference Protocol | complete | 增加 `@storyboard_anchor` / `@previous_storyboard_anchor`，并把上一故事板作为真实 reference 传入 |
+| 3. Prompt Templates | complete | 新增故事板推理模板和 TTI 终稿模板，整理电影级故事板约束 |
+| 4. Workflow Integration | complete | 生图、视频计划和渲染工作流接入 allShots 与故事板引用继承 |
+| 5. UI Integration | complete | 分镜卡片、批量模式、继承上一故事板开关和多面板视频模式约束 |
+| 6. Validation | complete | 运行目标测试、前端/root TypeScript 检查和 diff check |
+
+### Acceptance Criteria
+- 分镜图片模式中可选择“故事板”，批量菜单也支持切换。
+- 故事板提示词模板可在提示词模板设置中编辑。
+- 故事板生成提示词强调电影级制作板、剧情层层递进、情绪/光影/镜头衔接，并限制生成图中出现可读字幕、标题、项目符号、logo、水印。
+- 可选继承上一故事板；默认启用，关闭后不传上一故事板图。
+- 启用继承时，上一张故事板图片进入真实 references 数组，可被编译为 `@Image N`。
+- 故事板模式视频自动按多参考处理，不允许误选“首帧”。
+
+### Error Log
+| Error | Attempt | Resolution |
+|------|---------|------------|
+| `frontend npx tsc --noEmit --project tsconfig.json` 报 `ShotCard.tsx` 中找不到 `onStoryboardInheritPreviousChange` | 1 | 已把该回调从 `ShotCardImpl` props 中解构出来，复跑前端 tsc 通过 |
+
+## Session: 2026-05-10 Storyboard Script Line Editing Stability
+
+### Goal
+- 修复分镜列表中“分镜文本/字幕行”逐字编辑时触发父级状态刷新，导致输入框光标跳到末尾、无法在行中间正常编辑的问题。
+- 保持添加/删除/拖拽字幕行仍即时保存，文本输入过程不被虚拟列表或异步持久化回写打断。
+
+### Scope
+- `frontend/src/components/storyboard/ShotScriptLines.tsx`
+- `frontend/src/components/storyboard/Storyboard.tsx`
+- `frontend/src/components/storyboard/ShotListEditor.tsx`
+- 相关最小测试/类型检查
+
+### Phases
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Diagnosis | complete | 定位字幕行 input、父级 saveAllShots、Virtuoso/ShotCard memo 的重渲染链路 |
+| 2. Targeted Fix | complete | 将逐字输入和持久化提交解耦，避免每个字符触发整列表状态刷新 |
+| 3. Validation | complete | 运行相关测试、tsc 和 diff check |
+
+### Acceptance Criteria
+- 在字幕行中间插入/删除字符时，光标位置保持在编辑位置，不跳到行尾。
+- 文本输入不再每个字符触发分镜全量保存；失焦/提交时仍保存。
+- 添加、删除、插入、拖拽字幕行仍能保存。
+- 不破坏分镜虚拟列表滚动和其它 prompt/媒体操作。
+
+### Error Log
+| Error | Attempt | Resolution |
+|------|---------|------------|
+
+## Session: 2026-05-09 Linghui Prompt Upload Deduplication
+
+### Goal
+- 修复灵绘提示词编译/上传协议中同一图片被多次 `@` 引用就重复上传的问题。
+- 上传图床后把远程地址落到本地元数据，并与本地文件/图片源稳定关联。
+- 仅在缓存远程链接失效或无法访问时重新上传。
+- 对照项目分镜链路，确认是否存在同类重复上传与缓存缺口。
+
+### Scope
+- `frontend/src/components/linghui/**`
+- `frontend/src/services/promptCompilation/**`
+- `frontend/src/services/imageHostingService.ts`
+- `frontend/src/services/mediaRemoteUrlService.ts`
+- 分镜图片/视频生成链路相关服务与测试
+- `logs/` 中当日日志与上传相关日志
+
+### Phases
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Current State Recovery | complete | 定位灵绘提示词编译、上传、元数据和日志触发点 |
+| 2. Root Cause | complete | 找出按引用重复上传、请求体重复膨胀和缓存未落盘的具体代码路径 |
+| 3. Linghui Fix | complete | 实现按图片源去重、远程 URL 元数据缓存、失效检测后重传 |
+| 4. Storyboard Audit/Fix | complete | 检查项目分镜是否共用或复制了同类上传逻辑，必要时修复 |
+| 5. Validation | complete | 增补/更新测试，运行目标测试、tsc/build 或最小验证 |
+
+### Acceptance Criteria
+- 单个节点内同一图片被多次 `@` 引用时，同一次执行最多上传一次。
+- 已上传成功的本地图片再次作为引用时优先复用元数据中的远程 URL。
+- 远程 URL 无法访问或过期时会触发重新上传，并更新本地元数据。
+- 分镜链路没有保留同样的逐引用重复上传行为。
+- 日志能解释修复前重复上传的触发路径。
+
+### Error Log
+| Error | Attempt | Resolution |
+|------|---------|------------|
+| `frontend npx tsc --noEmit --project tsconfig.json` 报 `ProviderAssetInput` 上不存在 `localPath/remoteUrl` | 1 | 为灵绘图片 reference 去重 helper 增加显式 StoredMediaAsset 收窄后复跑通过 |
+| 分镜日志显示缓存命中前仍对旧 remoteUrl 做 5 秒 HEAD 检测 | 1 | 调整 `ensureRemoteUrlForImageAsset()` 顺序，本地 sourceKey 缓存优先；缓存命中直接返回，缓存 miss 后才检测资产自带 remoteUrl |
+
 ## Session: 2026-05-08 Linghui Panorama + Director3D Stabilization
 
 ### Goal
@@ -370,3 +481,82 @@
 |------|---------|------------|
 | `ArrowUp is not defined` 运行时报错 | 1 | 恢复 `ImageNodeEditor.tsx` 中的 `ArrowUp` 导入并重新构建验证 |
 | `LinghuiPage.css: Unclosed block` 构建失败 | 1 | 修复新增通用编辑器样式时遗漏的 `}`，重新构建通过 |
+
+## Session: 2026-05-10
+
+### Goal
+- 修复故事板模式中 `@previous_storyboard_anchor` 悬浮预览缺少上一分镜当前选中图片的问题。
+- 确认故事板多版本切换后，后续分镜引用使用的是上一故事板当前选中版本，而不是固定第一张。
+
+### Phases
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Inspect Current Chain | complete | 检查 `ShotListEditor`、`ShotCard`、`buildShotReferenceBundle`、`ImageCardGrid` 的选中版本与 mention 数据流 |
+| 2. Patch UI Mention Preview | complete | 将上一故事板当前选中版本传入提示词编辑器 mention 数据，并和故事板继承开关保持一致 |
+| 3. Lock Reference Behavior | complete | 增加测试覆盖上一故事板多版本 currentImageIndex 被后续引用使用 |
+| 4. Validate | complete | 运行相关单测、TypeScript 和 diff 空白检查 |
+
+## Session: 2026-05-10 Video Version Playback
+
+### Goal
+- 修复分镜视频多版本播放时始终播放最后一个版本的问题。
+
+### Phases
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Trace Playback Chain | complete | 检查 `ShotCard`、`VideoCardGrid`、`StagePlayer`、`MediaGenerationService` 的视频选择和播放源链路 |
+| 2. Patch Player Source Identity | complete | 给当前视频源生成稳定 key，切换版本时强制重建播放器实例/原生 video 节点 |
+| 3. Patch Versioned Video Persistence | complete | 给 `shot-version` 视频生成和恢复任务透传 `shots/<shotId>/versions/vN/video.mp4` 目标路径 |
+| 4. Validate | complete | 运行分镜视频链路、ITV 策略、StagePlayer、TypeScript 和空白检查 |
+
+## Session: 2026-05-10 Storyboard Batch Media Persistence
+
+### Goal
+- 分镜批量出图 / 批量生成视频改为单项完成即落盘/刷新。
+- 单个分镜失败不能让已成功结果丢失，也不能中断剩余分镜继续生成。
+
+### Phases
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Diagnosis | complete | 定位批量图片和批量视频都等整批完成才回写 UI/刷新存储，视频批量缺外层异常隔离 |
+| 2. Implementation | complete | 增加 per-item completion 回调、逐项刷新和失败继续 |
+| 3. Validation | complete | 运行目标测试、tsc 和 diff check |
+
+### Error Log
+| Error | Attempt | Resolution |
+|------|---------|------------|
+
+## Session: 2026-05-10 Storyboard Prompt Template Production Board Upgrade
+
+### Goal
+- 继续优化故事板提示词模板，让输出更统一、更像电影前期制作板。
+- 默认包含场景设计区、俯视镜头调度图、8镜头分镜故事区、灯光/情绪/声音/摄影/色彩方案。
+- 保留剧情内容驱动和项目整体风格继承，避免退回固定 2x2 信息图。
+
+### Phases
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Template Audit | complete | 定位故事板推理模板与 TTI 终稿模板，确认现有约束偏自由 |
+| 2. Template Upgrade | complete | 增加电影制作板默认骨架和模块化输出字段 |
+| 3. Validation | complete | 更新模板测试并运行目标测试 / TypeScript / diff check |
+
+### Error Log
+| Error | Attempt | Resolution |
+|------|---------|------------|
+
+## Session: 2026-05-10 Storyboard Template Flexible Production Poster
+
+### Goal
+- 去掉故事板模板中机械固定 8 镜头的倾向。
+- 保留专业电影分镜信息图海报的清晰模块和现代 UI / 深蓝标题栏 / 高密度整洁排版。
+- 镜头数量、角色数量、区块比例由剧情内容推断，用 X / N 表达而不是硬编码。
+
+### Phases
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Template Rebalance | complete | 将固定 8 镜头约束改成剧情驱动镜头数，并补项目标题/角色设计区 |
+| 2. Validation | complete | 更新测试并运行模板测试、TypeScript、diff check |
+
+### Error Log
+| Error | Attempt | Resolution |
+|------|---------|------------|

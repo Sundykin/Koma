@@ -82,6 +82,7 @@ export function collectShotVideoPlan(params: {
   characters: Character[];
   scenes: Scene[];
   props: Prop[];
+  allShots?: Shot[];
   /**
    * 当前选中 ITV 模型的能力矩阵。传入后：
    *  - 模型支持 video.reference-to-video 且分镜处于 multi-ref 模式：把分镜锚点
@@ -107,6 +108,7 @@ export function collectShotVideoPlan(params: {
     characters: params.characters,
     scenes: params.scenes,
     props: params.props,
+    allShots: params.allShots,
     options: { maxRefs: params.modelMaxRefs },
   });
 
@@ -144,7 +146,7 @@ interface RoutedBundle {
 
 /**
  * 把 bundle 派生成 ITVRequest 各字段值。决策依据：
- *  - bundle 是否含锚点（grid-anchor / shot-anchor）
+ *  - bundle 是否含当前分镜锚点（grid-anchor / shot-anchor / storyboard-anchor）
  *  - 当前模型是否支持 video.reference-to-video
  *  - 是否知道模型能力（modelCapabilities 是否传入）
  *  - 分镜的 videoMode（multi-ref / first-frame）
@@ -164,7 +166,7 @@ function routeBundleToCapability(params: {
   const items = bundle.items;
   const allSources = items.map(item => item.source);
 
-  // 1) 有锚点（shot-anchor 或 grid-anchor）
+  // 1) 有当前分镜锚点（shot-anchor / grid-anchor / storyboard-anchor）
   if (bundle.hasShotImage) {
     const anchorItem = items.find(isAnchorItem)!;
     const otherItems = items.filter(item => item !== anchorItem);
@@ -236,7 +238,9 @@ function routeBundleToCapability(params: {
 }
 
 function isAnchorItem(item: ShotReferenceItem): boolean {
-  return item.kind === 'shot-anchor' || item.kind === 'grid-anchor';
+  return item.kind === 'shot-anchor'
+    || item.kind === 'grid-anchor'
+    || item.kind === 'storyboard-anchor';
 }
 
 /**

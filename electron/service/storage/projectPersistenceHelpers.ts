@@ -168,6 +168,34 @@ function intToBool(value?: number | null): boolean {
   return Boolean(value);
 }
 
+interface ShotRowMetadata {
+  inheritPreviousStoryboard?: boolean;
+}
+
+function parseShotRowMetadata(raw?: string | null): ShotRowMetadata {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return {};
+    const meta = parsed as Record<string, unknown>;
+    return {
+      inheritPreviousStoryboard: typeof meta.inheritPreviousStoryboard === 'boolean'
+        ? meta.inheritPreviousStoryboard
+        : undefined,
+    };
+  } catch {
+    return {};
+  }
+}
+
+function buildShotRowMetadata(shot: Shot): string | undefined {
+  const meta: ShotRowMetadata = {};
+  if (typeof shot.inheritPreviousStoryboard === 'boolean') {
+    meta.inheritPreviousStoryboard = shot.inheritPreviousStoryboard;
+  }
+  return Object.keys(meta).length ? JSON.stringify(meta) : undefined;
+}
+
 export function serializeShotIdsCsv(shotIds?: string[]): string | null {
   if (!shotIds?.length) return null;
   const normalized = shotIds.map(id => String(id || '').trim()).filter(Boolean);
@@ -538,7 +566,7 @@ export function shotToRow(shot: Shot, projectId: string, sortOrder: number, epis
     current_audio_index: shot.media?.currentAudioIndex,
     current_version: shot.currentVersion ?? 0,
     sort_order: sortOrder,
-    metadata_json: undefined,
+    metadata_json: buildShotRowMetadata(shot),
     created_at: Date.now(),
     updated_at: Date.now(),
   };
@@ -570,6 +598,7 @@ export function shotRowToEntity(
     .filter(entry => entry.slot === 'audio')
     .sort((a, b) => a.sort_order - b.sort_order)
     .map(entry => entryRowToStoredMediaAsset(entry, 'audio'));
+  const metadata = parseShotRowMetadata(row.metadata_json);
 
   return {
     id: row.id,
@@ -580,6 +609,7 @@ export function shotRowToEntity(
     imagePrompt: row.image_prompt ?? undefined,
     videoPrompt: row.video_prompt ?? undefined,
     imageMode: (row.image_mode as Shot['imageMode']) ?? undefined,
+    inheritPreviousStoryboard: metadata.inheritPreviousStoryboard,
     dialogue: row.dialogue ?? undefined,
     emotion: row.emotion ?? undefined,
     confirmed: intToBool(row.confirmed),
