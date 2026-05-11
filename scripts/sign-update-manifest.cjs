@@ -85,8 +85,12 @@ for (const file of entries) {
   const full = path.join(ASSETS_DIR, file);
   if (!fs.statSync(full).isFile()) continue;
   const { sha512, size } = sha512Base64(full);
-  platforms[key] = { file, sha512, size };
-  console.log(`[sign-update-manifest] ${key} <- ${file} (${size} bytes)`);
+  // GitHub release 上传 asset 时会把文件名里的空格静默替换成点（".")
+  // manifest 必须存"上传后的"文件名，否则客户端按原名拼 URL 会 404。
+  // 例：本地 "Koma Studio-mac-1.2.5-arm64.dmg" → GitHub 上是 "Koma.Studio-mac-1.2.5-arm64.dmg"
+  const githubName = file.replace(/ /g, '.');
+  platforms[key] = { file: githubName, sha512, size };
+  console.log(`[sign-update-manifest] ${key} <- ${file} (${size} bytes) → manifest.file=${githubName}`);
 }
 
 if (Object.keys(platforms).length === 0) {

@@ -301,7 +301,9 @@ function sha512Hex(buf: Buffer): string {
 
 function absoluteDownloadUrl(fileFieldOrUrl: string): string {
   if (/^https?:\/\//i.test(fileFieldOrUrl)) return fileFieldOrUrl;
-  return `https://github.com/Sundykin/KomaBuild/releases/latest/download/${fileFieldOrUrl}`;
+  // 注意：manifest 里的 file 字段已是 GitHub 上传后的实际文件名（空格→点），
+  // 但仍可能含其他需要编码的字符。统一 encodeURIComponent，保证 URL 合法。
+  return `https://github.com/Sundykin/KomaBuild/releases/latest/download/${encodeURIComponent(fileFieldOrUrl)}`;
 }
 
 function httpsGetText(url: string, maxRedirects = 5): Promise<string> {
