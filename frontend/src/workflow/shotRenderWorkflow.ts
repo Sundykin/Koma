@@ -13,11 +13,9 @@ import {
   type Shot,
   type ShotVersion,
 } from '../types';
-import { saveShotVersion, loadShotMeta, loadCharacters, loadProps, loadScenes } from '../store/projectStore';
+import { saveShotVersion, loadShotMeta, loadCharacters, loadProps, loadScenes, loadEpisodeShots } from '../store/projectStore';
 import { createLogger } from '../store/logger';
 import { logITVCall } from '../store/aiCallLogger';
-import { resolvePromptTemplate } from '../store/promptTemplates';
-import { getThemeStylePrefixAsync } from '../config/themePresets';
 import {
   normalizeCharactersMediaState,
   normalizePropsMediaState,
@@ -31,7 +29,6 @@ import {
 } from '../services/ShotPromptService';
 import { normalizeProjectNarrativeMode } from '../services/narrativeMode';
 import { runWithTask } from '../services/taskRunner';
-import { buildShotVideoTemplateVariables } from './promptVariableBuilders';
 import {
   collectShotVideoPlan,
   resolveShotVideoCapabilitySupport,
@@ -58,6 +55,7 @@ interface ShotRenderParams {
   theme?: string;
   stylePrompt?: string;
   styleSnapshot?: StyleSnapshotLike;
+  allShots?: Shot[];
   project?: { styleSnapshot?: StyleSnapshotLike; aspectRatio?: '16:9' | '9:16'; mode?: 'drama' | 'narration' };
 }
 
@@ -82,8 +80,10 @@ interface BatchRenderParams {
   theme?: string;
   stylePrompt?: string;
   styleSnapshot?: StyleSnapshotLike;
+  allShots?: Shot[];
   project?: { styleSnapshot?: StyleSnapshotLike; aspectRatio?: '16:9' | '9:16'; mode?: 'drama' | 'narration' };
   concurrency?: number;
+  onShotComplete?: (result: ShotRenderResult) => void | Promise<void>;
 }
 
 interface BatchRenderResult {
@@ -101,8 +101,20 @@ export async function shotRenderWorkflow(
   params: ShotRenderParams,
   onProgress: (progress: number, step?: string) => void
 ): Promise<ShotRenderResult> {
-  const { projectId, episodeId, shot, settings, mediaSelections, theme, stylePrompt, styleSnapshot, project } = params;
+  const { projectId, episodeId, shot, settings, mediaSelections, project } = params;
   const normalizedShot = normalizeShotMediaState(shot);
+  const sourceVideoPrompt = (normalizedShot.videoPrompt || '').trim();
+  if (!sourceVideoPrompt) {
+    logger.warn('分镜视频生成被阻止：视频提示词为空', { shotId: normalizedShot.id });
+    return {
+      shotId: normalizedShot.id,
+      version: {} as ShotVersion,
+      success: false,
+      error: '请先填写视频提示词',
+    };
+  }
+  const episodeShots = params.allShots
+    ?? (episodeId ? await loadEpisodeShots(projectId, episodeId).catch(() => undefined) : undefined);
 
   logger.info(`开始生成分镜视频 ${normalizedShot.id}`);
 
@@ -121,12 +133,10 @@ export async function shotRenderWorkflow(
     characters,
     scenes: [],
     props: [],
+    allShots: episodeShots,
   });
 
   try {
-    // 获取视觉风格前缀（支持自定义预设）
-    const stylePrefix = await getResolvedTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
-
     // 加载道具
     let projectProps: Prop[] = [];
     try {
@@ -147,6 +157,7 @@ export async function shotRenderWorkflow(
       characters,
       scenes: projectScenes,
       props: projectProps,
+      allShots: episodeShots,
     });
     const selectedItvContext = settings
       ? resolveConfiguredChannelModel(settings, 'itv', mediaSelections?.itvSelection, initialVideoPlan.capability)
@@ -161,6 +172,7 @@ export async function shotRenderWorkflow(
       characters,
       scenes: projectScenes,
       props: projectProps,
+      allShots: episodeShots,
       modelCapabilities: selectedItvModelCapabilities,
       modelMaxRefs: selectedItvModelMaxRefs,
     });
@@ -204,35 +216,23 @@ export async function shotRenderWorkflow(
       itvSelection: effectiveITVSelection,
     });
 
-    // 构建视频 prompt：优先使用 shot.videoPrompt
-    let videoPrompt: string;
+    // 视频生成只能使用用户在分镜编辑器中看到的 videoPrompt。
+    // 空 prompt 在入口处已拒绝，不再隐式套用 itv_shot_video 默认模板，避免发送"看不见的提示词"。
+    let videoPrompt = sanitizeVideoPromptResult(sourceVideoPrompt);
     let templateId = 'shot.videoPrompt';
     let promptSource: 'default' | 'custom' | 'finalized' = 'finalized';
 
-    if (normalizedShot.videoPrompt) {
-      videoPrompt = normalizedShot.videoPrompt;
-    } else {
-      const resolvedPrompt = await resolvePromptTemplate('itv_shot_video', buildShotVideoTemplateVariables({
-        shot: normalizedShot,
-        characters,
-        scenes: projectScenes,
-        props: projectProps,
-        stylePrefix: stylePrefix || '',
-        cameraMovement: getCameraMovementDesc(normalizedShot.cameraMovement),
-      }));
-      videoPrompt = resolvedPrompt.prompt;
-      templateId = resolvedPrompt.template.id;
-      promptSource = resolvedPrompt.source;
-    }
     const shotCharacterNames = (normalizedShot.characters || [])
       .map(charId => characters.find(char => char.id === charId)?.name)
       .filter((name): name is string => Boolean(name));
-    videoPrompt = ensureExplicitDialogueInVideoPrompt(
-      sanitizeVideoPromptResult(videoPrompt),
-      String(normalizedShot.dialogue || ''),
-      shotCharacterNames,
-      normalizeProjectNarrativeMode(params.project?.mode),
-    );
+    videoPrompt = shouldPatchShotDialogue(videoPrompt)
+      ? ensureExplicitDialogueInVideoPrompt(
+          videoPrompt,
+          String(normalizedShot.dialogue || ''),
+          shotCharacterNames,
+          normalizeProjectNarrativeMode(params.project?.mode),
+        )
+      : videoPrompt;
 
     const providerType = capabilitySupport?.resolvedContext?.definition.runtimeProviderType
       || capabilitySupport?.resolvedContext?.channelConfig.providerType;
@@ -354,8 +354,10 @@ export async function batchRenderShots(
     theme,
     stylePrompt,
     styleSnapshot,
+    allShots,
     project,
     concurrency: _concurrency = 1,
+    onShotComplete,
   } = params;
 
   logger.info(`开始批量生成 ${shots.length} 个分镜视频`);
@@ -366,19 +368,45 @@ export async function batchRenderShots(
   for (let i = 0; i < shots.length; i++) {
     const shot = shots[i];
 
-    const result = await shotRenderWorkflow(
-      { projectId, episodeId, shot, settings, aspectRatio, mediaSelections, theme, stylePrompt, styleSnapshot, project },
-      (progress, step) => {
-        const overall = Math.round(((completed + progress / 100) / shots.length) * 100);
-        onProgress(overall, { shotId: shot.id, progress, step });
-      }
-    );
+    let result: ShotRenderResult;
+    try {
+      result = await shotRenderWorkflow(
+        { projectId, episodeId, shot, settings, aspectRatio, mediaSelections, theme, stylePrompt, styleSnapshot, allShots, project },
+        (progress, step) => {
+          const overall = Math.round(((completed + progress / 100) / shots.length) * 100);
+          onProgress(overall, { shotId: shot.id, progress, step });
+        }
+      );
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err);
+      logger.error('批量分镜视频单项异常，继续后续分镜', {
+        shotId: shot.id,
+        error,
+      });
+      result = {
+        shotId: shot.id,
+        version: {} as ShotVersion,
+        success: false,
+        error,
+      };
+    }
 
     results.push(result);
     completed++;
 
     const overall = Math.round((completed / shots.length) * 100);
     onProgress(overall, { shotId: shot.id, progress: 100, step: result.success ? '完成' : '失败' });
+    if (onShotComplete) {
+      try {
+        await onShotComplete(result);
+      } catch (err) {
+        logger.warn('批量分镜视频单项完成回调失败', {
+          shotId: shot.id,
+          success: result.success,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
   }
 
   const successCount = results.filter((r) => r.success).length;
@@ -396,26 +424,13 @@ export async function batchRenderShots(
 
 // ========== 辅助函数 ==========
 
-async function getResolvedTTIStylePrefix(
-  styleSnapshot?: StyleSnapshotLike,
-  theme?: string,
-  stylePrompt?: string
-): Promise<string> {
-  if (styleSnapshot?.ttiStylePrefix) {
-    return styleSnapshot.ttiStylePrefix;
-  }
-  return getThemeStylePrefixAsync(theme, stylePrompt);
-}
-
-function getCameraMovementDesc(movement?: string): string {
-  if (!movement || movement === 'static') return 'static shot';
-  const cameraDesc: Record<string, string> = {
-    'pan': 'camera panning horizontally',
-    'zoom-in': 'camera slowly zooming in',
-    'tracking': 'camera tracking the subject',
-    'handheld': 'handheld camera movement',
-  };
-  return cameraDesc[movement] || movement;
+function shouldPatchShotDialogue(prompt: string): boolean {
+  const dialogueLine = prompt
+    .split(/\r?\n/)
+    .find(line => /^\s*对白提示词\s*[:：]/.test(line));
+  if (!dialogueLine) return true;
+  const value = dialogueLine.replace(/^\s*对白提示词\s*[:：]\s*/, '').trim();
+  return !value || value === '无';
 }
 
 export default {

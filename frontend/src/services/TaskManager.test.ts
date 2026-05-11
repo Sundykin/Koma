@@ -96,6 +96,89 @@ describe('TaskManager restart reconciliation', () => {
     }
   );
 
+  it('persists updateTask via IPC fallback when local cache is missing the task', async () => {
+    // 场景：用户切到别的项目，App.tsx useEffect 调 TaskManager.dispose() 清掉
+    // 当前项目的 cache。但原来项目里的 service.runAnalysis 还在跑，仍要把
+    // 'completed' / 'failed' 写到主进程任务表。要求 updateTask 能走 IPC 兜底，
+    // 而不是静默 return null 让任务卡在 running 直到主进程 30 分钟超时。
+    const TASK_ID = 'orphan-task-1';
+    store.set(TASK_ID, makeRecord({
+      id: TASK_ID,
+      status: 'running',
+      progress: 50,
+      payload: {
+        id: TASK_ID,
+        projectId: PROJECT_ID,
+        type: 'script-analysis',
+        category: 'script',
+        subType: 'script-analysis',
+        targetType: 'episode',
+        targetId: 'episode-1',
+        status: 'running',
+        progress: 50,
+        createdAt: 1,
+        updatedAt: 2,
+        lastHeartbeat: 2,
+      },
+    }));
+
+    // 切到别的项目时 dispose 清空了本地 cache —— 模拟这一状态
+    TaskManager.dispose();
+
+    // 此时本地 cache 没有任务；service 仍把 completed 写下来
+    const result = TaskManager.updateTask(TASK_ID, {
+      status: 'completed',
+      progress: 100,
+      result: { charactersCount: 3 },
+    });
+    expect(result).toBeNull(); // 同步返回兼容旧约定
+
+    // 兜底持久化是 async；等微任务跑完
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    const persisted = upsertSpy.mock.calls.map(c => c[0] as TaskRecord);
+    const final = persisted.findLast(r => r.id === TASK_ID);
+    expect(final?.status).toBe('completed');
+    expect(final?.progress).toBe(100);
+    const payload = (final?.payload || {}) as { result?: { charactersCount?: number } };
+    expect(payload.result?.charactersCount).toBe(3);
+  });
+
+  it('IPC fallback does not overwrite a task already in terminal state', async () => {
+    // 用户取消了任务 → DB 状态 'cancelled'。其后 service 跑完仍调 updateTask({ status: completed })
+    // 期间本地 cache 已被 dispose 清掉，走 IPC fallback。fallback 应当尊重终态，不再把
+    // 'cancelled' 盖回 'completed'。
+    const TASK_ID = 'cancelled-task';
+    store.set(TASK_ID, makeRecord({
+      id: TASK_ID,
+      status: 'cancelled',
+      payload: {
+        id: TASK_ID,
+        projectId: PROJECT_ID,
+        type: 'script-analysis',
+        category: 'script',
+        subType: 'script-analysis',
+        targetType: 'episode',
+        targetId: 'episode-1',
+        status: 'cancelled',
+        progress: 50,
+        createdAt: 1,
+        updatedAt: 2,
+        lastHeartbeat: 2,
+      },
+    }));
+
+    TaskManager.dispose();
+
+    upsertSpy.mockClear();
+    TaskManager.updateTask(TASK_ID, { status: 'completed', progress: 100 });
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    // 终态保护：不应再有针对该任务的 upsert
+    const writes = upsertSpy.mock.calls.map(c => c[0] as TaskRecord).filter(r => r.id === TASK_ID);
+    expect(writes).toHaveLength(0);
+  });
+
   it('keeps unfinished tasks created in the current renderer session when re-initializing', async () => {
     const created = TaskManager.createTask({
       projectId: PROJECT_ID,

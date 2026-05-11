@@ -114,6 +114,8 @@ describe('projectPersistenceHelpers', () => {
       shotType: 'medium',
       cameraMovement: 'static',
       duration: 4,
+      imageMode: 'storyboard',
+      inheritPreviousStoryboard: false,
       characters: ['char-1'],
       scenes: ['scene-1'],
       props: ['prop-1'],
@@ -151,6 +153,8 @@ describe('projectPersistenceHelpers', () => {
     expect(shot).toEqual(expect.objectContaining({
       id: 'shot-1',
       scriptLines: [expect.objectContaining({ text: '主角靠墙喘息' })],
+      imageMode: 'storyboard',
+      inheritPreviousStoryboard: false,
       characters: ['char-1'],
       scenes: ['scene-1'],
       props: ['prop-1'],

@@ -18,8 +18,13 @@ import { createLogger } from '../store/logger';
 import { uploadBytesToImageHostingWithRetry } from './imageHostingService';
 import { base64ToBytes, stripDataHeader } from '../utils/encoding';
 import { decodeKomaLocalToFsPath } from './mediaAssetResolver';
+import { getProjectPath } from '../store/project/core';
+import { safeFetch } from '../utils/safeFetch';
 
 const logger = createLogger('MediaRemoteUrl');
+const REMOTE_URL_CACHE_SCHEMA_VERSION = 1;
+const REMOTE_URL_CACHE_PATH = 'metadata/media-remote-url-cache.json';
+const REMOTE_URL_CHECK_TIMEOUT_MS = 5_000;
 
 export type RemoteUrlPolicy = 'best-effort' | 'required';
 
@@ -29,6 +34,297 @@ export interface RemoteUrlUploadFailureOptions {
    * Default is false to preserve strict required behavior outside explicit fallback paths.
    */
   fallbackToSourceOnUploadFailure?: boolean;
+}
+
+interface RemoteUrlCacheEntry {
+  sourceKey: string;
+  sourceKind: 'local-file' | 'data-url' | 'provider-input' | 'asset' | 'unknown';
+  localPath?: string;
+  remoteUrl: string;
+  filename?: string;
+  byteLength?: number;
+  mimeType?: string;
+  updatedAt: number;
+  lastVerifiedAt?: number;
+}
+
+interface RemoteUrlCacheFile {
+  version: number;
+  entries: Record<string, RemoteUrlCacheEntry>;
+}
+
+type RemoteUrlCacheLookupResult =
+  | { status: 'hit'; remoteUrl: string }
+  | { status: 'miss'; staleRemoteUrl?: string };
+
+const remoteUrlInflightUploads = new Map<string, Promise<string | undefined>>();
+const remoteUrlAccessibilityCache = new Map<string, Promise<boolean>>();
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function normalizeLocalSourcePath(source: string): string {
+  return decodeKomaLocalToFsPath(source).replace(/\\/g, '/');
+}
+
+function hashStringForCacheKey(value: string): string {
+  let left = 0xdeadbeef ^ value.length;
+  let right = 0x41c6ce57 ^ value.length;
+
+  for (let index = 0; index < value.length; index += 1) {
+    const charCode = value.charCodeAt(index);
+    left = Math.imul(left ^ charCode, 2654435761);
+    right = Math.imul(right ^ charCode, 1597334677);
+  }
+
+  left = Math.imul(left ^ (left >>> 16), 2246822507) ^ Math.imul(right ^ (right >>> 13), 3266489909);
+  right = Math.imul(right ^ (right >>> 16), 2246822507) ^ Math.imul(left ^ (left >>> 13), 3266489909);
+
+  return `${(left >>> 0).toString(36)}${(right >>> 0).toString(36)}`;
+}
+
+function createDataUrlCacheKey(source: string): string {
+  return `data:${source.length}:${hashStringForCacheKey(source)}`;
+}
+
+function buildProviderInputCacheKey(source: ProviderAssetInput): string {
+  return `${source.transport}:${source.value}`;
+}
+
+function buildRemoteUrlSourceKey(source: MediaAssetSource | ProviderAssetInput): string {
+  if (typeof source === 'object' && 'transport' in source && 'value' in source) {
+    if (source.transport === 'remote-url') return `remote:${source.value}`;
+    if (isDataUri(source.value)) return createDataUrlCacheKey(source.value);
+    return buildProviderInputCacheKey(source);
+  }
+
+  if (typeof source === 'object') {
+    if (source.localPath) {
+      if (isRemoteMediaUri(source.localPath)) return `remote:${source.localPath}`;
+      if (isDataUri(source.localPath)) return createDataUrlCacheKey(source.localPath);
+      return `local:${normalizeLocalSourcePath(source.localPath)}`;
+    }
+    if (source.remoteUrl) return `remote:${source.remoteUrl}`;
+    return `asset:${JSON.stringify(source)}`;
+  }
+
+  if (isRemoteMediaUri(source)) return `remote:${source}`;
+  if (isDataUri(source)) return createDataUrlCacheKey(source);
+  return `local:${normalizeLocalSourcePath(source)}`;
+}
+
+function inferSourceKind(source: MediaAssetSource | ProviderAssetInput): RemoteUrlCacheEntry['sourceKind'] {
+  if (typeof source === 'object' && 'transport' in source && 'value' in source) {
+    return 'provider-input';
+  }
+  if (typeof source === 'object') {
+    return 'asset';
+  }
+  if (isDataUri(source)) {
+    return 'data-url';
+  }
+  if (!isRemoteMediaUri(source)) {
+    return 'local-file';
+  }
+  return 'unknown';
+}
+
+function normalizeCacheFile(value: unknown): RemoteUrlCacheFile {
+  if (!isRecord(value) || !isRecord(value.entries)) {
+    return { version: REMOTE_URL_CACHE_SCHEMA_VERSION, entries: {} };
+  }
+
+  const entries: RemoteUrlCacheFile['entries'] = {};
+  for (const [key, rawEntry] of Object.entries(value.entries)) {
+    if (!isRecord(rawEntry)) continue;
+    const remoteUrl = typeof rawEntry.remoteUrl === 'string' ? rawEntry.remoteUrl.trim() : '';
+    if (!remoteUrl || !isRemoteMediaUri(remoteUrl)) continue;
+
+    entries[key] = {
+      sourceKey: typeof rawEntry.sourceKey === 'string' ? rawEntry.sourceKey : key,
+      sourceKind: (
+        rawEntry.sourceKind === 'local-file'
+        || rawEntry.sourceKind === 'data-url'
+        || rawEntry.sourceKind === 'provider-input'
+        || rawEntry.sourceKind === 'asset'
+        || rawEntry.sourceKind === 'unknown'
+      ) ? rawEntry.sourceKind : 'unknown',
+      localPath: typeof rawEntry.localPath === 'string' ? rawEntry.localPath : undefined,
+      remoteUrl,
+      filename: typeof rawEntry.filename === 'string' ? rawEntry.filename : undefined,
+      byteLength: typeof rawEntry.byteLength === 'number' ? rawEntry.byteLength : undefined,
+      mimeType: typeof rawEntry.mimeType === 'string' ? rawEntry.mimeType : undefined,
+      updatedAt: typeof rawEntry.updatedAt === 'number' ? rawEntry.updatedAt : Date.now(),
+      lastVerifiedAt: typeof rawEntry.lastVerifiedAt === 'number' ? rawEntry.lastVerifiedAt : undefined,
+    };
+  }
+
+  return { version: REMOTE_URL_CACHE_SCHEMA_VERSION, entries };
+}
+
+async function getRemoteUrlCachePath(projectId: string): Promise<string> {
+  const projectPath = await getProjectPath(projectId);
+  return `${projectPath}/${REMOTE_URL_CACHE_PATH}`;
+}
+
+async function readRemoteUrlCache(projectId: string): Promise<RemoteUrlCacheFile> {
+  if (!electronService.isElectron()) {
+    return { version: REMOTE_URL_CACHE_SCHEMA_VERSION, entries: {} };
+  }
+
+  try {
+    const cachePath = await getRemoteUrlCachePath(projectId);
+    const exists = await electronService.fs.exists(cachePath);
+    if (!exists) {
+      return { version: REMOTE_URL_CACHE_SCHEMA_VERSION, entries: {} };
+    }
+    return normalizeCacheFile(JSON.parse(await electronService.fs.readFile(cachePath)));
+  } catch (error) {
+    logger.warn('读取远程图片 URL 缓存失败，忽略缓存', {
+      projectId,
+      error: stringifyUploadError(error),
+    });
+    return { version: REMOTE_URL_CACHE_SCHEMA_VERSION, entries: {} };
+  }
+}
+
+async function writeRemoteUrlCache(projectId: string, cache: RemoteUrlCacheFile): Promise<void> {
+  if (!electronService.isElectron()) return;
+
+  try {
+    const cachePath = await getRemoteUrlCachePath(projectId);
+    const parent = cachePath.slice(0, cachePath.lastIndexOf('/'));
+    await electronService.fs.mkdir(parent);
+    await electronService.fs.writeFile(cachePath, JSON.stringify(cache, null, 2));
+  } catch (error) {
+    logger.warn('写入远程图片 URL 缓存失败', {
+      projectId,
+      error: stringifyUploadError(error),
+    });
+  }
+}
+
+function withTimeoutSignal<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = globalThis.setTimeout(() => {
+      reject(new Error(`远程图片 URL 检测超时（>${timeoutMs / 1000} 秒）`));
+    }, timeoutMs);
+
+    promise.then(
+      value => {
+        globalThis.clearTimeout(timer);
+        resolve(value);
+      },
+      error => {
+        globalThis.clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+async function checkRemoteUrlAccessible(remoteUrl: string): Promise<boolean> {
+  if (!isRemoteMediaUri(remoteUrl)) return false;
+  let inflight = remoteUrlAccessibilityCache.get(remoteUrl);
+  if (!inflight) {
+    inflight = (async () => {
+      try {
+        let response = await withTimeoutSignal(
+          safeFetch(remoteUrl, { method: 'HEAD' }),
+          REMOTE_URL_CHECK_TIMEOUT_MS,
+        );
+        if (response.status === 405 || response.status === 403) {
+          response = await withTimeoutSignal(
+            safeFetch(remoteUrl, { method: 'GET', headers: { Range: 'bytes=0-0' } }),
+            REMOTE_URL_CHECK_TIMEOUT_MS,
+          );
+        }
+        return response.ok || response.status === 206 || response.status === 304;
+      } catch (error) {
+        logger.warn('远程图片 URL 可访问性检测失败', {
+          remoteUrl,
+          error: stringifyUploadError(error),
+        });
+        return false;
+      }
+    })();
+    remoteUrlAccessibilityCache.set(remoteUrl, inflight);
+    void inflight.then(
+      () => remoteUrlAccessibilityCache.delete(remoteUrl),
+      () => remoteUrlAccessibilityCache.delete(remoteUrl),
+    );
+  }
+  return inflight;
+}
+
+async function lookupCachedRemoteUrl(params: {
+  projectId: string;
+  sourceKey: string;
+  policy: RemoteUrlPolicy;
+}): Promise<RemoteUrlCacheLookupResult> {
+  const cache = await readRemoteUrlCache(params.projectId);
+  const entry = cache.entries[params.sourceKey];
+  if (!entry?.remoteUrl || !isRemoteMediaUri(entry.remoteUrl)) {
+    return { status: 'miss' };
+  }
+
+  const accessible = await checkRemoteUrlAccessible(entry.remoteUrl);
+  if (accessible) {
+    cache.entries[params.sourceKey] = {
+      ...entry,
+      lastVerifiedAt: Date.now(),
+    };
+    void writeRemoteUrlCache(params.projectId, cache);
+    logger.info('复用图片远程 URL 缓存', {
+      projectId: params.projectId,
+      sourceKey: params.sourceKey,
+      remoteUrl: entry.remoteUrl,
+      policy: params.policy,
+    });
+    return { status: 'hit', remoteUrl: entry.remoteUrl };
+  }
+
+  delete cache.entries[params.sourceKey];
+  await writeRemoteUrlCache(params.projectId, cache);
+  logger.warn('图片远程 URL 缓存失效，准备重新上传', {
+    projectId: params.projectId,
+    sourceKey: params.sourceKey,
+    remoteUrl: entry.remoteUrl,
+    policy: params.policy,
+  });
+  return { status: 'miss', staleRemoteUrl: entry.remoteUrl };
+}
+
+async function rememberCachedRemoteUrl(params: {
+  projectId: string;
+  source: MediaAssetSource | ProviderAssetInput;
+  sourceKey: string;
+  remoteUrl: string;
+  filename?: string;
+  byteLength?: number;
+  mimeType?: string;
+}): Promise<void> {
+  if (!isRemoteMediaUri(params.remoteUrl)) return;
+
+  const cache = await readRemoteUrlCache(params.projectId);
+  const source = params.source;
+  cache.entries[params.sourceKey] = {
+    sourceKey: params.sourceKey,
+    sourceKind: inferSourceKind(source),
+    localPath: typeof source === 'object' && !('transport' in source)
+      ? source.localPath
+      : typeof source === 'string' && !isDataUri(source) && !isRemoteMediaUri(source)
+        ? normalizeLocalSourcePath(source)
+        : undefined,
+    remoteUrl: params.remoteUrl,
+    filename: params.filename,
+    byteLength: params.byteLength,
+    mimeType: params.mimeType,
+    updatedAt: Date.now(),
+    lastVerifiedAt: Date.now(),
+  };
+  await writeRemoteUrlCache(params.projectId, cache);
 }
 
 function safeFilenameFromPath(path: string): string {
@@ -154,16 +450,16 @@ export async function ensureRemoteUrlForImageAsset(params: {
 
   if (asset.kind !== 'image') return asset;
 
-  if (asset.remoteUrl && isRemoteMediaUri(asset.remoteUrl)) {
-    return asset;
-  }
-
   // If someone stored a remote URL in localPath, normalize it (no upload needed).
   if (asset.localPath && isRemoteMediaUri(asset.localPath)) {
     return {
       ...asset,
       remoteUrl: asset.localPath,
     };
+  }
+
+  if (asset.remoteUrl && isRemoteMediaUri(asset.remoteUrl) && !asset.localPath) {
+    return asset;
   }
 
   const source = asset.localPath;
@@ -174,6 +470,46 @@ export async function ensureRemoteUrlForImageAsset(params: {
     return asset;
   }
 
+  const filename = filenameHint || safeFilenameFromPath(source);
+  const sourceKey = buildRemoteUrlSourceKey(asset);
+  const cached = await lookupCachedRemoteUrl({
+    projectId: params.projectId,
+    sourceKey,
+    policy,
+  });
+  if (cached.status === 'hit') {
+    return {
+      ...asset,
+      remoteUrl: cached.remoteUrl,
+    };
+  }
+
+  const staleRemoteUrlFromCache = cached.status === 'miss' ? cached.staleRemoteUrl : undefined;
+  if (
+    asset.remoteUrl
+    && isRemoteMediaUri(asset.remoteUrl)
+    && asset.remoteUrl !== staleRemoteUrlFromCache
+  ) {
+    const accessible = await checkRemoteUrlAccessible(asset.remoteUrl);
+    if (accessible) {
+      await rememberCachedRemoteUrl({
+        projectId: params.projectId,
+        source: asset,
+        sourceKey,
+        remoteUrl: asset.remoteUrl,
+        filename,
+        mimeType: asset.mimeType,
+      });
+      return asset;
+    }
+    logger.warn('图片资产 remoteUrl 不可访问，准备重新上传', {
+      projectId: params.projectId,
+      remoteUrl: asset.remoteUrl,
+      localPath: asset.localPath,
+      policy,
+    });
+  }
+
   let bytes: Uint8Array;
   if (isDataUri(source)) {
     bytes = await readBytesFromDataUrl(source);
@@ -181,16 +517,97 @@ export async function ensureRemoteUrlForImageAsset(params: {
     bytes = await readBytesFromLocalFile(source);
   }
 
-  const filename = filenameHint || safeFilenameFromPath(source);
-  const remoteUrl = await uploadImageBytesToRemoteUrl(bytes, filename, policy, {
-    fallbackToSourceOnUploadFailure,
-  });
+  const uploadKey = `${params.projectId}:${sourceKey}`;
+  let uploadPromise = remoteUrlInflightUploads.get(uploadKey);
+  if (!uploadPromise) {
+    uploadPromise = uploadImageBytesToRemoteUrl(bytes, filename, policy, {
+      fallbackToSourceOnUploadFailure,
+    });
+    remoteUrlInflightUploads.set(uploadKey, uploadPromise);
+    void uploadPromise.then(
+      () => remoteUrlInflightUploads.delete(uploadKey),
+      () => remoteUrlInflightUploads.delete(uploadKey),
+    );
+  } else {
+    logger.info('复用进行中的图片上传任务', {
+      projectId: params.projectId,
+      sourceKey,
+      filename,
+      policy,
+    });
+  }
+  const remoteUrl = await uploadPromise;
+  if (remoteUrl) {
+    await rememberCachedRemoteUrl({
+      projectId: params.projectId,
+      source: asset,
+      sourceKey,
+      remoteUrl,
+      filename,
+      byteLength: bytes.byteLength,
+      mimeType: asset.mimeType,
+    });
+  }
   if (!remoteUrl) return asset;
 
   return {
     ...asset,
     remoteUrl,
   };
+}
+
+async function uploadSourceWithCache(params: {
+  projectId: string;
+  source: MediaAssetSource | ProviderAssetInput;
+  bytes: Uint8Array;
+  filename: string;
+  policy: RemoteUrlPolicy;
+  fallbackToSourceOnUploadFailure?: boolean;
+  mimeType?: string;
+}): Promise<string | undefined> {
+  const sourceKey = buildRemoteUrlSourceKey(params.source);
+  const cached = await lookupCachedRemoteUrl({
+    projectId: params.projectId,
+    sourceKey,
+    policy: params.policy,
+  });
+  if (cached.status === 'hit') {
+    return cached.remoteUrl;
+  }
+
+  const uploadKey = `${params.projectId}:${sourceKey}`;
+  let uploadPromise = remoteUrlInflightUploads.get(uploadKey);
+  if (!uploadPromise) {
+    uploadPromise = uploadImageBytesToRemoteUrl(params.bytes, params.filename, params.policy, {
+      fallbackToSourceOnUploadFailure: params.fallbackToSourceOnUploadFailure,
+    });
+    remoteUrlInflightUploads.set(uploadKey, uploadPromise);
+    void uploadPromise.then(
+      () => remoteUrlInflightUploads.delete(uploadKey),
+      () => remoteUrlInflightUploads.delete(uploadKey),
+    );
+  } else {
+    logger.info('复用进行中的图片上传任务', {
+      projectId: params.projectId,
+      sourceKey,
+      filename: params.filename,
+      policy: params.policy,
+    });
+  }
+
+  const remoteUrl = await uploadPromise;
+  if (remoteUrl) {
+    await rememberCachedRemoteUrl({
+      projectId: params.projectId,
+      source: params.source,
+      sourceKey,
+      remoteUrl,
+      filename: params.filename,
+      byteLength: params.bytes.byteLength,
+      mimeType: params.mimeType,
+    });
+  }
+  return remoteUrl;
 }
 
 /**
@@ -211,12 +628,34 @@ export async function ensureRemoteUrlForImageSource(params: {
 
   // Provider boundary input
   if (typeof source === 'object' && 'transport' in source && 'value' in source) {
-    if (source.transport === 'remote-url') return source;
+    if (source.transport === 'remote-url') {
+      return source;
+    }
     // data-url -> remote-url
-    const bytes = await readBytesFromDataUrl(source.value);
     const filename = filenameHint || 'image.png';
-    const remoteUrl = await uploadImageBytesToRemoteUrl(bytes, filename, policy, {
+    const sourceKey = buildRemoteUrlSourceKey(source);
+    const cached = await lookupCachedRemoteUrl({
+      projectId: params.projectId,
+      sourceKey,
+      policy,
+    });
+    if (cached.status === 'hit') {
+      return {
+        transport: 'remote-url',
+        value: cached.remoteUrl,
+        mimeType: source.mimeType,
+      };
+    }
+
+    const bytes = await readBytesFromDataUrl(source.value);
+    const remoteUrl = await uploadSourceWithCache({
+      projectId: params.projectId,
+      source,
+      bytes,
+      filename,
+      policy,
       fallbackToSourceOnUploadFailure,
+      mimeType: source.mimeType,
     });
     if (!remoteUrl) return source;
     return {
@@ -238,14 +677,31 @@ export async function ensureRemoteUrlForImageSource(params: {
   }
 
   // string source
-  if (isRemoteMediaUri(source)) return source;
+  if (isRemoteMediaUri(source)) {
+    return source;
+  }
+
+  const filename = filenameHint || safeFilenameFromPath(source);
+  const sourceKey = buildRemoteUrlSourceKey(source);
+  const cached = await lookupCachedRemoteUrl({
+    projectId: params.projectId,
+    sourceKey,
+    policy,
+  });
+  if (cached.status === 'hit') {
+    return cached.remoteUrl;
+  }
 
   const bytes = isDataUri(source)
     ? await readBytesFromDataUrl(source)
     : await readBytesFromLocalFile(source);
 
-  const filename = filenameHint || safeFilenameFromPath(source);
-  const remoteUrl = await uploadImageBytesToRemoteUrl(bytes, filename, policy, {
+  const remoteUrl = await uploadSourceWithCache({
+    projectId: params.projectId,
+    source,
+    bytes,
+    filename,
+    policy,
     fallbackToSourceOnUploadFailure,
   });
   return remoteUrl || source;
@@ -258,10 +714,30 @@ export async function ensureRemoteUrlForImageSources(params: {
   filenameHint?: string;
 } & RemoteUrlUploadFailureOptions): Promise<Array<MediaAssetSource | ProviderAssetInput | undefined>> {
   const { sources, ...rest } = params;
-  const results: Array<MediaAssetSource | ProviderAssetInput | undefined> = [];
+  const results: Array<MediaAssetSource | ProviderAssetInput | undefined> = Array.from({ length: sources.length });
+  const firstIndexBySourceKey = new Map<string, number>();
 
   for (let index = 0; index < sources.length; index += 1) {
     const source = sources[index];
+    if (!source) {
+      results[index] = undefined;
+      continue;
+    }
+    const sourceKey = buildRemoteUrlSourceKey(source);
+    const firstIndex = firstIndexBySourceKey.get(sourceKey);
+    if (firstIndex != null) {
+      const firstResult = results[firstIndex];
+      logger.info('跳过重复图片远程地址归一化', {
+        index,
+        firstIndex,
+        policy: rest.policy,
+        sourceKey,
+      });
+      results[index] = firstResult;
+      continue;
+    }
+    firstIndexBySourceKey.set(sourceKey, index);
+
     const indexedFilenameHint = appendIndexToFilename(
       rest.filenameHint || inferFilenameHintFromSource(source),
       index,
@@ -276,7 +752,7 @@ export async function ensureRemoteUrlForImageSources(params: {
       source,
       filenameHint: indexedFilenameHint,
     });
-    results.push(normalized);
+    results[index] = normalized;
   }
 
   return results;

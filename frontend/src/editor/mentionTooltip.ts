@@ -144,6 +144,10 @@ function getTypeLabel(type: MentionType): string {
       return '分镜锚点';
     case 'grid':
       return '网格锚点';
+    case 'storyboard':
+      return '故事板锚点';
+    case 'previous_storyboard':
+      return '上一故事板';
     default:
       return '';
   }
@@ -175,6 +179,16 @@ function getTypeColor(type: MentionType): { bg: string; text: string } {
       return {
         bg: 'color-mix(in srgb, var(--token-status-info) 14%, transparent)',
         text: 'var(--token-status-info)',
+      };
+    case 'storyboard':
+      return {
+        bg: 'color-mix(in srgb, var(--token-status-warning) 24%, transparent)',
+        text: 'var(--token-status-warning)',
+      };
+    case 'previous_storyboard':
+      return {
+        bg: 'color-mix(in srgb, var(--token-accent-base) 22%, transparent)',
+        text: 'var(--token-accent-base)',
       };
     default:
       return {

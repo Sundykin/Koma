@@ -95,6 +95,30 @@ export async function listTaskRecords(query?: TaskQuery): Promise<TaskRecord[]> 
   return getApi().list(query);
 }
 
+const ACTIVE_TASK_STATUSES = ['pending', 'running', 'processing'] as const;
+
+/**
+ * 找出符合 (scope, type, targetKind, targetId) 且仍未到终态的任务。
+ * 用途：批量类入口在创建新任务前先查 DB 防重复提交（用户切走再回来后短暂看
+ * 不到 loading，可能再次点击触发批量；这一步阻止重复跑）。
+ */
+export async function findActiveTask(args: {
+  scope: string;
+  type: string;
+  targetKind?: string;
+  targetId?: string;
+}): Promise<TaskRecord | null> {
+  if (!isTasksIpcAvailable()) return null;
+  const records = await listTaskRecords({
+    scope: args.scope,
+    type: args.type,
+    targetKind: args.targetKind,
+    targetId: args.targetId,
+    status: ACTIVE_TASK_STATUSES as unknown as string[],
+  });
+  return records[0] ?? null;
+}
+
 export async function getTaskRecord(id: string): Promise<TaskRecord | null> {
   if (!isTasksIpcAvailable()) return null;
   return getApi().get(id);

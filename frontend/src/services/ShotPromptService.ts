@@ -7,7 +7,7 @@ import type { Prop, Shot, Character, Scene, ShotVideoMode } from '../types';
 import { getShotScriptText } from '../types';
 import { resolvePromptTemplate } from '../store/promptTemplates';
 import type { PromptTemplateType } from '../store/promptTemplates';
-import { loadScenes, loadProps, updateShot, loadEpisodeShots } from '../store/projectStore';
+import { loadProject, loadScenes, loadProps, updateShot, loadEpisodeShots } from '../store/projectStore';
 import { createLogger } from '../store/logger';
 import { createMentionString } from '../editor/mentionTypes';
 import { runWithConcurrency } from '../utils/concurrency';
@@ -17,11 +17,12 @@ import type { TaskSubType } from './TaskManager';
 import { buildShotReferenceBundle } from './shotReference/builder';
 import {
   renderGridSequenceNotice,
+  renderShotMentionReferenceTable,
   renderShotReferenceTable,
   summarizeBundle,
 } from './shotReference/render';
 import { decideShotsMode, renderShotsSection } from './shotReference/shotsOutputFormat';
-import type { ShotReferenceBundle } from './shotReference/types';
+import type { ShotReferenceBundle, ShotReferenceItem } from './shotReference/types';
 import {
   buildVideoDialogueModeDirective,
   type ProjectNarrativeMode,
@@ -138,6 +139,7 @@ export class ShotPromptService {
     ]);
     const shotScenes = (allScenes || []).filter(s => (shot.scenes || []).includes(s.id));
     const shotProps = (allProps || []).filter(p => (shot.props || []).includes(p.id));
+    const allEpisodeShots = await this.loadAllEpisodeShots();
 
     // 构建角色引用列表（统一 `@<id> <名称>` 顺序，与 mappingSchemaNote 输出约定一致）
     const characterRefs = shotCharacters
@@ -163,13 +165,14 @@ export class ShotPromptService {
       characters: shotCharacters,
       scenes: shotScenes,
       props: shotProps,
+      allShots: allEpisodeShots,
     });
     const referenceTable = renderShotReferenceTable(referenceBundle);
     const gridSequenceNotice = renderGridSequenceNotice(referenceBundle);
 
     // shots 段必须和真实 reference bundle 对齐：
     // - 有 grid-anchor 图片时，才渲染 4/9 宫格镜头骨架；
-    // - 没有真实分镜图时，即使 imageMode 是 grid，也走 normal / 多参考模式。
+    // - 没有真实分镜图时，即使 imageMode 是 grid/storyboard，也走 normal / 多参考模式。
     // 这样不会把不存在的 @grid_anchor 内置进视频提示词。
     const explicitCellCount: 4 | 9 | undefined =
       shot.imageMode === 'grid-4' ? 4
@@ -437,12 +440,24 @@ export class ShotPromptService {
     };
   }
 
+  private async loadAllEpisodeShots(): Promise<Shot[] | undefined> {
+    const episodeId = this.ctx.episodeId;
+    if (!episodeId) return undefined;
+    try {
+      return await loadEpisodeShots(this.ctx.projectId, episodeId);
+    } catch (err) {
+      logger.warn('加载剧集分镜失败，按无全局分镜上下文处理', err);
+      return undefined;
+    }
+  }
+
   /**
-   * 网格模式：将单个分镜扩展为 N 个连续画面的 imagePrompt。
+   * 特殊图片模式：将单个分镜扩展为网格或电影故事板 imagePrompt。
    *  - shot.imageMode === 'grid-4' → 走 grid_4_shot_prompt_generation（4 帧）
-   *  - shot.imageMode === 'grid' / 'grid-9' / 默认 → 走 grid_shot_prompt_generation（9 帧）
+   *  - shot.imageMode === 'grid' / 'grid-9' → 走 grid_shot_prompt_generation（9 帧）
+   *  - shot.imageMode === 'storyboard' → 走 storyboard_shot_prompt_generation
    */
-  async generateGridShotPrompt(
+  async generateSpecialImageShotPrompt(
     shot: Shot,
     characters: Character[],
     stylePrefix: string = '',
@@ -458,6 +473,7 @@ export class ShotPromptService {
     ]);
     const shotScenes = (allScenes || []).filter(s => (shot.scenes || []).includes(s.id));
     const shotProps = (allProps || []).filter(p => (shot.props || []).includes(p.id));
+    const projectHeader = await this.buildStoryboardProjectHeaderVariables(shot, shotCharacters, shotScenes);
 
     // 构建引用列表（统一 `@<id> <名称>` 顺序，与 mappingSchemaNote 输出约定一致）
     const characterRefs = shotCharacters
@@ -475,6 +491,7 @@ export class ShotPromptService {
       scriptContent: buildShotVideoScriptContent(shot, shotCharacterNames, this.ctx.projectMode),
       dialogueText: formatDialogueTextForPrompt(getShotDialogueText(shot), shotCharacterNames, this.ctx.projectMode) || '无',
       dialogueModeDirective: buildVideoDialogueModeDirective(this.ctx.projectMode),
+      ...projectHeader,
       characters: shotCharacters.map(c => `${c.name}（${c.appearance || c.description || ''}）`).join('; ') || '无',
       scenes: shotScenes.map(s => s.name).join(', ') || '无',
       props: shotProps.map(p => p.name).join(', ') || '无',
@@ -485,10 +502,26 @@ export class ShotPromptService {
       propRefs: propRefs || '无道具引用',
     };
 
-    const gridTemplateKey: PromptTemplateType = shot.imageMode === 'grid-4'
-      ? 'grid_4_shot_prompt_generation'
-      : 'grid_shot_prompt_generation';
-    const resolvedPrompt = await resolvePromptTemplate(gridTemplateKey, templateVariables);
+    let storyboardReferenceBundle: ShotReferenceBundle | undefined;
+    if (shot.imageMode === 'storyboard') {
+      const allShots = await this.loadAllEpisodeShots();
+      storyboardReferenceBundle = buildShotReferenceBundle({
+        shot,
+        characters: shotCharacters,
+        scenes: shotScenes,
+        props: shotProps,
+        allShots,
+      });
+      templateVariables.referenceTable = renderShotMentionReferenceTable(storyboardReferenceBundle);
+      templateVariables.storyboardContinuityNotice = buildStoryboardContinuityNotice(storyboardReferenceBundle);
+    }
+
+    const templateKey: PromptTemplateType = shot.imageMode === 'storyboard'
+      ? 'storyboard_shot_prompt_generation'
+      : shot.imageMode === 'grid-4'
+        ? 'grid_4_shot_prompt_generation'
+        : 'grid_shot_prompt_generation';
+    const resolvedPrompt = await resolvePromptTemplate(templateKey, templateVariables);
 
     const resolvedSystemPrompt = await resolvePromptTemplate('shot_prompt_system', {});
 
@@ -501,8 +534,50 @@ export class ShotPromptService {
     if (cleanedResult.startsWith('"') && cleanedResult.endsWith('"')) {
       cleanedResult = cleanedResult.slice(1, -1);
     }
+    if (storyboardReferenceBundle) {
+      cleanedResult = rewriteProviderImageTokensToMentions(cleanedResult, storyboardReferenceBundle);
+    }
 
     return cleanedResult;
+  }
+
+  private async buildStoryboardProjectHeaderVariables(
+    shot: Shot,
+    shotCharacters: Character[],
+    shotScenes: Scene[],
+  ): Promise<Record<string, string>> {
+    const fallbackTitle = firstNonEmptyLine(getShotScriptText(shot)) || '当前分镜';
+    let projectTitle = this.ctx.projectTitle?.trim() || '';
+    let projectType = this.ctx.projectGenre?.trim() || '';
+
+    if (!projectTitle || !projectType) {
+      try {
+        const project = await loadProject(this.ctx.projectId);
+        projectTitle = projectTitle || project?.title?.trim() || '';
+        projectType = projectType || project?.genre?.trim() || '';
+      } catch (err) {
+        logger.warn('加载项目标题信息失败，故事板项目标题区使用兜底值', err);
+      }
+    }
+
+    const durationSeconds = Number.isFinite(shot.duration) && shot.duration > 0
+      ? Math.round(shot.duration)
+      : 0;
+    const sceneCount = Math.max(shotScenes.length, 1);
+    const constraints = [
+      '镜头数量由剧情节奏决定',
+      `${shotCharacters.length} 个角色`,
+      `${sceneCount} 个场景`,
+    ].join(' / ');
+
+    return {
+      projectTitle: projectTitle || fallbackTitle,
+      projectSubtitle: '短片分镜设计',
+      shootingFormat: '单机位',
+      projectType: projectType || '未指定类型',
+      shotDurationSeconds: durationSeconds > 0 ? String(durationSeconds) : '未指定',
+      storyboardConstraints: constraints,
+    };
   }
 
   /**
@@ -587,12 +662,12 @@ export class ShotPromptService {
       let imagePrompt: string;
       let videoPrompt: string;
 
-      const isGridMode = shot.imageMode === 'grid' || shot.imageMode === 'grid-9' || shot.imageMode === 'grid-4';
-      if (isGridMode && (generateFlags?.image !== false)) {
-        // 九宫格模式：imagePrompt 使用专用模板
+      const isSpecialImageMode = shot.imageMode === 'grid' || shot.imageMode === 'grid-9' || shot.imageMode === 'grid-4' || shot.imageMode === 'storyboard';
+      if (isSpecialImageMode && (generateFlags?.image !== false)) {
+        // 网格/故事板模式：imagePrompt 使用专用推理模板
         const needImage = options?.force || !shot.imagePrompt?.trim();
         imagePrompt = needImage
-          ? await this.generateGridShotPrompt(shot, characters, stylePrefix, styleSnapshot)
+          ? await this.generateSpecialImageShotPrompt(shot, characters, stylePrefix, styleSnapshot)
           : (workingShot.imagePrompt || '');
         const shotWithGridPrompt = { ...workingShot, imagePrompt };
         // videoPrompt 仍走原流程
@@ -739,15 +814,18 @@ function sanitizeNarrativeDialogueLeakage(prompt: string): string {
 }
 
 function isNarrativeReportLeak(text: string): boolean {
-  const normalized = normalizeDialogueText(text)
+  const original = normalizeDialogueText(text);
+  if (/台词\s*[:：]/.test(original)) return false;
+
+  const normalized = original
     .replace(/^[^：:]{1,30}[：:]\s*/, '')
     .replace(/^[「『“"']+/, '')
     .trim();
   if (!normalized) return false;
-  if (/(?:她|他|TA|ta|它)?自称[^，,。；;]{1,24}(?:[，,]|$)/.test(normalized) && /[我俺咱]/.test(normalized)) {
+  if (/^(?:她|他|TA|ta|它)?自称[^，,。；;！？!]{1,24}(?:[，,。；;！？!]|$)/.test(normalized) && /[我俺咱]/.test(normalized)) {
     return true;
   }
-  return /(?:她|他|TA|ta|它)?(?:说要|说会|说可以|表示要|表示会|表示可以|告诉我|答应我|承诺).*[我俺咱]/.test(normalized);
+  return /^(?:她|他|TA|ta|它)?(?:说要|说会|说可以|表示要|表示会|表示可以|告诉我|答应我|承诺).*[我俺咱]/.test(normalized);
 }
 
 function isSpeakerDialogueLine(text: string): boolean {
@@ -895,6 +973,59 @@ function formatPropMappingBaseline(
     .join('\n');
 }
 
+function buildStoryboardContinuityNotice(referenceBundle: ShotReferenceBundle): string {
+  const current = referenceBundle.items.find(item => item.kind === 'storyboard-anchor');
+  const previous = referenceBundle.items.find(item => item.kind === 'previous-storyboard-anchor');
+  const lines: string[] = [];
+
+  if (previous) {
+    lines.push(`上一故事板参考：\`${previous.mentionToken} ${previous.label}\`。必须继承上一故事板里的主要人物身份、场景结构、色调、光源方向、镜头语言和末态情绪，只推进剧情，不重启世界观。`);
+  } else {
+    lines.push('上一故事板参考：无。不要虚构上一故事板，也不要输出 @previous_storyboard_anchor。');
+  }
+
+  if (current) {
+    lines.push(`当前故事板锚定：\`${current.mentionToken} ${current.label}\`。优化或重推时必须保留其核心连续性，只调整当前分镜的故事节奏、面板编排与情绪层次。`);
+  } else {
+    lines.push('当前故事板锚定：无。首次生成时不要输出 @storyboard_anchor。');
+  }
+
+  return lines.join('\n');
+}
+
+export function rewriteProviderImageTokensToMentions(
+  prompt: string,
+  referenceBundle: ShotReferenceBundle,
+): string {
+  if (!prompt || referenceBundle.items.length === 0) return prompt;
+  return prompt.replace(/(?:@Image|@图片)\s*(\d+)/g, (full: string, rawIndex: string, offset: number, sourceText: string) => {
+    const index = Number(rawIndex);
+    if (!Number.isInteger(index) || index <= 0) return full;
+    const item = referenceBundle.items[index - 1];
+    if (!item) return '';
+    const label = labelForEditableMention(item);
+    const includeLabel = label ? !isFollowedBySameLabel(sourceText, offset + full.length, label) : false;
+    return formatItemMentionForEditablePrompt(item, includeLabel);
+  });
+}
+
+function formatItemMentionForEditablePrompt(item: ShotReferenceItem, includeLabel = true): string {
+  const mention = item.mentionToken;
+  const label = labelForEditableMention(item);
+  return includeLabel && label ? `${mention} ${label}` : mention;
+}
+
+function labelForEditableMention(item: ShotReferenceItem): string {
+  const label = item.label.trim();
+  if (!label) return '';
+  return label.replace(/^(角色|场景|道具)：/, '').replace(/（.*?）/g, '').trim() || label;
+}
+
+function isFollowedBySameLabel(sourceText: string, tokenEnd: number, label: string): boolean {
+  const after = sourceText.slice(tokenEnd).replace(/^[ \t\u3000]+/, '');
+  return after.startsWith(label);
+}
+
 /**
  * 把邻接分镜的剧情和已生成提示词格式化为上下文段落。
  * - withPrompt=true：包含已生成的 videoPrompt（如果有）
@@ -954,6 +1085,13 @@ function appendUniqueDialogue(target: string[], source: string[]): void {
 
 function getShotDialogueText(shot: Pick<Shot, 'dialogue'>): string {
   return String(shot.dialogue ?? '').trim();
+}
+
+function firstNonEmptyLine(text: string): string {
+  return text
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .find(Boolean) || '';
 }
 
 function buildShotVideoScriptContent(
@@ -1208,6 +1346,7 @@ function buildSpatialAnchorDirective(
   const isGridMode = shot.imageMode === 'grid'
     || shot.imageMode === 'grid-9'
     || shot.imageMode === 'grid-4';
+  const isStoryboardMode = shot.imageMode === 'storyboard';
 
   const lines: string[] = [];
 
@@ -1235,6 +1374,13 @@ function buildSpatialAnchorDirective(
       lines.push('  · 不得在 cell 之间互换姿态（例如把镜头 01 的"坐"挪到镜头 03）；');
       lines.push('  · 不得引入图像提示词没规定过的中间状态；');
       lines.push('  · cell 之间的过渡只能靠运镜（推 / 拉 / 摇 / 切）与时间推进。');
+    }
+    if (isStoryboardMode) {
+      lines.push('');
+      lines.push('**故事板模式（关键）**：当前图是多面板制作方案板，不是单一首帧。视频提示词必须从故事板中提炼当前分镜的关键动作链与情绪推进，不能把整张故事板版式、边框、箭头或制作表文本当作视频画面内容。');
+      lines.push('  · 保持人物、场景、道具和光影连续性；');
+      lines.push('  · 只使用故事板中的剧情面板作为参考，不生成面板边框、编号、说明文字；');
+      lines.push('  · 若有上一故事板参考，只继承连续性，不重复上一分镜已完成的动作。');
     }
     lines.push('');
     lines.push('**本分镜的图像提示词原文（请对照阅读，将其作为每一镜起始姿态的真相依据；不要复述图里的"画面左 / 右"等屏幕方位词）：**');
@@ -1329,7 +1475,7 @@ function buildMappingSchemaNote(
   referenceBundle: ShotReferenceBundle,
 ): string {
   const anchorItem = referenceBundle.items.find(
-    item => item.kind === 'shot-anchor' || item.kind === 'grid-anchor',
+    item => item.kind === 'shot-anchor' || item.kind === 'grid-anchor' || item.kind === 'storyboard-anchor',
   );
 
   const lines: string[] = [];
@@ -1350,7 +1496,7 @@ function buildMappingSchemaNote(
   if (anchorItem) {
     lines.push(`4) **本分镜处于"有图模式"**：每个镜头描述至少出现一次 \`${anchorItem.mentionToken} ${anchorItem.label}\`，用作画面 / 姿态 / 空间 / 光影的锚定基准；若是九宫格 / 四宫格锚定，需说明本镜头对应锚定图中的哪个 cell。`);
   } else {
-    lines.push('4) 本分镜处于"无图模式"（references 中没有分镜锚定图），不要使用 `@shot_anchor` / `@grid_anchor`，所有视觉锚点完全靠 `@char_<id>` / `@scene_<id>` / `@prop_<id>` 描述。');
+    lines.push('4) 本分镜处于"无图模式"（references 中没有分镜锚定图），不要使用 `@shot_anchor` / `@grid_anchor` / `@storyboard_anchor`，所有视觉锚点完全靠 `@char_<id>` / `@scene_<id>` / `@prop_<id>` 描述。');
   }
   const referencedCharacters = referenceBundle.items.filter(item => item.kind === 'character');
   if (referencedCharacters.length > 0) {
@@ -1468,7 +1614,12 @@ export async function batchGenerateShotPrompts(
     targetId: episodeId,
     targetName: `批量${wantsImage ? '图片' : ''}${wantsImage && wantsVideo ? '/' : ''}${wantsVideo ? '视频' : ''}提示词（${shots.length} 个分镜）`,
     type: wantsImage ? 'prompt-generation:image' : 'prompt-generation:video',
-    metadata: { shotCount: shots.length, force: options?.force ?? false },
+    metadata: {
+      shotCount: shots.length,
+      // shotIds 提供给 UI 在切走再回来时复原 per-shot loading 指示
+      shotIds: shots.map(s => s.id),
+      force: options?.force ?? false,
+    },
     execute: async (taskCtx) => {
       const total = Math.max(shots.length, 1);
       return service.batchGenerateShotPrompts(

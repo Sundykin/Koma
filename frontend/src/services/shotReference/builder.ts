@@ -32,6 +32,7 @@ const PRIORITY = {
   CHARACTER_SUPPORT: 60,
   PROP_PRIMARY: 50,
   PROP_SECONDARY: 40,
+  PREVIOUS_STORYBOARD: 90,
   USER_UPLOAD: 30,
 } as const;
 
@@ -40,6 +41,7 @@ interface BuildParams {
   characters: Character[];
   scenes: Scene[];
   props: Prop[];
+  allShots?: Shot[];
   options?: ShotReferenceBundleOptions;
 }
 
@@ -53,6 +55,10 @@ export function buildShotReferenceBundle(params: BuildParams): ShotReferenceBund
 
   // 1. 锚点：grid-anchor 或 shot-anchor，单选
   pushAnchor(normalized, items, seen);
+
+  // 1.5 故事板模式可选继承上一张故事板图。它不是当前镜头 primary anchor，
+  // 但要进同一 references 索引空间，供后续故事板保持人物/场景/光影连续。
+  pushPreviousStoryboardAnchor(params, items, seen);
 
   // 2. 场景（按 shot.scenes 顺序，单一场景为常见情况）
   for (const sceneId of normalized.scenes || []) {
@@ -131,7 +137,11 @@ export function buildShotReferenceBundle(params: BuildParams): ShotReferenceBund
   const orderedItems: ShotReferenceItem[] = kept;
 
   const hasGridAnchor = orderedItems.some(item => item.kind === 'grid-anchor');
-  const hasShotImage = orderedItems.some(item => item.kind === 'grid-anchor' || item.kind === 'shot-anchor');
+  const hasShotImage = orderedItems.some(item =>
+    item.kind === 'grid-anchor'
+    || item.kind === 'shot-anchor'
+    || item.kind === 'storyboard-anchor'
+  );
   // gridCellCount 由 shot.imageMode 派生（builder 是唯一权威源），渲染层不需再读 shot.imageMode。
   let gridCellCount: 4 | 9 | undefined;
   if (hasGridAnchor) {
@@ -200,6 +210,18 @@ function pushAnchor(shot: Shot, items: ShotReferenceItem[], seen: Set<string>): 
     return;
   }
 
+  if (shot.imageMode === 'storyboard') {
+    pushItem(items, seen, {
+      kind: 'storyboard-anchor',
+      id: `${shot.id}#storyboard`,
+      label: '当前故事板锚点（电影故事板 / 制作方案板整图）',
+      source: candidate,
+      mentionToken: '@storyboard_anchor',
+      priority: PRIORITY.ANCHOR,
+    });
+    return;
+  }
+
   pushItem(items, seen, {
     kind: 'shot-anchor',
     id: shot.id,
@@ -208,6 +230,33 @@ function pushAnchor(shot: Shot, items: ShotReferenceItem[], seen: Set<string>): 
     mentionToken: '@shot_anchor',
     priority: PRIORITY.ANCHOR,
   });
+}
+
+function pushPreviousStoryboardAnchor(params: BuildParams, items: ShotReferenceItem[], seen: Set<string>): void {
+  const shot = params.shot;
+  if (shot.imageMode !== 'storyboard') return;
+  if (shot.inheritPreviousStoryboard === false) return;
+  const allShots = params.allShots;
+  if (!allShots?.length) return;
+  const index = allShots.findIndex(candidate => candidate.id === shot.id);
+  if (index <= 0) return;
+
+  for (let i = index - 1; i >= 0; i -= 1) {
+    const previous = normalizeShotMediaState(allShots[i]);
+    if (previous.imageMode !== 'storyboard') continue;
+    const previousIndex = previous.media?.currentImageIndex ?? 0;
+    const candidate = previous.media?.images?.[previousIndex];
+    if (!candidate || isGridSplitChild(candidate)) continue;
+    pushItem(items, seen, {
+      kind: 'previous-storyboard-anchor',
+      id: `${previous.id}#storyboard`,
+      label: '上一故事板锚点（用于剧情、场景、人物、光影连续性）',
+      source: candidate,
+      mentionToken: '@previous_storyboard_anchor',
+      priority: PRIORITY.PREVIOUS_STORYBOARD,
+    });
+    return;
+  }
 }
 
 /** 判断是否是九宫格拆分留下的子图（历史路径，新架构不参与）。 */

@@ -225,6 +225,76 @@ describe('videoRequestCompiler', () => {
     expect(request.additionalReferences?.[0]?.transport).toBe('data-url');
   });
 
+  it('mapVideoRequestToProviderRequest: dedupes duplicate primary and additional uploads in one request', async () => {
+    vi.mocked(uploadBytesToImageHostingWithRetry).mockResolvedValue({
+      success: true,
+      url: 'https://cdn.example.com/shared.png',
+    });
+
+    const request = await mapVideoRequestToProviderRequest({
+      projectId: 'p1',
+      request: buildVideoCapabilityRequest({
+        capability: 'video.image-to-video',
+        prompt: 'demo',
+        primaryImage: { transport: 'data-url', value: 'data:image/png;base64,AA==' },
+        additionalReferences: [
+          { transport: 'data-url', value: 'data:image/png;base64,AA==' },
+        ],
+      }),
+      transportSupport: {
+        primary: false,
+        additional: false,
+        reference: true,
+        start: true,
+        end: true,
+      },
+    });
+
+    expect(uploadBytesToImageHostingWithRetry).toHaveBeenCalledTimes(1);
+    expect(request.primaryImage).toEqual(expect.objectContaining({
+      transport: 'remote-url',
+      value: 'https://cdn.example.com/shared.png',
+    }));
+    expect(request.additionalReferences?.[0]).toEqual(expect.objectContaining({
+      transport: 'remote-url',
+      value: 'https://cdn.example.com/shared.png',
+    }));
+  });
+
+  it('mapVideoRequestToProviderRequest: dedupes duplicate start and end frame uploads in one request', async () => {
+    vi.mocked(uploadBytesToImageHostingWithRetry).mockResolvedValue({
+      success: true,
+      url: 'https://cdn.example.com/frame.png',
+    });
+
+    const request = await mapVideoRequestToProviderRequest({
+      projectId: 'p1',
+      request: buildVideoCapabilityRequest({
+        capability: 'video.start-end-to-video',
+        prompt: 'demo',
+        startFrame: { transport: 'data-url', value: 'data:image/png;base64,AA==' },
+        endFrame: { transport: 'data-url', value: 'data:image/png;base64,AA==' },
+      }),
+      transportSupport: {
+        primary: true,
+        additional: true,
+        reference: true,
+        start: false,
+        end: false,
+      },
+    });
+
+    expect(uploadBytesToImageHostingWithRetry).toHaveBeenCalledTimes(1);
+    expect(request.startFrame).toEqual(expect.objectContaining({
+      transport: 'remote-url',
+      value: 'https://cdn.example.com/frame.png',
+    }));
+    expect(request.endFrame).toEqual(expect.objectContaining({
+      transport: 'remote-url',
+      value: 'https://cdn.example.com/frame.png',
+    }));
+  });
+
   it('mapVideoRequestToProviderRequest: respects capability shape and optional max reference cap', async () => {
     const imageRequest = await mapVideoRequestToProviderRequest({
       projectId: 'p1',

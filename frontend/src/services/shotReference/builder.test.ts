@@ -317,6 +317,111 @@ describe('buildShotReferenceBundle — grid mode', () => {
   });
 });
 
+describe('buildShotReferenceBundle — storyboard mode', () => {
+  it('storyboard 模式取当前图片作 storyboard-anchor', () => {
+    const shot = shotOf({
+      imageMode: 'storyboard',
+      media: {
+        images: [asset('https://example.com/storyboard-current.png')],
+        currentImageIndex: 0,
+      },
+    });
+
+    const bundle = buildShotReferenceBundle({ shot, characters: [], scenes: [], props: [] });
+
+    expect(bundle.items[0].kind).toBe('storyboard-anchor');
+    expect(bundle.items[0].mentionToken).toBe('@storyboard_anchor');
+    expect(bundle.hasShotImage).toBe(true);
+    expect(bundle.hasGridAnchor).toBe(false);
+  });
+
+  it('storyboard 模式默认继承上一张故事板图作为 previous-storyboard-anchor', () => {
+    const previous = shotOf({
+      id: 'shot-prev',
+      imageMode: 'storyboard',
+      media: {
+        images: [asset('https://example.com/storyboard-prev.png')],
+        currentImageIndex: 0,
+      },
+    });
+    const current = shotOf({
+      id: 'shot-current',
+      imageMode: 'storyboard',
+      characters: ['char-zhouming'],
+    });
+
+    const bundle = buildShotReferenceBundle({
+      shot: current,
+      allShots: [previous, current],
+      characters: [charZhouming],
+      scenes: [],
+      props: [],
+    });
+
+    expect(bundle.items.map(item => item.kind)).toEqual([
+      'previous-storyboard-anchor',
+      'character',
+    ]);
+    expect(bundle.items[0].mentionToken).toBe('@previous_storyboard_anchor');
+  });
+
+  it('storyboard 模式继承上一故事板时使用上一分镜当前选中的版本', () => {
+    const previousV1 = asset('https://example.com/storyboard-prev-v1.png');
+    const previousV2 = asset('https://example.com/storyboard-prev-v2.png');
+    const previous = shotOf({
+      id: 'shot-prev',
+      imageMode: 'storyboard',
+      media: {
+        images: [previousV1, previousV2],
+        currentImageIndex: 1,
+      },
+    });
+    const current = shotOf({
+      id: 'shot-current',
+      imageMode: 'storyboard',
+    });
+
+    const bundle = buildShotReferenceBundle({
+      shot: current,
+      allShots: [previous, current],
+      characters: [],
+      scenes: [],
+      props: [],
+    });
+
+    expect(bundle.items[0].kind).toBe('previous-storyboard-anchor');
+    expect(bundle.items[0].source).toBe(previousV2);
+  });
+
+  it('storyboard 模式关闭继承时不加入上一故事板图', () => {
+    const previous = shotOf({
+      id: 'shot-prev',
+      imageMode: 'storyboard',
+      media: {
+        images: [asset('https://example.com/storyboard-prev.png')],
+        currentImageIndex: 0,
+      },
+    });
+    const current = shotOf({
+      id: 'shot-current',
+      imageMode: 'storyboard',
+      inheritPreviousStoryboard: false,
+      characters: ['char-zhouming'],
+    });
+
+    const bundle = buildShotReferenceBundle({
+      shot: current,
+      allShots: [previous, current],
+      characters: [charZhouming],
+      scenes: [],
+      props: [],
+    });
+
+    expect(bundle.items.map(item => item.kind)).toEqual(['character']);
+    expect(bundle.items.some(item => item.kind === 'previous-storyboard-anchor')).toBe(false);
+  });
+});
+
 describe('buildShotReferenceBundle — 配额裁剪', () => {
   it('maxRefs 限制时按 priority 保留 anchor + 主场景 + 主角，其它被截掉', () => {
     const shot = shotOf({

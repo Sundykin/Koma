@@ -198,6 +198,7 @@ export const StagePlayer: React.FC<StagePlayerProps> = ({
         <>
           {useNativeVideo ? (
             <video
+              key={`${resolvedSrc}|${resolvedPoster}`}
               ref={nativeVideoRef}
               src={resolvedSrc}
               poster={resolvedPoster || undefined}
@@ -212,6 +213,7 @@ export const StagePlayer: React.FC<StagePlayerProps> = ({
             />
           ) : (
             <div
+              key={`${resolvedSrc}|${resolvedPoster}`}
               ref={containerRef}
               className={styles.media}
             />

@@ -33,7 +33,7 @@ import {
   AudioOutlined,
   DownOutlined,
 } from '@ant-design/icons';
-import type { Shot, ShotScriptLine, Character, Scene, Prop, StoredMediaAsset } from '../../types';
+import type { Shot, ShotImageMode, ShotScriptLine, Character, Scene, Prop, StoredMediaAsset } from '../../types';
 import { ShotScriptLines } from './ShotScriptLines';
 import {
   getMediaAssetDisplaySource,
@@ -75,6 +75,14 @@ function isGridImageMode(mode?: Shot['imageMode']): boolean {
   return mode === 'grid' || mode === 'grid-9' || mode === 'grid-4';
 }
 
+function isStoryboardImageMode(mode?: Shot['imageMode']): boolean {
+  return mode === 'storyboard';
+}
+
+function isMultiPanelImageMode(mode?: Shot['imageMode']): boolean {
+  return isGridImageMode(mode) || isStoryboardImageMode(mode);
+}
+
 // Phase 3: 旧 ShotScriptInput textarea 已被 ShotScriptLines 块列表组件取代
 
 export interface ShotCardProps {
@@ -86,6 +94,7 @@ export interface ShotCardProps {
   scenes: Scene[];
   props: Prop[];
   mentionItems: MentionItem[];
+  previousStoryboardMention?: MentionItem;
   isSelected: boolean;
   isActive?: boolean;
   // 状态拆分：图片/视频提示词生成分离
@@ -100,7 +109,8 @@ export interface ShotCardProps {
   onImagePromptChange: (shotId: string, imagePrompt: string) => void;
   onVideoPromptChange: (shotId: string, videoPrompt: string) => void;
   onDurationChange?: (shotId: string, duration: number) => void;
-  onImageModeChange: (shotId: string, mode: 'normal' | 'grid-9' | 'grid-4') => void;
+  onImageModeChange: (shotId: string, mode: Exclude<ShotImageMode, 'grid'>) => void;
+  onStoryboardInheritPreviousChange?: (shotId: string, enabled: boolean) => void;
   onVideoModeChange?: (shotId: string, mode: 'multi-ref' | 'first-frame') => void;
   onCharactersChange: (shotId: string, characterIds: string[]) => void;
   onScenesChange?: (shotId: string, sceneIds: string[]) => void;
@@ -149,6 +159,7 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
   scenes,
   props,
   mentionItems,
+  previousStoryboardMention,
   isSelected,
   isActive,
   isGeneratingImagePrompt,
@@ -162,6 +173,7 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
   onVideoPromptChange,
   onDurationChange,
   onImageModeChange,
+  onStoryboardInheritPreviousChange,
   onVideoModeChange,
   onCharactersChange,
   onScenesChange,
@@ -253,6 +265,29 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
     return videos[idx] || videos[videos.length - 1];
   }, [videos, shot.media?.currentVideoIndex]);
 
+  const currentVideoSource = useMemo(
+    () => getMediaAssetEditingSource(currentVideo || undefined) || currentVideo?.remoteUrl || '',
+    [currentVideo],
+  );
+  const currentVideoKey = useMemo(
+    () => [
+      shot.id,
+      shot.media?.currentVideoIndex ?? -1,
+      currentVideo?.localPath || '',
+      currentVideo?.remoteUrl || '',
+      currentVideo?.providerTaskId || '',
+      currentVideo?.createdAt || '',
+    ].join('|'),
+    [
+      shot.id,
+      shot.media?.currentVideoIndex,
+      currentVideo?.localPath,
+      currentVideo?.remoteUrl,
+      currentVideo?.providerTaskId,
+      currentVideo?.createdAt,
+    ],
+  );
+
   const selectedImageIndex = useMemo(() => {
     const rawIndex = shot.media?.currentImageIndex;
     if (!Number.isInteger(rawIndex)) return 0;
@@ -265,25 +300,47 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
   }, [images, selectedImageIndex]);
 
   const promptMentionItems = useMemo<MentionItem[]>(() => {
-    const anchorPreview = currentImage ? getMediaAssetDisplaySource(currentImage) : undefined;
-    if (!anchorPreview) return mentionItems;
+    const extraItems: MentionItem[] = [];
+    if (previousStoryboardMention) {
+      extraItems.push({
+        ...previousStoryboardMention,
+        name: previousStoryboardMention.name || '上一故事板',
+        description: previousStoryboardMention.description || '上一分镜生成的故事板图，用于继承场景、人物、光影和情绪连续性。',
+      });
+    }
 
-    const isGridMode = isGridImageMode(shot.imageMode);
-    const anchorItem: MentionItem = {
-      id: 'anchor',
-      type: isGridMode ? 'grid' : 'shot',
-      name: isGridMode ? '网格锚定图' : '分镜锚定图',
-      description: isGridMode
-        ? '当前分镜已生成的四宫格/九宫格时序锚定图。'
-        : '当前分镜已生成的首帧锚定图。',
-      previewImage: anchorPreview,
-    };
+    const anchorPreview = currentImage ? getMediaAssetDisplaySource(currentImage) : undefined;
+    if (anchorPreview) {
+      const isGridMode = isGridImageMode(shot.imageMode);
+      const isStoryboardMode = isStoryboardImageMode(shot.imageMode);
+      extraItems.push({
+        id: 'anchor',
+        type: isGridMode ? 'grid' : isStoryboardMode ? 'storyboard' : 'shot',
+        name: isGridMode ? '网格锚定图' : isStoryboardMode ? '故事板锚定图' : '分镜锚定图',
+        description: isGridMode
+          ? '当前分镜已生成的四宫格/九宫格时序锚定图。'
+          : isStoryboardMode
+            ? '当前分镜已生成的电影故事板/制作方案板。'
+          : '当前分镜已生成的首帧锚定图。',
+        previewImage: anchorPreview,
+      });
+    } else if (isStoryboardImageMode(shot.imageMode)) {
+      extraItems.push({
+        id: 'anchor',
+        type: 'storyboard',
+        name: '当前故事板',
+        description: '当前分镜故事板锚点。首次生成前不会编译成真实图片引用；生成故事板后会绑定到当前选中的故事板版本。',
+      });
+    }
+
+    if (!extraItems.length) return mentionItems;
+    const extraKeys = new Set(extraItems.map(item => `${item.type}:${item.id}`));
 
     return [
-      ...mentionItems.filter(item => !(item.type === anchorItem.type && item.id === anchorItem.id)),
-      anchorItem,
+      ...mentionItems.filter(item => !extraKeys.has(`${item.type}:${item.id}`)),
+      ...extraItems,
     ];
-  }, [currentImage, mentionItems, shot.imageMode]);
+  }, [currentImage, mentionItems, previousStoryboardMention, shot.imageMode]);
 
   /** 当前选中的配音资产（默认指向最新一条）。
       currentAudioSrc / handleToggleAudio / useEffect 因为依赖 getDisplaySrc
@@ -759,14 +816,29 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
                 <Segmented
                   size="small"
                   value={shot.imageMode === 'grid' ? 'grid-9' : (shot.imageMode || 'normal')}
-                  onChange={(value) => onImageModeChange(shot.id, value as 'normal' | 'grid-9' | 'grid-4')}
+                  onChange={(value) => onImageModeChange(shot.id, value as Exclude<ShotImageMode, 'grid'>)}
                   options={[
                     { value: 'normal', label: '普通' },
                     { value: 'grid-4', label: '四宫格' },
                     { value: 'grid-9', label: '九宫格' },
+                    { value: 'storyboard', label: '故事板' },
                   ]}
                   className="shot-mode-seg"
                 />
+                {isStoryboardImageMode(shot.imageMode) && (
+                  <Tooltip title="生成故事板时把上一张故事板作为连续性参考">
+                    <label className={`shot-storyboard-inherit ${!onStoryboardInheritPreviousChange ? 'disabled' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={shot.inheritPreviousStoryboard !== false}
+                        onChange={(e) => onStoryboardInheritPreviousChange?.(shot.id, e.target.checked)}
+                        disabled={!onStoryboardInheritPreviousChange}
+                      />
+                      <span className="shot-storyboard-inherit-switch" aria-hidden="true" />
+                      <span className="shot-storyboard-inherit-label">续上板</span>
+                    </label>
+                  </Tooltip>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -863,8 +935,8 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
               <div className="flex items-center gap-2">
                 <span className="text-[10px] text-text-secondary">视频模式</span>
                 <Tooltip
-                  title={isGridImageMode(shot.imageMode)
-                    ? '网格图片模式下视频自动走"多参"——把网格当作 N 帧时序锚点（4 / 9 帧）；切回普通模式才能选"首帧"。'
+                  title={isMultiPanelImageMode(shot.imageMode)
+                    ? '多面板图片模式下视频自动走"多参"——把整张网格/故事板当作参考锚点；切回普通模式才能选"首帧"。'
                     : ''}
                   placement="top"
                 >
@@ -874,7 +946,7 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
                     onChange={(value) => onVideoModeChange?.(shot.id, value as 'multi-ref' | 'first-frame')}
                     options={[
                       { value: 'multi-ref', label: '多参' },
-                      { value: 'first-frame', label: '首帧', disabled: isGridImageMode(shot.imageMode) },
+                      { value: 'first-frame', label: '首帧', disabled: isMultiPanelImageMode(shot.imageMode) },
                     ]}
                     className="shot-mode-seg"
                     disabled={!onVideoModeChange}
@@ -1100,7 +1172,8 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
       >
         <div className="aspect-video bg-black rounded overflow-hidden">
           <StagePlayer
-            videoPath={getMediaAssetEditingSource(currentVideo || undefined)}
+            key={currentVideoKey}
+            videoPath={currentVideoSource}
             videoUrl={currentVideo?.remoteUrl}
             poster={currentImage ? getDisplaySrc(currentImage) : undefined}
           />

@@ -34,6 +34,7 @@ import {
   delegateToRenderer,
   recordClaim,
   deliverReply,
+  clearClaimsByWebContents,
   __resetDelegateForTesting,
   __getPendingCountForTesting,
 } from '../../../../electron/service/tasks/delegate';
@@ -105,5 +106,41 @@ describe('delegateToRenderer (main side)', () => {
     });
     ac.abort();
     await expect(promise).rejects.toThrow('aborted');
+  });
+
+  it('rejects pending requests when the target webContents is destroyed', async () => {
+    // 之前的实现把 pending request 留给超时兜底（默认 60s，analysis 任务 30 分钟）。
+    // 关闭对应 renderer 窗口后任务应当立刻被标 failed，而不是静默挂着。
+    recordClaim(['tti:snapshot'], fakeWebContents.id);
+    const promise = delegateToRenderer({
+      type: 'tti:snapshot',
+      args: {},
+      timeoutMs: 60_000,
+    });
+    expect(__getPendingCountForTesting()).toBe(1);
+
+    // 模拟 renderer 销毁
+    clearClaimsByWebContents(fakeWebContents.id);
+
+    await expect(promise).rejects.toThrow(/renderer for delegate request gone/);
+    expect(__getPendingCountForTesting()).toBe(0);
+  });
+
+  it('rejects synchronously when AbortSignal is already aborted at call time', async () => {
+    // 之前的实现：在调用前已 aborted 时进入 onAbort 路径，但 pending 还没 set，
+    // onAbort 早返回，reject 永远不被调用 —— Promise 挂到 timeout 才结束。
+    recordClaim(['tti:snapshot'], fakeWebContents.id);
+    const ac = new AbortController();
+    ac.abort();
+    const promise = delegateToRenderer({
+      type: 'tti:snapshot',
+      args: {},
+      signal: ac.signal,
+      timeoutMs: 60_000,
+    });
+    await expect(promise).rejects.toThrow('aborted');
+    // 立即清理：不应留下 pending 也不应触发任何 send
+    expect(sendSpy).not.toHaveBeenCalled();
+    expect(__getPendingCountForTesting()).toBe(0);
   });
 });

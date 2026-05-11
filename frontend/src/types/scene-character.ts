@@ -112,6 +112,8 @@ export interface ShotScriptLine {
   text: string;
 }
 
+export type ShotImageMode = 'normal' | 'grid' | 'grid-9' | 'grid-4' | 'storyboard';
+
 // 分镜/镜头接口定义
 export interface Shot {
   id: string;
@@ -126,9 +128,12 @@ export interface Shot {
    *  - 'normal'   普通单图模式
    *  - 'grid-9'   3×3 九宫格（9 帧时序）
    *  - 'grid-4'   2×2 四宫格（4 帧时序，更细的镜头控制 / 更少切换）
+   *  - 'storyboard' 电影故事板 / 制作方案板（多面板叙事参考）
    *  - 'grid'     旧值，等价于 'grid-9'，仅向后兼容老数据
    */
-  imageMode?: 'normal' | 'grid' | 'grid-9' | 'grid-4';
+  imageMode?: ShotImageMode;
+  /** 故事板模式下是否把上一张故事板图片作为连续性参考；未设置时默认继承。 */
+  inheritPreviousStoryboard?: boolean;
   videoMode?: ShotVideoMode; // 视频推理模式（默认 'multi-ref'）
   media?: ShotMediaState; // 结构化媒体槽位
   // 关联资产

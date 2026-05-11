@@ -53,6 +53,7 @@ import {
   summarizeVideoRequestForLog,
   withVideoTrace,
 } from '../utils/videoGenerationTrace';
+import { getProjectPath } from '../store/projectStore';
 
 const logger = createLogger('MediaGeneration');
 
@@ -268,6 +269,17 @@ function summarizeImageAsset(asset: StoredMediaAsset): Record<string, unknown> {
 }
 
 type ImageDestPathResolver = string | ((index: number, output: ImageResult) => string | undefined | Promise<string | undefined>);
+
+async function buildVersionedVideoDestPath(
+  projectId: string,
+  ownerRef: MediaOwnerRef,
+): Promise<string | undefined> {
+  if (ownerRef.ownerType !== 'shot-version' || ownerRef.slot !== 'video' || !ownerRef.versionId) {
+    return undefined;
+  }
+  const projectPath = await getProjectPath(projectId);
+  return `${projectPath}/shots/${ownerRef.ownerId}/versions/${ownerRef.versionId}/video.mp4`;
+}
 
 function getImmediateImageOutputs(output: ImageResult): ImageResult[] {
   const batchImages = output.metadata?.batchImages;
@@ -760,6 +772,7 @@ export class MediaGenerationService {
     promptCompilation?: PromptCompilationInput;
     itvSelection?: string;
     taskName?: string;
+    destPath?: string;
     allowCapabilityFallback?: boolean;
   }): Promise<StoredMediaAsset> {
     const {
@@ -769,6 +782,7 @@ export class MediaGenerationService {
       itvSelection,
       taskName,
       promptCompilation,
+      destPath,
       allowCapabilityFallback = true,
     } = params;
     const { provider, resolvedContext } = await resolveProviderAndContext({
@@ -903,6 +917,7 @@ export class MediaGenerationService {
     const kind: MediaKind = 'video';
     const options = request.options as Record<string, unknown> | undefined;
     const optionDuration = getOptionNumber(options, 'duration');
+    const resolvedDestPath = destPath ?? await buildVersionedVideoDestPath(projectId, ownerRef);
 
     if (started.mode === 'immediate') {
       const output = started.output;
@@ -911,6 +926,7 @@ export class MediaGenerationService {
         projectId,
         kind,
         source,
+        destPath: resolvedDestPath,
         ownerRef,
         provider: provider.config?.provider,
         providerTaskId: (output as any).taskId,
@@ -964,6 +980,7 @@ export class MediaGenerationService {
       taskName: taskName || '视频生成',
       remoteTaskId: started.taskId,
       selection: itvSelection,
+      destPath: resolvedDestPath,
       ...executionMetadata,
       assetMetadataPatch: {
         provider: provider.config?.provider,
@@ -1126,10 +1143,13 @@ export class MediaGenerationService {
     /** 业务侧 enrichAsset 固化为可序列化 metadata patch（数据，无闭包） */
     assetMetadataPatch?: Partial<StoredMediaAsset>;
     bindOwner?: boolean;
+    destPath?: string;
   }): Promise<StoredMediaAsset> {
     const handler = taskHandlerRegistry.findByKind(params.kind);
     if (!handler) throw new Error(`未知 kind: ${params.kind}`);
     const rendererHandlerType = handler.type as 'tti' | 'itv' | 'tts';
+    const resolvedDestPath = params.destPath
+      ?? (params.kind === 'video' ? await buildVersionedVideoDestPath(params.projectId, params.ownerRef) : undefined);
 
     const submitted = await submitTask({
       type: rendererHandlerType,
@@ -1149,6 +1169,7 @@ export class MediaGenerationService {
         extra: {
           assetMetadataPatch: params.assetMetadataPatch,
           bindOwner: params.bindOwner ?? true,
+          destPath: resolvedDestPath,
         },
       },
       initialPayload: {

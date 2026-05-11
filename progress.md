@@ -1,5 +1,78 @@
 # Progress Log
 
+## Session: 2026-05-10 Storyboard Image Mode
+
+### Phases 1-5: Implementation
+- **Status:** complete
+- Actions taken:
+  - 增加 `ShotImageMode = 'storyboard'`，并在 Electron 持久化 metadata 中保存 `inheritPreviousStoryboard`。
+  - 扩展 mention 协议和编辑器提示，新增 `@storyboard_anchor` / `@previous_storyboard_anchor`。
+  - `ShotReferenceBundle` 在故事板模式下把当前故事板作为 `storyboard-anchor`，并在开关启用时查找上一张已生成故事板图片作为 `previous-storyboard-anchor`。
+  - 生图、视频计划和渲染工作流加载同剧集分镜列表，将上一故事板图片作为真实引用传给编译和 provider request。
+  - 新增 `storyboard_shot_prompt_generation` 和 `tti_storyboard_shot_image` 默认模板，约束电影级故事板、剧情递进、情绪表演、光影衔接、风格继承，并避免可读字幕/标题/说明文字进入图像。
+  - 分镜 UI 增加“故事板”模式、批量切换菜单和“继承上一故事板”开关；故事板和网格一样被视为多面板图片，切换时自动把视频模式修正为多参。
+
+### Phase 6: Validation
+- **Status:** complete
+- Validation:
+  - `npm run test -- --run src/store/promptTemplates.test.ts src/editor/mentionTypes.test.ts src/services/shotReference/builder.test.ts src/services/shotReference/compile.test.ts src/workflow/shotVideoPlan.test.ts src/store/project/projectPersistenceHelpers.test.ts src/components/storyboard/ShotScriptLines.test.tsx src/components/storyboard/__tests__/assetRetention.test.ts`：8 files / 100 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json`（frontend）：passed。
+  - `npx tsc --noEmit --project tsconfig.json`（root）：passed。
+  - `git diff --check`：passed。
+- Errors:
+  - 首次 frontend tsc 报 `ShotCard.tsx` 未解构 `onStoryboardInheritPreviousChange`；已补齐并复跑通过。
+
+## Session: 2026-05-10 Storyboard Script Line Editing Stability
+
+### Phase 1: Diagnosis
+- **Status:** complete
+- Actions taken:
+  - 使用 `pi-planning-with-files` 技能继续记录本轮回归修复。
+  - 定位分镜文本编辑到 `ShotScriptLines.tsx` 的逐行受控 input。
+  - 确认每个字符会经 `Storyboard.handleScriptLinesChange()` 调用 `saveAllShots()`，同步更新整组 `shots` 并排队保存；该状态回写会让虚拟列表行和受控 input 重渲染，导致光标跳到尾部。
+  - 确认添加/删除/插入/拖拽字幕行仍应即时提交，只有普通文本输入需要从全量保存中解耦。
+
+### Phases 2-3: Fix and Validation
+- **Status:** complete
+- Actions taken:
+  - `ShotScriptLines` 的单行 input 改为本地草稿：输入时只更新本组件状态，不立即调用父级 `onLinesChange`。
+  - 失焦或按 Enter 时提交草稿到父级保存，外部 `line.text` 变化仅在 input 未聚焦时同步回本地草稿。
+  - 添加/插入/删除行前会先把当前草稿 materialize 到 lines，避免用户未失焦时做结构操作丢字。
+  - 新增 `ShotScriptLines.test.tsx` 覆盖父级 rerender 不覆盖输入草稿，以及结构性变更会带上未失焦草稿。
+- Validation:
+  - `npm run test -- --run src/components/storyboard/ShotScriptLines.test.tsx`：1 file / 2 tests passed。
+  - `npm run test -- --run src/components/storyboard/ShotScriptLines.test.tsx src/components/storyboard/__tests__/assetRetention.test.ts src/workflow/shotRenderWorkflow.videoChain.test.ts src/services/shotReference/builder.test.ts src/services/shotReference/compile.test.ts`：5 files / 49 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json`（frontend）：passed。
+  - `git diff --check`：passed。
+
+## Session: 2026-05-09 Linghui Prompt Upload Deduplication
+
+### Phase 1: Current State Recovery
+- **Status:** complete
+- Actions taken:
+  - 使用 `pi-planning-with-files` 技能做本轮本地计划记录。
+  - 读取现有 `task_plan.md` / `findings.md` / `progress.md`，确认上轮记录是历史上下文，不阻塞本轮。
+  - 初步搜索仓库内灵绘、提示词编译、上传、图床、元数据、分镜相关入口；确认代码规模较大，需要按调用链收敛。
+  - 初步检索当日日志宽泛上传关键词，未直接命中，需要使用具体日志 tag 二次检索。
+
+### Phases 2-5: Root Cause, Fix, Storyboard Audit, Validation
+- **Status:** complete
+- Actions taken:
+  - 在 `mediaRemoteUrlService` 增加项目级远程 URL 缓存文件 `metadata/media-remote-url-cache.json`，上传成功后按图片源 key 写入，复用前检测可访问性，失效时删除并重新上传。
+  - `ensureRemoteUrlForImageSources()` 增加批量内去重，`remoteUrlInflightUploads` 合并同源并发上传；data-url key 改为长度 + 稳定 hash，避免前缀碰撞误去重。
+  - 灵绘图片 grok-image-index 路径把显式参考和静默上游参考合并后一次远程归一化，再切回原分组；provider references 提交前按源去重，避免请求体重复带同一张图。
+  - 视频/分镜共用的 `mapVideoRequestToProviderRequest()` 对 image-to-video 主图+额外参考、start-end 首尾帧在 remote-url required 场景下合并批量归一化，覆盖分镜视频字段间重复上传。
+  - 根据用户提供的分镜日志追加修复：`ensureRemoteUrlForImageAsset()` 对本地文件资产先查 sourceKey 缓存，缓存命中时跳过旧 `asset.remoteUrl` 的可达性检测；无缓存但资产 remoteUrl 可访问时把它写入本地缓存，避免下次再走旧链接检测。
+  - 补测试覆盖远程 URL 缓存复用/失效重传、批量重复源只上传一次、灵绘 grok 显式+静默参考合并去重、视频映射主图/参考图与首尾帧重复上传去重。
+- Validation:
+  - `npm run test -- --run src/services/mediaRemoteUrlService.test.ts src/services/promptCompilation/videoRequestCompiler.test.ts src/components/linghui/execution/tests/linghuiExecutionProviders.test.ts`：3 files / 32 tests passed。
+  - `npm run test -- --run src/workflow/shotRenderWorkflow.videoChain.test.ts src/services/shotReference/builder.test.ts src/services/shotReference/compile.test.ts`：3 files / 31 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json`（frontend）：passed。
+  - `npx tsc --noEmit --project tsconfig.json`（root）：passed。
+  - `git diff --check`：passed。
+- Errors:
+  - 首次 frontend tsc 报 `ProviderAssetInput` 上不存在 `localPath/remoteUrl`；已在灵绘图片去重 helper 中显式收窄 StoredMediaAsset 后通过。
+
 ## Session: 2026-05-08 Linghui Panorama + Director3D Stabilization
 
 ### Phase 1: Current State Recovery
@@ -1054,3 +1127,151 @@
   - `npm run build-electron` passed.
   - `npm --prefix frontend run build` passed with existing Vite dynamic import/chunk warnings.
   - `git diff --check` passed.
+
+### Storyboard Previous Anchor Preview - 2026-05-10
+- **Status:** complete
+- Actions taken:
+  - 接续上一轮未完成补丁，检查 `ShotListEditor` 已开始构造上一故事板 mention，但 `ShotCardProps` 尚未接收该 prop。
+  - 确认 `buildShotReferenceBundle` 生成链路已读取上一故事板 `currentImageIndex`，但缺少明确测试覆盖多版本切换场景。
+  - 计划补齐 `ShotCard` mention 合并逻辑，并让 UI 预览只在当前故事板继承开启时出现。
+  - 已补齐 `ShotCard.previousStoryboardMention` prop 和 mention 合并逻辑，当前锚定图不存在时仍可注入上一故事板悬浮预览。
+  - `ShotListEditor.buildPreviousStoryboardMention` 现在只在当前分镜是故事板且继承开启时返回上一故事板当前选中版本预览。
+  - 已新增 `builder.test.ts` 用例，断言上一故事板 `currentImageIndex: 1` 时后续引用取第二个版本。
+  - 为避免再次影响分镜文本编辑光标，`renderShotRow` 继续通过 ref 读取最新 shots，不把完整 `shots` 放回 callback 依赖。
+  - 验证通过：`npm --prefix frontend run test -- --run src/services/shotReference/builder.test.ts src/workflow/shotImageWorkflow.test.ts src/components/storyboard/__tests__/assetRetention.test.ts`，共 36 个测试。
+  - 验证通过：`npx tsc --noEmit --project tsconfig.json`。
+  - 验证通过：`git diff --check`。
+
+### Shot Video Version Playback - 2026-05-10
+- **Status:** complete
+- Actions taken:
+  - 排查 `ShotCard` / `VideoCardGrid` / `StagePlayer`，确认 UI 选择会更新 `currentVideoIndex`，但播放器需要按当前源身份重建。
+  - `ShotCard` 增加当前视频 source/key，播放弹窗里的 `StagePlayer` 用当前版本 key 强制 remount。
+  - `StagePlayer` 的原生 `<video>` 和 xgplayer 容器都增加 `resolvedSrc|poster` key，源变化时不复用旧节点。
+  - `MediaGenerationService.generateVideo` 增加 `destPath` 支持；`shot-version` 视频默认解析为 `shots/<shotId>/versions/<versionId>/video.mp4`。
+  - `pollAndFinalizeViaMain` 和 `mediaPollFulfillers` 透传 `destPath`，覆盖 async ITV 与 recoverTask 场景。
+  - 补充 `MediaGenerationService.itvPolicy.test.ts`：立即结果与恢复任务都断言 shot-version 视频使用版本路径。
+- Validation:
+  - `npm --prefix frontend run test -- --run src/workflow/shotRenderWorkflow.videoChain.test.ts src/services/MediaGenerationService.itvPolicy.test.ts src/components/video/StagePlayer.test.tsx` passed: 3 files / 14 tests.
+  - `npx tsc --noEmit --project tsconfig.json` passed.
+  - `git diff --check` passed.
+
+## Session: 2026-05-10 Storyboard Batch Media Persistence
+
+### Phase 1: Diagnosis
+- **Status:** complete
+- Actions taken:
+  - 读取 `Storyboard.tsx`、`ShotGenerationService.ts`、`shotRenderWorkflow.ts`。
+  - 确认批量图片成功结果只在整批返回后一次性写 UI；批量视频也只在整批结束后刷新。
+  - 确认视频批量需要外层异常隔离，避免一次异常阻断后续分镜。
+
+### Phase 2: Implementation
+- **Status:** in_progress
+  - `ShotGenerationService.batchGenerateShotImages` 增加单项结果类型和 `onItemComplete` 回调；每个分镜任务内部捕获失败并返回结果，避免单项失败使父任务整体抛出。
+  - `shotRenderWorkflow.batchRenderShots` 增加 `onShotComplete` 回调，并在每个分镜外层加 try/catch，未捕获异常会记录为该分镜失败并继续后续分镜。
+  - `Storyboard` 增加串行刷新队列 `queueRefreshShotsFromStore()`；批量图片/视频每个成功项完成后触发刷新，并从对应 loading 集合移除该分镜。
+  - 移除批量图片结束后基于旧 `shots` 的一次性 UI 合并，避免用批量开始时的旧状态覆盖已由媒体绑定写入的最新存储。
+  - 新增/扩展测试覆盖批量图片单项失败继续、批量视频单项失败继续、逐项完成回调。
+
+### Phase 3: Validation
+- **Status:** complete
+- Validation:
+  - `npm run test -- --run src/services/ShotGenerationService.test.ts src/workflow/shotRenderWorkflow.videoChain.test.ts`：2 files / 7 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json`（frontend）：passed。
+  - `git diff --check`：passed。
+
+## Session: 2026-05-10 Storyboard Prompt Template Production Board Upgrade
+
+### Phase 1: Template Audit
+- **Status:** complete
+- Actions taken:
+  - 定位 `storyboard_shot_prompt_generation` 与 `tti_storyboard_shot_image`。
+  - 确认现有模板强调制作笔记和不固定 2x2，但没有强制默认电影制作板骨架，也没有稳定要求 8镜头故事区、俯视调度图、声音设计、摄影说明和色彩方案。
+
+### Phase 2: Template Upgrade
+- **Status:** in_progress
+  - `storyboard_shot_prompt_generation` 增加“默认制作板骨架”：场景设计区、俯视镜头调度图、分镜故事区（8镜头）、灯光与风格、情绪关键词、声音设计、摄影说明、色彩方案。
+  - 输出字段改为稳定的电影前期制作板模块，并要求每个镜头包含场景画面、极短制作笔记、镜头类型、焦段、运动方式、情绪/光影变化和镜头衔接。
+  - `tti_storyboard_shot_image` 增加 Required board sections 和每个 8 镜头面板必须包含的 shot size / focal length / camera movement labels，强化图像模型最终渲染时的结构统一性。
+  - 更新 `promptTemplates.test.ts`，锁住新模块与 TTI 终稿约束。
+
+### Phase 3: Validation
+- **Status:** complete
+- Validation:
+  - `npm run test -- --run src/store/promptTemplates.test.ts`：1 file / 11 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json`（frontend）：passed。
+  - `git diff --check`：passed。
+
+## Session: 2026-05-10 Storyboard Template Flexible Production Poster
+
+### Phase 1: Template Rebalance
+- **Status:** in_progress
+  - 将上一版固定“8镜头”改为剧情驱动的 N 镜头：短动作 4-6、15 秒标准段落 6-8、复杂调度 8-12，但不机械补满。
+  - 新增电影分镜信息图海报语法：深蓝标题栏 / 高级标题系统、现代 UI 风格、信息密集但整洁、商业级视觉设计。
+  - 新增【项目标题】与【角色设计区】，并把限制条件改为 X 个镜头 / X 个角色 / X 个场景。
+  - TTI 终稿模板同步改为 project title header、character design zone、story-driven N-shot sequence、without mechanical equal panels、not fixed count。
+  - 测试断言从固定 8 shots 改为剧情驱动 N-shot 和非机械等分约束。
+
+### Phase 2: Validation
+- **Status:** complete
+- Validation:
+  - `npm run test -- --run src/store/promptTemplates.test.ts`：1 file / 11 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json`（frontend）：passed。
+  - `git diff --check`：passed。
+
+## Follow-up: Storyboard Project Title Metadata
+- **Status:** in_progress
+- User request: add 【项目标题】 section fields (项目名称、副标题、拍摄形式、类型、时长、限制条件) and verify whether project type and shot duration are passed.
+- Findings so far: `Shot.duration` exists, but `storyboard_shot_prompt_generation` did not receive it; project type lives in `ProjectMeta.genre`, but `ShotPromptService.generateSpecialImageShotPrompt()` did not load/pass project metadata.
+
+### Follow-up: Storyboard Project Title Metadata
+- **Status:** complete
+- Actions taken:
+  - `CreationContext` now carries `projectTitle` / `projectGenre` from loaded project metadata.
+  - `ShotPromptService.generateSpecialImageShotPrompt()` now injects storyboard project header variables: `projectTitle`, `projectSubtitle`, `shootingFormat`, `projectType`, `shotDurationSeconds`, `storyboardConstraints`.
+  - Storyboard prompt template now has an explicit 【项目标题】 input/output section and requires type to use `{{projectType}}`, duration to use current shot duration `{{shotDurationSeconds}}秒`.
+  - Added service-level test proving `ProjectMeta.genre` and `Shot.duration` are passed into `storyboard_shot_prompt_generation`.
+- Validation:
+  - `npm run test -- --run src/services/ShotPromptService.test.ts src/store/promptTemplates.test.ts`: 2 files / 32 tests passed.
+  - `npm run test -- --run src/workflow/shotRenderWorkflow.videoChain.test.ts src/workflow/shotImageWorkflow.test.ts src/services/ShotGenerationService.test.ts`: 3 files / 8 tests passed.
+  - `git diff --check`: passed.
+  - `npx tsc --noEmit --project tsconfig.json` (frontend): failed on existing unrelated `src/services/TaskManager.test.ts(140,29)` using `findLast` under non-ES2023 lib.
+
+### Follow-up: Storyboard Anchor Highlight In Prompt Editors
+- **Status:** complete
+- Actions taken:
+  - Added dedicated CodeMirror mention styles for `.mention-storyboard` and `.mention-previous_storyboard`, with stronger background, border, and weight.
+  - Updated mention tooltip colors so current storyboard and previous storyboard use distinct visual accents.
+  - ShotCard prompt editors now include a current-storyboard autocomplete item in storyboard mode even before the first storyboard image exists; after generation it binds to the selected current image version.
+  - Previous storyboard mention label is shortened to “上一故事板” and still carries the selected previous storyboard version preview.
+- Validation:
+  - `npm run test -- --run src/editor/mentionTypes.test.ts src/components/storyboard/__tests__/assetRetention.test.ts`: 2 files / 40 tests passed.
+  - `npm run test -- --run src/editor/mentionTypes.test.ts src/components/storyboard/__tests__/assetRetention.test.ts src/services/ShotPromptService.test.ts src/store/promptTemplates.test.ts`: 4 files / 72 tests passed.
+  - `npx tsc --noEmit --project tsconfig.json` (frontend): passed.
+  - `git diff --check`: passed.
+
+## Session: 2026-05-10 Prompt Editor Snapshot Consistency
+
+### Phase 1: Diagnosis
+- **Status:** complete
+- Actions taken:
+  - 复查用户给出的实际输入/编译后输出差异。
+  - 定位三条根因：单张/批量生成使用旧 DB 或旧闭包中的 shot；视频渲染总是把旧 `shot.dialogue` 补回手写 `对白提示词`；图片/视频空提示词各自有默认模板兜底。
+  - 额外发现 `sanitizeNarrativeDialogueLeakage()` 会误删含“自称天道”的显式 `台词：` 片段。
+
+### Phases 2-3: Fix
+- **Status:** complete
+- Actions taken:
+  - `Storyboard` 增加并使用 `shotsRef` 作为立即操作的最新分镜快照；单张生图/生视频和批量图片/视频生成都会先 flush 保存队列，再把当前快照传入 workflow。
+  - `ShotGenerationService` 支持 `shotSnapshot` / `shotsSnapshot`，批量图片生成优先使用调用方传入的最新快照。
+  - `shotImageWorkflow` 空图片提示词直接报错，不再套 `tti_shot_image` 默认模板。
+  - `shotRenderWorkflow` 空视频提示词直接返回失败，不再套 `itv_shot_video`；手写 `对白提示词` 非空时不再追加旧 `shot.dialogue`。
+  - 收窄对白清洗逻辑，保留显式 `台词：` 片段，只清理明显的旁白转述泄漏。
+
+### Phase 4: Validation
+- **Status:** complete
+- Validation:
+  - `npm run test -- --run src/services/ShotPromptService.test.ts src/services/ShotGenerationService.test.ts src/workflow/shotImageWorkflow.test.ts src/workflow/shotRenderWorkflow.videoChain.test.ts src/workflow/videoGenerationRequests.test.ts`：5 files / 34 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json`（frontend）：passed。
+  - `npx tsc --noEmit --project tsconfig.json`（root）：passed。
+  - `git diff --check`：passed。

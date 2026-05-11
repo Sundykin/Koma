@@ -71,6 +71,22 @@ describe('compileShotPromptToBundle — 基础 token 翻译', () => {
 
     expect(result.compiledPrompt).toBe('主图 @Image 1 + 用户参考 @Image 2 与 @Image 3');
   });
+
+  it('@storyboard_anchor / @previous_storyboard_anchor 翻译为对应位置的 @Image N', () => {
+    const bdl = bundle([
+      item({ kind: 'previous-storyboard-anchor', mentionToken: '@previous_storyboard_anchor' }),
+      item({ kind: 'storyboard-anchor', mentionToken: '@storyboard_anchor' }),
+      item({ kind: 'character', mentionToken: '@char_zhouming' }),
+    ]);
+
+    const result = compileShotPromptToBundle({
+      prompt: '继承 @previous_storyboard_anchor，当前板 @storyboard_anchor 中 @char_zhouming 情绪递进',
+      bundle: bdl,
+    });
+
+    expect(result.compiledPrompt).toBe('继承 @Image 1，当前板 @Image 2 中 @Image 3 情绪递进');
+    expect(result.debug.unmappedTokens).toEqual([]);
+  });
 });
 
 describe('compileShotPromptToBundle — 已经是 @Image N / @图片N 的处理', () => {

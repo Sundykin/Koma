@@ -155,4 +155,22 @@ describe('runWithTask', () => {
     })).rejects.toThrow('main error'); // 抛的是主错误，不是 cleanup 错误
     consoleWarnSpy.mockRestore();
   });
+
+  it('execute 完成前任务被外部 cancel：不再覆盖成 completed', async () => {
+    // 用户中途按"取消任务" → tasksIPC.cancelTaskRecord 把任务翻成 'cancelled'
+    // （runWithTask 不监听该信号，业务一般还会跑完）。但跑完后 runWithTask
+    // 不该再把状态盖回 'completed' —— 否则任务列表里看到的是"已完成"，
+    // 与用户的取消意图相反。
+    const { taskId } = await runWithTask({
+      ...baseSpec,
+      execute: async (ctx) => {
+        // 模拟外部把任务标 cancelled
+        TaskManager.updateTask(ctx.taskId, { status: 'cancelled', error: 'user cancelled' });
+        return 'output';
+      },
+    });
+    const task = TaskManager.getTask(taskId);
+    expect(task?.status).toBe('cancelled');
+    expect(task?.error).toBe('user cancelled');
+  });
 });

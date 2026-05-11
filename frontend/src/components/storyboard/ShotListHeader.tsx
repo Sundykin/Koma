@@ -16,6 +16,7 @@ import {
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { SHOT_LAYOUT, COL_ACTION_WIDTH } from '../../constants/storyboardConstants';
+import type { ShotImageMode } from '../../types';
 
 interface ShotListHeaderProps {
   totalCount: number;
@@ -43,7 +44,7 @@ interface ShotListHeaderProps {
   onBatchAudios?: () => void;
   onBatchReAudios?: () => void;
   onBulkVideoModeChange?: (mode: 'multi-ref' | 'first-frame') => void;
-  onBulkImageModeChange?: (mode: 'normal' | 'grid-4' | 'grid-9') => void;
+  onBulkImageModeChange?: (mode: Exclude<ShotImageMode, 'grid'>) => void;
   onAddShot: () => void;
   onBatchDelete: () => void;
 }
@@ -145,6 +146,7 @@ export const ShotListHeader: React.FC<ShotListHeaderProps> = ({
         { key: 'image-mode-normal', label: '全部切到 · 普通', onClick: () => onBulkImageModeChange('normal') },
         { key: 'image-mode-grid-4', label: '全部切到 · 四宫格', onClick: () => onBulkImageModeChange('grid-4') },
         { key: 'image-mode-grid-9', label: '全部切到 · 九宫格', onClick: () => onBulkImageModeChange('grid-9') },
+        { key: 'image-mode-storyboard', label: '全部切到 · 故事板', onClick: () => onBulkImageModeChange('storyboard') },
       ],
     }] : []),
     ...(onBulkVideoModeChange ? [{
