@@ -1830,6 +1830,12 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
               selectedKeyframeId={selectedKeyframeId}
               exportState={timelineExport}
               activeLayer={activeTimelineLayer}
+              exportedVideoUrl={typeof (nodeData.properties as { timelineVideoUrl?: string } | undefined)?.timelineVideoUrl === 'string'
+                ? (nodeData.properties as { timelineVideoUrl: string }).timelineVideoUrl
+                : undefined}
+              exportedVideoPosterUrl={typeof (nodeData.properties as { timelineVideoPosterUrl?: string } | undefined)?.timelineVideoPosterUrl === 'string'
+                ? (nodeData.properties as { timelineVideoPosterUrl: string }).timelineVideoPosterUrl
+                : undefined}
               onPlayToggle={handlePlayToggle}
               onSeek={handleSeek}
               onAddKeyframe={handleAddKeyframe}

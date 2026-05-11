@@ -15,8 +15,9 @@
  * 沉浸态隐藏；时间轴为空时 HUD 仍显示（提示用户加第一帧）。
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { InputNumber, Select, Tooltip } from 'antd';
-import { Film, Pause, Play, Plus, RotateCcw, Trash2 } from 'lucide-react';
+import { InputNumber, Modal, Select, Tooltip } from 'antd';
+import { Film, MonitorPlay, Pause, Play, Plus, RotateCcw, Trash2 } from 'lucide-react';
+import { toFileSystemDisplayUrl } from '../../../services/fileSystemPort';
 import type {
   LinghuiDirector3DEasing,
   LinghuiDirector3DKeyframe,
@@ -53,6 +54,9 @@ interface Director3DTimelineHudProps {
   exportState: Director3DTimelineExportState;
   /** 当前激活图层（决定时间线显示哪些关键帧 + 增删针对哪条轨） */
   activeLayer: Director3DTimelineLayer;
+  /** 已导出的视频 koma-local URL（若有），用于"预览"按钮的 mp4 来源 */
+  exportedVideoUrl?: string;
+  exportedVideoPosterUrl?: string;
   onPlayToggle: () => void;
   onSeek: (time: number) => void;
   onAddKeyframe: () => void;
@@ -80,6 +84,8 @@ export const Director3DTimelineHud: React.FC<Director3DTimelineHudProps> = ({
   selectedKeyframeId,
   exportState,
   activeLayer,
+  exportedVideoUrl,
+  exportedVideoPosterUrl,
   onPlayToggle,
   onSeek,
   onAddKeyframe,
@@ -96,6 +102,9 @@ export const Director3DTimelineHud: React.FC<Director3DTimelineHudProps> = ({
   const trackRef = useRef<HTMLDivElement | null>(null);
   const [draggingKeyframeId, setDraggingKeyframeId] = useState<string | null>(null);
   const [scrubbing, setScrubbing] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const previewVideoSrc = exportedVideoUrl ? toFileSystemDisplayUrl(exportedVideoUrl) || exportedVideoUrl : '';
+  const previewPosterSrc = exportedVideoPosterUrl ? toFileSystemDisplayUrl(exportedVideoPosterUrl) || exportedVideoPosterUrl : undefined;
 
   const duration = Math.max(0.5, timeline.duration);
 
@@ -314,7 +323,46 @@ export const Director3DTimelineHud: React.FC<Director3DTimelineHudProps> = ({
             </button>
           </Tooltip>
         )}
+
+        {/* 预览已导出的视频（不依赖工作台时间轴，直接播放 mp4） */}
+        {previewVideoSrc ? (
+          <Tooltip title="播放已导出的 mp4 文件，确认动画是否符合预期">
+            <button
+              type="button"
+              className="linghuiDirector3DTimelineButton"
+              onClick={() => setPreviewOpen(true)}
+            >
+              <MonitorPlay size={14} />
+              <span>预览</span>
+            </button>
+          </Tooltip>
+        ) : null}
       </div>
+
+      {/* 已导出视频预览 Modal */}
+      <Modal
+        open={previewOpen}
+        onCancel={() => setPreviewOpen(false)}
+        footer={null}
+        title="时间轴动画预览"
+        width={720}
+        destroyOnClose
+        zIndex={2000}
+      >
+        {previewVideoSrc ? (
+          <video
+            src={previewVideoSrc}
+            poster={previewPosterSrc}
+            controls
+            autoPlay
+            style={{ width: '100%', maxHeight: '70vh', background: '#000', borderRadius: 8 }}
+          />
+        ) : (
+          <div style={{ padding: 32, textAlign: 'center', color: 'var(--token-text-muted)' }}>
+            暂无可预览的视频
+          </div>
+        )}
+      </Modal>
 
       <div
         ref={trackRef}
