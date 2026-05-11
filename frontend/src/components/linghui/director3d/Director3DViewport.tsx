@@ -79,6 +79,62 @@ interface Director3DViewportProps {
 }
 
 const PIVOT = new THREE.Vector3(0, 0.8, 0);
+
+/**
+ * 离屏导出复用的 WebGL renderer。如果每帧都 new THREE.WebGLRenderer()，
+ * 浏览器会很快撞到 WebGL context 数量上限（~16），导致老 context 被踢、
+ * 渲染崩溃。这里全局复用一个 canvas + renderer，只在尺寸变化时 setSize。
+ */
+let offscreenSingleton: { canvas: HTMLCanvasElement; renderer: THREE.WebGLRenderer } | null = null;
+
+function getOrCreateOffscreenRenderer(width: number, height: number): {
+  canvas: HTMLCanvasElement;
+  renderer: THREE.WebGLRenderer;
+} {
+  if (!offscreenSingleton) {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: true,
+      alpha: true,
+      preserveDrawingBuffer: true,
+    });
+    renderer.setPixelRatio(1);
+    renderer.setSize(width, height, false);
+    offscreenSingleton = { canvas, renderer };
+  } else if (offscreenSingleton.canvas.width !== width || offscreenSingleton.canvas.height !== height) {
+    offscreenSingleton.canvas.width = width;
+    offscreenSingleton.canvas.height = height;
+    offscreenSingleton.renderer.setSize(width, height, false);
+  }
+  return offscreenSingleton;
+}
+
+/**
+ * 递归 dispose 整棵 scene 的临时 geometry / material 资源 —— 避免逐帧导出内存泄漏。
+ */
+function disposeSceneGraph(root: THREE.Object3D): void {
+  root.traverse((obj) => {
+    const mesh = obj as THREE.Mesh;
+    if (mesh.isMesh) {
+      mesh.geometry?.dispose();
+      const mat = mesh.material;
+      if (Array.isArray(mat)) {
+        mat.forEach(m => m.dispose());
+      } else if (mat) {
+        mat.dispose();
+      }
+    }
+    // LineSegments 用 EdgesGeometry，也是 disposable
+    const line = obj as THREE.LineSegments;
+    if ((line as { isLineSegments?: boolean }).isLineSegments) {
+      line.geometry?.dispose();
+      if (line.material instanceof THREE.Material) line.material.dispose();
+    }
+  });
+}
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
 
 interface OrbitCameraState {
@@ -143,21 +199,93 @@ function buildCameraFromOrbit(
 }
 
 /**
- * 工作台环境：无限地面（大圆盘 + 浅灰）+ 天空穹顶（球壳 BackSide + 上浅下深渐变）。
- * 让画布看起来像在户外摄影棚里取景，给 actor 一个可信的视觉参考。
- * 同样的环境也会出现在 CaptureRenderer 离屏导出里 → 所见即所得。
+ * 工作台环境常量：geometry 尺寸 + 云朵 / 凸起的固定位置。
+ * 缩到低配能跑：圆盘 r=15, sky r=20，grid 与圆盘同步 (30×30 总宽，30 分割 = 1m/格)。
+ * 云朵 / 凸起用确定性位置，避免渲染时抖动。
  */
+const GROUND_RADIUS = 15;
+const SKY_RADIUS = 20;
+const GROUND_GRID_TOTAL = GROUND_RADIUS * 2;
+const GROUND_GRID_DIVISIONS = 30;
+
+// 6 朵固定云（避免每帧重新随机导致抖动）
+const ENV_CLOUDS: Array<{ x: number; z: number; y: number; rx: number; rz: number }> = [
+  { x: -8, z: -6, y: 11, rx: 2.0, rz: 1.4 },
+  { x: 7, z: -9, y: 12, rx: 2.6, rz: 1.6 },
+  { x: -4, z: 8, y: 13, rx: 1.8, rz: 1.1 },
+  { x: 9, z: 5, y: 10, rx: 2.2, rz: 1.5 },
+  { x: 0, z: 10, y: 14, rx: 2.4, rz: 1.4 },
+  { x: -10, z: 1, y: 13, rx: 1.9, rz: 1.2 },
+];
+
+/**
+ * 用 canvas 程序化生成"颗粒感" data URL（深浅斑点 PNG），给地面 / 凸起的 material.map / bumpMap 用。
+ * 一次生成、模块级缓存，导出 192 帧只跑一次。
+ */
+function generateGroundNoiseDataUrl(size = 128, seed = 0xa1b2c3): string {
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return '';
+  // 基底浅米
+  ctx.fillStyle = '#e0ddd5';
+  ctx.fillRect(0, 0, size, size);
+  // pseudo-random 颗粒 (LCG，确定性，避免每次渲染都变)
+  let s = seed >>> 0;
+  const rand = () => {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    return s / 0xffffffff;
+  };
+  for (let i = 0; i < size * size * 0.55; i++) {
+    const x = (rand() * size) | 0;
+    const y = (rand() * size) | 0;
+    const r = rand();
+    const dim = r < 0.5 ? 28 : r < 0.8 ? 14 : 8;
+    ctx.fillStyle = r < 0.5
+      ? `rgba(180,176,168,${0.18 + rand() * 0.18})`
+      : `rgba(255,253,246,${0.14 + rand() * 0.14})`;
+    ctx.fillRect(x, y, 1, 1);
+    if (dim > 8 && r > 0.7) {
+      ctx.fillRect(x + 1, y, 1, 1);
+      ctx.fillRect(x, y + 1, 1, 1);
+    }
+  }
+  return canvas.toDataURL('image/png');
+}
+
+let _groundNoiseTexture: THREE.Texture | null = null;
+function getGroundNoiseTexture(): THREE.Texture {
+  if (_groundNoiseTexture) return _groundNoiseTexture;
+  const loader = new THREE.TextureLoader();
+  const url = generateGroundNoiseDataUrl();
+  _groundNoiseTexture = loader.load(url);
+  _groundNoiseTexture.wrapS = THREE.RepeatWrapping;
+  _groundNoiseTexture.wrapT = THREE.RepeatWrapping;
+  _groundNoiseTexture.repeat.set(8, 8); // 平铺 8 次 → 看起来更碎
+  return _groundNoiseTexture;
+}
+
 function GroundGrid({ visible }: { visible: boolean; lineColor?: string }) {
+  const groundTexture = useMemo(() => (visible ? getGroundNoiseTexture() : null), [visible]);
   if (!visible) return null;
   return (
     <>
-      {/* 大圆盘地面 —— y=-0.001 防 z-fighting */}
+      {/* 圆盘地面：颗粒感纹理 + 高粗糙度 → 看起来像泥地/沙地，无大型凸起 */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.001, 0]} receiveShadow={false}>
-        <circleGeometry args={[60, 64]} />
-        <meshStandardMaterial color="#e8e8e8" roughness={0.9} metalness={0} />
+        <circleGeometry args={[GROUND_RADIUS, 48]} />
+        <meshStandardMaterial
+          color="#dcd6c9"
+          roughness={0.95}
+          metalness={0}
+          map={groundTexture ?? undefined}
+        />
       </mesh>
-      {/* 极淡的网格线 —— 帮用户判断比例，不喧宾夺主 */}
-      <gridHelper args={[24, 24, '#d4d4d4', '#ededed']} position={[0, 0.0005, 0]} />
+      {/* 网格线 —— 与圆盘同范围、间距 1m，淡灰不抢主体 */}
+      <gridHelper
+        args={[GROUND_GRID_TOTAL, GROUND_GRID_DIVISIONS, '#c8c4bd', '#dad6cd']}
+        position={[0, 0.001, 0]}
+      />
     </>
   );
 }
@@ -165,10 +293,20 @@ function GroundGrid({ visible }: { visible: boolean; lineColor?: string }) {
 function SkyDome({ visible }: { visible: boolean }) {
   if (!visible) return null;
   return (
-    <mesh>
-      <sphereGeometry args={[80, 32, 16, 0, Math.PI * 2, 0, Math.PI * 0.5]} />
-      <meshBasicMaterial color="#cfe4f5" side={THREE.BackSide} />
-    </mesh>
+    <>
+      {/* 半球穹顶 —— 用更柔和的天蓝色 */}
+      <mesh>
+        <sphereGeometry args={[SKY_RADIUS, 24, 12, 0, Math.PI * 2, 0, Math.PI * 0.5]} />
+        <meshBasicMaterial color="#9ec6e8" side={THREE.BackSide} />
+      </mesh>
+      {/* 6 朵固定白云 —— 在天空里给画面参考点 */}
+      {ENV_CLOUDS.map((cloud, i) => (
+        <mesh key={`cloud-${i}`} position={[cloud.x, cloud.y, cloud.z]} scale={[cloud.rx, 0.45, cloud.rz]}>
+          <sphereGeometry args={[1, 12, 8]} />
+          <meshBasicMaterial color="#fefefe" />
+        </mesh>
+      ))}
+    </>
   );
 }
 
@@ -386,13 +524,9 @@ const CaptureRenderer: React.FC<CaptureRendererProps> = ({ scene, texture, camer
     const height = options?.height ?? Math.round(width / ratio);
     const exportMode: LinghuiDirector3DRenderMode = options?.renderMode ?? 'lineart';
 
-    // 临时离屏渲染：用 scene 里的 camera 数据 + 按 exportMode 切换材质风格
-    const offscreen = document.createElement('canvas');
-    offscreen.width = width;
-    offscreen.height = height;
-    const renderer = new THREE.WebGLRenderer({ canvas: offscreen, antialias: true, alpha: true, preserveDrawingBuffer: true });
-    renderer.setPixelRatio(1);
-    renderer.setSize(width, height, false);
+    // 复用单一 WebGLRenderer：每帧 new WebGLRenderer 会创建独立 WebGL context，
+    // 浏览器有 ~16 个 context 上限，逐帧导出 192 帧会触发 "Too many active WebGL contexts"。
+    const { renderer, canvas: offscreen } = getOrCreateOffscreenRenderer(width, height);
 
     // 背景色：preview 用淡天蓝（被 sky 穹顶完全包裹时影响小但渲染缓冲外区域有色调），
     // 其他模式（lineart / silhouette / depth / composition）纯白便于下游 AI 识别主体
@@ -544,22 +678,38 @@ const CaptureRenderer: React.FC<CaptureRendererProps> = ({ scene, texture, camer
       offscreenScene.add(group);
     }
 
-    // preview 模式加无限地面 + 天空穹顶，让 AI 看到镜头运动相对静止地面/天空的关系
+    // preview 模式：与画布完全同步的地面 + 天空 + 云朵（确定性位置不抖动）
     if (exportMode === 'preview') {
-      // 大圆盘地面
-      const ground = new THREE.Mesh(
-        new THREE.CircleGeometry(60, 64),
-        new THREE.MeshStandardMaterial({ color: 0xe8e8e8, roughness: 0.9, metalness: 0, side: THREE.DoubleSide }),
-      );
+      // 圆盘地面 + 颗粒纹理（与 viewport GroundGrid 共用 getGroundNoiseTexture）
+      const groundMat = new THREE.MeshStandardMaterial({
+        color: 0xdcd6c9,
+        roughness: 0.95,
+        metalness: 0,
+        map: getGroundNoiseTexture(),
+        side: THREE.DoubleSide,
+      });
+      const ground = new THREE.Mesh(new THREE.CircleGeometry(GROUND_RADIUS, 48), groundMat);
       ground.rotation.x = -Math.PI / 2;
       ground.position.y = -0.001;
       offscreenScene.add(ground);
-      // 天空穹顶（半球壳，BackSide）
+
+      // 天空半球
       const sky = new THREE.Mesh(
-        new THREE.SphereGeometry(80, 32, 16, 0, Math.PI * 2, 0, Math.PI * 0.5),
-        new THREE.MeshBasicMaterial({ color: 0xcfe4f5, side: THREE.BackSide }),
+        new THREE.SphereGeometry(SKY_RADIUS, 24, 12, 0, Math.PI * 2, 0, Math.PI * 0.5),
+        new THREE.MeshBasicMaterial({ color: 0x9ec6e8, side: THREE.BackSide }),
       );
       offscreenScene.add(sky);
+
+      // 白云（用 ENV_CLOUDS 固定位置）
+      for (const cloud of ENV_CLOUDS) {
+        const cloudMesh = new THREE.Mesh(
+          new THREE.SphereGeometry(1, 12, 8),
+          new THREE.MeshBasicMaterial({ color: 0xfefefe }),
+        );
+        cloudMesh.position.set(cloud.x, cloud.y, cloud.z);
+        cloudMesh.scale.set(cloud.rx, 0.45, cloud.rz);
+        offscreenScene.add(cloudMesh);
+      }
     }
 
     if (effectiveScene.background.mode === 'panorama' && texture && exportMode === 'lineart') {
@@ -639,7 +789,9 @@ const CaptureRenderer: React.FC<CaptureRendererProps> = ({ scene, texture, camer
     } catch {
       dataUrl = null;
     }
-    renderer.dispose();
+    // 不 dispose renderer（复用），但要 dispose 本次构造的临时 scene 资源
+    disposeSceneGraph(offscreenScene);
+    offscreenScene.clear();
     return dataUrl;
   }, [cameraStateRef, scene, texture]);
 
@@ -787,25 +939,24 @@ const ActorDragLayer: React.FC<ActorDragLayerProps> = ({
           ? { ...actor, position: dragPreview.position }
           : actor;
         const shared = {
-          key: actor.id,
           actor: renderActor,
           selected: actor.id === selectedActorId,
           renderMode,
           onPointerDown: (event: import('@react-three/fiber').ThreeEvent<PointerEvent>) => handleActorPointerDown(actor, event),
         };
         if (actor.type === 'mannequin') {
-          return <Director3DMannequin {...shared} />;
+          return <Director3DMannequin key={actor.id} {...shared} />;
         }
         if (actor.type === 'mannequin-lite') {
-          return <Director3DLiteMannequin {...shared} />;
+          return <Director3DLiteMannequin key={actor.id} {...shared} />;
         }
         if (actor.type === 'formation') {
-          return <Director3DFormation {...shared} />;
+          return <Director3DFormation key={actor.id} {...shared} />;
         }
         if (actor.type === 'creature') {
-          return <Director3DCreature {...shared} />;
+          return <Director3DCreature key={actor.id} {...shared} />;
         }
-        return <Director3DProp {...shared} />;
+        return <Director3DProp key={actor.id} {...shared} />;
       })}
     </>
   );
