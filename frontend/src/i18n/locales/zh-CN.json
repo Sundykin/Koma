@@ -64,7 +64,27 @@
     "linghui": "灵绘",
     "settings": "全局设置",
     "plugins": "插件管理",
-    "chat": "AI 对话"
+    "chat": "AI 对话",
+    "recreation": "二创"
+  },
+  "recreation": {
+    "title": "二创工作台",
+    "subtitle": "基于已有成片快速生产多版本物料",
+    "comingSoon": "功能开发中",
+    "scenes": {
+      "trailer": {
+        "title": "预告片",
+        "desc": "30s / 60s / 90s 多版本一键派生"
+      },
+      "aspect": {
+        "title": "横竖屏适配",
+        "desc": "横屏成片一键派生抖音 / 小红书 / B 站等多平台版本"
+      },
+      "localization": {
+        "title": "多语言本地化",
+        "desc": "AI 配音 + 嘴型对齐 + 字幕 + 屏显文字本地化"
+      }
+    }
   },
   "project": {
     "title": "项目",

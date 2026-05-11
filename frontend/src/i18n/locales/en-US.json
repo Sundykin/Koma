@@ -64,7 +64,27 @@
     "linghui": "Linghui",
     "settings": "Settings",
     "plugins": "Plugins",
-    "chat": "AI Chat"
+    "chat": "AI Chat",
+    "recreation": "Re-creation"
+  },
+  "recreation": {
+    "title": "Re-creation Workbench",
+    "subtitle": "Produce multi-version deliverables from existing master cuts",
+    "comingSoon": "Coming Soon",
+    "scenes": {
+      "trailer": {
+        "title": "Trailer Cut",
+        "desc": "Auto-derive 30s / 60s / 90s versions in one click"
+      },
+      "aspect": {
+        "title": "Aspect Adaptation",
+        "desc": "Reframe horizontal master to Douyin / TikTok / YouTube Shorts / etc."
+      },
+      "localization": {
+        "title": "Localization",
+        "desc": "AI dubbing + lip-sync + subtitles + on-screen text"
+      }
+    }
   },
   "project": {
     "title": "Project",

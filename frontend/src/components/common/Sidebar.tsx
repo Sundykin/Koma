@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { Avatar, Tooltip, Popover, Input, Button, message, Divider, Tag, Typography } from 'antd';
 import { UserOutlined, CheckCircleFilled, CloseCircleFilled, KeyOutlined, ReloadOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons';
-import { LayoutGrid, Settings, Puzzle, MessageCircle, PenTool, ListChecks } from 'lucide-react';
+import { LayoutGrid, Settings, Puzzle, MessageCircle, PenTool, ListChecks, Clapperboard } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Project, Episode } from '../../types';
 import { usePluginStore } from '../../store/pluginStore';
@@ -14,7 +14,7 @@ import styles from './Sidebar.module.scss';
 const { Text } = Typography;
 
 // 视图类型：支持插件路由
-export type AppView = 'projects' | 'overview' | 'editor' | 'settings' | 'plugins' | 'chat' | 'linghui' | `plugin:${string}`;
+export type AppView = 'projects' | 'overview' | 'editor' | 'settings' | 'plugins' | 'chat' | 'linghui' | 'recreation' | `plugin:${string}`;
 
 interface SidebarProps {
   view: AppView;
@@ -360,6 +360,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { key: 'projects', icon: <LayoutGrid size={22} />, label: t('sidebar.projects') },
     { key: 'linghui', icon: <PenTool size={22} />, label: t('sidebar.linghui') },
     { key: 'chat', icon: <MessageCircle size={22} />, label: t('chat.title') },
+    { key: 'recreation', icon: <Clapperboard size={22} />, label: t('sidebar.recreation') },
   ];
 
   const pluginNavItems = globalPlugins
