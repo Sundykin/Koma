@@ -142,13 +142,33 @@ function buildCameraFromOrbit(
   };
 }
 
-function GroundGrid({ visible, lineColor }: { visible: boolean; lineColor: string }) {
+/**
+ * 工作台环境：无限地面（大圆盘 + 浅灰）+ 天空穹顶（球壳 BackSide + 上浅下深渐变）。
+ * 让画布看起来像在户外摄影棚里取景，给 actor 一个可信的视觉参考。
+ * 同样的环境也会出现在 CaptureRenderer 离屏导出里 → 所见即所得。
+ */
+function GroundGrid({ visible }: { visible: boolean; lineColor?: string }) {
   if (!visible) return null;
   return (
-    <gridHelper
-      args={[24, 24, lineColor, lineColor]}
-      position={[0, 0, 0]}
-    />
+    <>
+      {/* 大圆盘地面 —— y=-0.001 防 z-fighting */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.001, 0]} receiveShadow={false}>
+        <circleGeometry args={[60, 64]} />
+        <meshStandardMaterial color="#e8e8e8" roughness={0.9} metalness={0} />
+      </mesh>
+      {/* 极淡的网格线 —— 帮用户判断比例，不喧宾夺主 */}
+      <gridHelper args={[24, 24, '#d4d4d4', '#ededed']} position={[0, 0.0005, 0]} />
+    </>
+  );
+}
+
+function SkyDome({ visible }: { visible: boolean }) {
+  if (!visible) return null;
+  return (
+    <mesh>
+      <sphereGeometry args={[80, 32, 16, 0, Math.PI * 2, 0, Math.PI * 0.5]} />
+      <meshBasicMaterial color="#cfe4f5" side={THREE.BackSide} />
+    </mesh>
   );
 }
 
@@ -374,8 +394,9 @@ const CaptureRenderer: React.FC<CaptureRendererProps> = ({ scene, texture, camer
     renderer.setPixelRatio(1);
     renderer.setSize(width, height, false);
 
-    // 所有模式统一纯白背景 —— 用户反馈黑/透明背景不利于下游 AI 识别画面主体
-    const backdropColor = 0xffffff;
+    // 背景色：preview 用淡天蓝（被 sky 穹顶完全包裹时影响小但渲染缓冲外区域有色调），
+    // 其他模式（lineart / silhouette / depth / composition）纯白便于下游 AI 识别主体
+    const backdropColor = exportMode === 'preview' ? 0xcfe4f5 : 0xffffff;
     renderer.setClearColor(backdropColor, 1);
 
     const offscreenScene = new THREE.Scene();
@@ -386,8 +407,8 @@ const CaptureRenderer: React.FC<CaptureRendererProps> = ({ scene, texture, camer
     offscreenScene.add(dirLight);
 
     // 按风格构造主体 mesh 材质：
+    //  - preview：MeshStandardMaterial + actor.color，受光照，无描边 → 与画布完全一致
     //  - lineart / composition：保留 actor.color（彩色实色填充）+ 黑色描边
-    //    这样下游 AI 视频 / 图片 prompt 能直接读到"红色狮子 / 蓝色主角"颜色特征
     //  - silhouette：纯黑填充，不画边
     //  - depth：MeshDepthMaterial（远=白 近=黑，便于下游 ControlNet 直接用）
     const wireMat = new THREE.LineBasicMaterial({ color: 0x000000 });
@@ -395,8 +416,16 @@ const CaptureRenderer: React.FC<CaptureRendererProps> = ({ scene, texture, camer
     const makeFillMat = (actorColor?: string): THREE.Material => {
       if (exportMode === 'silhouette') return new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.DoubleSide });
       if (exportMode === 'depth') return new THREE.MeshDepthMaterial({ side: THREE.DoubleSide });
-      // lineart / composition：取 actor.color；缺省退到白
       const colorStr = resolveDirector3DColor(actorColor || '', '#ffffff');
+      if (exportMode === 'preview') {
+        return new THREE.MeshStandardMaterial({
+          color: new THREE.Color(colorStr),
+          roughness: 0.7,
+          metalness: 0.05,
+          side: THREE.DoubleSide,
+        });
+      }
+      // lineart / composition：纯色 + 描边
       return new THREE.MeshBasicMaterial({ color: new THREE.Color(colorStr), side: THREE.DoubleSide });
     };
     // 每个 actor 的 fillMat 通过闭包变量传给 addLineartMesh，避免改函数签名
@@ -515,8 +544,23 @@ const CaptureRenderer: React.FC<CaptureRendererProps> = ({ scene, texture, camer
       offscreenScene.add(group);
     }
 
-    // 地面：不画网格 —— 用户反馈导出视频里的地面网格会干扰下游 AI 识别画面主体。
-    // 工作台内 viewport 的网格仍由 GroundGrid 组件根据 scene.render.showGrid 控制。
+    // preview 模式加无限地面 + 天空穹顶，让 AI 看到镜头运动相对静止地面/天空的关系
+    if (exportMode === 'preview') {
+      // 大圆盘地面
+      const ground = new THREE.Mesh(
+        new THREE.CircleGeometry(60, 64),
+        new THREE.MeshStandardMaterial({ color: 0xe8e8e8, roughness: 0.9, metalness: 0, side: THREE.DoubleSide }),
+      );
+      ground.rotation.x = -Math.PI / 2;
+      ground.position.y = -0.001;
+      offscreenScene.add(ground);
+      // 天空穹顶（半球壳，BackSide）
+      const sky = new THREE.Mesh(
+        new THREE.SphereGeometry(80, 32, 16, 0, Math.PI * 2, 0, Math.PI * 0.5),
+        new THREE.MeshBasicMaterial({ color: 0xcfe4f5, side: THREE.BackSide }),
+      );
+      offscreenScene.add(sky);
+    }
 
     if (effectiveScene.background.mode === 'panorama' && texture && exportMode === 'lineart') {
       const aspect = (texture.image && (texture.image as { width: number }).width)
@@ -959,7 +1003,8 @@ export const Director3DViewport = forwardRef<Director3DViewportHandle, Director3
           <directionalLight position={[6, 8, 4]} intensity={0.65} />
           <directionalLight position={[-4, 6, -6]} intensity={0.3} />
           <Background scene={scene} texture={texture} renderMode={renderMode} />
-          <GroundGrid visible={scene.render.showGrid} lineColor={lineColor} />
+          <SkyDome visible={renderMode === 'preview'} />
+          <GroundGrid visible={scene.render.showGrid} />
 
           {/* 原点指示 */}
           <axesHelper args={[1.2]} position={[0, 0.01, 0]} />

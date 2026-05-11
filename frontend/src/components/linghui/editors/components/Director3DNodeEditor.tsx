@@ -114,6 +114,7 @@ const CAMERA_PRESET_CATEGORY_ORDER: Director3DCameraPresetCategory[] = ['shot-si
 const ASPECT_RATIOS = ['16:9', '21:9', '4:3', '1:1', '9:16'];
 
 const RENDER_MODE_LABELS: Record<LinghuiDirector3DRenderMode, string> = {
+  preview: '彩色',
   lineart: '线稿',
   silhouette: '剪影',
   depth: '深度',
@@ -149,7 +150,8 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
   const scene = useMemo(() => getScene(nodeData.properties), [nodeData.properties]);
   const [selection, setSelection] = useState<Selection>({ kind: null });
   const [activeAssetTab, setActiveAssetTab] = useState<'props' | 'characters' | 'creatures' | 'cameras' | 'templates'>('characters');
-  const [renderModeForExport, setRenderModeForExport] = useState<LinghuiDirector3DRenderMode>('lineart');
+  // 默认彩色预览：保留物体颜色 + 含地面/天空 + 无描边 → 所见即所得
+  const [renderModeForExport, setRenderModeForExport] = useState<LinghuiDirector3DRenderMode>('preview');
   const [previewMode, setPreviewMode] = useState<'preview' | 'lineart' | 'silhouette'>('preview');
   // HUD：左右 activity rail（纯图标）+ hover 出独立 popover；Cmd+F 沉浸（隐藏 rail）
   const [immersive, setImmersive] = useState(false);

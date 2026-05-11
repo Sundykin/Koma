@@ -293,7 +293,7 @@ export type LinghuiDirector3DActorPose =
   | 'wave'
   | 'point';
 export type LinghuiDirector3DBackgroundMode = 'none' | 'color' | 'image-plane' | 'panorama';
-export type LinghuiDirector3DRenderMode = 'lineart' | 'silhouette' | 'depth' | 'composition';
+export type LinghuiDirector3DRenderMode = 'preview' | 'lineart' | 'silhouette' | 'depth' | 'composition';
 
 export interface LinghuiDirector3DActor {
   id: string;
