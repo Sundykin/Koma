@@ -55,7 +55,8 @@
     &.isImmersive {
       .linghuiDirector3DRail,
       .linghuiDirector3DTopBar,
-      .linghuiDirector3DTimelineSidePanel,
+      .linghuiDirector3DFooter,
+      .linghuiDirector3DOutputPanel,
       .linghuiDirector3DLineartPreview,
       .linghuiDirector3DPreviewHud {
         opacity: 0;
@@ -1398,30 +1399,64 @@
 /* 紧凑节点上的「打开工作台」按钮：唯一会展开 Director3DNodeEditor 的入口；
    其余区域（预览缩略图 + 统计行）都标记 data-node-preview-area，
    点击只看产物，不进编辑器（避免误展开覆盖整个画布）。 */
-/* 时间轴 HUD 现在挂在视口右侧（替代之前的底部 footer）。
-   宽度 320px，纵向占据右侧大半个 viewport 高度；内部沿用原 HUD 的 column 布局，
-   只是把它从全屏底部移到了视口右边，给画布腾出底部空间。 */
-.linghuiDirector3DTimelineSidePanel {
+/* 右侧浮动面板：视角类型 + 渲染风格 + 导出按钮 + 最近导出预览。
+   从原先视口下方的横条移过来，给视口腾出底部空间留给时间轴。
+   靠右悬浮、不参与 flex 流。沉浸态隐藏。 */
+.linghuiDirector3DOutputPanel {
   position: absolute;
   top: 64px;
   right: 16px;
-  bottom: 16px;
-  width: 320px;
-  max-height: calc(100% - 80px);
+  width: 240px;
+  max-height: calc(100% - 96px);
   display: flex;
   flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--token-text-primary) 8%, transparent);
+  background: color-mix(in srgb, var(--token-bg-app) 86%, transparent);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--token-bg-app) 40%, transparent);
   pointer-events: auto;
+  overflow-y: auto;
   z-index: 5;
+}
 
-  .linghuiDirector3DTimelineHud {
-    flex: 1;
-    min-height: 0;
-    overflow: hidden;
+.linghuiDirector3DOutputSection {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  & + & {
+    padding-top: 8px;
+    border-top: 1px solid color-mix(in srgb, var(--token-text-primary) 6%, transparent);
   }
 
-  .linghuiDirector3DTimelineControls {
+  /* 让右侧面板里的子组件占满宽度 */
+  .linghuiDirector3DCameraModeGroup,
+  .linghuiDirector3DRenderModes {
     flex-wrap: wrap;
+    width: 100%;
   }
+
+  .linghuiDirector3DAngleStrip {
+    width: 100%;
+
+    img {
+      width: 100%;
+      height: auto;
+      max-height: 120px;
+      object-fit: contain;
+      border-radius: 6px;
+    }
+  }
+}
+
+.linghuiDirector3DOutputSectionTitle {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--token-text-secondary);
+  letter-spacing: 0.5px;
 }
 
 .linghuiDirector3DOpenButton {

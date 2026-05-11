@@ -1364,78 +1364,89 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
               </div>
             ) : null}
           </div>
+        </main>
 
-          <div className="linghuiDirector3DCameraBar">
-            <div className="linghuiDirector3DCameraChip">
-              <Camera size={14} />
-              <span>{Math.round(scene.camera.fov)}° FOV · {scene.camera.aspectRatio}</span>
-            </div>
-            <div className="linghuiDirector3DCameraModeGroup">
-              <button
-                type="button"
-                className={`linghuiDirector3DCameraModeBtn ${cameraMode === 'output' ? 'isActive' : ''}`}
-                onClick={() => setCameraMode('output')}
-                title="拖动 / 缩放将直接写入输出相机（关键帧 / 图片视频用这个）"
-              >
-                输出视角
-              </button>
-              <button
-                type="button"
-                className={`linghuiDirector3DCameraModeBtn ${cameraMode === 'editor' ? 'isActive' : ''}`}
-                onClick={() => setCameraMode('editor')}
-                title="拖动 / 缩放只用于查看，不会改变输出相机"
-              >
-                编辑视角
-              </button>
-              {cameraMode === 'editor' ? (
+        {/* 右侧浮动面板：视角类型 + 渲染风格 + 导出。原先平铺在视口下方，
+           现在挪到右侧给视口腾出底部空间（底部留给时间轴 HUD）。 */}
+        {!immersive ? (
+          <div className="linghuiDirector3DOutputPanel">
+            <div className="linghuiDirector3DOutputSection">
+              <div className="linghuiDirector3DOutputSectionTitle">视角</div>
+              <div className="linghuiDirector3DCameraChip">
+                <Camera size={14} />
+                <span>{Math.round(scene.camera.fov)}° FOV · {scene.camera.aspectRatio}</span>
+              </div>
+              <div className="linghuiDirector3DCameraModeGroup">
                 <button
                   type="button"
-                  className="linghuiDirector3DCameraModeBtn"
-                  onClick={() => {
-                    const current = viewportRef.current?.getCurrentCamera();
-                    if (!current) return;
-                    // 把编辑视角参数写入 scene.camera = 输出相机
-                    updateScene(prev => ({ ...prev, camera: { ...current } }));
-                    setCameraMode('output');
-                  }}
-                  title="把当前编辑视角固化为输出相机"
+                  className={`linghuiDirector3DCameraModeBtn ${cameraMode === 'output' ? 'isActive' : ''}`}
+                  onClick={() => setCameraMode('output')}
+                  title="拖动 / 缩放将直接写入输出相机（关键帧 / 图片视频用这个）"
                 >
-                  应用为输出
+                  输出视角
                 </button>
-              ) : null}
-            </div>
-            <div className="linghuiDirector3DRenderModes">
-              {(Object.keys(RENDER_MODE_LABELS) as LinghuiDirector3DRenderMode[]).map(mode => (
                 <button
-                  key={mode}
                   type="button"
-                  className={`linghuiDirector3DRenderMode ${renderModeForExport === mode ? 'isActive' : ''}`}
-                  onClick={() => {
-                    setRenderModeForExport(mode);
-                    // 预览只支持 preview / lineart / silhouette；depth / composition 在预览态
-                    // 落回 preview（防止 viewport 渲染异常），导出时再走专用 capture 分支
-                    setPreviewMode(mode === 'silhouette' ? 'silhouette' : mode === 'lineart' ? 'lineart' : 'preview');
-                  }}
-                  title={`导出 ${RENDER_MODE_LABELS[mode]} 风格`}
+                  className={`linghuiDirector3DCameraModeBtn ${cameraMode === 'editor' ? 'isActive' : ''}`}
+                  onClick={() => setCameraMode('editor')}
+                  title="拖动 / 缩放只用于查看，不会改变输出相机"
                 >
-                  {RENDER_MODE_LABELS[mode]}
+                  编辑视角
                 </button>
-              ))}
-            </div>
-            <Button type="primary" size="small" icon={<Wand2 size={14} />} onClick={handleExportLineart}>
-              导出 {RENDER_MODE_LABELS[renderModeForExport]}
-            </Button>
-          </div>
-
-          {lineartPreview ? (
-            <div className="linghuiDirector3DLineartPreview">
-              <span className="linghuiDirector3DLineartLabel">最近导出</span>
-              <div className="linghuiDirector3DAngleStrip">
-                <img src={lineartPreview} alt="primary export" title="主图" />
+                {cameraMode === 'editor' ? (
+                  <button
+                    type="button"
+                    className="linghuiDirector3DCameraModeBtn"
+                    onClick={() => {
+                      const current = viewportRef.current?.getCurrentCamera();
+                      if (!current) return;
+                      updateScene(prev => ({ ...prev, camera: { ...current } }));
+                      setCameraMode('output');
+                    }}
+                    title="把当前编辑视角固化为输出相机"
+                  >
+                    应用为输出
+                  </button>
+                ) : null}
               </div>
             </div>
-          ) : null}
-        </main>
+
+            <div className="linghuiDirector3DOutputSection">
+              <div className="linghuiDirector3DOutputSectionTitle">渲染风格</div>
+              <div className="linghuiDirector3DRenderModes">
+                {(Object.keys(RENDER_MODE_LABELS) as LinghuiDirector3DRenderMode[]).map(mode => (
+                  <button
+                    key={mode}
+                    type="button"
+                    className={`linghuiDirector3DRenderMode ${renderModeForExport === mode ? 'isActive' : ''}`}
+                    onClick={() => {
+                      setRenderModeForExport(mode);
+                      setPreviewMode(mode === 'silhouette' ? 'silhouette' : mode === 'lineart' ? 'lineart' : 'preview');
+                    }}
+                    title={`导出 ${RENDER_MODE_LABELS[mode]} 风格`}
+                  >
+                    {RENDER_MODE_LABELS[mode]}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="linghuiDirector3DOutputSection">
+              <Button type="primary" size="small" icon={<Wand2 size={14} />} onClick={handleExportLineart} block>
+                导出 {RENDER_MODE_LABELS[renderModeForExport]}
+              </Button>
+            </div>
+
+            {lineartPreview ? (
+              <div className="linghuiDirector3DOutputSection">
+                <div className="linghuiDirector3DOutputSectionTitle">最近导出</div>
+                <div className="linghuiDirector3DAngleStrip">
+                  <img src={lineartPreview} alt="primary export" title="主图" />
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         {/* 右侧 activity rail：属性 + 时间轴关键帧入口；属性 popover 内容根据选中状态切换 */}
         <aside className="linghuiDirector3DRail isRight">
@@ -1803,9 +1814,11 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
           </Popover>
         </aside>
 
-        {/* 时间轴 HUD：移到右侧浮动面板，常驻不需要 hover；沉浸态隐藏 */}
+        </div>{/* /body */}
+
+        {/* 底部 footer：时间轴 HUD（沉浸态隐藏） */}
         {!immersive ? (
-          <div className="linghuiDirector3DTimelineSidePanel">
+          <div className="linghuiDirector3DFooter">
             <Director3DTimelineHud
               timeline={timeline}
               currentTime={currentTime}
@@ -1834,8 +1847,6 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
             />
           </div>
         ) : null}
-
-        </div>{/* /body */}
       </div>
     </div>
   );
