@@ -54,7 +54,7 @@ interface Director3DTimelineHudProps {
   onCancelExport: () => void;
 }
 
-const TRACK_HEIGHT = 32;
+const TRACK_HEIGHT = 24;
 
 function formatTime(t: number): string {
   return `${t.toFixed(2)}s`;
@@ -312,11 +312,6 @@ export const Director3DTimelineHud: React.FC<Director3DTimelineHudProps> = ({
         />
       </div>
 
-      {timeline.keyframes.length === 0 ? (
-        <div className="linghuiDirector3DTimelineHint">
-          调整场景后点 <Plus size={11} style={{ verticalAlign: '-2px' }} /> 关键帧记录这一帧；至少 2 帧才能播放
-        </div>
-      ) : null}
     </div>
   );
 };

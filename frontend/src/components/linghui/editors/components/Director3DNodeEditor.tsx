@@ -177,9 +177,10 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
   const [activeAssetTab, setActiveAssetTab] = useState<'props' | 'characters' | 'creatures' | 'cameras' | 'templates'>('characters');
   const [renderModeForExport, setRenderModeForExport] = useState<LinghuiDirector3DRenderMode>('lineart');
   const [previewMode, setPreviewMode] = useState<'preview' | 'lineart' | 'silhouette'>('preview');
-  // HUD 控制：左/右两侧浮层可分别折叠；Cmd+F 进入沉浸（隐藏全部）
-  const [assetsHudOpen, setAssetsHudOpen] = useState(true);
-  const [inspectorHudOpen, setInspectorHudOpen] = useState(true);
+  // HUD 控制：左/右两侧 HUD 默认是 rail 形态（窄条 + 图标），hover 自动展开内容，
+  // 用户也可以"钉住"让它常驻展开（按 Tab）。Cmd+F 进入沉浸（隐藏全部）。
+  const [assetsHudOpen, setAssetsHudOpen] = useState(false);
+  const [inspectorHudOpen, setInspectorHudOpen] = useState(false);
   const [immersive, setImmersive] = useState(false);
   // 相机模式：
   //  - 'output'（默认）：拖动 → 写入 scene.camera = 关键帧 / 导出图视频用的相机
@@ -1007,23 +1008,24 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
 
         {/* 折叠 / 沉浸控制按钮（独立浮层，沉浸态仍可点） */}
         {!immersive ? (
-          <Tooltip title={assetsHudOpen ? '收起资产库 (Tab)' : '展开资产库'} placement="right">
+          <Tooltip title={assetsHudOpen ? '让资产库自动收起 (Tab)' : '钉住资产库常驻 (Tab)'} placement="right">
             <button
               type="button"
               className="linghuiDirector3DSideHandle"
-              style={{ left: assetsHudOpen ? 280 : 12 }}
+              style={{ left: assetsHudOpen ? 268 : 44 }}
               onClick={() => setAssetsHudOpen(open => !open)}
             >
               {assetsHudOpen ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />}
             </button>
           </Tooltip>
         ) : null}
-        {!immersive ? (
-          <Tooltip title={inspectorHudOpen ? '收起属性面板 (Tab)' : '展开属性面板'} placement="left">
+        {/* 属性面板的"钉住"按钮：仅在选中 actor 时才有意义 */}
+        {!immersive && selection.kind === 'actor' && selectedActor ? (
+          <Tooltip title={inspectorHudOpen ? '让属性面板自动收起 (Tab)' : '钉住属性面板常驻 (Tab)'} placement="left">
             <button
               type="button"
               className="linghuiDirector3DSideHandle"
-              style={{ right: inspectorHudOpen ? 328 : 12 }}
+              style={{ right: inspectorHudOpen ? 316 : 44 }}
               onClick={() => setInspectorHudOpen(open => !open)}
             >
               {inspectorHudOpen ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />}
@@ -1041,15 +1043,55 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
           </button>
         </Tooltip>
 
-        {/* 左侧：资产库 HUD */}
-        {assetsHudOpen ? (
-        <aside className="linghuiDirector3DAssets">
+        {/* 左侧：资产库 HUD（默认 rail 形态，hover 展开） */}
+        <aside className={`linghuiDirector3DAssets ${assetsHudOpen ? 'isPinned' : 'isRail'}`}>
+          {/* rail 状态时只看到这一列图标，hover 时整个面板变宽 */}
           <div className="linghuiDirector3DTabs">
-            <button type="button" className={`linghuiDirector3DTab ${activeAssetTab === 'props' ? 'isActive' : ''}`} onClick={() => setActiveAssetTab('props')}>道具</button>
-            <button type="button" className={`linghuiDirector3DTab ${activeAssetTab === 'characters' ? 'isActive' : ''}`} onClick={() => setActiveAssetTab('characters')}>人物</button>
-            <button type="button" className={`linghuiDirector3DTab ${activeAssetTab === 'creatures' ? 'isActive' : ''}`} onClick={() => setActiveAssetTab('creatures')}>生物</button>
-            <button type="button" className={`linghuiDirector3DTab ${activeAssetTab === 'cameras' ? 'isActive' : ''}`} onClick={() => setActiveAssetTab('cameras')}>视角</button>
-            <button type="button" className={`linghuiDirector3DTab ${activeAssetTab === 'templates' ? 'isActive' : ''}`} onClick={() => setActiveAssetTab('templates')}>模板</button>
+            <button
+              type="button"
+              className={`linghuiDirector3DTab ${activeAssetTab === 'props' ? 'isActive' : ''}`}
+              onClick={() => { setActiveAssetTab('props'); setAssetsHudOpen(true); }}
+              title="道具"
+            >
+              <Box size={14} />
+              <span className="linghuiDirector3DTabLabel">道具</span>
+            </button>
+            <button
+              type="button"
+              className={`linghuiDirector3DTab ${activeAssetTab === 'characters' ? 'isActive' : ''}`}
+              onClick={() => { setActiveAssetTab('characters'); setAssetsHudOpen(true); }}
+              title="人物"
+            >
+              <Users size={14} />
+              <span className="linghuiDirector3DTabLabel">人物</span>
+            </button>
+            <button
+              type="button"
+              className={`linghuiDirector3DTab ${activeAssetTab === 'creatures' ? 'isActive' : ''}`}
+              onClick={() => { setActiveAssetTab('creatures'); setAssetsHudOpen(true); }}
+              title="生物"
+            >
+              <Zap size={14} />
+              <span className="linghuiDirector3DTabLabel">生物</span>
+            </button>
+            <button
+              type="button"
+              className={`linghuiDirector3DTab ${activeAssetTab === 'cameras' ? 'isActive' : ''}`}
+              onClick={() => { setActiveAssetTab('cameras'); setAssetsHudOpen(true); }}
+              title="视角"
+            >
+              <Camera size={14} />
+              <span className="linghuiDirector3DTabLabel">视角</span>
+            </button>
+            <button
+              type="button"
+              className={`linghuiDirector3DTab ${activeAssetTab === 'templates' ? 'isActive' : ''}`}
+              onClick={() => { setActiveAssetTab('templates'); setAssetsHudOpen(true); }}
+              title="模板"
+            >
+              <LayoutTemplate size={14} />
+              <span className="linghuiDirector3DTabLabel">模板</span>
+            </button>
           </div>
 
           <div className="linghuiDirector3DAssetGrid">
@@ -1321,7 +1363,6 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
             ))}
           </div>
         </aside>
-        ) : null}
 
         {/* 中央：3D 视口 + 镜头条 */}
         <main className="linghuiDirector3DStage">
@@ -1545,10 +1586,15 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
           </div>
         ) : null}
 
-        {/* 右侧：属性面板 HUD */}
-        {inspectorHudOpen ? (
-        <aside className="linghuiDirector3DInspector">
-          <div className="linghuiDirector3DInspectorHeader">属性</div>
+        {/* 右侧：属性面板 HUD —— 只在选中 actor 时出现，默认 rail，hover 展开 */}
+        {selection.kind === 'actor' && selectedActor ? (
+        <aside className={`linghuiDirector3DInspector ${inspectorHudOpen ? 'isPinned' : 'isRail'}`}>
+          <div className="linghuiDirector3DInspectorHeader">
+            <span className="linghuiDirector3DInspectorHeaderIcon" title="属性">
+              <Users size={14} />
+            </span>
+            <span className="linghuiDirector3DInspectorHeaderText">{selectedActor.label || '属性'}</span>
+          </div>
 
           {selection.kind === 'actor' && selectedActor ? (
             <div className="linghuiDirector3DInspectorBody">
