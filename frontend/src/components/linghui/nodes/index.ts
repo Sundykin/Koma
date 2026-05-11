@@ -19,6 +19,9 @@ export const linghuiNodeTypes: NodeTypes = {
   'linghui-video': VideoNode,
   'linghui-audio': AudioNode,
   'linghui-script': ScriptNode,
+  // 故事板节点视觉与脚本节点完全一致，节点壳直接复用 ScriptNode；
+  // 编辑器/执行器侧通过 linghuiType === 'linghui/storyboard' 分支区分。
+  'linghui-storyboard': ScriptNode,
   'linghui-director3d': Director3DNode,
 };
 

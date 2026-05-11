@@ -17,6 +17,8 @@ const DEFAULT_NODE_DURATION_SEC: Record<LinghuiNodeType, number> = {
   'linghui/video': 45,
   'linghui/audio': 15,
   'linghui/script': 14,
+  // 故事板节点与脚本节点同条 LLM 链路，估时一致
+  'linghui/storyboard': 14,
   // 3D 导演节点本地导出 lineart，几乎瞬时完成
   'linghui/director3d': 2,
 };

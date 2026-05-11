@@ -2,6 +2,7 @@ import React, { memo, useMemo } from 'react';
 import { type NodeProps } from '@xyflow/react';
 import type {
   LinghuiNodeData,
+  LinghuiNodeType,
   LinghuiRunStatus,
   LinghuiScriptNodeProperties,
 } from '../../../../types/linghui';
@@ -37,9 +38,15 @@ function ScriptNodeInner({ id, data, selected }: NodeProps) {
     '--linghui-progress': `${runState?.progress ?? 0}%`,
   });
 
+  const linghuiType: LinghuiNodeType = nodeData.linghuiType === 'linghui/storyboard'
+    ? 'linghui/storyboard'
+    : 'linghui/script';
+  const isStoryboard = linghuiType === 'linghui/storyboard';
   const fallbackShots = useMemo(() => (
-    props.mode === 'manual' ? parseLinghuiScriptContent(String(props.content ?? '')).shots : []
-  ), [props.content, props.mode]);
+    !isStoryboard && props.mode === 'manual'
+      ? parseLinghuiScriptContent(String(props.content ?? '')).shots
+      : []
+  ), [isStoryboard, props.content, props.mode]);
   const shots = runState?.result?.kind === 'storyboard'
     ? (runState.result.shots ?? [])
     : fallbackShots;
@@ -47,10 +54,12 @@ function ScriptNodeInner({ id, data, selected }: NodeProps) {
     || shots[0]?.title
     || (runState?.result?.kind === 'storyboard' ? String(runState.result.text ?? '').trim() : '')
     || String(props.prompt ?? '').trim();
-  const modeLabel = props.mode === 'generate' ? '脚本生成' : '结构化脚本';
+  const modeLabel = isStoryboard
+    ? '故事板'
+    : props.mode === 'generate' ? '脚本生成' : '结构化脚本';
   const viewLabel = props.viewMode === 'table' ? '表格视图' : '卡片视图';
   const viewMode = resolveLinghuiNodeViewMode(nodeData.viewMode);
-  const isEditorVisible = useLinghuiNodeEditorVisibility(id, 'linghui/script');
+  const isEditorVisible = useLinghuiNodeEditorVisibility(id, linghuiType);
 
   return (
     <div
@@ -78,7 +87,7 @@ function ScriptNodeInner({ id, data, selected }: NodeProps) {
         <EditableCompactNodeLabel
           nodeId={id}
           label={nodeData.label}
-          fallbackLabel="脚本"
+          fallbackLabel={isStoryboard ? '故事板' : '脚本'}
         />
         <span className="linghuiCompactMeta">
           {status === 'running' ? '脚本整理中' : `${modeLabel} · ${viewLabel}`}
@@ -101,7 +110,7 @@ function ScriptNodeInner({ id, data, selected }: NodeProps) {
         )}
       </div>
 
-      {isEditorVisible ? <LinghuiNodeEditor nodeId={id} nodeType="linghui/script" /> : null}
+      {isEditorVisible ? <LinghuiNodeEditor nodeId={id} nodeType={linghuiType} /> : null}
     </div>
   );
 }

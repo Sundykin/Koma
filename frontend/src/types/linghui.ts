@@ -9,6 +9,7 @@ export type LinghuiNodeType =
   | 'linghui/video'
   | 'linghui/audio'
   | 'linghui/script'
+  | 'linghui/storyboard'
   | 'linghui/director3d';
 
 export type LinghuiRFNodeTypeKey =
@@ -19,6 +20,7 @@ export type LinghuiRFNodeTypeKey =
   | 'linghui-video'
   | 'linghui-audio'
   | 'linghui-script'
+  | 'linghui-storyboard'
   | 'linghui-director3d';
 
 export type LinghuiNodeCategory = 'creation' | 'storyboard';
@@ -78,6 +80,22 @@ export interface LinghuiScriptNodeProperties {
   viewMode: LinghuiScriptNodeViewMode;
 }
 
+/**
+ * 故事板节点：脚本节点的"剧情→分镜"傻瓜版。
+ * - 内置专业 system prompt，用户不暴露/不编辑
+ * - 不开放 manual 模式
+ * - 输出 storyboard kind，与 script 节点一致，可被下游 script 派生工具消费
+ */
+export interface LinghuiStoryboardNodeProperties {
+  /** 剧情大纲。用户唯一需要填的字段。 */
+  prompt: string;
+  llmSelection: string;
+  /** 视图模式与 script 节点共享，沿用 cards / table 复用 ScriptShot UI */
+  viewMode: LinghuiScriptNodeViewMode;
+  /** 目标镜头数。默认 8。允许 [4, 24]。 */
+  targetShotCount: number;
+}
+
 export type LinghuiGridType = 'none' | '2x2' | '3x3' | '4x4' | '5x5';
 export type LinghuiPanoramaTemplateKind = 'auto' | 'indoor' | 'outdoor';
 export type LinghuiPanoramaProjectionMode = 'ar720-band' | 'equirectangular-2to1' | 'flat-wide';
@@ -115,6 +133,13 @@ export interface LinghuiPanoramaNodeProperties extends LinghuiImageNodePropertie
    * 'flat-wide' 是兜底，模型不支持环绕全景时把它当宽幅图。
    */
   projectionMode?: LinghuiPanoramaProjectionMode;
+  /**
+   * 主图横向切分得到的方向细节图（LibTV 风格的"多方向" UI）。
+   * 由编辑器"切 4 / 6 方向"按钮在浏览器侧一次性 canvas crop 出 PNG dataUrl 后存入；
+   * 执行器读到非空数组时会把每张作为 image collection item 输出，下游可用
+   * @ref_{nodeId}__item_N 引用任意一张。
+   */
+  detailCrops?: LinghuiImageAssetItem[];
 }
 
 export interface LinghuiMultiAngleConfig {
@@ -150,7 +175,44 @@ export interface LinghuiVideoNodeProperties extends LinghuiScriptDerivedProperti
 
 // --- 3D 导演工作台节点 ---
 
-export type LinghuiDirector3DActorType = 'mannequin';
+/**
+ * 场景物件类型：
+ * - mannequin：可摆姿势的主角假人，全套头/躯干/四肢，唯一持有 posePreset 字段
+ * - mannequin-lite：单个低级群演占位（独立可拖拽），简化为胶囊形，用作普通群演
+ * - formation：整体方阵（rows × cols 个胶囊小人，整体可移动旋转，不可单独拆移），
+ *   元数据存在 actor.formation 字段
+ * - prop-box / prop-cylinder / prop-plane：基础几何辅助构图（桌椅/桶/墙板等占位）
+ * - prop-camera：相机模型，标注次要机位 / OTS 参考点
+ * - prop-arrow：方向箭头，标注运动轨迹 / 视线
+ */
+export type LinghuiDirector3DActorType =
+  | 'mannequin'
+  | 'mannequin-lite'
+  | 'formation'
+  | 'prop-box'
+  | 'prop-cylinder'
+  | 'prop-plane'
+  | 'prop-camera'
+  | 'prop-arrow';
+
+/**
+ * 方阵元数据（actor.type === 'formation' 时使用）。
+ * actor.position 是方阵的几何中心，actor.rotationY 是整体朝向；
+ * 方阵内的每个小人位置由 rows/cols/spacing 派生，不存储独立坐标。
+ */
+export interface LinghuiDirector3DFormationConfig {
+  rows: number;
+  cols: number;
+  spacing: number;
+  /**
+   * 方阵内部成员的相对朝向：
+   *  - forward：全部朝向方阵正前方（与 actor.rotationY 一致）
+   *  - away：全部背对方阵正前方
+   *  - inward：面朝方阵几何中心
+   *  - outward：背朝方阵几何中心
+   */
+  memberFacing: 'forward' | 'away' | 'inward' | 'outward';
+}
 export type LinghuiDirector3DActorPose =
   | 'idle'
   | 'walk'
@@ -174,6 +236,8 @@ export interface LinghuiDirector3DActor {
   /** 颜色（参考图区分用），CSS 颜色串 */
   color: string;
   posePreset: LinghuiDirector3DActorPose;
+  /** 方阵元数据，仅 type='formation' 时存在 */
+  formation?: LinghuiDirector3DFormationConfig;
 }
 
 export interface LinghuiDirector3DCamera {
@@ -211,7 +275,79 @@ export interface LinghuiDirector3DScene {
     showGrid: boolean;
     showCameraFrame: boolean;
     transparentBackground: boolean;
+    /**
+     * 用户最近应用的摄影机预设 id 列表（最新在前，保留最多 3 个）。
+     * 这些预设的 english 会拼进 directorPromptFragment 让下游 AI 看到镜头术语。
+     */
+    lastCameraPresetIds?: string[];
   };
+  /** 时间轴（关键帧 + 补间）。空时表示静态镜头。 */
+  timeline?: LinghuiDirector3DTimeline;
+}
+
+/**
+ * 时间轴关键帧：在时间轴某个时间点上的 scene 快照。
+ * 不存 render 模式 —— 整个 timeline 共享一套渲染设置。
+ *
+ * actor 字段拆成"连续可插值"和"离散切换"：
+ *  - 连续：position / rotationY / scale → 在两 keyframe 间线性 / 短弧插值
+ *  - 离散：posePreset / color / formation.rows/cols/memberFacing → 在 alpha>=0.5 时切换
+ *  - 半连续：formation.spacing → 线性插值（间距感受连续）
+ */
+export interface LinghuiDirector3DKeyframeActor {
+  id: string;
+  position: [number, number, number];
+  rotationY: number;
+  scale: number;
+  /** 假人姿势（mannequin 才有意义）；alpha>=0.5 时切到 next 的值 */
+  posePreset?: LinghuiDirector3DActorPose;
+  /** 颜色；alpha>=0.5 时切换 */
+  color?: string;
+  /** 方阵参数（仅 type='formation' 时有效）；rows/cols/memberFacing 离散切换，spacing 线性 */
+  formation?: LinghuiDirector3DFormationConfig;
+}
+
+export interface LinghuiDirector3DKeyframe {
+  id: string;
+  /** 关键帧时间（秒） */
+  time: number;
+  label?: string;
+  /** 该时刻所有 actor 的状态快照（按 actor.id 索引）；未列出的 actor 表示不存在 / 不渲染 */
+  actors: LinghuiDirector3DKeyframeActor[];
+  /** 该时刻相机参数（完整复用 LinghuiDirector3DCamera） */
+  camera: LinghuiDirector3DCamera;
+  /** 背景（不插值，按 segment 起点取） */
+  background?: LinghuiDirector3DBackground;
+}
+
+export type LinghuiDirector3DEasing = 'linear' | 'ease-in-out' | 'ease-in' | 'ease-out';
+
+export interface LinghuiDirector3DTimeline {
+  version: 1;
+  /** 关键帧列表，必须按 time 升序；UI 写入前会自动 sort */
+  keyframes: LinghuiDirector3DKeyframe[];
+  /** 总时长（秒），默认 8 */
+  duration: number;
+  /** 输出帧率，默认 24 */
+  fps: number;
+  /** 补间缓动 */
+  easing: LinghuiDirector3DEasing;
+}
+
+/**
+ * 单张额外视角导出：用于"三视图"、"360 环绕九宫格"等批量导出场景。
+ *
+ * angleViews 不取代主图（lineartDataUrl 仍是主输出，等同于单视角导出）。下游
+ * 图片节点会把 lineartDataUrl 作为 result.primary、把 angleViews 同步追加到
+ * result.items，让用户用 @ref_xxx__item_N 引用任意一张。
+ */
+export interface LinghuiDirector3DAngleView {
+  id: string;
+  label: string;
+  /** PNG dataUrl */
+  dataUrl: string;
+  camera: LinghuiDirector3DCamera;
+  renderMode: LinghuiDirector3DRenderMode;
 }
 
 export interface LinghuiDirector3DNodeProperties {
@@ -219,6 +355,28 @@ export interface LinghuiDirector3DNodeProperties {
   scene: LinghuiDirector3DScene;
   /** 用户输入的额外说明，编译为 prompt fragment 时拼到末尾。 */
   prompt: string;
+  /** 额外视角导出（三视图 / 九宫格等）。空数组 / undefined = 仅有主图。 */
+  angleViews?: LinghuiDirector3DAngleView[];
+  /** 最近一次批量导出走的是哪个预设，仅作 UI 高亮 */
+  lastAngleBatchKind?: 'three-view' | 'orbit-9' | 'custom';
+  /**
+   * 输出模式：
+   *  - 'lineart'（默认）：lineart 单图 / 多视角图集（现行行为）
+   *  - 'video'：时间轴渲染出的动画 mp4，作为下游 video / image-to-video 节点的参考
+   */
+  outputMode?: 'lineart' | 'video';
+  /** 时间轴导出后落盘的视频 URL（koma-local://...），仅 outputMode='video' 时使用 */
+  timelineVideoUrl?: string;
+  /** 时间轴动画首帧 PNG URL（作为下游 video 节点 posterSource / image-to-video 输入） */
+  timelineVideoPosterUrl?: string;
+  /** 视频元信息：时长 / fps / 帧数（用于下游视频节点 prompt 携带） */
+  timelineVideoMeta?: {
+    duration: number;
+    fps: number;
+    frameCount: number;
+    width: number;
+    height: number;
+  };
 }
 
 // --- 音频节点 ---
@@ -561,6 +719,13 @@ export interface LinghuiWorkspaceDocument extends LinghuiWorkspaceMeta {
   graphData: LinghuiGraphSnapshot;
   nodeRuns: Record<string, LinghuiNodeRunState>;
   executionLogs: LinghuiExecutionLogEntry[];
+  /**
+   * 3D 导演节点 → 预览节点 的绑定。
+   * key 是 director3d nodeId，value 是被绑定用作 split-view 预览源的下游
+   * image/video 节点 id。导演台 HUD 内的"实时预览窗"按这里取数。
+   * 跨会话持久化，让用户重新打开工作区还能看到原来的绑定关系。
+   */
+  directorPreviewBindings?: Record<string, string>;
 }
 
 export interface LinghuiNodeCatalogItem {
@@ -609,6 +774,7 @@ const LINGHUI_TYPE_TO_RF_TYPE_MAP: Record<LinghuiNodeType, LinghuiRFNodeTypeKey>
   'linghui/video': 'linghui-video',
   'linghui/audio': 'linghui-audio',
   'linghui/script': 'linghui-script',
+  'linghui/storyboard': 'linghui-storyboard',
   'linghui/director3d': 'linghui-director3d',
 };
 
@@ -620,6 +786,7 @@ const RF_TYPE_TO_LINGHUI_TYPE_MAP: Record<LinghuiRFNodeTypeKey, LinghuiNodeType>
   'linghui-video': 'linghui/video',
   'linghui-audio': 'linghui/audio',
   'linghui-script': 'linghui/script',
+  'linghui-storyboard': 'linghui/storyboard',
   'linghui-director3d': 'linghui/director3d',
 };
 

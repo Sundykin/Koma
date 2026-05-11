@@ -1,14 +1,18 @@
 /**
- * @deprecated 历史 grok 风格枚举。新代码应使用 VideoDurationSpec（providers/itv/durationSpec.ts）
- * 按当前选择的 ITV 渠道动态计算允许值。这里仅作为兜底默认值，
- * 在没有 ctx / 找不到渠道 spec 时使用。
+ * @deprecated 通用故事板时长白名单（兜底）。新代码应使用 VideoDurationSpec
+ * （providers/itv/durationSpec.ts）按当前选择的 ITV 渠道动态计算允许值；
+ * 这里仅在没有 ctx / 找不到渠道 spec 时使用。
+ *
+ * 注意：grok-imagine 自己的窄枚举 [6,12,16,20] 已经在 durationSpec.ts
+ * 的 DEFAULT_VIDEO_DURATION_SPEC 里独立持有，此处保留 10 是因为分镜文案
+ * 里最常用的就是 10 秒长镜头，故事板解析需要它作为合法吸附目标。
  */
-export const ALLOWED_VIDEO_DURATIONS = [6, 12, 16, 20] as const;
+export const ALLOWED_VIDEO_DURATIONS = [6, 10, 12, 16, 20] as const;
 export const ALLOWED_VIDEO_DURATION_SECONDS = ALLOWED_VIDEO_DURATIONS;
 
 export type AllowedVideoDurationSeconds = typeof ALLOWED_VIDEO_DURATIONS[number];
 
-export const DEFAULT_VIDEO_DURATION_SECONDS: AllowedVideoDurationSeconds = 6;
+export const DEFAULT_VIDEO_DURATION_SECONDS: AllowedVideoDurationSeconds = 10;
 
 function coerceFiniteNumber(value: unknown): number | undefined {
   let parsed: number | undefined;

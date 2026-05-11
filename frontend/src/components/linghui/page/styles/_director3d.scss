@@ -74,7 +74,13 @@
 }
 
 .linghuiDirector3D {
-  /* ============ 编辑面板 ============ */
+  /* ============ 编辑面板 ============
+   *
+   * HUD 布局思路：3D 视口铺满整个 Modal，资产库 / 属性面板 / 镜头条 / 导出预览
+   * 全部改成绝对定位的浮层。这样视口的视觉占比最大化，符合"导演取景"语义。
+   * Modal 已经 width: 100vw / height: 100vh（见 .linghuiDirector3DModal），
+   * 这里只需要把 layout 改成 relative 让 absolute HUD 找到锚点。
+   */
 
   &EditorPanel {
     width: 100vw;
@@ -84,24 +90,88 @@
     overflow: hidden;
     border-radius: 0;
     background: var(--token-bg-app);
+
+    &.isImmersive {
+      // Cmd+F 沉浸模式：隐藏所有 HUD（除核心镜头条还可控外）
+      .linghuiDirector3DAssets,
+      .linghuiDirector3DInspector,
+      .linghuiDirector3DLineartPreview,
+      .linghuiDirector3DPreviewHud,
+      .linghuiDirector3DTimelineHud,
+      .linghuiDirector3DTopBar {
+        opacity: 0;
+        pointer-events: none;
+      }
+    }
+
+    &.isHudCollapsed {
+      // Tab 折叠：HUD 收缩成边缘小标签，可重新展开
+      .linghuiDirector3DAssets,
+      .linghuiDirector3DInspector {
+        transform: translateX(0);
+      }
+      .linghuiDirector3DAssets { transform: translateX(calc(-100% + 28px)); }
+      .linghuiDirector3DInspector { transform: translateX(calc(100% - 28px)); }
+    }
   }
 
   &Layout {
-    display: grid;
-    grid-template-columns: 240px minmax(0, 1fr) 300px;
+    position: relative;
+    width: 100%;
     height: 100%;
     min-height: 100vh;
-    gap: 0;
   }
 
-  /* ============ 左：资产库 ============ */
+  /* ============ 顶部 HUD：状态条 ============ */
+
+  &TopBar {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 8px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--token-bg-app) 72%, transparent);
+    border: 1px solid color-mix(in srgb, var(--token-text-primary) 8%, transparent);
+    backdrop-filter: blur(12px);
+    z-index: 6;
+    transition: opacity $lh-transition-base;
+    font-size: 11px;
+    color: var(--token-text-secondary);
+    pointer-events: none; // 状态条不拦截视口交互
+  }
+
+  &TopBarChip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--token-bg-card) 60%, transparent);
+    font-weight: 600;
+  }
+
+  /* ============ 左：资产库（浮层 HUD） ============ */
 
   &Assets {
-    border-right: 1px solid color-mix(in srgb, var(--token-text-primary) 6%, transparent);
-    background: color-mix(in srgb, var(--token-bg-app) 92%, transparent);
+    position: absolute;
+    top: 56px;
+    left: 12px;
+    bottom: 76px;
+    width: 256px;
+    border-radius: 14px;
+    border: 1px solid color-mix(in srgb, var(--token-text-primary) 8%, transparent);
+    background: color-mix(in srgb, var(--token-bg-app) 84%, transparent);
+    backdrop-filter: blur(14px);
+    box-shadow: 0 8px 32px color-mix(in srgb, var(--token-bg-app) 40%, transparent);
     display: flex;
     flex-direction: column;
     min-height: 0;
+    z-index: 5;
+    transition: transform $lh-transition-base, opacity $lh-transition-base;
+    overflow: hidden;
   }
 
   &Tabs {
@@ -166,6 +236,61 @@
     }
   }
 
+  &CameraGroupHeading {
+    grid-column: 1 / -1;
+    margin: 8px 4px 2px;
+    padding: 0 4px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--token-text-muted);
+    border-bottom: 1px dashed color-mix(in srgb, var(--token-text-primary) 8%, transparent);
+    padding-bottom: 4px;
+
+    &:first-of-type {
+      margin-top: 2px;
+    }
+  }
+
+  &CameraTile {
+    &.isActive {
+      border-color: color-mix(in srgb, var(--token-accent-base) 70%, transparent);
+      background: color-mix(in srgb, var(--token-accent-base) 18%, transparent);
+      color: var(--token-accent-base);
+      box-shadow: 0 0 0 2px color-mix(in srgb, var(--token-accent-base) 26%, transparent);
+    }
+  }
+
+  &GlobalTile {
+    position: relative;
+
+    &.isFavorite {
+      border-color: color-mix(in srgb, var(--token-status-warning) 60%, transparent);
+    }
+  }
+
+  &GlobalTileFavoriteSlot {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 18px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--token-bg-app) 60%, transparent);
+    color: var(--token-text-muted);
+    cursor: pointer;
+    transition: color $lh-transition-base, background $lh-transition-base;
+
+    &:hover {
+      color: var(--token-status-warning);
+      background: color-mix(in srgb, var(--token-status-warning) 22%, transparent);
+    }
+  }
+
   &AssetEmpty {
     grid-column: 1 / -1;
     padding: 16px 4px;
@@ -174,10 +299,11 @@
     text-align: center;
   }
 
-  /* ============ 中：3D 视口 + 镜头条 ============ */
+  /* ============ 中：3D 视口（铺满） ============ */
 
   &Stage {
-    position: relative;
+    position: absolute;
+    inset: 0;
     display: flex;
     flex-direction: column;
     background: color-mix(in srgb, var(--token-bg-app) 88%, transparent);
@@ -211,7 +337,8 @@
   &CameraBar {
     position: absolute;
     left: 50%;
-    bottom: 12px;
+    // 给时间轴 HUD 让出 132px（时间轴自身高度 ~120px + 间距）
+    bottom: 132px;
     transform: translateX(-50%);
     display: flex;
     align-items: center;
@@ -269,19 +396,12 @@
     position: absolute;
     right: 12px;
     bottom: 12px;
-    width: 200px;
+    max-width: 340px;
     border-radius: 10px;
     overflow: hidden;
     background: color-mix(in srgb, var(--token-bg-app) 80%, transparent);
     border: 1px solid color-mix(in srgb, var(--token-text-primary) 10%, transparent);
     box-shadow: 0 12px 32px color-mix(in srgb, var(--token-bg-app) 30%, transparent);
-
-    img {
-      display: block;
-      width: 100%;
-      height: auto;
-      background: var(--token-bg-base);
-    }
   }
 
   &LineartLabel {
@@ -292,14 +412,45 @@
     background: color-mix(in srgb, var(--token-bg-app) 92%, transparent);
   }
 
-  /* ============ 右：属性面板 ============ */
+  &AngleStrip {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+    gap: 2px;
+    max-height: 260px;
+    overflow-y: auto;
+    padding: 4px;
+    background: color-mix(in srgb, var(--token-bg-app) 60%, transparent);
+
+    img {
+      display: block;
+      width: 100%;
+      height: auto;
+      aspect-ratio: 16 / 9;
+      object-fit: cover;
+      background: var(--token-bg-base);
+      border-radius: 4px;
+    }
+  }
+
+  /* ============ 右：属性面板（浮层 HUD） ============ */
 
   &Inspector {
-    border-left: 1px solid color-mix(in srgb, var(--token-text-primary) 6%, transparent);
-    background: color-mix(in srgb, var(--token-bg-app) 94%, transparent);
+    position: absolute;
+    top: 56px;
+    right: 12px;
+    bottom: 76px;
+    width: 304px;
+    border-radius: 14px;
+    border: 1px solid color-mix(in srgb, var(--token-text-primary) 8%, transparent);
+    background: color-mix(in srgb, var(--token-bg-app) 84%, transparent);
+    backdrop-filter: blur(14px);
+    box-shadow: 0 8px 32px color-mix(in srgb, var(--token-bg-app) 40%, transparent);
     display: flex;
     flex-direction: column;
     min-height: 0;
+    z-index: 5;
+    transition: transform $lh-transition-base, opacity $lh-transition-base;
+    overflow: hidden;
   }
 
   &InspectorHeader {
@@ -477,7 +628,584 @@
 }
 
 @media (max-width: 1100px) {
-  .linghuiDirector3DLayout {
-    grid-template-columns: 180px minmax(0, 1fr) 240px;
+  .linghuiDirector3DAssets {
+    width: 216px;
+  }
+  .linghuiDirector3DInspector {
+    width: 264px;
+  }
+}
+
+@media (max-width: 880px) {
+  .linghuiDirector3DAssets {
+    width: 192px;
+  }
+  .linghuiDirector3DInspector {
+    width: 240px;
+  }
+}
+
+/* split-view 预览 HUD（右上，inspector 旁） */
+.linghuiDirector3DPreviewHud {
+  position: absolute;
+  top: 56px;
+  right: 332px; // inspector 宽 304 + 12 gap + 16 padding
+  width: 248px;
+  z-index: 6;
+  transition: opacity $lh-transition-base;
+}
+
+@media (max-width: 1100px) {
+  .linghuiDirector3DPreviewHud {
+    right: 288px;
+    width: 220px;
+  }
+}
+
+@media (max-width: 880px) {
+  .linghuiDirector3DPreviewHud {
+    right: 260px;
+    width: 200px;
+  }
+}
+
+.linghuiDirector3DPreviewBindButton {
+  width: 100%;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1px dashed color-mix(in srgb, var(--token-accent-base) 50%, transparent);
+  background: color-mix(in srgb, var(--token-bg-app) 76%, transparent);
+  backdrop-filter: blur(12px);
+  color: var(--token-accent-base);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background $lh-transition-base, border-color $lh-transition-base;
+
+  &:hover {
+    background: color-mix(in srgb, var(--token-accent-base) 14%, transparent);
+    border-color: color-mix(in srgb, var(--token-accent-base) 80%, transparent);
+  }
+}
+
+.linghuiDirector3DPreviewCard {
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--token-text-primary) 8%, transparent);
+  background: color-mix(in srgb, var(--token-bg-app) 84%, transparent);
+  box-shadow: 0 8px 28px color-mix(in srgb, var(--token-bg-app) 50%, transparent);
+  backdrop-filter: blur(14px);
+  overflow: hidden;
+}
+
+.linghuiDirector3DPreviewCardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--token-text-primary) 6%, transparent);
+}
+
+.linghuiDirector3DPreviewCardLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--token-text-secondary);
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.linghuiDirector3DPreviewCardActions {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.linghuiDirector3DPreviewCardAction {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--token-text-muted);
+  cursor: pointer;
+  transition: color $lh-transition-base, background $lh-transition-base;
+
+  &:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--token-accent-base) 18%, transparent);
+    color: var(--token-accent-base);
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  &.isActive {
+    background: color-mix(in srgb, var(--token-status-warning) 22%, transparent);
+    color: var(--token-status-warning);
+    animation: linghuiDirector3DPulse 1.4s ease-in-out infinite;
+  }
+}
+
+@keyframes linghuiDirector3DPulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--token-status-warning) 60%, transparent); }
+  50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--token-status-warning) 0%, transparent); }
+}
+
+.linghuiDirector3DPreviewCardBody {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: var(--token-bg-base);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+}
+
+.linghuiDirector3DPreviewCardPlaceholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  color: var(--token-text-muted);
+  font-size: 11px;
+}
+
+.linghuiDirector3DPreviewCardFooter {
+  padding: 4px 8px;
+  border-top: 1px solid color-mix(in srgb, var(--token-text-primary) 6%, transparent);
+}
+
+.linghuiDirector3DPreviewCardStatus {
+  font-size: 10px;
+  font-weight: 600;
+
+  &.is-running { color: var(--token-status-info); }
+  &.is-succeeded { color: var(--token-status-success); }
+  &.is-failed { color: var(--token-status-error); }
+  &.is-stale { color: var(--token-status-warning); }
+  &.is-idle { color: var(--token-text-muted); }
+}
+
+.linghuiDirector3DPreviewPickerPopover {
+  .ant-popover-inner {
+    padding: 0;
+    background: color-mix(in srgb, var(--token-bg-app) 92%, transparent);
+    border: 1px solid color-mix(in srgb, var(--token-text-primary) 12%, transparent);
+    box-shadow: 0 16px 48px color-mix(in srgb, var(--token-bg-app) 60%, transparent);
+    backdrop-filter: blur(14px);
+  }
+  .ant-popover-arrow { display: none; }
+}
+
+.linghuiDirector3DPreviewPicker {
+  width: 240px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.linghuiDirector3DPreviewPickerTitle {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--token-text-primary);
+}
+
+.linghuiDirector3DPreviewPickerEmpty {
+  font-size: 11px;
+  color: var(--token-text-muted);
+  padding: 8px 0;
+}
+
+.linghuiDirector3DPreviewPickerList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.linghuiDirector3DPreviewPickerItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--token-text-secondary);
+  cursor: pointer;
+  transition: background $lh-transition-base, border-color $lh-transition-base;
+
+  &:hover {
+    background: color-mix(in srgb, var(--token-accent-base) 12%, transparent);
+    border-color: color-mix(in srgb, var(--token-accent-base) 40%, transparent);
+    color: var(--token-text-primary);
+  }
+}
+
+.linghuiDirector3DPreviewPickerKind {
+  flex: 0 0 32px;
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--token-accent-base) 18%, transparent);
+  color: var(--token-accent-base);
+  text-align: center;
+  font-weight: 600;
+}
+
+.linghuiDirector3DPreviewPickerName {
+  flex: 1;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 派兵布阵 Popover */
+.linghuiDirector3DBattalionPopover {
+  .ant-popover-inner {
+    padding: 0;
+    background: color-mix(in srgb, var(--token-bg-app) 92%, transparent);
+    border: 1px solid color-mix(in srgb, var(--token-text-primary) 12%, transparent);
+    box-shadow: 0 16px 48px color-mix(in srgb, var(--token-bg-app) 60%, transparent);
+    backdrop-filter: blur(14px);
+  }
+
+  .ant-popover-arrow {
+    display: none;
+  }
+}
+
+.linghuiDirector3DBattalionPanel {
+  width: 320px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.linghuiDirector3DBattalionTitle {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--token-text-primary);
+}
+
+.linghuiDirector3DBattalionHint {
+  font-size: 11px;
+  color: var(--token-text-muted);
+  line-height: 1.5;
+}
+
+.linghuiDirector3DBattalionRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.linghuiDirector3DBattalionLabel {
+  flex: 0 0 40px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--token-text-secondary);
+}
+
+.linghuiDirector3DBattalionTimes {
+  font-size: 12px;
+  color: var(--token-text-muted);
+  margin: 0 2px;
+}
+
+.linghuiDirector3DBattalionTotal {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--token-accent-base);
+}
+
+.linghuiDirector3DBattalionChipGroup {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  flex: 1;
+}
+
+.linghuiDirector3DBattalionChip {
+  height: 26px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid color-mix(in srgb, var(--token-text-primary) 10%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--token-bg-card) 70%, transparent);
+  color: var(--token-text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+  transition: color $lh-transition-base, border-color $lh-transition-base, background $lh-transition-base;
+
+  &:hover {
+    color: var(--token-text-primary);
+    border-color: color-mix(in srgb, var(--token-accent-base) 32%, transparent);
+  }
+
+  &.isActive {
+    color: var(--token-accent-base);
+    border-color: color-mix(in srgb, var(--token-accent-base) 60%, transparent);
+    background: color-mix(in srgb, var(--token-accent-base) 14%, transparent);
+  }
+}
+
+.linghuiDirector3DBattalionChipMeta {
+  font-size: 9px;
+  color: var(--token-text-muted);
+  font-weight: 500;
+}
+
+.linghuiDirector3DBattalionActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed color-mix(in srgb, var(--token-text-primary) 10%, transparent);
+}
+
+/* HUD 折叠时显示的标签，由 .linghuiDirector3DAssetsHandle / .linghuiDirector3DInspectorHandle 渲染 */
+.linghuiDirector3DSideHandle {
+  position: absolute;
+  top: 12px;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--token-text-primary) 14%, transparent);
+  background: color-mix(in srgb, var(--token-bg-app) 76%, transparent);
+  color: var(--token-text-secondary);
+  cursor: pointer;
+  backdrop-filter: blur(12px);
+  z-index: 4;
+  transition: background $lh-transition-base, transform $lh-transition-base;
+
+  &:hover {
+    background: color-mix(in srgb, var(--token-accent-base) 18%, transparent);
+    color: var(--token-text-primary);
+  }
+}
+
+/* ============================================================================
+ * 时间轴 HUD（C-6A）
+ * ============================================================================ */
+
+.linghuiDirector3DTimelineHud {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--token-text-primary) 8%, transparent);
+  background: color-mix(in srgb, var(--token-bg-app) 84%, transparent);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 8px 28px color-mix(in srgb, var(--token-bg-app) 40%, transparent);
+}
+
+.linghuiDirector3DTimelineControls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.linghuiDirector3DTimelineButton {
+  height: 28px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid color-mix(in srgb, var(--token-text-primary) 10%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--token-bg-card) 70%, transparent);
+  color: var(--token-text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: color $lh-transition-base, border-color $lh-transition-base, background $lh-transition-base;
+
+  &:hover:not(:disabled) {
+    color: var(--token-text-primary);
+    border-color: color-mix(in srgb, var(--token-accent-base) 32%, transparent);
+  }
+
+  &.isActive {
+    color: var(--token-accent-base);
+    border-color: color-mix(in srgb, var(--token-accent-base) 60%, transparent);
+    background: color-mix(in srgb, var(--token-accent-base) 14%, transparent);
+  }
+
+  &.isAccent {
+    color: var(--token-accent-base);
+    border-color: color-mix(in srgb, var(--token-accent-base) 50%, transparent);
+  }
+
+  &.isDanger {
+    color: var(--token-status-error);
+    border-color: color-mix(in srgb, var(--token-status-error) 30%, transparent);
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+}
+
+.linghuiDirector3DTimelineTimeReadout {
+  font-family: 'SF Mono', 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--token-text-primary);
+  padding: 0 8px;
+  min-width: 92px;
+}
+
+.linghuiDirector3DTimelineSeparator {
+  width: 1px;
+  height: 16px;
+  background: color-mix(in srgb, var(--token-text-primary) 12%, transparent);
+  margin: 0 2px;
+}
+
+.linghuiDirector3DTimelineTrack {
+  position: relative;
+  margin-top: 2px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--token-bg-base) 70%, transparent);
+  border: 1px solid color-mix(in srgb, var(--token-text-primary) 8%, transparent);
+  cursor: ew-resize;
+  user-select: none;
+
+  &.isScrubbing {
+    cursor: grabbing;
+  }
+}
+
+.linghuiDirector3DTimelineTicks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.linghuiDirector3DTimelineTick {
+  position: absolute;
+  top: 2px;
+  font-size: 9px;
+  color: var(--token-text-muted);
+  transform: translateX(-50%);
+
+  &::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 14px;
+    width: 1px;
+    height: 6px;
+    background: color-mix(in srgb, var(--token-text-primary) 18%, transparent);
+  }
+}
+
+.linghuiDirector3DTimelineKeyframe {
+  position: absolute;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  transform: translate(-50%, -50%) rotate(45deg);
+  background: color-mix(in srgb, var(--token-accent-base) 70%, transparent);
+  border: 2px solid var(--token-overlay-on-bg, white);
+  cursor: grab;
+  transition: background $lh-transition-base, box-shadow $lh-transition-base, transform $lh-transition-base;
+
+  &:hover {
+    background: var(--token-accent-base);
+    transform: translate(-50%, -50%) rotate(45deg) scale(1.15);
+  }
+
+  &.isSelected {
+    background: var(--token-status-warning);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--token-status-warning) 30%, transparent);
+  }
+
+  &.isDragging {
+    cursor: grabbing;
+    background: var(--token-status-warning);
+  }
+}
+
+.linghuiDirector3DTimelineCursor {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 2px;
+  background: var(--token-status-error);
+  pointer-events: none;
+  transform: translateX(-1px);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--token-bg-app) 60%, transparent);
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: -2px;
+    left: 50%;
+    width: 8px;
+    height: 8px;
+    transform: translateX(-50%);
+    background: var(--token-status-error);
+    border-radius: 50% 50% 0 0;
+  }
+}
+
+.linghuiDirector3DTimelineHint {
+  font-size: 11px;
+  color: var(--token-text-muted);
+  text-align: center;
+  padding: 2px 0;
+}
+
+@media (max-width: 880px) {
+  .linghuiDirector3DTimelineHud {
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    padding: 8px 10px;
+  }
+  .linghuiDirector3DCameraBar {
+    bottom: 124px;
   }
 }

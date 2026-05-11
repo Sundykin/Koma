@@ -312,7 +312,7 @@ describe('createNodeView', () => {
     expect(input.shots).toHaveLength(2);
     expect(input.text).toContain('1. 开场');
     expect(input.text).toContain('2. 回望');
-    expect(input.shots.map(shot => shot.durationSec)).toEqual([6, 12]);
+    expect(input.shots.map(shot => shot.durationSec)).toEqual([6, 10]);
     expect(input.metadata).toEqual(expect.objectContaining({
       mode: 'manual',
       parseSource: 'json',

@@ -1429,6 +1429,31 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
     message.info('已请求取消，当前节点结束后将停止后续队列');
   }, [message]);
 
+  const handleRunDirectorWithPreview = useCallback(async (directorNodeId: string, previewNodeId: string) => {
+    // 实时 split-view：先跑 director3d 让 lineart 落盘成 koma-local URL，
+    // 再跑下游预览节点拿到最新的 director3d.result.primary 作为参考。
+    // 两步顺序串联，避免预览节点用上一次的过时线稿。
+    await runWorkflow([directorNodeId], { resolveTargetsOnly: true });
+    await runWorkflow([previewNodeId], { resolveTargetsOnly: true });
+  }, [runWorkflow]);
+
+  const handleSetDirectorPreviewBinding = useCallback((directorNodeId: string, previewNodeId: string | null) => {
+    const current = activeWorkspaceRef.current;
+    if (!current) return;
+    const nextBindings = { ...(current.directorPreviewBindings ?? {}) };
+    if (previewNodeId) {
+      nextBindings[directorNodeId] = previewNodeId;
+    } else {
+      delete nextBindings[directorNodeId];
+    }
+    const nextDoc: LinghuiWorkspaceDocument = {
+      ...current,
+      directorPreviewBindings: nextBindings,
+    };
+    // 走 schedule 而非立即 flush：用户调整绑定时会和 graphData / runs 一起合并到下次防抖落盘
+    scheduleWorkspaceSave(nextDoc);
+  }, [scheduleWorkspaceSave]);
+
   const handleConnectionError = useCallback((content: string) => {
     const currentWorkspace = activeWorkspaceRef.current;
     message.warning(content);
@@ -1818,6 +1843,8 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
             onCancelRun={handleCancelRun}
             executionQueue={executionQueue}
             onOpenDrawer={handleOpenDrawerFromCanvas}
+            onSetDirectorPreviewBinding={handleSetDirectorPreviewBinding}
+            onRunDirectorWithPreview={handleRunDirectorWithPreview}
           />
         </div>
       </div>

@@ -116,6 +116,9 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'controller/linghui/listWorkspaceAssets', 'controller/linghui/createWorkspaceAsset',
   'controller/linghui/listWorkspaceHistoryRecords', 'controller/linghui/createWorkspaceHistoryRecord',
   'controller/linghui/importWorkspaceAsset',
+  'controller/linghui/listGlobalAssets',
+  'controller/linghui/upsertGlobalAsset',
+  'controller/linghui/deleteGlobalAsset',
   'controller/ffmpeg/isAvailable', 'controller/ffmpeg/getInfo',
   'controller/ffmpeg/extractFrames', 'controller/ffmpeg/splitGridImage',
   'controller/ffmpeg/waveform',
@@ -360,6 +363,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     createWorkspaceHistoryRecord: (payload: any) => invokeMain('controller/linghui/createWorkspaceHistoryRecord', payload),
     importWorkspaceAsset: (workspaceId: string, sourcePath: string, filenameHint?: string) =>
       invokeMain('controller/linghui/importWorkspaceAsset', { workspaceId, sourcePath, filenameHint }),
+    listGlobalAssets: (args?: { kind?: 'character' | 'prop' }) =>
+      invokeMain('controller/linghui/listGlobalAssets', args ?? {}),
+    upsertGlobalAsset: (payload: any) => invokeMain('controller/linghui/upsertGlobalAsset', payload),
+    deleteGlobalAsset: (args: { id: string }) => invokeMain('controller/linghui/deleteGlobalAsset', args),
   },
   ffmpeg: {
     isAvailable: () => invokeMain('controller/ffmpeg/isAvailable', {}),

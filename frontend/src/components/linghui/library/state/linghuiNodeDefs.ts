@@ -30,6 +30,7 @@ const LINGHUI_NODE_COLORS = {
   video: 'var(--token-accent-base)',
   audio: 'var(--token-status-warning)',
   script: 'var(--token-accent-hover)',
+  storyboard: 'var(--token-accent-base)',
   director3d: 'var(--token-status-info)',
 } as const;
 
@@ -102,6 +103,16 @@ export const NODE_META: Record<LinghuiNodeType, LinghuiNodeMeta> = {
     catalogLabel: '脚本节点',
     catalogDescription: '生成或整理剧情脚本，输出结构化分镜序列',
     accent: LINGHUI_NODE_COLORS.script,
+    background: LINGHUI_NODE_BACKGROUND,
+  },
+  'linghui/storyboard': {
+    type: 'linghui/storyboard',
+    title: '故事板',
+    desc: '内置导演级提示词，剧情大纲一键拆分镜',
+    catalogCategory: 'storyboard',
+    catalogLabel: '故事板节点',
+    catalogDescription: '只填剧情大纲，自动拆出 6-24 个可拍摄镜头，结构与脚本节点兼容',
+    accent: LINGHUI_NODE_COLORS.storyboard,
     background: LINGHUI_NODE_BACKGROUND,
   },
   'linghui/director3d': {
@@ -179,6 +190,17 @@ export const NODE_SLOT_LAYOUTS: Record<LinghuiNodeType, { inputs: LinghuiSlotDef
     inputs: [
       { name: '图片参考', dataType: 'image' },
       { name: '文本设定', dataType: 'text' },
+      { name: '视频参考', dataType: 'video' },
+    ],
+    outputs: [
+      { name: 'script', dataType: 'text' },
+      { name: 'storyboard', dataType: 'storyboard' },
+    ],
+  },
+  'linghui/storyboard': {
+    inputs: [
+      { name: '图片参考', dataType: 'image' },
+      { name: '剧情补充', dataType: 'text' },
       { name: '视频参考', dataType: 'video' },
     ],
     outputs: [
@@ -268,6 +290,13 @@ export const NODE_PROPERTY_DEFAULTS: Record<LinghuiNodeType, Record<string, unkn
     systemPrompt: '',
     llmSelection: '',
     viewMode: 'cards',
+  },
+  // 故事板节点：剧情→分镜傻瓜版，不暴露 mode / systemPrompt 字段
+  'linghui/storyboard': {
+    prompt: '',
+    llmSelection: '',
+    viewMode: 'cards',
+    targetShotCount: 8,
   },
   'linghui/director3d': {
     prompt: '',

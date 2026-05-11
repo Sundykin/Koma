@@ -457,6 +457,9 @@ async function exportNodeTarget(
         case 'linghui/script':
           await pushTextFile('script.txt', textValue);
           break;
+        case 'linghui/storyboard':
+          await pushTextFile('storyboard.txt', textValue);
+          break;
         case 'linghui/image':
           if (primaryMedia) {
             await pushMediaFile('result', { ...primaryMedia, kind: 'image' });

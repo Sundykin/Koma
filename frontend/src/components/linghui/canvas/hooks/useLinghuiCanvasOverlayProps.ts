@@ -233,6 +233,10 @@ interface UseLinghuiCanvasOverlayPropsParams {
   buildClipboardSnapshot: (requestedIds?: string[]) => LinghuiClipboardSnapshot | null;
   undoHistory: () => void;
   redoHistory: () => void;
+  /** 3D 导演 split-view 绑定（来自 workspace.directorPreviewBindings） */
+  directorPreviewBindings?: Record<string, string>;
+  setDirectorPreviewBinding?: (directorNodeId: string, previewNodeId: string | null) => void;
+  onRunDirectorWithPreview?: (directorNodeId: string, previewNodeId: string) => Promise<void> | void;
 }
 
 export function useLinghuiCanvasOverlayProps({
@@ -289,6 +293,9 @@ export function useLinghuiCanvasOverlayProps({
   handleUploadImagesToCanvas,
   handleUploadVideosToCanvas,
   handleUploadAudiosToCanvas,
+  directorPreviewBindings,
+  setDirectorPreviewBinding,
+  onRunDirectorWithPreview,
   buildClipboardSnapshot,
   undoHistory,
   redoHistory,
@@ -713,6 +720,9 @@ export function useLinghuiCanvasOverlayProps({
     gridSplitUpscaleFactor,
     onSetGridSplitUpscaleFactor: setGridSplitUpscaleFactor,
     onRevertGridSplit: revertGridSplitTool,
+    directorPreviewBindings,
+    setDirectorPreviewBinding,
+    onRunDirectorWithPreview,
     pendingGroupFrameStyle,
     pendingGroupActionsStyle,
     pendingGroupCreatableIds,
