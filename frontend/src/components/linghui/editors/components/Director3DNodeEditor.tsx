@@ -164,6 +164,26 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
   // capture 阶段 stopPropagation，避免 ReactFlow / 外层画布快捷键在用户编辑时被触发。
   const panelRootRef = useRef<HTMLDivElement | null>(null);
 
+  // 悬浮菜单内容 wrapper 用：阻断鼠标 / 指针 / 滚轮 / 上下文 / 点击事件向上冒泡，
+  // 让 popover 里拖动 slider / 滚动 / 点选项时画布不会跟着平移 / 缩放 / 误选节点，
+  // 也避免 React event 一路冒泡到 root，省一遍 RF 的 handler 链（性能优化）。
+  const popoverEventBlockers = useMemo(() => {
+    const stop = (event: React.SyntheticEvent) => {
+      event.stopPropagation();
+      event.nativeEvent.stopPropagation();
+    };
+    return {
+      onMouseDown: stop,
+      onMouseUp: stop,
+      onClick: stop,
+      onContextMenu: stop,
+      onPointerDown: stop,
+      onPointerUp: stop,
+      onWheel: stop,
+      onTouchStart: stop,
+    };
+  }, []);
+
   const updateScene = useCallback((updater: (prev: LinghuiDirector3DScene) => LinghuiDirector3DScene) => {
     updateNodeData(nodeId, prev => ({
       ...prev,
@@ -1058,7 +1078,7 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
                 }
               }}
               content={(
-                <div className="linghuiDirector3DRailPopoverInner" onMouseDown={event => event.stopPropagation()}>
+                <div className="linghuiDirector3DRailPopoverInner" {...popoverEventBlockers}>
                   <div className="linghuiDirector3DRailPopoverTitle">{tab.label}</div>
                   <div className="linghuiDirector3DAssetGrid">
             {activeAssetTab === 'characters' && (
@@ -1127,7 +1147,7 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
                 overlayClassName="linghuiDirector3DBattalionPopover"
                 getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
                 content={(
-                  <div className="linghuiDirector3DBattalionPanel" onClick={event => event.stopPropagation()}>
+                  <div className="linghuiDirector3DBattalionPanel" {...popoverEventBlockers}>
                     <div className="linghuiDirector3DBattalionTitle">派兵布阵</div>
                     <div className="linghuiDirector3DBattalionHint">一键铺 M 行 × N 列的低级假人，用于群戏排布或受阅式构图。</div>
                     <div className="linghuiDirector3DBattalionRow">
@@ -1366,22 +1386,23 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
           </div>
         </main>
 
-        {/* 右侧浮动面板：视角类型 + 渲染风格 + 导出。原先平铺在视口下方，
-           现在挪到右侧给视口腾出底部空间（底部留给时间轴 HUD）。 */}
-        {!immersive ? (
-          <div className="linghuiDirector3DOutputPanel">
+        {/* 右侧 activity rail：属性 + 时间轴关键帧入口；属性 popover 内容根据选中状态切换 */}
+        <aside className="linghuiDirector3DRail isRight">
+          {/* 输出调整：视角 / 渲染风格 / 导出 / 最近导出 —— 常驻竖直菜单，按功能分组。
+             不再 hover popover，直接在右侧栏里展示，避免反复 hover 切换。 */}
+          <div className="linghuiDirector3DOutputColumn">
             <div className="linghuiDirector3DOutputSection">
               <div className="linghuiDirector3DOutputSectionTitle">视角</div>
               <div className="linghuiDirector3DCameraChip">
                 <Camera size={14} />
-                <span>{Math.round(scene.camera.fov)}° FOV · {scene.camera.aspectRatio}</span>
+                <span>{Math.round(scene.camera.fov)}° · {scene.camera.aspectRatio}</span>
               </div>
               <div className="linghuiDirector3DCameraModeGroup">
                 <button
                   type="button"
                   className={`linghuiDirector3DCameraModeBtn ${cameraMode === 'output' ? 'isActive' : ''}`}
                   onClick={() => setCameraMode('output')}
-                  title="拖动 / 缩放将直接写入输出相机（关键帧 / 图片视频用这个）"
+                  title="拖动 / 缩放将直接写入输出相机"
                 >
                   输出视角
                 </button>
@@ -1389,7 +1410,7 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
                   type="button"
                   className={`linghuiDirector3DCameraModeBtn ${cameraMode === 'editor' ? 'isActive' : ''}`}
                   onClick={() => setCameraMode('editor')}
-                  title="拖动 / 缩放只用于查看，不会改变输出相机"
+                  title="拖动 / 缩放只用于查看"
                 >
                   编辑视角
                 </button>
@@ -1446,10 +1467,7 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
               </div>
             ) : null}
           </div>
-        ) : null}
 
-        {/* 右侧 activity rail：属性 + 时间轴关键帧入口；属性 popover 内容根据选中状态切换 */}
-        <aside className="linghuiDirector3DRail isRight">
           <Popover
             open={rightRailOpen}
             trigger="hover"
@@ -1464,7 +1482,7 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
               if (open) setRightRailOpen(true);
             }}
             content={(
-              <div className="linghuiDirector3DRailPopoverInner" onMouseDown={event => event.stopPropagation()}>
+              <div className="linghuiDirector3DRailPopoverInner" {...popoverEventBlockers}>
                 <div className="linghuiDirector3DRailPopoverTitle">
                   {selection.kind === 'actor' && selectedActor ? (selectedActor.label || '属性') : '属性'}
                 </div>
@@ -1721,7 +1739,7 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
                     overlayClassName="linghuiDirector3DBattalionPopover"
                     getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
                     content={(
-                      <div className="linghuiDirector3DBattalionPanel" onClick={event => event.stopPropagation()}>
+                      <div className="linghuiDirector3DBattalionPanel" {...popoverEventBlockers}>
                         <div className="linghuiDirector3DBattalionTitle">保存到全局库</div>
                         <div className="linghuiDirector3DBattalionHint">
                           可选附带 1-3 张参考图，下游图片节点会拿到当作真实视觉指引。
