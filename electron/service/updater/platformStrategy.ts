@@ -19,7 +19,10 @@ export function detectPlatformInfo(_execPath: string): PlatformInfo {
   if (process.platform === 'darwin') {
     const key: PlatformKey =
       process.arch === 'arm64' ? 'mac-arm64-dmg' : 'mac-x64-dmg';
-    return { key, canAutoUpdate: false, useElectronUpdater: false };
+    // canAutoUpdate=true 让 download() 走 mac-dmg-guided 分支（后台下载 dmg + 验签
+    // + 用 Finder 弹出引导用户拖到 Applications）；useElectronUpdater=false
+    // 是因为未签名包不能调 Squirrel.Mac 的 quitAndInstall。
+    return { key, canAutoUpdate: true, useElectronUpdater: false };
   }
   if (process.platform === 'linux') {
     // electron-updater 通过 APPIMAGE 环境变量判定是否 AppImage 运行
