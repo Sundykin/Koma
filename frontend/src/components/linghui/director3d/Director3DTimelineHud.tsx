@@ -99,20 +99,19 @@ export const Director3DTimelineHud: React.FC<Director3DTimelineHudProps> = ({
 
   const duration = Math.max(0.5, timeline.duration);
 
-  // 当前图层可见的关键帧集合：
-  //   - camera 层：scope='camera' 或 'scene'
-  //   - actor:X 层：scope='actor:X' 或 'scene'（且 scene 帧含 actor.id===X）
+  // 当前图层可见的关键帧集合（"图层切换 = 看到不同菱形"）：
+  //   - camera 层：scope='camera' 或 'scene'（scene 帧含相机数据，归并到镜头层显示）
+  //   - actor:X 层：仅 scope='actor:X'。
+  //     注意：scope='scene' 的旧帧虽然 _内部_ 含此 actor 数据（插值时仍会被 actorTracks 用到），
+  //     但 UI 不在 actor 层重复展示 — 否则切图层时所有 scene 帧都会留在原位，
+  //     用户感受是"切了等于没切"。
   const visibleKeyframes = React.useMemo<LinghuiDirector3DKeyframe[]>(() => {
     return timeline.keyframes.filter(kf => {
       const scope = kf.scope ?? 'scene';
       if (activeLayer.kind === 'camera') {
         return scope === 'camera' || scope === 'scene';
       }
-      if (scope === `actor:${activeLayer.actorId}`) return true;
-      if (scope === 'scene') {
-        return kf.actors.some(a => a.id === activeLayer.actorId);
-      }
-      return false;
+      return scope === `actor:${activeLayer.actorId}`;
     });
   }, [activeLayer, timeline.keyframes]);
 
