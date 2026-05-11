@@ -1286,6 +1286,17 @@
     cursor: grabbing;
     background: var(--token-status-warning);
   }
+
+  /* scene 帧在 actor / camera 图层上虚化展示，提示"这是全局帧，不独属当前层" */
+  &.isGlobalScope {
+    background: color-mix(in srgb, var(--token-text-muted) 50%, transparent);
+    border-style: dashed;
+    opacity: 0.6;
+
+    &:hover {
+      opacity: 0.9;
+    }
+  }
 }
 
 .linghuiDirector3DTimelineCursor {

@@ -1609,36 +1609,44 @@ export function interpolateSceneAt(
     return scene;
   }
 
-  // 按 scope 拆轨：每个 actor 一条 + camera 一条。'scene' 同时算入两边（兼容旧数据）
-  const actorTracks = new Map<string, LinghuiDirector3DKeyframe[]>();
-  const cameraTrack: LinghuiDirector3DKeyframe[] = [];
+  // 按 scope 拆轨。原则：scope-specific（actor:{id} / camera）优先；scene 帧只在没有
+  // specific 帧时作为 fallback —— 让每个图层真正独立。
+  const actorPrimaryTracks = new Map<string, LinghuiDirector3DKeyframe[]>();
+  const actorFallbackTracks = new Map<string, LinghuiDirector3DKeyframe[]>();
+  const cameraPrimaryTrack: LinghuiDirector3DKeyframe[] = [];
+  const cameraFallbackTrack: LinghuiDirector3DKeyframe[] = [];
   for (const kf of timeline.keyframes) {
-    // 经 getScene 迁移后所有 keyframe 必有 scope，仍兜底 'scene' 防御未知调用方
     const scope = kf.scope ?? 'scene';
-    if (scope === 'scene' || scope === 'camera') {
-      cameraTrack.push(kf);
-    }
-    if (scope === 'scene') {
+    if (scope === 'camera') {
+      cameraPrimaryTrack.push(kf);
+    } else if (scope === 'scene') {
+      cameraFallbackTrack.push(kf);
       for (const actor of kf.actors) {
-        const list = actorTracks.get(actor.id) ?? [];
+        const list = actorFallbackTracks.get(actor.id) ?? [];
         list.push(kf);
-        actorTracks.set(actor.id, list);
+        actorFallbackTracks.set(actor.id, list);
       }
     } else if (scope.startsWith('actor:')) {
       const actorId = scope.slice('actor:'.length);
-      const list = actorTracks.get(actorId) ?? [];
+      const list = actorPrimaryTracks.get(actorId) ?? [];
       list.push(kf);
-      actorTracks.set(actorId, list);
+      actorPrimaryTracks.set(actorId, list);
     }
   }
-  // 每条轨保持原排序（外层会保证 sorted by time）
+  // 每个 actor 选用的实际轨：有 primary 用 primary，否则 fallback
+  const resolveActorTrack = (actorId: string): LinghuiDirector3DKeyframe[] => {
+    const primary = actorPrimaryTracks.get(actorId);
+    if (primary && primary.length > 0) return primary;
+    return actorFallbackTracks.get(actorId) ?? [];
+  };
+  const cameraTrack = cameraPrimaryTrack.length > 0 ? cameraPrimaryTrack : cameraFallbackTrack;
 
   // 兼容老插值流程：用 scene 全量轨道找全局段（只为 background 兜底）
   const { left: sceneLeft } = locateKeyframeSegment(timeline.keyframes, time);
   const sceneSegmentLeft = sceneLeft >= 0 ? timeline.keyframes[sceneLeft] : null;
 
   const nextActors: LinghuiDirector3DActor[] = scene.actors.map((actor) => {
-    const actorKeyframes = actorTracks.get(actor.id);
+    const actorKeyframes = resolveActorTrack(actor.id);
     if (!actorKeyframes || actorKeyframes.length === 0) {
       return actor;
     }

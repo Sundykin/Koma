@@ -726,24 +726,18 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
       if (!tl || tl.keyframes.length === 0) {
         return { ...prev, actors: nextActors };
       }
-      // 时间轴已有内容 → 当前时间点该 actor 没有自己的关键帧时，自动补一帧
       const nextActor = nextActors.find(a => a.id === actorId);
       if (!nextActor) return { ...prev, actors: nextActors };
       const t = Math.max(0, Math.min(tl.duration, Number(currentTime.toFixed(3))));
       const scope = `actor:${actorId}` as const;
-      const existing = tl.keyframes.find(k => (k.scope ?? 'scene') === scope && Math.abs(k.time - t) < 0.02);
+      // 永远 ensure 自己 scope 的关键帧，不再去碰 scene 帧 —— 让图层真正独立
+      const existing = tl.keyframes.find(k => k.scope === scope && Math.abs(k.time - t) < 0.02);
       const snapshot = snapshotActorAsKeyframeActor(nextActor);
-      // scope='scene' 老关键帧若同时间点存在，也覆盖其 actor 字段（保持一帧 = 一时刻的语义）
-      const sceneAtT = tl.keyframes.find(k => (k.scope ?? 'scene') === 'scene' && Math.abs(k.time - t) < 0.02);
       let nextKeyframes = tl.keyframes;
-      if (sceneAtT) {
-        nextKeyframes = nextKeyframes.map(k => (k.id === sceneAtT.id
-          ? { ...k, actors: k.actors.map(a => (a.id === actorId ? snapshot : a)).concat(k.actors.find(a => a.id === actorId) ? [] : [snapshot]) }
-          : k));
-      } else if (existing) {
+      if (existing) {
         nextKeyframes = nextKeyframes.map(k => (k.id === existing.id ? { ...k, actors: [snapshot] } : k));
       } else {
-        const newKf = {
+        const newKf: LinghuiDirector3DKeyframe = {
           id: `kf_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 5)}`,
           time: t,
           scope,
@@ -787,20 +781,17 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
       }
       const t = Math.max(0, Math.min(tl.duration, Number(currentTime.toFixed(3))));
       const cameraClone = cloneCameraForKeyframe(camera);
-      const sceneAtT = tl.keyframes.find(k => (k.scope ?? 'scene') === 'scene' && Math.abs(k.time - t) < 0.02);
-      const camAtT = tl.keyframes.find(k => (k.scope ?? 'scene') === 'camera' && Math.abs(k.time - t) < 0.02);
-      // orbit 是累计弧度的快照（不取模），让"转 720°"能在两关键帧之间真的转两圈
       const cameraOrbit = orbit ? { ...orbit } : undefined;
+      // 永远 ensure scope='camera' 关键帧，不再触碰 scene 帧 —— 让镜头轨独立
+      const existing = tl.keyframes.find(k => k.scope === 'camera' && Math.abs(k.time - t) < 0.02);
       let nextKeyframes = tl.keyframes;
-      if (sceneAtT) {
-        nextKeyframes = nextKeyframes.map(k => (k.id === sceneAtT.id ? { ...k, camera: cameraClone, ...(cameraOrbit ? { cameraOrbit } : {}) } : k));
-      } else if (camAtT) {
-        nextKeyframes = nextKeyframes.map(k => (k.id === camAtT.id ? { ...k, camera: cameraClone, ...(cameraOrbit ? { cameraOrbit } : {}) } : k));
+      if (existing) {
+        nextKeyframes = nextKeyframes.map(k => (k.id === existing.id ? { ...k, camera: cameraClone, ...(cameraOrbit ? { cameraOrbit } : {}) } : k));
       } else {
-        const newKf = {
+        const newKf: LinghuiDirector3DKeyframe = {
           id: `kf_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 5)}`,
           time: t,
-          scope: 'camera' as const,
+          scope: 'camera',
           actors: [],
           camera: cameraClone,
           ...(cameraOrbit ? { cameraOrbit } : {}),

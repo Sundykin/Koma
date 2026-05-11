@@ -99,20 +99,24 @@ export const Director3DTimelineHud: React.FC<Director3DTimelineHudProps> = ({
 
   const duration = Math.max(0.5, timeline.duration);
 
-  // 当前图层可见的关键帧集合（"图层切换 = 看到不同菱形"）：
-  //   - camera 层：scope='camera' 或 'scene'（scene 帧含相机数据，归并到镜头层显示）
-  //   - actor:X 层：仅 scope='actor:X'。
-  //     注意：scope='scene' 的旧帧虽然 _内部_ 含此 actor 数据（插值时仍会被 actorTracks 用到），
-  //     但 UI 不在 actor 层重复展示 — 否则切图层时所有 scene 帧都会留在原位，
-  //     用户感受是"切了等于没切"。
-  const visibleKeyframes = React.useMemo<LinghuiDirector3DKeyframe[]>(() => {
-    return timeline.keyframes.filter(kf => {
+  // 当前图层可见的关键帧 + 是否为"全局帧"（scene 帧在 actor / camera 图层均显示为虚化）：
+  //   - camera 层：scope='camera' 实心 / scope='scene' 虚化
+  //   - actor:X 层：scope='actor:X' 实心 / scope='scene' 且含此 actor 虚化
+  const visibleKeyframes = React.useMemo<Array<{ kf: LinghuiDirector3DKeyframe; isGlobal: boolean }>>(() => {
+    const acc: Array<{ kf: LinghuiDirector3DKeyframe; isGlobal: boolean }> = [];
+    for (const kf of timeline.keyframes) {
       const scope = kf.scope ?? 'scene';
       if (activeLayer.kind === 'camera') {
-        return scope === 'camera' || scope === 'scene';
+        if (scope === 'camera') acc.push({ kf, isGlobal: false });
+        else if (scope === 'scene') acc.push({ kf, isGlobal: true });
+      } else {
+        if (scope === `actor:${activeLayer.actorId}`) acc.push({ kf, isGlobal: false });
+        else if (scope === 'scene' && kf.actors.some(a => a.id === activeLayer.actorId)) {
+          acc.push({ kf, isGlobal: true });
+        }
       }
-      return scope === `actor:${activeLayer.actorId}`;
-    });
+    }
+    return acc;
   }, [activeLayer, timeline.keyframes]);
 
   const timeToPercent = useCallback((t: number): number => {
@@ -332,14 +336,14 @@ export const Director3DTimelineHud: React.FC<Director3DTimelineHudProps> = ({
           ))}
         </div>
 
-        {/* 关键帧标记 */}
-        {visibleKeyframes.map(kf => (
+        {/* 关键帧标记。isGlobal=true 表示这是 scene 帧（在多个图层都会出现，虚化展示） */}
+        {visibleKeyframes.map(({ kf, isGlobal }) => (
           <div
             key={kf.id}
-            className={`linghuiDirector3DTimelineKeyframe ${kf.id === selectedKeyframeId ? 'isSelected' : ''} ${draggingKeyframeId === kf.id ? 'isDragging' : ''}`}
+            className={`linghuiDirector3DTimelineKeyframe ${kf.id === selectedKeyframeId ? 'isSelected' : ''} ${draggingKeyframeId === kf.id ? 'isDragging' : ''} ${isGlobal ? 'isGlobalScope' : ''}`}
             style={{ left: `${timeToPercent(kf.time)}%` }}
             onPointerDown={event => handleKeyframePointerDown(event, kf)}
-            title={kf.label ?? `t=${kf.time.toFixed(2)}s`}
+            title={`${kf.label ?? `t=${kf.time.toFixed(2)}s`}${isGlobal ? ' · 全局帧' : ''}`}
           />
         ))}
 
