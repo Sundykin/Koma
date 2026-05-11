@@ -31,6 +31,10 @@ export interface PluginAuthor {
 export interface PluginEngine {
   minAppVersion: string;
   sdkVersion: string;
+  /** 主程序版本上限，缺省视为无上限 */
+  maxAppVersion?: string;
+  /** 插件 API 契约版本，缺省视为 'v1' */
+  apiVersion?: string;
 }
 
 // 入口配置
@@ -103,6 +107,13 @@ export interface PluginManifest {
   panels?: CustomPanelDefinition[];
 
   dependencies?: Record<string, string>; // pluginId -> version range
+
+  /**
+   * 对 manifest 除 signature 外字段的 ed25519 签名（base64）。
+   * 由 marketplace 发布流程 (scripts/sign-plugin-manifest.cjs) 生成。
+   * 本地手动安装可缺省。
+   */
+  signature?: string;
 }
 
 // 已安装的插件

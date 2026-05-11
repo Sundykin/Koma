@@ -68,3 +68,13 @@ export function getFfmpegBinDir(): string {
 export function getStyleReferencesDir(): string {
   return path.join(getBusinessRoot(), 'style-references');
 }
+
+/** 主程序更新下载缓存（dmg / exe / AppImage 临时落盘点） */
+export function getUpdaterCacheDir(): string {
+  return path.join(getBusinessRoot(), 'updater-cache');
+}
+
+/** 插件 marketplace 下载缓存（plugin zip 临时落盘点） */
+export function getMarketplaceCacheDir(): string {
+  return path.join(getBusinessRoot(), 'marketplace-cache');
+}

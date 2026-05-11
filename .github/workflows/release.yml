@@ -1,9 +1,15 @@
-name: Release
+name: Release (manual fallback)
 
+# 主发布流程在 Sundykin/KomaBuild 仓的 build.yml 里——它会 clone 本仓源码、打包、签名、发 release。
+# 这个 workflow 只作为"KomaBuild 流水线挂掉时的本地手动备用"，所以仅 workflow_dispatch 触发。
+# 平时不应被使用；如果意外双发了，KomaBuild 的版本号校验会把两份的 manifest 都验掉一份。
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Why bypassing KomaBuild build.yml? (for audit)'
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -43,6 +49,7 @@ jobs:
           path: |
             out/*.exe
             out/*.blockmap
+            out/latest*.yml
 
   build-macos:
     runs-on: macos-latest
@@ -81,11 +88,52 @@ jobs:
             out/*.dmg
             out/*.zip
             out/*.blockmap
+            out/latest*.yml
 
-  release:
-    needs: [build-windows, build-macos]
+  build-linux:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Remove China mirror config
+        run: rm -f .npmrc
+
+      - name: Install dependencies
+        run: npm run install:all
+
+      - name: Build application
+        run: npm run build
+
+      - name: Build Linux AppImage
+        run: npm run build-l
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-artifacts
+          path: |
+            out/*.AppImage
+            out/*.blockmap
+            out/latest*.yml
+
+  sign-and-release:
+    needs: [build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - name: Download Windows artifacts
         uses: actions/download-artifact@v4
         with:
@@ -98,9 +146,30 @@ jobs:
           name: macos-artifacts
           path: artifacts
 
-      - name: Create GitHub Release
+      - name: Download Linux artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-artifacts
+          path: artifacts
+
+      - name: Extract version from tag
+        id: ver
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Sign update manifest
+        env:
+          ASSETS_DIR: ${{ github.workspace }}/artifacts
+          APP_VERSION: ${{ steps.ver.outputs.version }}
+          CHANNEL: stable
+          KOMA_UPDATE_SIGN_KEY: ${{ secrets.KOMA_UPDATE_SIGN_KEY }}
+        run: node scripts/sign-update-manifest.cjs
+
+      - name: Create GitHub Release on Sundykin/KomaBuild
         uses: softprops/action-gh-release@v2
         with:
-          draft: true
+          repository: Sundykin/KomaBuild
+          token: ${{ secrets.GH_TOKEN }}
+          tag_name: ${{ github.ref_name }}
+          draft: false
           generate_release_notes: true
           files: artifacts/*

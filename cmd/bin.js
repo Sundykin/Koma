@@ -50,7 +50,7 @@ module.exports = {
     linux: {
       cmd: 'electron-builder',
       directory: './',
-      args: ['--config=./cmd/builder-linux.json', '-l=deb', '--x64'],
+      args: ['--config=./cmd/builder-linux.json', '-l=AppImage', '--x64'],
     },
   },
 
