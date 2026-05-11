@@ -22,6 +22,7 @@ import { Director3DLiteMannequin } from './Director3DLiteMannequin';
 import { Director3DFormation, deriveFormationMembers } from './Director3DFormation';
 import { Director3DCreature } from './Director3DCreatureMesh';
 import { Director3DProp } from './Director3DProp';
+import { buildExportCreatureGroup, buildExportMannequinGroup } from './director3dExportGeometry';
 import { resolvePanoramaViewerMode } from '../panorama/panoramaProjection';
 import { safeFetch } from '../../../utils/safeFetch';
 import { resolveDirector3DColor } from './director3dColors';
@@ -373,13 +374,8 @@ const CaptureRenderer: React.FC<CaptureRendererProps> = ({ scene, texture, camer
     renderer.setPixelRatio(1);
     renderer.setSize(width, height, false);
 
-    // 不同导出风格的画布背景：
-    //  - lineart / composition：白底（线稿习惯）
-    //  - silhouette：白底，主体填黑
-    //  - depth：白底，主体按距离取灰
-    const backdropColor = exportMode === 'silhouette' || exportMode === 'depth' || exportMode === 'composition'
-      ? 0xffffff
-      : resolveDirector3DColor('var(--token-bg-base)', 'black');
+    // 所有模式统一纯白背景 —— 用户反馈黑/透明背景不利于下游 AI 识别画面主体
+    const backdropColor = 0xffffff;
     renderer.setClearColor(backdropColor, 1);
 
     const offscreenScene = new THREE.Scene();
@@ -421,24 +417,35 @@ const CaptureRenderer: React.FC<CaptureRendererProps> = ({ scene, texture, camer
     };
 
     for (const actor of effectiveScene.actors) {
+      currentActorFillMat = makeFillMat(actor.color);
+
+      // 主角假人 / 生物：跟 viewport 的 Director3DMannequin / Director3DCreatureMesh
+      // 保持同一份关节层级 + rig 旋转，避免导出后动作丢失（所见即所得）
+      if (actor.type === 'mannequin') {
+        const exportGroup = buildExportMannequinGroup(actor, {
+          drawEdges,
+          wireMat,
+          fillMat: currentActorFillMat,
+        });
+        offscreenScene.add(exportGroup);
+        continue;
+      }
+      if (actor.type === 'creature') {
+        const exportGroup = buildExportCreatureGroup(actor, {
+          drawEdges,
+          wireMat,
+          fillMat: currentActorFillMat,
+        });
+        offscreenScene.add(exportGroup);
+        continue;
+      }
+
       const group = new THREE.Group();
       group.position.fromArray(actor.position);
       group.rotation.y = actor.rotationY;
       group.scale.setScalar(actor.scale);
-      currentActorFillMat = makeFillMat(actor.color);
 
-      if (actor.type === 'mannequin') {
-        addLineartMesh(group, new THREE.BoxGeometry(0.36, 0.6, 0.2), [0, 0.86 + 0.3, 0]);
-        addLineartMesh(group, new THREE.SphereGeometry(0.12, 24, 18), [0, 0.86 + 0.6 + 0.16, 0]);
-        const armGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.55, 12);
-        [-1, 1].forEach((sign) => {
-          addLineartMesh(group, armGeo, [sign * 0.21, 0.86 + 0.3 - 0.04 - 0.275, 0]);
-        });
-        const legGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.86, 12);
-        [-1, 1].forEach((sign) => {
-          addLineartMesh(group, legGeo, [sign * 0.13, 0.86 - 0.43, 0]);
-        });
-      } else if (actor.type === 'mannequin-lite') {
+      if (actor.type === 'mannequin-lite') {
         // 低级群演单兵：头 + 锥形躯干 + 两臂 + 两腿（与 Director3DLiteMannequin 几何一致）
         const torsoTop = 0.18;
         const torsoBot = 0.13;
