@@ -572,6 +572,9 @@ export function compileLinghuiPromptReferences(params: {
     references: references.map(item => ({
       id: item.id,
       name: item.name,
+      // 把灵绘的 kind 透传到协议层，让 @ref_xxx 按 image/video/audio 各自命名空间编号
+      // （image=@Image N 不限，video=@Video N 上限 3，audio=@Audio N 上限 3）
+      kind: item.kind === 'image' || item.kind === 'video' || item.kind === 'audio' ? item.kind : undefined,
       textValue: item.textValue,
       source: item.source,
     })),
