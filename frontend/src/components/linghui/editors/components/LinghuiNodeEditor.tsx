@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import ReactDOM from 'react-dom';
 import {
   useEdges,
   useNodes,
@@ -457,24 +458,26 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
   }
 
   if (nodeType === 'linghui/director3d') {
-    return (
-      <Modal
-        open
-        onCancel={handleClose}
-        footer={null}
-        width="100vw"
-        centered={false}
-        destroyOnClose
-        className="linghuiDirector3DModal"
-        rootClassName="linghuiDirector3DModal"
-      >
+    // 3D 导演工作台脱离 Modal：用 portal 自建全屏容器，避免 modal 的内边距 / 默认动画
+    // 干扰 viewport / timeline 的 flex 布局
+    return ReactDOM.createPortal(
+      <div className="linghuiDirector3DFullscreen" onMouseDown={event => event.stopPropagation()}>
+        <button
+          type="button"
+          className="linghuiDirector3DFullscreenClose"
+          onClick={handleClose}
+          title="关闭 (Esc)"
+        >
+          <X size={16} />
+        </button>
         <Director3DNodeEditor
           nodeId={nodeId}
           nodeData={nodeData}
           nodeRun={nodeRuns[nodeId]}
           onRun={() => onRunNode(nodeId)}
         />
-      </Modal>
+      </div>,
+      document.body,
     );
   }
 

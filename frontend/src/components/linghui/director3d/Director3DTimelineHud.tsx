@@ -218,17 +218,20 @@ export const Director3DTimelineHud: React.FC<Director3DTimelineHudProps> = ({
           />
         </Tooltip>
 
-        <Tooltip title="补间缓动">
-          <Select
+        <Tooltip title="补间缓动算法">
+          <Select<LinghuiDirector3DEasing>
             size="small"
-            value={timeline.easing}
-            onChange={(value: LinghuiDirector3DEasing) => onEasingChange(value)}
+            // 确保选中态准确：popup 容器放到 body，避免被父级 HUD 的 transform / overflow 截断；
+            // value 显式 fallback 'ease-in-out'（旧 timeline 缺 easing 字段时不至于 select 空）
+            value={timeline.easing ?? 'ease-in-out'}
+            onChange={(value) => onEasingChange(value as LinghuiDirector3DEasing)}
             style={{ width: 96 }}
+            getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
             options={[
-              { value: 'linear', label: 'Linear' },
-              { value: 'ease-in', label: 'Ease In' },
-              { value: 'ease-out', label: 'Ease Out' },
-              { value: 'ease-in-out', label: 'Smooth' },
+              { value: 'linear', label: '线性' },
+              { value: 'ease-in', label: '缓入' },
+              { value: 'ease-out', label: '缓出' },
+              { value: 'ease-in-out', label: '平滑' },
             ]}
           />
         </Tooltip>

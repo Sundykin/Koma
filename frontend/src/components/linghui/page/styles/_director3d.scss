@@ -3,73 +3,35 @@
 
 /* Director3D 节点编辑器三层布局 + 视口 + 紧凑卡片样式 */
 
-.linghuiDirector3DModal {
-  &.ant-modal-root {
-    .ant-modal-wrap {
-      inset: 0;
-      overflow: hidden;
-    }
-  }
+/* Director3D 全屏 portal 容器（脱离 antd Modal） */
+.linghuiDirector3DFullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: var(--token-bg-app);
+  display: flex;
+  overflow: hidden;
+}
 
-  &.ant-modal {
-    top: 0;
-    max-width: 100vw;
-    height: 100vh;
-    margin: 0;
-    padding-bottom: 0;
-  }
+.linghuiDirector3DFullscreenClose {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 30;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--token-bg-app) 76%, transparent);
+  border: 1px solid color-mix(in srgb, var(--token-text-primary) 12%, transparent);
+  color: var(--token-text-primary);
+  cursor: pointer;
+  backdrop-filter: blur(12px);
 
-  .ant-modal {
-    top: 0;
-    max-width: 100vw;
-    height: 100vh;
-    margin: 0;
-    padding-bottom: 0;
-  }
-
-  &.ant-modal,
-  .ant-modal {
-    .ant-modal-content {
-      height: 100vh;
-      padding: 0;
-      border-radius: 0;
-      background: var(--token-bg-app);
-      overflow: hidden;
-    }
-
-    .ant-modal-body {
-      height: 100%;
-      padding: 0;
-    }
-  }
-
-  .ant-modal-content {
-    height: 100vh;
-    padding: 0;
-    border-radius: 0;
-    background: var(--token-bg-app);
-    overflow: hidden;
-  }
-
-  .ant-modal-body {
-    height: 100%;
-    padding: 0;
-  }
-
-  .ant-modal-close {
-    top: 12px;
-    right: 12px;
-    z-index: 20;
-    color: var(--token-text-primary);
-    background: color-mix(in srgb, var(--token-bg-app) 76%, transparent);
-    border: 1px solid color-mix(in srgb, var(--token-text-primary) 12%, transparent);
-    border-radius: 999px;
-    backdrop-filter: blur(12px);
-
-    &:hover {
-      color: var(--token-text-primary);
-      background: color-mix(in srgb, var(--token-bg-hover) 78%, transparent);
-    }
+  &:hover {
+    background: color-mix(in srgb, var(--token-bg-hover) 78%, transparent);
   }
 }
 
@@ -83,64 +45,71 @@
    */
 
   &EditorPanel {
-    width: 100vw;
+    width: 100%;
     height: 100%;
-    min-height: 100vh;
-    padding: 0;
     overflow: hidden;
-    border-radius: 0;
     background: var(--token-bg-app);
+    display: flex;
+    flex: 1;
 
     &.isImmersive {
-      // Cmd+F 沉浸模式：隐藏所有 HUD（除核心镜头条还可控外）
-      .linghuiDirector3DAssets,
-      .linghuiDirector3DInspector,
+      .linghuiDirector3DRail,
+      .linghuiDirector3DTopBar,
+      .linghuiDirector3DFooter,
       .linghuiDirector3DLineartPreview,
-      .linghuiDirector3DPreviewHud,
-      .linghuiDirector3DTimelineHud,
-      .linghuiDirector3DTopBar {
+      .linghuiDirector3DPreviewHud {
         opacity: 0;
         pointer-events: none;
       }
     }
-
-    &.isHudCollapsed {
-      // Tab 折叠：HUD 收缩成边缘小标签，可重新展开
-      .linghuiDirector3DAssets,
-      .linghuiDirector3DInspector {
-        transform: translateX(0);
-      }
-      .linghuiDirector3DAssets { transform: translateX(calc(-100% + 28px)); }
-      .linghuiDirector3DInspector { transform: translateX(calc(100% - 28px)); }
-    }
   }
 
+  /* 整体布局：flex column → topbar + body + footer */
   &Layout {
     position: relative;
     width: 100%;
     height: 100%;
-    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    padding: 16px;
+    gap: 12px;
+    box-sizing: border-box;
+  }
+
+  /* 主体（rails + stage），filling 中间剩余空间 */
+  &Body {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    gap: 12px;
+  }
+
+  /* 底部 footer：相机条 + 时间轴，自然流式不浮动 */
+  &Footer {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
   }
 
   /* ============ 顶部 HUD：状态条 ============ */
 
   &TopBar {
-    position: absolute;
-    top: 12px;
-    left: 50%;
-    transform: translateX(-50%);
+    flex-shrink: 0;
+    align-self: center;
     display: flex;
+    align-items: center;
     gap: 8px;
     padding: 6px 12px;
     border-radius: 999px;
     background: color-mix(in srgb, var(--token-bg-app) 72%, transparent);
     border: 1px solid color-mix(in srgb, var(--token-text-primary) 8%, transparent);
     backdrop-filter: blur(12px);
-    z-index: 6;
     transition: opacity $lh-transition-base;
     font-size: 11px;
     color: var(--token-text-secondary);
-    pointer-events: none; // 状态条不拦截视口交互
+    pointer-events: auto;
   }
 
   &TopBarChip {
@@ -153,17 +122,35 @@
     font-weight: 600;
   }
 
+  &TopBarBtn {
+    pointer-events: auto;
+    width: 22px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--token-bg-card) 60%, transparent);
+    border: 1px solid color-mix(in srgb, var(--token-text-primary) 10%, transparent);
+    color: var(--token-text-secondary);
+    cursor: pointer;
+    transition: color $lh-transition-base, background $lh-transition-base;
+
+    &:hover {
+      color: var(--token-text-primary);
+      background: color-mix(in srgb, var(--token-accent-base) 18%, transparent);
+    }
+  }
+
   /* ============ Activity rail：左右两侧的纵向图标条 ============
    *
    * VSCode 风格：48px 宽的纯图标列，每个按钮 hover 自己弹一个 popover 出来。
    * 各 popover 完全独立，hover 一个 tab 只展示该 tab 的资产面板，互不连体。
    */
 
+  /* Rail 现在是 body flex 内的列项，不再 absolute */
   &Rail {
-    position: absolute;
-    top: 56px;
-    left: 16px;
-    bottom: 76px;
+    flex-shrink: 0;
     width: 48px;
     border-radius: 12px;
     border: 1px solid color-mix(in srgb, var(--token-text-primary) 8%, transparent);
@@ -175,11 +162,7 @@
     gap: 4px;
     padding: 6px 0;
     z-index: 5;
-
-    &.isRight {
-      left: auto;
-      right: 16px;
-    }
+    align-self: stretch;
   }
 
   &RailButton {
@@ -317,12 +300,15 @@
   /* ============ 中：3D 视口（铺满） ============ */
 
   &Stage {
-    position: absolute;
-    inset: 0;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     background: color-mix(in srgb, var(--token-bg-app) 88%, transparent);
-    min-height: 0;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--token-text-primary) 6%, transparent);
   }
 
   &StageSurface {
@@ -349,11 +335,11 @@
     }
   }
 
+  /* CameraBar 现在贴在 Stage 内部底部（仍 absolute，但相对 Stage），跟随视口缩放 */
   &CameraBar {
     position: absolute;
     left: 50%;
-    // 给时间轴 HUD 让出 110px（时间轴自身高度 ~88px + 间距）
-    bottom: 96px;
+    bottom: 16px;
     transform: translateX(-50%);
     display: flex;
     align-items: center;
@@ -364,10 +350,9 @@
     border: 1px solid color-mix(in srgb, var(--token-text-primary) 8%, transparent);
     backdrop-filter: blur(12px);
     z-index: 5;
-    // 整体不能压成竖排：所有 chip / button 都禁用收缩
     flex-wrap: nowrap;
     white-space: nowrap;
-    max-width: calc(100vw - 200px); // 左右 rail 各 80px 让位
+    max-width: calc(100% - 32px);
     overflow-x: auto;
     scrollbar-width: thin;
   }
@@ -1131,11 +1116,7 @@
  * ============================================================================ */
 
 .linghuiDirector3DTimelineHud {
-  position: absolute;
-  left: 56px;
-  right: 56px;
-  bottom: 12px;
-  z-index: 5;
+  /* 现在是 footer 的子项，不再 absolute */
   display: flex;
   flex-direction: column;
   gap: 4px;

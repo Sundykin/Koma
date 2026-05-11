@@ -51,6 +51,8 @@ import {
   buildOrbitCameras,
   buildTopDownCamera,
   captureSceneAsKeyframe,
+  cloneCameraForKeyframe,
+  snapshotActorAsKeyframeActor,
   compileDirector3DPromptFragment,
   createDefaultDirector3DScene,
   createDefaultDirector3DTimeline,
@@ -686,11 +688,46 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
   }, [message, updateScene]);
 
   const handleActorChange = useCallback((actorId: string, patch: Partial<LinghuiDirector3DActor>) => {
-    updateScene(prev => ({
-      ...prev,
-      actors: prev.actors.map(a => (a.id === actorId ? { ...a, ...patch } : a)),
-    }));
-  }, [updateScene]);
+    updateScene(prev => {
+      const nextActors = prev.actors.map(a => (a.id === actorId ? { ...a, ...patch } : a));
+      const tl = prev.timeline;
+      // 时间轴还没启用（无关键帧）→ 仅静态修改，不自动加帧
+      if (!tl || tl.keyframes.length === 0) {
+        return { ...prev, actors: nextActors };
+      }
+      // 时间轴已有内容 → 当前时间点该 actor 没有自己的关键帧时，自动补一帧
+      const nextActor = nextActors.find(a => a.id === actorId);
+      if (!nextActor) return { ...prev, actors: nextActors };
+      const t = Math.max(0, Math.min(tl.duration, Number(currentTime.toFixed(3))));
+      const scope = `actor:${actorId}` as const;
+      const existing = tl.keyframes.find(k => (k.scope ?? 'scene') === scope && Math.abs(k.time - t) < 0.02);
+      const snapshot = snapshotActorAsKeyframeActor(nextActor);
+      // scope='scene' 老关键帧若同时间点存在，也覆盖其 actor 字段（保持一帧 = 一时刻的语义）
+      const sceneAtT = tl.keyframes.find(k => (k.scope ?? 'scene') === 'scene' && Math.abs(k.time - t) < 0.02);
+      let nextKeyframes = tl.keyframes;
+      if (sceneAtT) {
+        nextKeyframes = nextKeyframes.map(k => (k.id === sceneAtT.id
+          ? { ...k, actors: k.actors.map(a => (a.id === actorId ? snapshot : a)).concat(k.actors.find(a => a.id === actorId) ? [] : [snapshot]) }
+          : k));
+      } else if (existing) {
+        nextKeyframes = nextKeyframes.map(k => (k.id === existing.id ? { ...k, actors: [snapshot] } : k));
+      } else {
+        const newKf = {
+          id: `kf_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 5)}`,
+          time: t,
+          scope,
+          actors: [snapshot],
+          camera: prev.camera,
+        };
+        nextKeyframes = [...nextKeyframes, newKf].sort((a, b) => a.time - b.time);
+      }
+      return {
+        ...prev,
+        actors: nextActors,
+        timeline: { ...tl, keyframes: nextKeyframes },
+      };
+    });
+  }, [currentTime, updateScene]);
 
   const handleActorMove = useCallback((actorId: string, position: [number, number, number]) => {
     handleActorChange(actorId, { position });
@@ -709,8 +746,33 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
   }, [updateScene]);
 
   const handleCameraChange = useCallback((camera: LinghuiDirector3DScene['camera']) => {
-    updateScene(prev => ({ ...prev, camera }));
-  }, [updateScene]);
+    updateScene(prev => {
+      const tl = prev.timeline;
+      if (!tl || tl.keyframes.length === 0) {
+        return { ...prev, camera };
+      }
+      const t = Math.max(0, Math.min(tl.duration, Number(currentTime.toFixed(3))));
+      const cameraClone = cloneCameraForKeyframe(camera);
+      const sceneAtT = tl.keyframes.find(k => (k.scope ?? 'scene') === 'scene' && Math.abs(k.time - t) < 0.02);
+      const camAtT = tl.keyframes.find(k => (k.scope ?? 'scene') === 'camera' && Math.abs(k.time - t) < 0.02);
+      let nextKeyframes = tl.keyframes;
+      if (sceneAtT) {
+        nextKeyframes = nextKeyframes.map(k => (k.id === sceneAtT.id ? { ...k, camera: cameraClone } : k));
+      } else if (camAtT) {
+        nextKeyframes = nextKeyframes.map(k => (k.id === camAtT.id ? { ...k, camera: cameraClone } : k));
+      } else {
+        const newKf = {
+          id: `kf_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 5)}`,
+          time: t,
+          scope: 'camera' as const,
+          actors: [],
+          camera: cameraClone,
+        };
+        nextKeyframes = [...nextKeyframes, newKf].sort((a, b) => a.time - b.time);
+      }
+      return { ...prev, camera, timeline: { ...tl, keyframes: nextKeyframes } };
+    });
+  }, [currentTime, updateScene]);
 
   const handleBackgroundModeChange = useCallback((mode: LinghuiDirector3DBackgroundMode) => {
     updateScene(prev => ({ ...prev, background: { ...prev.background, mode } }));
@@ -985,22 +1047,22 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
           <span className="linghuiDirector3DTopBarChip">
             {RENDER_MODE_LABELS[renderModeForExport]}
           </span>
-          <span className="linghuiDirector3DTopBarChip" title="Tab 折叠侧栏 · Cmd/Ctrl+F 沉浸 · 1-4 切换渲染模式">
-            ⌨ Tab / ⌘F / 1-4
+          <span className="linghuiDirector3DTopBarChip" title="Cmd/Ctrl+F 沉浸 · 1-4 切换渲染模式">
+            ⌘F / 1-4
           </span>
+          <Tooltip title={immersive ? '退出沉浸 (Cmd/Ctrl+F)' : '沉浸模式 (Cmd/Ctrl+F)'} placement="bottom">
+            <button
+              type="button"
+              className="linghuiDirector3DTopBarBtn"
+              onClick={() => setImmersive(prev => !prev)}
+            >
+              {immersive ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
+            </button>
+          </Tooltip>
         </div>
 
-        {/* 沉浸模式切换按钮 */}
-        <Tooltip title={immersive ? '退出沉浸 (Cmd/Ctrl+F)' : '沉浸模式 (Cmd/Ctrl+F)'} placement="bottom">
-          <button
-            type="button"
-            className="linghuiDirector3DSideHandle"
-            style={{ left: '50%', top: 'auto', bottom: 12, transform: 'translateX(-50%)' }}
-            onClick={() => setImmersive(prev => !prev)}
-          >
-            {immersive ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-          </button>
-        </Tooltip>
+        {/* 主体：左 rail | 视口 | 右 rail，flex 中间撑开 */}
+        <div className="linghuiDirector3DBody">
 
         {/* 左侧 activity bar：纵向 5 个独立图标按钮，hover 各自弹出对应资产面板 */}
         <aside className="linghuiDirector3DRail">
@@ -1889,27 +1951,31 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
           </Popover>
         </aside>
 
-        {/* 底部时间轴 HUD（C-6A），沉浸态隐藏 */}
+        </div>{/* /body */}
+
+        {/* 底部 footer：时间轴 HUD（沉浸态隐藏） */}
         {!immersive ? (
-          <Director3DTimelineHud
-            timeline={timeline}
-            currentTime={currentTime}
-            playing={playing}
-            selectedKeyframeId={selectedKeyframeId}
-            exportState={timelineExport}
-            onPlayToggle={handlePlayToggle}
-            onSeek={handleSeek}
-            onAddKeyframe={handleAddKeyframe}
-            onRemoveKeyframe={handleRemoveKeyframe}
-            onSelectKeyframe={setSelectedKeyframeId}
-            onMoveKeyframe={handleMoveKeyframe}
-            onDurationChange={handleDurationChange}
-            onFpsChange={handleFpsChange}
-            onEasingChange={handleEasingChange}
-            onResetTimeline={handleResetTimeline}
-            onExportVideo={() => { void handleExportTimelineVideo(); }}
-            onCancelExport={handleCancelTimelineExport}
-          />
+          <div className="linghuiDirector3DFooter">
+            <Director3DTimelineHud
+              timeline={timeline}
+              currentTime={currentTime}
+              playing={playing}
+              selectedKeyframeId={selectedKeyframeId}
+              exportState={timelineExport}
+              onPlayToggle={handlePlayToggle}
+              onSeek={handleSeek}
+              onAddKeyframe={handleAddKeyframe}
+              onRemoveKeyframe={handleRemoveKeyframe}
+              onSelectKeyframe={setSelectedKeyframeId}
+              onMoveKeyframe={handleMoveKeyframe}
+              onDurationChange={handleDurationChange}
+              onFpsChange={handleFpsChange}
+              onEasingChange={handleEasingChange}
+              onResetTimeline={handleResetTimeline}
+              onExportVideo={() => { void handleExportTimelineVideo(); }}
+              onCancelExport={handleCancelTimelineExport}
+            />
+          </div>
         ) : null}
       </div>
     </div>

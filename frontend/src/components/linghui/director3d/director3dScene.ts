@@ -15,6 +15,7 @@ import type {
   LinghuiDirector3DActorPose,
   LinghuiDirector3DBackground,
   LinghuiDirector3DCamera,
+  LinghuiDirector3DKeyframeActor,
   LinghuiDirector3DEasing,
   LinghuiDirector3DKeyframe,
   LinghuiDirector3DRig,
@@ -1476,6 +1477,39 @@ export function createDefaultDirector3DTimeline(): LinghuiDirector3DTimeline {
  * actors / camera / background 全部克隆一份（含 pose / color / formation），
  * 避免后续编辑 scene 影响历史 keyframe。
  */
+export function snapshotActorAsKeyframeActor(actor: LinghuiDirector3DActor): LinghuiDirector3DKeyframeActor {
+  return {
+    id: actor.id,
+    position: [...actor.position] as [number, number, number],
+    rotationY: actor.rotationY,
+    scale: actor.scale,
+    posePreset: actor.posePreset,
+    color: actor.color,
+    ...(actor.rig ? { rig: cloneRig(actor.rig) } : {}),
+    ...(actor.formation ? { formation: { ...actor.formation } } : {}),
+    ...(actor.creatureAction ? { creatureAction: actor.creatureAction } : {}),
+    ...(actor.creatureRig ? {
+      creatureRig: {
+        spine: [...actor.creatureRig.spine] as [number, number, number],
+        neck: [...actor.creatureRig.neck] as [number, number, number],
+        frontLeftLeg: [...actor.creatureRig.frontLeftLeg] as [number, number, number],
+        frontRightLeg: [...actor.creatureRig.frontRightLeg] as [number, number, number],
+        rearLeftLeg: [...actor.creatureRig.rearLeftLeg] as [number, number, number],
+        rearRightLeg: [...actor.creatureRig.rearRightLeg] as [number, number, number],
+        tail: [...actor.creatureRig.tail] as [number, number, number],
+      },
+    } : {}),
+  };
+}
+
+export function cloneCameraForKeyframe(camera: LinghuiDirector3DCamera): LinghuiDirector3DCamera {
+  return {
+    ...camera,
+    position: [...camera.position] as [number, number, number],
+    target: [...camera.target] as [number, number, number],
+  };
+}
+
 export function captureSceneAsKeyframe(
   scene: LinghuiDirector3DScene,
   time: number,
@@ -1485,36 +1519,9 @@ export function captureSceneAsKeyframe(
     id: `kf_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 5)}`,
     time: Math.max(0, Number(time.toFixed(3))),
     label,
-    actors: scene.actors.map(actor => ({
-      id: actor.id,
-      position: [...actor.position] as [number, number, number],
-      rotationY: actor.rotationY,
-      scale: actor.scale,
-      posePreset: actor.posePreset,
-      color: actor.color,
-      // 把当前骨骼姿态写到关键帧里：用户在 t=2s 调整了胳膊角度后录关键帧，
-      // 时间轴回放时就能从初始位置平滑过渡到这个姿态
-      ...(actor.rig ? { rig: cloneRig(actor.rig) } : {}),
-      ...(actor.formation ? { formation: { ...actor.formation } } : {}),
-      // 生物动作 / 骨架快照（仅 type='creature' 时有意义）
-      ...(actor.creatureAction ? { creatureAction: actor.creatureAction } : {}),
-      ...(actor.creatureRig ? {
-        creatureRig: {
-          spine: [...actor.creatureRig.spine] as [number, number, number],
-          neck: [...actor.creatureRig.neck] as [number, number, number],
-          frontLeftLeg: [...actor.creatureRig.frontLeftLeg] as [number, number, number],
-          frontRightLeg: [...actor.creatureRig.frontRightLeg] as [number, number, number],
-          rearLeftLeg: [...actor.creatureRig.rearLeftLeg] as [number, number, number],
-          rearRightLeg: [...actor.creatureRig.rearRightLeg] as [number, number, number],
-          tail: [...actor.creatureRig.tail] as [number, number, number],
-        },
-      } : {}),
-    })),
-    camera: {
-      ...scene.camera,
-      position: [...scene.camera.position] as [number, number, number],
-      target: [...scene.camera.target] as [number, number, number],
-    },
+    scope: 'scene',
+    actors: scene.actors.map(snapshotActorAsKeyframeActor),
+    camera: cloneCameraForKeyframe(scene.camera),
     background: scene.background ? { ...scene.background } : undefined,
   };
 }
@@ -1602,24 +1609,48 @@ export function interpolateSceneAt(
     return scene;
   }
 
-  const { left, right, alpha } = locateKeyframeSegment(timeline.keyframes, time);
-  if (left < 0) return scene;
+  // 按 scope 拆轨：每个 actor 一条 + camera 一条。'scene' 同时算入两边（兼容旧数据）
+  const actorTracks = new Map<string, LinghuiDirector3DKeyframe[]>();
+  const cameraTrack: LinghuiDirector3DKeyframe[] = [];
+  for (const kf of timeline.keyframes) {
+    const scope = kf.scope ?? 'scene';
+    if (scope === 'scene' || scope === 'camera') {
+      cameraTrack.push(kf);
+    }
+    if (scope === 'scene') {
+      for (const actor of kf.actors) {
+        const list = actorTracks.get(actor.id) ?? [];
+        list.push(kf);
+        actorTracks.set(actor.id, list);
+      }
+    } else if (scope.startsWith('actor:')) {
+      const actorId = scope.slice('actor:'.length);
+      const list = actorTracks.get(actorId) ?? [];
+      list.push(kf);
+      actorTracks.set(actorId, list);
+    }
+  }
+  // 每条轨保持原排序（外层会保证 sorted by time）
 
-  const k1 = timeline.keyframes[left];
-  const k2 = timeline.keyframes[right];
-  const easedAlpha = left === right ? 0 : applyEasing(alpha, timeline.easing);
-
-  const k1ActorMap = new Map(k1.actors.map(a => [a.id, a]));
-  const k2ActorMap = new Map(k2.actors.map(a => [a.id, a]));
+  // 兼容老插值流程：用 scene 全量轨道找全局段（只为 background 兜底）
+  const { left: sceneLeft } = locateKeyframeSegment(timeline.keyframes, time);
+  const sceneSegmentLeft = sceneLeft >= 0 ? timeline.keyframes[sceneLeft] : null;
 
   const nextActors: LinghuiDirector3DActor[] = scene.actors.map((actor) => {
-    const a1 = k1ActorMap.get(actor.id);
-    const a2 = k2ActorMap.get(actor.id);
-    if (!a1 && !a2) {
+    const actorKeyframes = actorTracks.get(actor.id);
+    if (!actorKeyframes || actorKeyframes.length === 0) {
       return actor;
     }
+    const segment = locateKeyframeSegment(actorKeyframes, time);
+    if (segment.left < 0) return actor;
+    const k1 = actorKeyframes[segment.left];
+    const k2 = actorKeyframes[segment.right];
+    const a1 = k1.actors.find(a => a.id === actor.id);
+    const a2 = k2.actors.find(a => a.id === actor.id);
+    if (!a1 && !a2) return actor;
     const start = a1 ?? a2!;
     const end = a2 ?? a1!;
+    const easedAlpha = segment.left === segment.right ? 0 : applyEasing(segment.alpha, timeline.easing);
     // 离散字段切换时机：alpha>=0.5 用 end 的值（避免逐帧抖动；端点态都用本端值）
     const pickDiscrete = <T>(s: T | undefined, e: T | undefined, fallback: T): T => {
       if (easedAlpha < 0.5) return s ?? e ?? fallback;
@@ -1678,20 +1709,30 @@ export function interpolateSceneAt(
     return next;
   });
 
-  const nextCamera: LinghuiDirector3DCamera = {
-    ...k1.camera,
-    position: lerpVec3(k1.camera.position, k2.camera.position, easedAlpha),
-    target: lerpVec3(k1.camera.target, k2.camera.target, easedAlpha),
-    fov: Number(lerp(k1.camera.fov, k2.camera.fov, easedAlpha).toFixed(2)),
-    roll: Number(lerp(k1.camera.roll, k2.camera.roll, easedAlpha).toFixed(2)),
-    aspectRatio: k1.camera.aspectRatio,
-  };
+  // 相机独立轨：从 cameraTrack 取段（scope='camera' 或 'scene'）
+  let nextCamera: LinghuiDirector3DCamera = scene.camera;
+  if (cameraTrack.length > 0) {
+    const camSegment = locateKeyframeSegment(cameraTrack, time);
+    if (camSegment.left >= 0) {
+      const c1 = cameraTrack[camSegment.left].camera;
+      const c2 = cameraTrack[camSegment.right].camera;
+      const camAlpha = camSegment.left === camSegment.right ? 0 : applyEasing(camSegment.alpha, timeline.easing);
+      nextCamera = {
+        ...c1,
+        position: lerpVec3(c1.position, c2.position, camAlpha),
+        target: lerpVec3(c1.target, c2.target, camAlpha),
+        fov: Number(lerp(c1.fov, c2.fov, camAlpha).toFixed(2)),
+        roll: Number(lerp(c1.roll, c2.roll, camAlpha).toFixed(2)),
+        aspectRatio: c1.aspectRatio,
+      };
+    }
+  }
 
   return {
     ...scene,
     actors: nextActors,
     camera: nextCamera,
-    background: k1.background ?? scene.background,
+    background: sceneSegmentLeft?.background ?? scene.background,
   };
 }
 

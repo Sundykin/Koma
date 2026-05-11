@@ -435,11 +435,26 @@ export interface LinghuiDirector3DKeyframeActor {
   creatureRig?: LinghuiDirector3DCreatureRig;
 }
 
+/**
+ * 关键帧"作用域"：
+ *  - 'scene'（默认 / 旧数据兼容）：整场快照，同时插值 camera + 所有 actors
+ *  - 'camera'：仅记录相机参数，actor 字段忽略，时间轴专属 camera 轨
+ *  - `actor:${actorId}`：仅记录该 actor 的快照，camera 忽略
+ *
+ * 插值时同一 actor 只从 scope='scene' 或 scope='actor:{id}' 的关键帧里取值，
+ * 相机只从 scope='scene' 或 scope='camera' 的关键帧里取值。
+ */
+export type LinghuiDirector3DKeyframeScope = 'scene' | 'camera' | `actor:${string}`;
+
 export interface LinghuiDirector3DKeyframe {
   id: string;
   /** 关键帧时间（秒） */
   time: number;
   label?: string;
+  /**
+   * 作用域；缺省视为 'scene'（兼容旧数据）。新版自动加帧只生成 'camera' / 'actor:xxx' 范围。
+   */
+  scope?: LinghuiDirector3DKeyframeScope;
   /** 该时刻所有 actor 的状态快照（按 actor.id 索引）；未列出的 actor 表示不存在 / 不渲染 */
   actors: LinghuiDirector3DKeyframeActor[];
   /** 该时刻相机参数（完整复用 LinghuiDirector3DCamera） */
