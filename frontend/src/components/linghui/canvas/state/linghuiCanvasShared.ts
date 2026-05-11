@@ -108,6 +108,7 @@ const LINGHUI_RF_TYPE_TO_NODE_TYPE: Record<string, LinghuiNodeType> = {
   'linghui-text': 'linghui/text',
   'linghui-agent': 'linghui/agent',
   'linghui-image': 'linghui/image',
+  'linghui-image-generator': 'linghui/image-generator',
   'linghui-panorama': 'linghui/panorama',
   'linghui-video': 'linghui/video',
   'linghui-audio': 'linghui/audio',

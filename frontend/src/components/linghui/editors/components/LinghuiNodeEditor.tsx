@@ -21,6 +21,7 @@ import { getLinghuiResultPrimaryMedia } from '../../../../types/linghui';
 import { AgentNodeEditor } from './AgentNodeEditor';
 import { AudioNodeEditor } from './AudioNodeEditor';
 import { ImageNodeEditor } from './ImageNodeEditor';
+import { ImageGeneratorNodeEditor } from './ImageGeneratorNodeEditor';
 import { PanoramaNodeEditor } from './PanoramaNodeEditor';
 import { Director3DNodeEditor } from './Director3DNodeEditor';
 import { ScriptNodeEditor } from './ScriptNodeEditor';
@@ -164,6 +165,8 @@ function getNodeTypeLabel(nodeType: LinghuiNodeType): string {
   switch (nodeType) {
     case 'linghui/image':
       return '图片节点';
+    case 'linghui/image-generator':
+      return '图片生成器';
     case 'linghui/panorama':
       return '全景节点';
     case 'linghui/agent':
@@ -200,6 +203,7 @@ function getPanelMaxHeight(nodeType: LinghuiNodeType): number {
   if (nodeType === 'linghui/agent') return 640;
   if (nodeType === 'linghui/text') return 520;
   if (nodeType === 'linghui/director3d') return 720;
+  if (nodeType === 'linghui/image-generator') return 520;
   return 620;
 }
 
@@ -232,6 +236,7 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
     onSetGridSplitType,
     onClearGridSplitCells,
     onExecuteGridSplit,
+    onGenerateImageFromController,
     gridSplitUpscaleFactor,
     onSetGridSplitUpscaleFactor,
     onRevertGridSplit,
@@ -690,6 +695,14 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
               onToolChange={tool => setActiveTool(tool ? { kind: 'image', nodeId, tool } : null)}
               onExecuteMultiAngle={options => onExecuteMultiAngle?.(options)}
               onRun={() => onRunNode(nodeId)}
+            />
+          )}
+          {nodeType === 'linghui/image-generator' && (
+            <ImageGeneratorNodeEditor
+              nodeId={nodeId}
+              nodeData={nodeData}
+              promptReferences={promptReferences}
+              onGenerate={() => onGenerateImageFromController?.(nodeId) ?? null}
             />
           )}
           {nodeType === 'linghui/panorama' && (

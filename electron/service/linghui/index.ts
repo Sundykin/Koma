@@ -1593,11 +1593,16 @@ export class LinghuiService {
       .get(id) as { created_at: number } | undefined;
     const createdAt = existing?.created_at ?? now;
 
+    // reference_images_json：JSON 数组存 koma-local URL；undefined / 空数组都序列化成 NULL
+    const referenceImagesJson = Array.isArray(input.referenceImages) && input.referenceImages.length > 0
+      ? JSON.stringify(input.referenceImages.filter(item => typeof item === 'string' && item.trim()))
+      : null;
+
     this.getDb().prepare(`
       INSERT OR REPLACE INTO linghui_global_assets (
         id, kind, label, hint, prompt_hint, color, scale, pose_preset,
-        prop_type, category, favorite, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        prop_type, category, favorite, reference_images_json, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       input.kind,
@@ -1610,6 +1615,7 @@ export class LinghuiService {
       input.propType ?? null,
       input.category ?? null,
       input.favorite ? 1 : 0,
+      referenceImagesJson,
       createdAt,
       now,
     );
@@ -1637,6 +1643,7 @@ interface LinghuiGlobalAssetRow {
   prop_type: string | null;
   category: string | null;
   favorite: number;
+  reference_images_json: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -1653,6 +1660,8 @@ export interface LinghuiGlobalAssetRecord {
   propType?: string;
   category?: string;
   favorite: boolean;
+  /** 参考图（koma-local URL 数组）；character 用作脸部 / 服装参考，prop 用作样式图 */
+  referenceImages?: string[];
   createdAt: number;
   updatedAt: number;
 }
@@ -1669,6 +1678,20 @@ export interface LinghuiGlobalAssetInput {
   propType?: string;
   category?: string;
   favorite?: boolean;
+  referenceImages?: string[];
+}
+
+function parseReferenceImages(json: string | null): string[] | undefined {
+  if (!json) return undefined;
+  try {
+    const parsed = JSON.parse(json);
+    if (!Array.isArray(parsed)) return undefined;
+    const cleaned = parsed
+      .filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
+    return cleaned.length > 0 ? cleaned : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function rowToGlobalAsset(row: LinghuiGlobalAssetRow): LinghuiGlobalAssetRecord {
@@ -1684,6 +1707,7 @@ function rowToGlobalAsset(row: LinghuiGlobalAssetRow): LinghuiGlobalAssetRecord 
     propType: row.prop_type ?? undefined,
     category: row.category ?? undefined,
     favorite: row.favorite === 1,
+    referenceImages: parseReferenceImages(row.reference_images_json),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

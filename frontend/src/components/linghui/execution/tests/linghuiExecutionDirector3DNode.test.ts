@@ -210,6 +210,122 @@ describe('executeDirector3DNode', () => {
     expect(persistenceMod.persistMediaAsset).toHaveBeenCalled();
   });
 
+  it('actor.referenceImages 被聚合到 result.items，按 actor.label 命名，kind 升级为 images', async () => {
+    const persistenceMod = await import('../../../../services/mediaPersistenceService');
+    vi.mocked(persistenceMod.persistMediaAsset).mockImplementation(async () => ({
+      kind: 'image',
+      localPath: '/abs/primary.png',
+      mimeType: 'image/png',
+      createdAt: Date.now(),
+    }));
+
+    const { executeDirector3DNode } = await import('../state/linghuiExecutionNodeExecutors');
+    const node = buildDirectorNodeView({
+      lineartDataUrl: 'data:image/png;base64,PRIMARY',
+      scene: {
+        actors: [
+          {
+            id: 'actor-hero',
+            label: '主角',
+            referenceImages: [
+              'koma-local://files/hero-face.png',
+              'koma-local://files/hero-costume.png',
+            ],
+          },
+          {
+            id: 'actor-prop',
+            label: '宝剑',
+            referenceImages: ['koma-local://files/sword.png'],
+          },
+        ],
+      },
+    });
+
+    const result = await executeDirector3DNode(node);
+
+    // 主图 + 3 张参考图 → images 集合
+    expect(result.kind).toBe('images');
+    if (result.kind !== 'images') return;
+    expect(result.items).toHaveLength(4);
+    // 参考图按 actor.label 命名，且保留原 koma-local URL（无需二次落盘）
+    const refItems = result.items.slice(1);
+    expect(refItems[0].source).toBe('koma-local://files/hero-face.png');
+    expect(refItems[0].label).toBe('主角 参考图 1');
+    expect(refItems[1].source).toBe('koma-local://files/hero-costume.png');
+    expect(refItems[1].label).toBe('主角 参考图 2');
+    expect(refItems[2].source).toBe('koma-local://files/sword.png');
+    expect(refItems[2].label).toBe('宝剑 参考图 1');
+    expect(result.metadata?.referenceImageCount).toBe(3);
+    // 参考图直接拿 URL，不应该再调 persistMediaAsset（只有主图调一次）
+    expect(persistenceMod.persistMediaAsset).toHaveBeenCalledTimes(1);
+  });
+
+  it('actor.referenceImages 含重复 URL 时跨 actor 自动去重', async () => {
+    const persistenceMod = await import('../../../../services/mediaPersistenceService');
+    vi.mocked(persistenceMod.persistMediaAsset).mockImplementation(async () => ({
+      kind: 'image',
+      localPath: '/abs/primary.png',
+      mimeType: 'image/png',
+      createdAt: Date.now(),
+    }));
+
+    const { executeDirector3DNode } = await import('../state/linghuiExecutionNodeExecutors');
+    const node = buildDirectorNodeView({
+      lineartDataUrl: 'data:image/png;base64,PRIMARY',
+      scene: {
+        actors: [
+          {
+            id: 'a1',
+            label: '甲',
+            referenceImages: ['koma-local://files/shared.png', 'koma-local://files/unique-a.png'],
+          },
+          {
+            id: 'a2',
+            label: '乙',
+            // shared.png 重复出现 → 只保留第一份
+            referenceImages: ['koma-local://files/shared.png', 'koma-local://files/unique-b.png'],
+          },
+        ],
+      },
+    });
+
+    const result = await executeDirector3DNode(node);
+    expect(result.kind).toBe('images');
+    if (result.kind !== 'images') return;
+    // 主图 + (shared, unique-a, unique-b) = 4 项，shared 只算一次
+    expect(result.items).toHaveLength(4);
+    expect(result.metadata?.referenceImageCount).toBe(3);
+    const sources = result.items.map((item) => item.source);
+    const sharedCount = sources.filter((s) => s === 'koma-local://files/shared.png').length;
+    expect(sharedCount).toBe(1);
+  });
+
+  it('无 referenceImages 时不破坏既有 lineart 单图行为', async () => {
+    const persistenceMod = await import('../../../../services/mediaPersistenceService');
+    vi.mocked(persistenceMod.persistMediaAsset).mockImplementation(async () => ({
+      kind: 'image',
+      localPath: '/abs/primary.png',
+      mimeType: 'image/png',
+      createdAt: Date.now(),
+    }));
+
+    const { executeDirector3DNode } = await import('../state/linghuiExecutionNodeExecutors');
+    const node = buildDirectorNodeView({
+      lineartDataUrl: 'data:image/png;base64,PRIMARY',
+      scene: {
+        actors: [
+          { id: 'a1', label: '主角' }, // 没有 referenceImages
+          { id: 'a2', label: '群演', referenceImages: [] }, // 空数组
+          { id: 'a3', label: '坏数据', referenceImages: [123, null, ''] }, // 非字符串项被忽略
+        ],
+      },
+    });
+
+    const result = await executeDirector3DNode(node);
+    expect(result.kind).toBe('image');
+    expect(result.metadata?.referenceImageCount).toBe(0);
+  });
+
   it('无效 angleView 项（缺 dataUrl）被丢弃后仍保留单图 kind', async () => {
     const persistenceMod = await import('../../../../services/mediaPersistenceService');
     vi.mocked(persistenceMod.persistMediaAsset).mockImplementation(async () => ({

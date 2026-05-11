@@ -6,6 +6,7 @@ import type {
   LinghuiCanvasSelection,
   LinghuiExecuteMultiAngleOptions,
   LinghuiImageAssetItem,
+  LinghuiImageGeneratorNodeProperties,
   LinghuiMultiAngleConfig,
   LinghuiImageNodeProperties,
   LinghuiNodeData,
@@ -42,6 +43,7 @@ import {
   toNodeSnapshot,
 } from '../state/linghuiCanvasShared';
 import { normalizeLinghuiMultiAngleConfig } from '../../../../types/linghui';
+import { planSpawnImageFromGenerator } from '../state/linghuiImageGenerator';
 
 interface UseLinghuiCanvasDocumentOpsParams {
   reactFlow: ReactFlowInstance;
@@ -625,6 +627,7 @@ export function useLinghuiCanvasDocumentOps({
     }
 
     const currentNodes = reactFlow.getNodes();
+    const currentEdges = reactFlow.getEdges();
     const groupPositions = collectGroupPositions(currentNodes, scriptNode.parentId ? [scriptNode.parentId] : []);
     const scriptAbsolutePosition = getNodeAbsolutePosition(scriptNode, groupPositions);
     const parentPosition = scriptNode.parentId ? groupPositions.get(scriptNode.parentId) : undefined;
@@ -725,14 +728,33 @@ export function useLinghuiCanvasDocumentOps({
     });
     const appendedNodes = [...nextNodeMap.values()].filter(node => !currentNodes.some(current => current.id === node.id));
 
+    // 把 storyboard/script 节点连到每个派生 image，避免用户手动连线
+    const nextEdges = [...currentEdges];
+    for (const nodeId of targetIds) {
+      const edgeShape = {
+        source: scriptNodeId,
+        sourceHandle: 'output-0',
+        target: nodeId,
+        targetHandle: 'input-0',
+      };
+      if (!hasMatchingEdge(nextEdges, edgeShape)) {
+        nextEdges.push({
+          id: `e-${nanoid(8)}`,
+          ...edgeShape,
+          type: 'linghui-edge',
+        });
+      }
+    }
+
     setNodes([...nextNodes, ...appendedNodes]);
+    setEdges(nextEdges);
     setEditorSelection(null);
     setContextMenu(null);
     setQuickCreate(null);
     setPendingGroupFrame(null);
     scheduleSnapshot();
     return targetIds;
-  }, [reactFlow, scheduleSnapshot, setContextMenu, setEditorSelection, setNodes, setPendingGroupFrame, setQuickCreate]);
+  }, [reactFlow, scheduleSnapshot, setContextMenu, setEditorSelection, setEdges, setNodes, setPendingGroupFrame, setQuickCreate]);
 
   const deriveStoryboardVideosFromScript = useCallback((
     scriptNodeId: string,
@@ -908,6 +930,21 @@ export function useLinghuiCanvasDocumentOps({
       }
       nextNodeMap.set(videoNode.id, videoNode);
       targetIds.push(videoNode.id);
+
+      // storyboard → image：让 image 节点拿到 storyboard 的 references / shot 文本
+      const storyboardToImageEdge = {
+        source: scriptNodeId,
+        sourceHandle: 'output-0',
+        target: imageNode.id,
+        targetHandle: 'input-0',
+      };
+      if (!hasMatchingEdge(nextEdges, storyboardToImageEdge)) {
+        nextEdges.push({
+          id: `e-${nanoid(8)}`,
+          ...storyboardToImageEdge,
+          type: 'linghui-edge',
+        });
+      }
 
       const edgeShape = {
         source: imageNode.id,
@@ -1189,6 +1226,95 @@ export function useLinghuiCanvasDocumentOps({
     return nextNode.id;
   }, [reactFlow, scheduleSnapshot, setContextMenu, setEdges, setNodes, setPendingGroupFrame, setQuickCreate]);
 
+  /**
+   * 图片生成器（控制器）→ 派生下游图片展示节点。
+   * 纯逻辑下沉到 planSpawnImageFromGenerator（便于单测），这里只做位置计算 + state 写入。
+   * 不在这里触发执行：返回新节点 id，调用方拿到后用 onRunSingleNode 触发执行。
+   */
+  const spawnImageFromGenerator = useCallback((controllerNodeId: string): string | null => {
+    const currentNodes = reactFlow.getNodes();
+    const controllerNode = currentNodes.find(node => node.id === controllerNodeId);
+    if (!controllerNode || controllerNode.type === 'group') return null;
+    const controllerData = controllerNode.data as unknown as LinghuiNodeData;
+    if (controllerData.linghuiType !== 'linghui/image-generator') return null;
+
+    const controllerProps = controllerData.properties as unknown as LinghuiImageGeneratorNodeProperties;
+
+    const groupPositions = collectGroupPositions(currentNodes, controllerNode.parentId ? [controllerNode.parentId] : []);
+    const controllerAbsolutePosition = getNodeAbsolutePosition(controllerNode, groupPositions);
+    const parentPosition = controllerNode.parentId ? groupPositions.get(controllerNode.parentId) : undefined;
+    const controllerWidth = controllerNode.measured?.width ?? controllerNode.width ?? 200;
+    const aliveCount = (controllerProps.generatedImageNodeIds ?? []).length;
+    // 控制器右侧 + 按已生成次数纵向堆叠（每槽 220px）
+    const absolutePosition = {
+      x: controllerAbsolutePosition.x + controllerWidth + 64,
+      y: controllerAbsolutePosition.y + aliveCount * 220,
+    };
+    const position = parentPosition
+      ? {
+          x: absolutePosition.x - parentPosition.x,
+          y: absolutePosition.y - parentPosition.y,
+        }
+      : absolutePosition;
+
+    const created = createCanvasNode('linghui/image', position, currentNodes);
+    const createdData = created.data as unknown as LinghuiNodeData;
+    const imageDefaults = createdData.properties as unknown as LinghuiImageNodeProperties;
+
+    const { imageProperties, buildNextControllerProperties, sequence } = planSpawnImageFromGenerator({
+      controller: controllerProps,
+      imageDefaults,
+      controllerNodeId,
+    });
+
+    const nextNode: Node = {
+      ...created,
+      parentId: controllerNode.parentId,
+      extent: resolveParentExtent(controllerNode.parentId),
+      selected: false,
+      data: {
+        ...createdData,
+        label: `${controllerData.label} #${sequence}`,
+        properties: imageProperties as unknown as Record<string, unknown>,
+      } as unknown as Record<string, unknown>,
+    };
+
+    const nextEdge: Edge = {
+      id: `e-${nanoid(8)}`,
+      source: controllerNodeId,
+      target: nextNode.id,
+      sourceHandle: 'output-0',
+      targetHandle: 'input-0',
+      type: 'linghui-edge',
+      data: {
+        sourceSlotType: 'image',
+        targetSlotType: 'image',
+      } as Record<string, unknown>,
+    };
+
+    setNodes(existingNodes => existingNodes.map(node => {
+      if (node.id !== controllerNodeId) return node;
+      const data = node.data as unknown as LinghuiNodeData;
+      const nextControllerProps = buildNextControllerProperties(nextNode.id);
+      return {
+        ...node,
+        data: {
+          ...data,
+          properties: nextControllerProps as unknown as Record<string, unknown>,
+        } as unknown as Record<string, unknown>,
+      };
+    }).concat([nextNode]));
+
+    setEdges(existingEdges => (
+      hasMatchingEdge(existingEdges, nextEdge) ? existingEdges : [...existingEdges, nextEdge]
+    ));
+    setContextMenu(null);
+    setQuickCreate(null);
+    setPendingGroupFrame(null);
+    scheduleSnapshot();
+    return nextNode.id;
+  }, [reactFlow, scheduleSnapshot, setContextMenu, setEdges, setNodes, setPendingGroupFrame, setQuickCreate]);
+
   const hasClipboardData = Boolean(clipboardRef.current?.nodes.length || clipboardRef.current?.groups.length);
 
   return {
@@ -1209,6 +1335,7 @@ export function useLinghuiCanvasDocumentOps({
     createGroupFromSelection,
     createDerivedImageNodesFromNode,
     createDerivedMultiAngleImageNodeFromNode,
+    spawnImageFromGenerator,
     clearPendingGroupFrame,
   };
 }

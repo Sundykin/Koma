@@ -17,10 +17,12 @@ import type {
   LinghuiDirector3DCamera,
   LinghuiDirector3DEasing,
   LinghuiDirector3DKeyframe,
+  LinghuiDirector3DRig,
   LinghuiDirector3DScene,
   LinghuiDirector3DTimeline,
 } from '../../../types/linghui';
 import { DIRECTOR3D_ACTOR_COLOR_TOKENS } from './director3dColors';
+import { describeRigForPrompt, lerpRig, resolveActorRig } from './director3dRig';
 
 const TWO_PI = Math.PI * 2;
 const ACTOR_DEFAULT_COLORS = DIRECTOR3D_ACTOR_COLOR_TOKENS;
@@ -69,6 +71,11 @@ export function createDirector3DActor(overrides: Partial<LinghuiDirector3DActor>
     posePreset: overrides.posePreset ?? 'idle',
     // formation 字段仅在 type='formation' 时使用，平时不写入 actor
     ...(overrides.formation ? { formation: overrides.formation } : {}),
+    // 全局资产 snapshot：referenceImages 数组 + 来源 id（弱引用，未来用于同步更新）
+    ...(Array.isArray(overrides.referenceImages) && overrides.referenceImages.length > 0
+      ? { referenceImages: [...overrides.referenceImages] }
+      : {}),
+    ...(overrides.sourceGlobalAssetId ? { sourceGlobalAssetId: overrides.sourceGlobalAssetId } : {}),
   };
 }
 
@@ -719,7 +726,13 @@ export function compileDirector3DPromptFragment(scene: LinghuiDirector3DScene): 
       const pos = actor.position.map(v => v.toFixed(1)).join(', ');
       const facing = Math.round((actor.rotationY * 180) / Math.PI);
       const pose = actor.posePreset;
-      return `  - ${actor.label} at (${pos}), facing ${facing}deg, pose ${pose}`;
+      // 若 actor 调过骨骼，再附加细化的姿态描述（举手 / 弯膝 / 前倾 等），
+      // 让下游 image / video 模型拿到更精确的动作语义
+      const rigHint = actor.rig
+        ? describeRigForPrompt(resolveActorRig(actor.rig, actor.posePreset))
+        : '';
+      const suffix = rigHint ? `, ${rigHint}` : '';
+      return `  - ${actor.label} at (${pos}), facing ${facing}deg, pose ${pose}${suffix}`;
     });
     lines.push('Hero actor blocking:');
     lines.push(...actorLines);
@@ -1244,6 +1257,9 @@ export function captureSceneAsKeyframe(
       scale: actor.scale,
       posePreset: actor.posePreset,
       color: actor.color,
+      // 把当前骨骼姿态写到关键帧里：用户在 t=2s 调整了胳膊角度后录关键帧，
+      // 时间轴回放时就能从初始位置平滑过渡到这个姿态
+      ...(actor.rig ? { rig: cloneRig(actor.rig) } : {}),
       ...(actor.formation ? { formation: { ...actor.formation } } : {}),
     })),
     camera: {
@@ -1267,6 +1283,21 @@ function applyEasing(t: number, easing: LinghuiDirector3DEasing): number {
 
 function lerp(a: number, b: number, alpha: number): number {
   return a + (b - a) * alpha;
+}
+
+function cloneRig(rig: LinghuiDirector3DRig): LinghuiDirector3DRig {
+  return {
+    spine: [...rig.spine] as [number, number, number],
+    neck: [...rig.neck] as [number, number, number],
+    leftShoulder: [...rig.leftShoulder] as [number, number, number],
+    rightShoulder: [...rig.rightShoulder] as [number, number, number],
+    leftElbow: [...rig.leftElbow] as [number, number, number],
+    rightElbow: [...rig.rightElbow] as [number, number, number],
+    leftHip: [...rig.leftHip] as [number, number, number],
+    rightHip: [...rig.rightHip] as [number, number, number],
+    leftKnee: [...rig.leftKnee] as [number, number, number],
+    rightKnee: [...rig.rightKnee] as [number, number, number],
+  };
 }
 
 function lerpVec3(a: [number, number, number], b: [number, number, number], alpha: number): [number, number, number] {
@@ -1355,6 +1386,13 @@ export function interpolateSceneAt(
       posePreset: pickDiscrete(start.posePreset, end.posePreset, actor.posePreset),
       color: pickDiscrete(start.color, end.color, actor.color),
     };
+
+    // 骨骼连续插值：两端任一有 rig 时按关节 LERP，没有时回退 posePreset 老逻辑
+    if (actor.type === 'mannequin' && (start.rig || end.rig)) {
+      const startRig = start.rig ?? resolveActorRig(undefined, start.posePreset ?? actor.posePreset);
+      const endRig = end.rig ?? resolveActorRig(undefined, end.posePreset ?? actor.posePreset);
+      next.rig = lerpRig(startRig, endRig, easedAlpha);
+    }
 
     // formation 仅在该 actor type=='formation' 时参与插值
     if (actor.type === 'formation') {

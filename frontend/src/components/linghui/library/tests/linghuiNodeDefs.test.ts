@@ -144,6 +144,27 @@ describe('isLinghuiConnectionValid', () => {
     }));
   });
 
+  it('为 image-generator 控制器节点创建无输出端口的默认属性', () => {
+    const data = createNewNodeData('linghui/image-generator');
+
+    expect(data.linghuiType).toBe('linghui/image-generator');
+    // 控制器无输出：所有出图状态由派生的下游 image 节点承载
+    expect(data.outputs).toEqual([]);
+    expect(data.inputs).toEqual([
+      { name: '参考', dataType: 'image' },
+      { name: '文本', dataType: 'text' },
+    ]);
+    expect(data.properties).toEqual(expect.objectContaining({
+      prompt: '',
+      ttiSelection: '',
+      aspectRatio: '3:4',
+      resolution: 'auto',
+      batchCount: 1,
+      generatedImageNodeIds: [],
+      generationCount: 0,
+    }));
+  });
+
   it('为 agent 节点创建文本输出和安全默认属性', () => {
     const data = createNewNodeData('linghui/agent');
 

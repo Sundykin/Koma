@@ -157,6 +157,7 @@ class LinghuiController extends BaseController {
     propType?: string;
     category?: string;
     favorite?: boolean;
+    referenceImages?: string[];
   }) {
     try {
       await ensureServicesReady();

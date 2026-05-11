@@ -39,6 +39,7 @@ export interface LinghuiCanvasOverlaysProps {
     multiAngle?: Partial<LinghuiMultiAngleConfig>;
     label?: string;
   }) => string | null;
+  onGenerateImageFromController?: (controllerNodeId: string) => string | null;
   onExecuteMultiAngle?: (options?: LinghuiExecuteMultiAngleOptions) => void;
   onApplyImageToolPreset: (preset: {
     promptSnippet: string;

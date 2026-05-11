@@ -173,6 +173,15 @@ export interface LinghuiNodeEditorApi {
   onGenerateScriptImages: (nodeId: string, shots: LinghuiStoryboardFrame[]) => void;
   onGenerateScriptVideos: (nodeId: string, shots: LinghuiStoryboardFrame[]) => void;
   onCreateDerivedImportImages: (nodeId: string, items: LinghuiImageAssetItem[]) => void;
+  /**
+   * 从"图片生成器"控制器节点派生一个下游图片展示节点：
+   *  - 在控制器右下方新建 linghui/image 节点（mode='generate'），prompt / 模型 / 比例 / batch 全部复制
+   *  - 自动连接 controller → image 的 edge
+   *  - 自动触发执行，loading → 出图 / 失败的状态全部由展示节点的 nodeRun 体现
+   *  - 控制器自己的 generatedImageNodeIds / generationCount 同步更新（保留历史链）
+   * 返回新建展示节点的 id（便于测试 / 调试）
+   */
+  onGenerateImageFromController?: (controllerNodeId: string) => string | null;
   onCreateDerivedMultiAngleImage?: (nodeId: string, options?: {
     prompt?: string;
     ttiSelection?: string;
