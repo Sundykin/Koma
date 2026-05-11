@@ -49,6 +49,10 @@ export interface CreationContext {
   /** 项目叙事模式：剧情模式会把推文解说剧情化，解说模式保留旁白主导 */
   projectMode: ProjectNarrativeMode;
 
+  /** 项目标题与题材类型，供分镜故事板等提示词模板直接使用。 */
+  projectTitle?: string;
+  projectGenre?: string;
+
   /** LLM 配置（避免每个服务各自 setLLMConfig） */
   llmConfig: LLMModelConfig;
   llmProvider: LLMProvider;
@@ -133,6 +137,8 @@ export async function createCreationContext(
     props,
     styleSnapshot: options?.styleSnapshot,
     projectMode: normalizeProjectNarrativeMode(projectMeta?.mode),
+    projectTitle: projectMeta?.title,
+    projectGenre: projectMeta?.genre,
     llmConfig,
     llmProvider,
     itvDurationSpec,

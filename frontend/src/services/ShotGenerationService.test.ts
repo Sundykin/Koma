@@ -52,6 +52,33 @@ describe('batchGenerateShotImages', () => {
     vi.clearAllMocks();
   });
 
+  it('单分镜生图优先使用调用方传入的最新 shot 快照，避免读取旧存储提示词', async () => {
+    const { generateShotImage } = await import('./ShotGenerationService');
+    const { loadEpisodeShots } = await import('../store/projectStore');
+    const { shotImageWorkflow } = await import('../workflow/shotImageWorkflow');
+
+    vi.mocked(loadEpisodeShots).mockResolvedValue([
+      { ...createShot('shot-1'), imagePrompt: '旧提示词' },
+    ]);
+    vi.mocked(shotImageWorkflow).mockResolvedValueOnce(createImageAsset('shot-1'));
+
+    const latestShot = { ...createShot('shot-1'), imagePrompt: '输入框最新提示词 @storyboard_anchor' };
+    await generateShotImage(
+      'project-1',
+      'episode-1',
+      'shot-1',
+      [],
+      [],
+      'tti-main::model',
+      { shotSnapshot: latestShot },
+    );
+
+    expect(shotImageWorkflow).toHaveBeenCalledWith(expect.objectContaining({
+      shot: latestShot,
+    }));
+    expect(loadEpisodeShots).not.toHaveBeenCalled();
+  });
+
   it('单个分镜生图失败时继续其它分镜，并逐项触发完成回调', async () => {
     const { batchGenerateShotImages } = await import('./ShotGenerationService');
     const { loadEpisodeShots } = await import('../store/projectStore');

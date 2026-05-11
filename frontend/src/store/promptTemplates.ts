@@ -306,6 +306,48 @@ const COMMON_VARIABLE_DEFINITIONS: Record<string, Omit<PromptTemplateVariable, '
     example: 'storyboard',
     required: true,
   },
+  projectTitle: {
+    label: '项目名称',
+    description: '当前项目标题，用于故事板【项目标题】区。由项目元数据注入，不能由模型自行改写为其它片名。',
+    format: '短文本',
+    example: '叶赎修仙异闻录',
+    required: true,
+  },
+  projectSubtitle: {
+    label: '项目副标题',
+    description: '故事板标题区副标题，默认使用“短片分镜设计”。',
+    format: '短文本',
+    example: '短片分镜设计',
+    required: true,
+  },
+  shootingFormat: {
+    label: '拍摄形式',
+    description: '故事板标题区的拍摄形式。默认“单机位”，后续如项目支持多机位可由运行时传入。',
+    format: '短文本',
+    example: '单机位',
+    required: true,
+  },
+  projectType: {
+    label: '项目类型',
+    description: '当前项目的题材类型，来自 ProjectMeta.genre，用于故事板【项目标题】区的“类型”。',
+    format: '短文本',
+    example: '修仙玄幻',
+    required: true,
+  },
+  shotDurationSeconds: {
+    label: '分镜时长',
+    description: '当前分镜的时长，来自 Shot.duration；故事板【项目标题】区必须使用这个值，而不是项目总时长。',
+    format: '秒数字符串',
+    example: '15',
+    required: true,
+  },
+  storyboardConstraints: {
+    label: '故事板限制条件',
+    description: '故事板【项目标题】区的限制条件，如镜头节奏、角色数、场景数。',
+    format: '短文本',
+    example: '镜头数量由剧情节奏决定 / 2 个角色 / 1 个场景',
+    required: true,
+  },
   referenceTable: {
     label: '视觉参考集合',
     description: '运行时构造的视觉参考集合。视频模板使用 references 索引表；故事板等可编辑提示词模板只应使用语义 mention，禁止提前输出 @Image N。',
@@ -1338,6 +1380,12 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 
 ## 输入
 
+项目名称：{{projectTitle}}
+副标题：{{projectSubtitle}}
+拍摄形式：{{shootingFormat}}
+项目类型：{{projectType}}
+当前分镜时长：{{shotDurationSeconds}}秒
+限制条件：{{storyboardConstraints}}
 剧本内容（唯一真理来源）：{{scriptContent}}
 台词字段（只用于口型、表情和说话状态；普通对白不要画成文字）：{{dialogueText}}
 {{dialogueModeDirective}}
@@ -1352,7 +1400,7 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 1. **电影分镜信息图海报感**：画面像一张高度精细的电影分镜信息图海报 / 专业影视前期制作设定板。结构清晰，分区明确，信息密集但排版整洁，现代 UI 风格，深蓝色标题栏或等价的高级标题系统，电影级质感。
 2. **剧情驱动，不机械填格**：不要机械固定 8 镜头、2x2 或均匀网格。先判断剧情内容、角色数量、场景复杂度、时长和情绪转折，再决定 X 个镜头 / X 个角色 / 1 个或多个场景。镜头数量必须服务叙事节奏：短动作可 4-6 镜头，15 秒标准段落可 6-8 镜头，复杂调度可 8-12 镜头。
 3. **默认制作板模块**：默认生成“电影前期制作板”，稳定包含以下模块，但允许按剧情重要性调整面积和顺序：
-   - 【项目标题】项目名称、短片分镜设计、副标题、拍摄形式、类型、时长、限制条件（X 个镜头 / X 个角色 / 场景数量）；
+   - 【项目标题】项目名称必须使用“{{projectTitle}}”，副标题必须使用“{{projectSubtitle}}”，拍摄形式必须使用“{{shootingFormat}}”，类型必须使用项目类型“{{projectType}}”，时长必须使用当前分镜时长“{{shotDurationSeconds}}秒”，限制条件必须使用“{{storyboardConstraints}}”；
    - 【角色设计区】角色设定板，包含正面、背面、侧面、特写、动作姿态；保持人物一致性，展示服装、配饰、随身道具；
    - 【场景设计区】电影级场景概念图，空间细节丰富，真实光影，电影剧照质感，环境氛围清晰；
    - 【俯视镜头调度图】场景俯视平面图，按实际镜头数标注 1-N 编号镜头，箭头表示人物移动与镜头运动轨迹，像电影拍摄蓝图 / 建筑平面图；
@@ -1381,7 +1429,7 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 
 故事板类型：[例如：非对称电影级制作方案表 / 宽幅连续故事板 / 主场景+平面图+机位调度板 / 角色表演研究故事板 / 四格宣传漫画信息图；按当前剧情复杂度选择，禁止固定默认 2x2]
 整体画风：[继承风格前缀；说明摄影质感/绘制质感/色彩体系]
-【项目标题】：[项目名称可从剧情提炼或写“当前分镜”；副标题“短片分镜设计”；拍摄形式；类型；时长；限制条件：X 个镜头 / X 个角色 / X 个场景]
+【项目标题】：[项目名称：{{projectTitle}}；副标题：{{projectSubtitle}}；拍摄形式：{{shootingFormat}}；类型：{{projectType}}；时长：{{shotDurationSeconds}}秒（必须是当前分镜时长，不是项目总时长）；限制条件：{{storyboardConstraints}}]
 版式构图：[电影分镜信息图海报；深蓝色标题栏或高级标题系统；结构清晰的网格布局但不机械等分；写清阅读顺序、边框风格、主场景大面板、连续小面板、俯视平面图、角色路径箭头、编号机位、角色/道具/手部/光影研究区、色彩条/灯光条]
 【角色设计区】：[角色设定板；按实际角色数展示正面/背面/侧面/特写/动作姿态中的关键视图；保持人物一致性；写实摄影风格或项目风格下的高细节面部；服装、配饰、随身道具展示]
 【场景设计区】：[电影级场景概念图；空间结构、前中后景、环境氛围、时间/天气/材质/真实光影；必须继承 @scene 引用]
@@ -1415,6 +1463,12 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
         format: '多行台词文本或“无”',
       }),
       variable('dialogueModeDirective', { required: false }),
+      variable('projectTitle'),
+      variable('projectSubtitle'),
+      variable('shootingFormat'),
+      variable('projectType'),
+      variable('shotDurationSeconds'),
+      variable('storyboardConstraints'),
       variable('characters'),
       variable('scenes'),
       variable('props'),

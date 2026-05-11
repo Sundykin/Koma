@@ -164,6 +164,20 @@ export const mentionTheme = EditorView.baseTheme({
     backgroundColor: 'color-mix(in srgb, var(--token-status-info) 14%, transparent)',
     color: 'var(--token-status-info)',
   },
+  '.mention-storyboard': {
+    backgroundColor: 'color-mix(in srgb, var(--token-status-warning) 28%, transparent)',
+    color: 'var(--token-status-warning)',
+    border: '1px solid color-mix(in srgb, var(--token-status-warning) 55%, transparent)',
+    boxShadow: '0 0 0 1px color-mix(in srgb, var(--token-status-warning) 12%, transparent)',
+    fontWeight: '700',
+  },
+  '.mention-previous_storyboard': {
+    backgroundColor: 'color-mix(in srgb, var(--token-accent-base) 24%, transparent)',
+    color: 'var(--token-accent-base)',
+    border: '1px solid color-mix(in srgb, var(--token-accent-base) 55%, transparent)',
+    boxShadow: '0 0 0 1px color-mix(in srgb, var(--token-accent-base) 12%, transparent)',
+    fontWeight: '700',
+  },
 });
 
 /**

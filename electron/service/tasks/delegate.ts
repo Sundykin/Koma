@@ -27,6 +27,8 @@ export interface DelegateRequest<A = unknown> {
 }
 
 interface PendingRequest {
+  /** 该请求挂在哪个 renderer 上，用于 webContents 销毁时定向 reject */
+  webContentsId: number;
   resolve: (value: unknown) => void;
   reject: (reason: Error) => void;
   timer?: ReturnType<typeof setTimeout>;
@@ -55,11 +57,20 @@ export function clearClaimsByWebContents(webContentsId: number): void {
   for (const [type, id] of Array.from(claimers.entries())) {
     if (id === webContentsId) claimers.delete(type);
   }
-  // 这个 webContents 上挂的 pending request 全部 fail
+  // 这个 webContents 上挂的 pending request 全部直接 fail，不再等超时。
+  // 之前注释说"已发的让超时兜底" —— 默认 60s、analysis 任务 30 分钟，体感
+  // 是任务长时间卡住后才被标 failed。pending 现在带 webContentsId，关闭窗口
+  // 即可立刻清理对应的请求。
   for (const [requestId, p] of Array.from(pending.entries())) {
-    // 没法直接关联 request → wc id；通过下面 deliverReply 走的是 renderer 主动关闭
-    // 我们用一个简化策略：claimer 没了，下次 request 时 fail。已发的让超时兜底。
-    void requestId; void p;
+    if (p.webContentsId !== webContentsId) continue;
+    pending.delete(requestId);
+    if (p.timer) clearTimeout(p.timer);
+    p.cleanupSignal?.();
+    try {
+      p.reject(new Error(`renderer for delegate request gone (wc ${webContentsId})`));
+    } catch {
+      // reject 异常吞掉，不影响其它请求清理
+    }
   }
 }
 
@@ -101,6 +112,7 @@ export async function delegateToRenderer<R = unknown, A = unknown>(
 
   return new Promise<R>((resolve, reject) => {
     const entry: PendingRequest = {
+      webContentsId: claimerId,
       resolve: resolve as (value: unknown) => void,
       reject,
     };
@@ -117,8 +129,12 @@ export async function delegateToRenderer<R = unknown, A = unknown>(
         if (entry.timer) clearTimeout(entry.timer);
         reject(new Error('aborted'));
       };
+      // signal 已经 aborted 时不能走 onAbort —— 此刻 pending 还没 set，onAbort
+      // 内部的 pending.has(requestId) 检查会早返回，reject 永远不被调用，Promise
+      // 挂到 timeout 兜底（默认 60s，分析任务 30 min）才结束。直接 reject 即可。
       if (request.signal.aborted) {
-        onAbort();
+        if (entry.timer) clearTimeout(entry.timer);
+        reject(new Error('aborted'));
         return;
       }
       request.signal.addEventListener('abort', onAbort, { once: true });

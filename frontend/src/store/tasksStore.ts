@@ -67,7 +67,13 @@ function emitTransition(record: TaskRecord, prevStatus: string | null): void {
 }
 
 function applyUpsert(record: TaskRecord): void {
-  const prevStatus = cache.get(record.id)?.status ?? null;
+  const existing = cache.get(record.id);
+  // 防回退：如果 cache 里已有的版本比传入 record 更新（updatedAt 更大），保留 cache。
+  // 触发场景：hydrate 期间订阅与 list 并发，list 之前已被广播的更新如果再被 list
+  // 旧快照覆盖，UI 会显示旧状态（典型：广播 completed 已到，list 旧快照仍是 running，
+  // 状态卡在 running 直到下一次广播）。
+  if (existing && record.updatedAt < existing.updatedAt) return;
+  const prevStatus = existing?.status ?? null;
   cache.set(record.id, record);
   emitTransition(record, prevStatus);
   notify();
@@ -109,13 +115,25 @@ async function hydrateOnce(): Promise<void> {
       const idPromise = getOwnWebContentsId().then(id => {
         ownWebContentsId = id;
       });
+
+      // hydrate 期间订阅与 list 并发：subscribe 必须先挂上以免漏事件，但
+      // list 拿到的快照可能比期间到达的广播旧。
+      // - upsert：走 applyUpsert（带 updatedAt 防回退），list 的旧版本不会盖广播的新版本。
+      // - delete：list 期间到达的删除事件记下来，list 回填时跳过这些 id；不能让
+      //   list 把刚被删除的任务再插回 cache（UI 会看到"幽灵任务"）。
+      const deletedDuringHydrate = new Set<string>();
       unsubscribeBroadcast = subscribeTaskUpdates((record, kind /*, sourceId */) => {
-        if (kind === 'delete') applyDelete(record.id);
-        else applyUpsert(record);
+        if (kind === 'delete') {
+          deletedDuringHydrate.add(record.id);
+          applyDelete(record.id);
+        } else {
+          applyUpsert(record);
+        }
       });
       const records = await listTaskRecords();
       for (const record of records) {
-        cache.set(record.id, record);
+        if (deletedDuringHydrate.has(record.id)) continue;
+        applyUpsert(record);
       }
       await idPromise;
       notify();

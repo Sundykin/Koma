@@ -1218,3 +1218,60 @@
   - `npm run test -- --run src/store/promptTemplates.test.ts`：1 file / 11 tests passed。
   - `npx tsc --noEmit --project tsconfig.json`（frontend）：passed。
   - `git diff --check`：passed。
+
+## Follow-up: Storyboard Project Title Metadata
+- **Status:** in_progress
+- User request: add 【项目标题】 section fields (项目名称、副标题、拍摄形式、类型、时长、限制条件) and verify whether project type and shot duration are passed.
+- Findings so far: `Shot.duration` exists, but `storyboard_shot_prompt_generation` did not receive it; project type lives in `ProjectMeta.genre`, but `ShotPromptService.generateSpecialImageShotPrompt()` did not load/pass project metadata.
+
+### Follow-up: Storyboard Project Title Metadata
+- **Status:** complete
+- Actions taken:
+  - `CreationContext` now carries `projectTitle` / `projectGenre` from loaded project metadata.
+  - `ShotPromptService.generateSpecialImageShotPrompt()` now injects storyboard project header variables: `projectTitle`, `projectSubtitle`, `shootingFormat`, `projectType`, `shotDurationSeconds`, `storyboardConstraints`.
+  - Storyboard prompt template now has an explicit 【项目标题】 input/output section and requires type to use `{{projectType}}`, duration to use current shot duration `{{shotDurationSeconds}}秒`.
+  - Added service-level test proving `ProjectMeta.genre` and `Shot.duration` are passed into `storyboard_shot_prompt_generation`.
+- Validation:
+  - `npm run test -- --run src/services/ShotPromptService.test.ts src/store/promptTemplates.test.ts`: 2 files / 32 tests passed.
+  - `npm run test -- --run src/workflow/shotRenderWorkflow.videoChain.test.ts src/workflow/shotImageWorkflow.test.ts src/services/ShotGenerationService.test.ts`: 3 files / 8 tests passed.
+  - `git diff --check`: passed.
+  - `npx tsc --noEmit --project tsconfig.json` (frontend): failed on existing unrelated `src/services/TaskManager.test.ts(140,29)` using `findLast` under non-ES2023 lib.
+
+### Follow-up: Storyboard Anchor Highlight In Prompt Editors
+- **Status:** complete
+- Actions taken:
+  - Added dedicated CodeMirror mention styles for `.mention-storyboard` and `.mention-previous_storyboard`, with stronger background, border, and weight.
+  - Updated mention tooltip colors so current storyboard and previous storyboard use distinct visual accents.
+  - ShotCard prompt editors now include a current-storyboard autocomplete item in storyboard mode even before the first storyboard image exists; after generation it binds to the selected current image version.
+  - Previous storyboard mention label is shortened to “上一故事板” and still carries the selected previous storyboard version preview.
+- Validation:
+  - `npm run test -- --run src/editor/mentionTypes.test.ts src/components/storyboard/__tests__/assetRetention.test.ts`: 2 files / 40 tests passed.
+  - `npm run test -- --run src/editor/mentionTypes.test.ts src/components/storyboard/__tests__/assetRetention.test.ts src/services/ShotPromptService.test.ts src/store/promptTemplates.test.ts`: 4 files / 72 tests passed.
+  - `npx tsc --noEmit --project tsconfig.json` (frontend): passed.
+  - `git diff --check`: passed.
+
+## Session: 2026-05-10 Prompt Editor Snapshot Consistency
+
+### Phase 1: Diagnosis
+- **Status:** complete
+- Actions taken:
+  - 复查用户给出的实际输入/编译后输出差异。
+  - 定位三条根因：单张/批量生成使用旧 DB 或旧闭包中的 shot；视频渲染总是把旧 `shot.dialogue` 补回手写 `对白提示词`；图片/视频空提示词各自有默认模板兜底。
+  - 额外发现 `sanitizeNarrativeDialogueLeakage()` 会误删含“自称天道”的显式 `台词：` 片段。
+
+### Phases 2-3: Fix
+- **Status:** complete
+- Actions taken:
+  - `Storyboard` 增加并使用 `shotsRef` 作为立即操作的最新分镜快照；单张生图/生视频和批量图片/视频生成都会先 flush 保存队列，再把当前快照传入 workflow。
+  - `ShotGenerationService` 支持 `shotSnapshot` / `shotsSnapshot`，批量图片生成优先使用调用方传入的最新快照。
+  - `shotImageWorkflow` 空图片提示词直接报错，不再套 `tti_shot_image` 默认模板。
+  - `shotRenderWorkflow` 空视频提示词直接返回失败，不再套 `itv_shot_video`；手写 `对白提示词` 非空时不再追加旧 `shot.dialogue`。
+  - 收窄对白清洗逻辑，保留显式 `台词：` 片段，只清理明显的旁白转述泄漏。
+
+### Phase 4: Validation
+- **Status:** complete
+- Validation:
+  - `npm run test -- --run src/services/ShotPromptService.test.ts src/services/ShotGenerationService.test.ts src/workflow/shotImageWorkflow.test.ts src/workflow/shotRenderWorkflow.videoChain.test.ts src/workflow/videoGenerationRequests.test.ts`：5 files / 34 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json`（frontend）：passed。
+  - `npx tsc --noEmit --project tsconfig.json`（root）：passed。
+  - `git diff --check`：passed。

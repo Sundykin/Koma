@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   buildDialogueGuardNote,
   ensureExplicitDialogueInVideoPrompt,
@@ -7,7 +7,69 @@ import {
   sanitizeVideoPromptResult,
 } from './ShotPromptService';
 import type { ShotReferenceBundle } from './shotReference/types';
-import type { Character } from '../types';
+import type { Character, Shot } from '../types';
+import type { CreationContext } from './CreationContext';
+
+vi.mock('../store/projectStore', () => ({
+  loadProject: vi.fn(),
+  loadScenes: vi.fn(),
+  loadProps: vi.fn(),
+  loadEpisodeShots: vi.fn(),
+  updateShot: vi.fn(),
+}));
+
+vi.mock('../store/promptTemplates', () => ({
+  resolvePromptTemplate: vi.fn(async (templateId: string) => ({
+    prompt: templateId === 'shot_prompt_system' ? 'system prompt' : 'resolved prompt',
+    source: 'default',
+    template: { id: templateId },
+  })),
+}));
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+function createStoryboardShot(partial?: Partial<Shot>): Shot {
+  return {
+    id: 'shot-1',
+    scriptLines: [{ id: 'line-1', text: '叶赎抬头看向幽蓝光幕。' }],
+    shotType: 'medium',
+    cameraMovement: 'static',
+    duration: 15,
+    imageMode: 'storyboard',
+    imagePrompt: '',
+    videoPrompt: '',
+    characters: ['char_yeshu'],
+    scenes: ['scene_room'],
+    props: [],
+    media: {},
+    ...partial,
+  };
+}
+
+function createContext(partial?: Partial<CreationContext>): CreationContext {
+  return {
+    projectId: 'project-1',
+    episodeId: 'episode-1',
+    characters: [],
+    scenes: [],
+    props: [],
+    styleSnapshot: undefined,
+    projectMode: 'drama',
+    llmConfig: {} as CreationContext['llmConfig'],
+    llmProvider: {
+      chat: vi.fn(async () => '故事板提示词'),
+      stream: vi.fn(),
+    } as unknown as CreationContext['llmProvider'],
+    itvDurationSpec: {
+      kind: 'enum',
+      values: [6, 10, 15, 20],
+      default: 10,
+    },
+    ...partial,
+  };
+}
 
 describe('buildDialogueGuardNote', () => {
   it('rewrites provider @Image tokens back to semantic mentions before saving editable storyboard prompts', () => {
@@ -294,6 +356,15 @@ describe('buildDialogueGuardNote', () => {
     expect(cleaned).not.toContain('她自称天道，说要帮我夺回气运');
   });
 
+  it('keeps manually written dialogue entries that contain narration-like words inside 台词 markers', () => {
+    const cleaned = sanitizeVideoPromptResult(
+      '整体画风：动漫风格\n对白提示词：叶赎 台词：『我叫叶赎，好不容易踏上仙途。刚做了一桌好菜准备庆祝，结果遇到了一个自称天道的小萝莉！』；小白 台词：『我是天道！你看这段画面。』\n精确时长：15秒',
+    );
+
+    expect(cleaned).toContain('叶赎 台词：『我叫叶赎，好不容易踏上仙途。刚做了一桌好菜准备庆祝，结果遇到了一个自称天道的小萝莉！』');
+    expect(cleaned).toContain('小白 台词：『我是天道！你看这段画面。』');
+  });
+
   it('does not truncate content after exact duration while cleaning only the bad prefix', () => {
     const cleaned = sanitizeVideoPromptResult([
       '镜头1-镜头4 整体画风：玄幻写实风格。',
@@ -316,5 +387,44 @@ describe('buildDialogueGuardNote', () => {
       '- 景别 + 机位：中景，30度侧拍。',
       '- 台词：无',
     ].join('\n'));
+  });
+});
+
+describe('ShotPromptService storyboard prompt variables', () => {
+  it('passes project title, project type, shot duration and constraints into the storyboard template', async () => {
+    const { ShotPromptService } = await import('./ShotPromptService');
+    const projectStore = await import('../store/projectStore');
+    const promptTemplates = await import('../store/promptTemplates');
+
+    vi.mocked(projectStore.loadProject).mockResolvedValue({
+      id: 'project-1',
+      title: '叶赎修仙异闻录',
+      genre: '修仙玄幻',
+      mode: 'drama',
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    vi.mocked(projectStore.loadScenes).mockResolvedValue([{ id: 'scene_room', name: '叶赎居所' }] as any);
+    vi.mocked(projectStore.loadProps).mockResolvedValue([]);
+    vi.mocked(projectStore.loadEpisodeShots).mockResolvedValue([]);
+
+    const service = new ShotPromptService(createContext());
+    await service.generateSpecialImageShotPrompt(
+      createStoryboardShot(),
+      [{ id: 'char_yeshu', name: '叶赎', appearance: '青年修士' } as Character],
+      '修仙玄幻写实',
+    );
+
+    expect(promptTemplates.resolvePromptTemplate).toHaveBeenCalledWith(
+      'storyboard_shot_prompt_generation',
+      expect.objectContaining({
+        projectTitle: '叶赎修仙异闻录',
+        projectSubtitle: '短片分镜设计',
+        shootingFormat: '单机位',
+        projectType: '修仙玄幻',
+        shotDurationSeconds: '15',
+        storyboardConstraints: '镜头数量由剧情节奏决定 / 1 个角色 / 1 个场景',
+      }),
+    );
   });
 });

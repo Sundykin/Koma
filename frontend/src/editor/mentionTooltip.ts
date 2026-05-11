@@ -181,10 +181,14 @@ function getTypeColor(type: MentionType): { bg: string; text: string } {
         text: 'var(--token-status-info)',
       };
     case 'storyboard':
+      return {
+        bg: 'color-mix(in srgb, var(--token-status-warning) 24%, transparent)',
+        text: 'var(--token-status-warning)',
+      };
     case 'previous_storyboard':
       return {
-        bg: 'color-mix(in srgb, var(--token-status-success) 14%, transparent)',
-        text: 'var(--token-status-success)',
+        bg: 'color-mix(in srgb, var(--token-accent-base) 22%, transparent)',
+        text: 'var(--token-accent-base)',
       };
     default:
       return {

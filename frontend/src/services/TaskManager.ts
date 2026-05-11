@@ -14,6 +14,7 @@ import { createLogger } from '../store/logger';
 import { DEFAULT_POLLING_CONFIG } from '../providers/polling';
 import {
   getOwnWebContentsId,
+  getTaskRecord,
   isTasksIpcAvailable,
   listTaskRecords,
   upsertTaskRecord,
@@ -96,6 +97,12 @@ type TaskListener = (task: Task) => void;
 const SCOPE_PREFIX = 'project:';
 
 const FALLBACK_TYPE: TaskType = 'shot-analysis';
+
+const TERMINAL_TASK_STATUSES = new Set<TaskStatus>([
+  'completed',
+  'failed',
+  'cancelled',
+]);
 
 function projectScope(projectId: string): string {
   return `${SCOPE_PREFIX}${projectId}`;
@@ -298,7 +305,15 @@ class TaskManagerClass {
 
   updateTask(taskId: string, updates: Partial<Omit<Task, 'id' | 'projectId' | 'createdAt'>>): Task | null {
     const task = this.tasks.get(taskId);
-    if (!task) return null;
+    if (!task) {
+      // 本地 cache 缺失（典型场景：用户切换项目后 dispose 清掉了当前 cache，但
+      // service.runAnalysis / shotRender 等 Promise 仍在跑，仍要写进度/终态）。
+      // 不能再静默返回 null，否则状态/结果丢失，主进程任务行永远停在 running，
+      // 直到 delegateToRenderer 30 分钟超时才被标 failed。改走 IPC 兜底：异步
+      // 拉 DB 现状 → 合并 → 持久化。返回值 null 仍兼容（无业务方依赖该返回）。
+      void this.persistViaIpcOnly(taskId, updates);
+      return null;
+    }
 
     const now = Date.now();
     const updatedTask: Task = {
@@ -320,6 +335,51 @@ class TaskManagerClass {
     this.notifyListeners(updatedTask);
 
     return updatedTask;
+  }
+
+  /**
+   * 本地 cache 没有该任务时的兜底持久化路径：从主进程拉最新 record，合并 updates
+   * 后再 upsert 回去。这样即便 TaskManager 已被 dispose（项目切换），后台仍在跑的
+   * service 还能可靠地把进度/终态写到主进程任务表，触发广播让 UI 同步。
+   *
+   * 不写本地 cache、不通知本地 listeners：cache 都没了，本地也没人订阅；其它
+   * renderer / tasksStore 走 tasks:updated 广播自然能感知。
+   */
+  private async persistViaIpcOnly(
+    taskId: string,
+    updates: Partial<Omit<Task, 'id' | 'projectId' | 'createdAt'>>,
+  ): Promise<void> {
+    if (!electronService.isElectron() || !isTasksIpcAvailable()) return;
+    try {
+      const record = await getTaskRecord(taskId);
+      if (!record) return;
+      const existing = recordToTask(record);
+      if (!existing) return;
+      // 已终态的任务不再被晚到的 service 写入覆盖。典型场景：用户取消任务后
+      // service.runAnalysis 仍然跑完了所有阶段、最后写 'completed'，会盖掉
+      // 'cancelled'。fallback 直接走 IPC 不经过 runWithTask 的 updateIfNotTerminal
+      // 兜底，所以这里再守一道。
+      if (TERMINAL_TASK_STATUSES.has(existing.status)) return;
+      const now = Date.now();
+      const merged: Task = {
+        ...existing,
+        ...updates,
+        updatedAt: now,
+        lastHeartbeat: now,
+      };
+      if (updates.status === 'running' && !existing.startedAt) {
+        merged.startedAt = now;
+      }
+      if (
+        (updates.status === 'completed' || updates.status === 'failed')
+        && !existing.completedAt
+      ) {
+        merged.completedAt = now;
+      }
+      await upsertTaskRecord(taskToRecord(merged));
+    } catch (err) {
+      logger.error('Failed to persist task via IPC fallback', err);
+    }
   }
 
   recordHeartbeat(taskId: string): Task | null {

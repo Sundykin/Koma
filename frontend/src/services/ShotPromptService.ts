@@ -7,7 +7,7 @@ import type { Prop, Shot, Character, Scene, ShotVideoMode } from '../types';
 import { getShotScriptText } from '../types';
 import { resolvePromptTemplate } from '../store/promptTemplates';
 import type { PromptTemplateType } from '../store/promptTemplates';
-import { loadScenes, loadProps, updateShot, loadEpisodeShots } from '../store/projectStore';
+import { loadProject, loadScenes, loadProps, updateShot, loadEpisodeShots } from '../store/projectStore';
 import { createLogger } from '../store/logger';
 import { createMentionString } from '../editor/mentionTypes';
 import { runWithConcurrency } from '../utils/concurrency';
@@ -473,6 +473,7 @@ export class ShotPromptService {
     ]);
     const shotScenes = (allScenes || []).filter(s => (shot.scenes || []).includes(s.id));
     const shotProps = (allProps || []).filter(p => (shot.props || []).includes(p.id));
+    const projectHeader = await this.buildStoryboardProjectHeaderVariables(shot, shotCharacters, shotScenes);
 
     // 构建引用列表（统一 `@<id> <名称>` 顺序，与 mappingSchemaNote 输出约定一致）
     const characterRefs = shotCharacters
@@ -490,6 +491,7 @@ export class ShotPromptService {
       scriptContent: buildShotVideoScriptContent(shot, shotCharacterNames, this.ctx.projectMode),
       dialogueText: formatDialogueTextForPrompt(getShotDialogueText(shot), shotCharacterNames, this.ctx.projectMode) || '无',
       dialogueModeDirective: buildVideoDialogueModeDirective(this.ctx.projectMode),
+      ...projectHeader,
       characters: shotCharacters.map(c => `${c.name}（${c.appearance || c.description || ''}）`).join('; ') || '无',
       scenes: shotScenes.map(s => s.name).join(', ') || '无',
       props: shotProps.map(p => p.name).join(', ') || '无',
@@ -537,6 +539,45 @@ export class ShotPromptService {
     }
 
     return cleanedResult;
+  }
+
+  private async buildStoryboardProjectHeaderVariables(
+    shot: Shot,
+    shotCharacters: Character[],
+    shotScenes: Scene[],
+  ): Promise<Record<string, string>> {
+    const fallbackTitle = firstNonEmptyLine(getShotScriptText(shot)) || '当前分镜';
+    let projectTitle = this.ctx.projectTitle?.trim() || '';
+    let projectType = this.ctx.projectGenre?.trim() || '';
+
+    if (!projectTitle || !projectType) {
+      try {
+        const project = await loadProject(this.ctx.projectId);
+        projectTitle = projectTitle || project?.title?.trim() || '';
+        projectType = projectType || project?.genre?.trim() || '';
+      } catch (err) {
+        logger.warn('加载项目标题信息失败，故事板项目标题区使用兜底值', err);
+      }
+    }
+
+    const durationSeconds = Number.isFinite(shot.duration) && shot.duration > 0
+      ? Math.round(shot.duration)
+      : 0;
+    const sceneCount = Math.max(shotScenes.length, 1);
+    const constraints = [
+      '镜头数量由剧情节奏决定',
+      `${shotCharacters.length} 个角色`,
+      `${sceneCount} 个场景`,
+    ].join(' / ');
+
+    return {
+      projectTitle: projectTitle || fallbackTitle,
+      projectSubtitle: '短片分镜设计',
+      shootingFormat: '单机位',
+      projectType: projectType || '未指定类型',
+      shotDurationSeconds: durationSeconds > 0 ? String(durationSeconds) : '未指定',
+      storyboardConstraints: constraints,
+    };
   }
 
   /**
@@ -773,15 +814,18 @@ function sanitizeNarrativeDialogueLeakage(prompt: string): string {
 }
 
 function isNarrativeReportLeak(text: string): boolean {
-  const normalized = normalizeDialogueText(text)
+  const original = normalizeDialogueText(text);
+  if (/台词\s*[:：]/.test(original)) return false;
+
+  const normalized = original
     .replace(/^[^：:]{1,30}[：:]\s*/, '')
     .replace(/^[「『“"']+/, '')
     .trim();
   if (!normalized) return false;
-  if (/(?:她|他|TA|ta|它)?自称[^，,。；;]{1,24}(?:[，,]|$)/.test(normalized) && /[我俺咱]/.test(normalized)) {
+  if (/^(?:她|他|TA|ta|它)?自称[^，,。；;！？!]{1,24}(?:[，,。；;！？!]|$)/.test(normalized) && /[我俺咱]/.test(normalized)) {
     return true;
   }
-  return /(?:她|他|TA|ta|它)?(?:说要|说会|说可以|表示要|表示会|表示可以|告诉我|答应我|承诺).*[我俺咱]/.test(normalized);
+  return /^(?:她|他|TA|ta|它)?(?:说要|说会|说可以|表示要|表示会|表示可以|告诉我|答应我|承诺).*[我俺咱]/.test(normalized);
 }
 
 function isSpeakerDialogueLine(text: string): boolean {
@@ -1041,6 +1085,13 @@ function appendUniqueDialogue(target: string[], source: string[]): void {
 
 function getShotDialogueText(shot: Pick<Shot, 'dialogue'>): string {
   return String(shot.dialogue ?? '').trim();
+}
+
+function firstNonEmptyLine(text: string): string {
+  return text
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .find(Boolean) || '';
 }
 
 function buildShotVideoScriptContent(
@@ -1563,7 +1614,12 @@ export async function batchGenerateShotPrompts(
     targetId: episodeId,
     targetName: `批量${wantsImage ? '图片' : ''}${wantsImage && wantsVideo ? '/' : ''}${wantsVideo ? '视频' : ''}提示词（${shots.length} 个分镜）`,
     type: wantsImage ? 'prompt-generation:image' : 'prompt-generation:video',
-    metadata: { shotCount: shots.length, force: options?.force ?? false },
+    metadata: {
+      shotCount: shots.length,
+      // shotIds 提供给 UI 在切走再回来时复原 per-shot loading 指示
+      shotIds: shots.map(s => s.id),
+      force: options?.force ?? false,
+    },
     execute: async (taskCtx) => {
       const total = Math.max(shots.length, 1);
       return service.batchGenerateShotPrompts(

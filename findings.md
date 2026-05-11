@@ -339,3 +339,27 @@
 - 用户反馈：上一版故事板模板过于机械，尤其固定 8 镜头/固定组成；需要参考电影分镜信息图海报风格，保留项目标题、角色设计、场景设计、俯视调度、分镜故事、灯光、情绪、声音、摄影、色彩等区块，但镜头数量和版式应由剧情决定。
 - 方向：从“固定 8 镜头制作板”改为“剧情驱动的专业影视前期制作设定板”：用 X 个镜头 / X 个角色 / 1 个场景这类约束描述，而不是硬编码 8；TTI 终稿模板也改成 story-driven shot count。
 - 实施结果：故事板模板已经从“固定 8 镜头制作板”改为“剧情驱动 N 镜头的信息图海报”。模块仍稳定，但镜头数、角色区、调度区和故事区的比例由剧情内容决定，避免机械拼表。
+
+## 2026-05-10 Storyboard Project Title Metadata
+- `storyboard_shot_prompt_generation` currently contains a textual 【项目标题】 requirement but has no runtime variables for project name/type/duration/constraints.
+- `Shot.duration` is available on every shot and should be the source of storyboard duration, not project/script duration.
+- Project type is `ProjectMeta.genre`; `ShotPromptService` currently imports only scenes/props/update/episode shots from `projectStore`, so storyboard prompt generation must load project meta or receive it through context.
+- Implemented: project title header variables are now runtime data, not inferred prose. `projectType` comes from `ProjectMeta.genre`; `shotDurationSeconds` comes from `Shot.duration`.
+- Fallback behavior: if project metadata cannot be loaded, the storyboard title falls back to the first script line/current shot and type becomes “未指定类型”; duration still comes from the shot when valid.
+
+## 2026-05-10 Storyboard Anchor Highlight In Prompt Editors
+- `MENTION_REGEX` / `parseMentions` already support `@storyboard_anchor` and `@previous_storyboard_anchor`.
+- `ShotCard` passes the same `promptMentionItems` into both image and video `ScriptEditor`, so a fix there affects both prompt editors.
+- Current `mentionTheme` styles `char/prop/scene/shot/grid`, but lacks explicit `.mention-storyboard` and `.mention-previous_storyboard`; storyboard anchors therefore do not stand out.
+- `ShotCard` only adds current storyboard anchor mention when there is a selected current image. For prompt authoring in storyboard mode, adding a disabled/explanatory current storyboard item makes autocomplete/tooltip clearer even before first generation.
+
+## 2026-05-10 Prompt Editor Snapshot Consistency
+- `handleImagePromptChange` / `handleVideoPromptChange` update local state and queue `saveEpisodeShots`; if the user clicks generate immediately, persistence may still be queued.
+- `generateShotImage()` reloads the shot from `loadEpisodeShots`, so it can use stale DB data instead of the text currently visible in the editor.
+- `shotRenderWorkflow()` receives a `shot` object from React state, but click handlers can still close over a slightly stale `shots` array; a `shotsRef` should be the source of truth for immediate actions.
+- `shotRenderWorkflow` always runs `ensureExplicitDialogueInVideoPrompt(sanitizeVideoPromptResult(videoPrompt), shot.dialogue, ...)`. If the user already wrote a non-empty `对白提示词`, old `shot.dialogue` gets appended and may be rewritten, producing repeated/incorrect character lines.
+- Empty `videoPrompt` currently resolves `itv_shot_video` default prompt and sends it, which explains “没有视频提示词也能发送出去”。
+- `sanitizeNarrativeDialogueLeakage()` 还有一个隐藏问题：它按分号拆 `对白提示词` 后，会把包含“自称天道 / 帮我”的显式 `叶赎 台词：...` 片段误判为旁白泄漏并删除。需要保留带 `台词：` 的手写台词，只清理明显以旁白转述开头的片段。
+- 修复后，用户看见的提示词会作为唯一来源；发送前仍会把合法 mention 编译为 provider 协议 `@Image N`，所以 `@storyboard_anchor -> @Image 1` 是预期的协议转换，不是内容被改写。
+- 图片生成也存在同类隐式兜底：`shotImageWorkflow()` 在 `imagePrompt` 为空时会套 `tti_shot_image` 默认模板。为保证“输入框即发送源”，空图片提示词现在也会被拒绝。
+- 批量图片/视频生成如果紧跟编辑触发，也需要使用当前内存 `shotsRef` 快照并等待保存队列 flush；否则批量链路仍可能从旧 DB 或旧闭包取 prompt。

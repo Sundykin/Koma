@@ -560,3 +560,61 @@
 ### Error Log
 | Error | Attempt | Resolution |
 |------|---------|------------|
+
+## Session: 2026-05-10 Storyboard Project Title Metadata
+
+### Goal
+- 故事板提示词增加【项目标题】区的运行时字段：项目名称、副标题、拍摄形式、类型、时长、限制条件。
+- 类型必须来自项目类型 `ProjectMeta.genre`。
+- 时长必须来自当前分镜 `Shot.duration`。
+- 验证这些字段不是只写进模板文案，而是真正传入 `storyboard_shot_prompt_generation`。
+
+### Phases
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Diagnosis | complete | 确认 `Shot.duration` 存在但故事板模板未传入；项目类型在 `ProjectMeta.genre`，故事板生成链路未加载项目元数据 |
+| 2. Implementation | complete | `CreationContext` 暴露项目标题/类型；`ShotPromptService` 为故事板模板注入 projectTitle/projectType/shotDurationSeconds 等字段 |
+| 3. Template Update | complete | `storyboard_shot_prompt_generation` 的输入和输出字段明确使用项目标题区变量 |
+| 4. Validation | complete | 服务层测试确认真实传参；模板测试确认变量和文案约束；目标分镜链路测试通过 |
+
+### Error Log
+| Error | Attempt | Resolution |
+|------|---------|------------|
+| frontend tsc 被 `TaskManager.test.ts` 的 `Array.findLast` 阻塞 | 1 | 该文件属于本轮外未提交改动，未修改；记录为非本轮阻塞 |
+
+## Session: 2026-05-10 Storyboard Anchor Highlight In Prompt Editors
+
+### Goal
+- 图片提示词和视频提示词编辑器里，故事板锚点 `@storyboard_anchor` 与上一故事板锚点 `@previous_storyboard_anchor` 要有明显高亮。
+- 故事板模式下编辑器补全/tooltip 要能清楚区分“当前故事板”和“上一故事板”。
+
+### Phases
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Diagnosis | complete | 确认 mention 协议已支持故事板锚点，但 `mentionTheme` 没有 storyboard 专属样式 |
+| 2. Implementation | complete | 更新 CodeMirror mention 样式与 ShotCard 传入的故事板锚点 mention items |
+| 3. Validation | complete | 跑 mention/types、assetRetention、ShotPromptService、promptTemplates、frontend tsc 和 diff check |
+
+### Error Log
+| Error | Attempt | Resolution |
+|------|---------|------------|
+
+## Session: 2026-05-10 Prompt Editor Snapshot Consistency
+
+### Goal
+- 修复手动编辑图片/视频提示词后，点击生图/生视频发送出去的 prompt 与输入框不一致。
+- 修复视频提示词中人物台词重复、多次拼接、旧 dialogue 字段污染手写 `对白提示词` 的问题。
+- 修复没有视频提示词时仍能发送默认兜底提示词的问题，避免用户误以为空输入也发了“某处来的提示词”。
+
+### Phases
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Diagnosis | complete | 定位到保存队列/DB 读取竞态，以及 `ensureExplicitDialogueInVideoPrompt` 对手写对白二次补全 |
+| 2. Snapshot Fix | complete | 生图/生视频入口使用最新 React shot 快照并等待保存队列 flush；批量图片/视频也透传当前 shots 快照，不再从旧 DB/闭包取 prompt |
+| 3. Dialogue Fix | complete | 手写完整 `对白提示词` 时不再追加 `shot.dialogue`；收窄对白清洗，保留显式 `台词：`；空图片/视频提示词不再隐式走默认模板发送 |
+| 4. Validation | complete | 增加/更新测试并跑目标测试、frontend/root tsc、diff check |
+
+### Error Log
+| Error | Attempt | Resolution |
+|------|---------|------------|
+| 新增手写对白测试首次失败，`叶赎 台词` 被清洗掉 | 1 | `sanitizeNarrativeDialogueLeakage()` 误把含“自称天道”的显式台词当旁白泄漏删除；已让 `台词：` 标记优先保留，并把旁白泄漏匹配限制为片段开头 |

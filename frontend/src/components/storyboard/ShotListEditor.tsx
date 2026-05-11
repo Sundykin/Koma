@@ -443,7 +443,7 @@ function buildPreviousStoryboardMention(shots: Shot[], currentIndex: number): Me
     return {
       id: 'anchor',
       type: 'previous_storyboard',
-      name: '上一故事板锚定图',
+      name: '上一故事板',
       description: `来自分镜 #${i + 1} 的当前选中故事板版本 v${selectedIndex + 1}，用于保持剧情、人物、场景和光影连续。`,
       previewImage,
     };

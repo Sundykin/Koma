@@ -11,8 +11,7 @@
  *  - service 仍然按原代码走 stage / chunk 推进 + 写 result.stageStates 进度细节
  */
 import { registerDelegate } from './tasksDelegate';
-import { TaskManager } from './TaskManager';
-import type { Task } from './TaskManager';
+import { waitForTaskCompletion, type TaskRecord } from './tasksIPC';
 import type { PresetAssets } from './ShotAnalysisService';
 import type { StyleSnapshotLike } from '../utils/promptNormalize';
 import { createLogger } from '../store/logger';
@@ -48,31 +47,45 @@ interface AnalysisResult {
   propsCount?: number;
 }
 
-/** 等 TaskManager 中的某条任务进入终态 —— 用于 fulfiller 等待 service 完成 */
-async function waitForLocalTaskTerminal(taskId: string): Promise<Task> {
-  return new Promise<Task>((resolve, reject) => {
-    const check = () => {
-      const t = TaskManager.getTask(taskId);
-      if (!t) {
-        reject(new Error(`task ${taskId} 不存在`));
-        return true;
-      }
-      if (t.status === 'completed') {
-        resolve(t);
-        return true;
-      }
-      if (t.status === 'failed' || t.status === 'cancelled') {
-        reject(new Error(t.error || t.status));
-        return true;
-      }
-      return false;
-    };
-    if (check()) return;
-    const unsub = TaskManager.addListener((task) => {
-      if (task.id !== taskId) return;
-      if (check()) unsub();
-    });
-  });
+/**
+ * 等任务进入终态。走 IPC 广播订阅（waitForTaskCompletion），不再依赖
+ * TaskManager 本地 cache + listener。
+ *
+ * 为什么改：之前的 waitForLocalTaskTerminal 依赖 TaskManager.addListener。
+ * 用户切换项目时 App.tsx 会调 TaskManager.dispose() → listeners.clear()，
+ * 此时 fulfiller 在等的 listener 被清掉，service 写入 'completed' 后没有
+ * 任何人唤醒它，最终只能等主进程 delegateToRenderer 超时（30 分钟）
+ * 才把任务标 failed —— 但实际产物（角色/场景/道具）已经写盘成功。
+ *
+ * 切到 waitForTaskCompletion 后，等待路径只依赖 tasks:updated 广播；
+ * 即便 TaskManager 被 dispose，service 配合 TaskManager.updateTask 的 IPC
+ * 兜底仍能把终态写到主进程，从而广播触达本 fulfiller 让它正常 resolve。
+ */
+async function waitForTaskTerminal(taskId: string): Promise<TaskRecord> {
+  return waitForTaskCompletion(taskId);
+}
+
+/**
+ * service.runAnalysis 通过 TaskManager.updateTask({ result: {...} }) 写入摘要；
+ * TaskManager 把整个 Task 序列化进 payload，所以从 record 取回时走 payload.result。
+ */
+function readTaskResult(record: TaskRecord): {
+  shotsCount?: number;
+  charactersCount?: number;
+  scenesCount?: number;
+  propsCount?: number;
+} {
+  const payload = (record.payload || {}) as { result?: unknown };
+  const raw = (payload.result && typeof payload.result === 'object'
+    ? payload.result
+    : {}) as Record<string, unknown>;
+  const pickNumber = (v: unknown) => (typeof v === 'number' ? v : undefined);
+  return {
+    shotsCount: pickNumber(raw.shotsCount),
+    charactersCount: pickNumber(raw.charactersCount),
+    scenesCount: pickNumber(raw.scenesCount),
+    propsCount: pickNumber(raw.propsCount),
+  };
 }
 
 let registered = false;
@@ -94,8 +107,8 @@ export function registerAnalysisFulfillers(): void {
     // service.runShotAnalysis 内部按 parentTaskId 走 TaskManager.updateTask 推进进度
     // 抛错会写 status:failed；正常完成写 status:completed + result
     void service.runShotAnalysis(args.parentTaskId, args.episodeId, args.script);
-    const final = await waitForLocalTaskTerminal(args.parentTaskId);
-    const result = (final.result || {}) as { shotsCount?: number };
+    const final = await waitForTaskTerminal(args.parentTaskId);
+    const result = readTaskResult(final);
     return { ok: true, shotsCount: result.shotsCount };
   });
 
@@ -111,12 +124,8 @@ export function registerAnalysisFulfillers(): void {
       args.llmSelection,
       args.styleSnapshot,
     );
-    const final = await waitForLocalTaskTerminal(args.parentTaskId);
-    const result = (final.result || {}) as {
-      charactersCount?: number;
-      scenesCount?: number;
-      propsCount?: number;
-    };
+    const final = await waitForTaskTerminal(args.parentTaskId);
+    const result = readTaskResult(final);
     logger.info('analysis:script:run done', { taskId: args.parentTaskId, result });
     return {
       ok: true,

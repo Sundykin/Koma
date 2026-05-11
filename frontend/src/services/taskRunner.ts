@@ -191,10 +191,22 @@ export async function runWithTask<TResult, TPersisted = void>(
     },
   };
 
+  // 已写入终态后不再覆盖；用户中途 cancelTaskRecord 会把任务翻成 'cancelled'，本路径
+  // 业务还在跑（runWithTask 不监听取消信号），跑完后写 'completed' 会盖掉 cancelled。
+  // 同样 'failed' 也不该被后续 'completed' 盖。
+  const TERMINAL = new Set(['completed', 'failed', 'cancelled']);
+  const updateIfNotTerminal = (
+    patch: Partial<Omit<Task, 'id' | 'projectId' | 'createdAt'>>,
+  ): void => {
+    const current = TaskManager.getTask(task.id);
+    if (current && TERMINAL.has(current.status)) return;
+    TaskManager.updateTask(task.id, patch);
+  };
+
   try {
     // 3. 执行业务闭包
     const result = await spec.execute(ctx);
-    TaskManager.updateTask(task.id, { progress: 90 });
+    updateIfNotTerminal({ progress: 90 });
 
     // 4. 可选落盘
     let persisted: TPersisted = undefined as TPersisted;
@@ -203,7 +215,7 @@ export async function runWithTask<TResult, TPersisted = void>(
     }
 
     // 5. 标记完成
-    TaskManager.updateTask(task.id, {
+    updateIfNotTerminal({
       status: 'completed',
       progress: 100,
       completedAt: Date.now(),
@@ -211,7 +223,7 @@ export async function runWithTask<TResult, TPersisted = void>(
     return { taskId: task.id, result, persisted };
   } catch (err: unknown) {
     const errorMessage = err instanceof Error ? err.message : String(err);
-    TaskManager.updateTask(task.id, {
+    updateIfNotTerminal({
       status: 'failed',
       error: errorMessage,
       completedAt: Date.now(),

@@ -598,4 +598,94 @@ describe('shotRenderWorkflow video chain', () => {
     expect(onShotComplete).toHaveBeenCalledTimes(2);
     expect(onShotComplete.mock.calls.map(call => call[0].success)).toEqual([false, true]);
   });
+
+  it('手写视频提示词已有对白提示词时，不再把 shot.dialogue 追加成重复台词', async () => {
+    const { shotRenderWorkflow } = await import('./shotRenderWorkflow');
+    const { mediaGenerationService } = await import('../services/MediaGenerationService');
+    const projectStore = await import('../store/projectStore');
+
+    vi.mocked(projectStore.loadCharacters).mockResolvedValue([
+      { id: 'char_yeshu', name: '叶赎' },
+      { id: 'char_xiaobai', name: '小白' },
+    ] as any);
+    vi.mocked(projectStore.loadProps).mockResolvedValue([]);
+    vi.mocked(projectStore.loadScenes).mockResolvedValue([]);
+    vi.mocked(projectStore.loadEpisodeShots).mockResolvedValue([]);
+    vi.mocked(projectStore.saveShotVersion).mockResolvedValue({
+      version: 1,
+      prompt: '',
+      seed: 1,
+      createdAt: 1,
+      model: 'test-model',
+      media: {},
+    } as any);
+    vi.mocked(projectStore.loadShotMeta).mockResolvedValue({ versions: [{ version: 1 }] } as any);
+    vi.mocked(mediaGenerationService.generateVideo).mockResolvedValue({
+      kind: 'video',
+      localPath: '/tmp/video.mp4',
+      createdAt: 1,
+    } as any);
+
+    const manualPrompt = [
+      '整体画风：动漫风格',
+      '画面描述：@storyboard_anchor',
+      '角色提示词：@char_yeshu 叶赎 @char_xiaobai 小白',
+      '对白提示词：叶赎 台词：『我叫叶赎，好不容易踏上仙途。刚做了一桌好菜准备庆祝，结果遇到了一个自称天道的小萝莉！』；小白 台词：『我是天道！你看这段画面。』',
+      '精确时长：15秒',
+    ].join('\n');
+
+    await shotRenderWorkflow(
+      {
+        projectId: 'project-1',
+        episodeId: 'episode-1',
+        shot: createShot({
+          id: 'shot-1',
+          imageMode: 'storyboard',
+          videoMode: 'multi-ref',
+          videoPrompt: manualPrompt,
+          dialogue: '她自称天道，说要帮我夺回气运',
+          characters: ['char_yeshu', 'char_xiaobai'],
+          media: {
+            images: [createImageAsset('https://cdn.example.com/storyboard.png')],
+            currentImageIndex: 0,
+          },
+        }),
+        settings: createSettings('grok-main', 'grok-imagine-video'),
+        mediaSelections: { itvSelection: 'grok-main::grok-imagine-video' },
+      },
+      () => {},
+    );
+
+    const request = vi.mocked(mediaGenerationService.generateVideo).mock.calls[0][0].request as any;
+    expect(request.prompt).toContain('叶赎 台词');
+    expect(request.prompt).toContain('小白 台词');
+    expect(request.prompt).not.toContain('帮你夺回气运');
+    expect(request.prompt).not.toContain('我自称天道');
+    expect(request.prompt.match(/我叫叶赎/g)).toHaveLength(1);
+  });
+
+  it('视频提示词为空时不套用默认模板发送视频请求', async () => {
+    const { shotRenderWorkflow } = await import('./shotRenderWorkflow');
+    const { mediaGenerationService } = await import('../services/MediaGenerationService');
+    const projectStore = await import('../store/projectStore');
+
+    vi.mocked(projectStore.loadCharacters).mockResolvedValue([]);
+    vi.mocked(projectStore.loadProps).mockResolvedValue([]);
+    vi.mocked(projectStore.loadScenes).mockResolvedValue([]);
+    vi.mocked(projectStore.loadEpisodeShots).mockResolvedValue([]);
+
+    const result = await shotRenderWorkflow(
+      {
+        projectId: 'project-1',
+        episodeId: 'episode-1',
+        shot: createShot({ videoPrompt: '' }),
+        settings: createSettings('grok-main', 'grok-imagine-video'),
+        mediaSelections: { itvSelection: 'grok-main::grok-imagine-video' },
+      },
+      () => {},
+    );
+
+    expect(result).toMatchObject({ success: false, error: '请先填写视频提示词' });
+    expect(mediaGenerationService.generateVideo).not.toHaveBeenCalled();
+  });
 });

@@ -125,6 +125,14 @@ describe('storyboard image/video prompt visual templates', () => {
     expect(reasoningTemplate).toContain('剧情驱动，不机械填格');
     expect(reasoningTemplate).toContain('默认制作板模块');
     expect(reasoningTemplate).toContain('【项目标题】');
+    expect(reasoningTemplate).toContain('项目名称：{{projectTitle}}');
+    expect(reasoningTemplate).toContain('副标题：{{projectSubtitle}}');
+    expect(reasoningTemplate).toContain('拍摄形式：{{shootingFormat}}');
+    expect(reasoningTemplate).toContain('项目类型：{{projectType}}');
+    expect(reasoningTemplate).toContain('当前分镜时长：{{shotDurationSeconds}}秒');
+    expect(reasoningTemplate).toContain('限制条件：{{storyboardConstraints}}');
+    expect(reasoningTemplate).toContain('类型必须使用项目类型“{{projectType}}”');
+    expect(reasoningTemplate).toContain('必须是当前分镜时长，不是项目总时长');
     expect(reasoningTemplate).toContain('【角色设计区】');
     expect(reasoningTemplate).toContain('【场景设计区】');
     expect(reasoningTemplate).toContain('【俯视镜头调度图】');
@@ -164,6 +172,14 @@ describe('storyboard image/video prompt visual templates', () => {
     expect(ttiTemplate).toContain('focal length label such as 24mm / 35mm / 50mm / 85mm');
     expect(ttiTemplate).toContain('not a fixed count');
     expect(ttiTemplate).toContain('these notes are not dialogue subtitles');
+
+    const variableNames = getDefaultTemplate('storyboard_shot_prompt_generation').variables.map(variable => variable.name);
+    expect(variableNames).toContain('projectTitle');
+    expect(variableNames).toContain('projectSubtitle');
+    expect(variableNames).toContain('shootingFormat');
+    expect(variableNames).toContain('projectType');
+    expect(variableNames).toContain('shotDurationSeconds');
+    expect(variableNames).toContain('storyboardConstraints');
   });
 
   it('视频模板禁止在精确时长后追加第二套逐镜头输出', () => {

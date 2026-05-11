@@ -302,7 +302,11 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
   const promptMentionItems = useMemo<MentionItem[]>(() => {
     const extraItems: MentionItem[] = [];
     if (previousStoryboardMention) {
-      extraItems.push(previousStoryboardMention);
+      extraItems.push({
+        ...previousStoryboardMention,
+        name: previousStoryboardMention.name || '上一故事板',
+        description: previousStoryboardMention.description || '上一分镜生成的故事板图，用于继承场景、人物、光影和情绪连续性。',
+      });
     }
 
     const anchorPreview = currentImage ? getMediaAssetDisplaySource(currentImage) : undefined;
@@ -319,6 +323,13 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
             ? '当前分镜已生成的电影故事板/制作方案板。'
           : '当前分镜已生成的首帧锚定图。',
         previewImage: anchorPreview,
+      });
+    } else if (isStoryboardImageMode(shot.imageMode)) {
+      extraItems.push({
+        id: 'anchor',
+        type: 'storyboard',
+        name: '当前故事板',
+        description: '当前分镜故事板锚点。首次生成前不会编译成真实图片引用；生成故事板后会绑定到当前选中的故事板版本。',
       });
     }
 

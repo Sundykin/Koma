@@ -92,6 +92,47 @@ describe('useTasks hooks', () => {
     expect(result.current.map(t => t.id).sort()).toEqual(['t1', 't2']);
   });
 
+  it('does not regress newer broadcast state with older list snapshot during hydrate', async () => {
+    // hydrate 阶段：list 期间到达的"running → completed"广播必须不被 list 旧快照盖住。
+    const oldSnapshot = record({
+      id: 'race', status: 'running', progress: 40, updatedAt: 100,
+    });
+    const newerBroadcast = record({
+      id: 'race', status: 'completed', progress: 100, updatedAt: 500,
+    });
+    // list 端只能拿到旧快照（模拟 list 在 broadcast 之前已生成响应）
+    store.set('race', oldSnapshot);
+
+    const { result } = renderHook(() => useTasks({ scope: SCOPE }));
+
+    // 让 subscribe 挂上、list 还在飞行途中：先注入广播
+    await act(async () => {
+      // 等到 subscribe 已挂上（hydrate 内部同步设置 subscribe）
+      await new Promise(r => setTimeout(r, 0));
+      // 模拟广播比 list 先到
+      emit(newerBroadcast, 'upsert');
+    });
+    // list 也已 resolve（mock 是 sync 数据库），cache 应保留更新的 completed。
+    expect(result.current.find(t => t.id === 'race')?.status).toBe('completed');
+    expect(result.current.find(t => t.id === 'race')?.progress).toBe(100);
+  });
+
+  it('does not resurrect deleted tasks via stale list snapshot during hydrate', async () => {
+    // hydrate 阶段：list 期间到达的删除广播必须不被 list 重新插回。
+    const old = record({ id: 'gone', status: 'running', updatedAt: 50 });
+    store.set('gone', old);
+
+    const { result } = renderHook(() => useTasks({ scope: SCOPE }));
+
+    await act(async () => {
+      await new Promise(r => setTimeout(r, 0));
+      // 主进程在 list 期间删除了任务，广播 delete
+      emit(old, 'delete');
+    });
+
+    expect(result.current.find(t => t.id === 'gone')).toBeUndefined();
+  });
+
   it('useActiveTask returns only non-terminal task for the target', async () => {
     store.set('done', record({ id: 'done', status: 'completed', targetId: 'shot-1' }));
     store.set('live', record({
