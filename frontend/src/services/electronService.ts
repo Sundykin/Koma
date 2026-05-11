@@ -145,6 +145,61 @@ interface ElectronAPI {
     upsertGlobalAsset: (payload: any) => Promise<any>;
     deleteGlobalAsset: (args: { id: string }) => Promise<{ deleted: boolean }>;
   };
+  updater?: {
+    getState: () => Promise<UpdaterStateDto>;
+    checkNow: () => Promise<UpdaterStateDto>;
+    download: () => Promise<{ success: boolean }>;
+    installNow: () => Promise<{ success: boolean }>;
+    onStateChange: (cb: (e: unknown, state: UpdaterStateDto) => void) => () => void;
+  };
+  marketplace?: {
+    list: () => Promise<{ items: MarketplacePluginItem[] }>;
+    refresh: () => Promise<MarketplaceStateDto>;
+    checkUpdates: () => Promise<{ items: MarketplacePluginItem[] }>;
+    getState: () => Promise<MarketplaceStateDto>;
+    installOrUpdate: (pluginId: string) => Promise<{ success: boolean }>;
+    uninstall: (pluginId: string) => Promise<{ success: boolean }>;
+    setAutoCheck: (enabled: boolean) => Promise<{ success: boolean }>;
+    onStateChange: (cb: (e: unknown, state: MarketplaceStateDto) => void) => () => void;
+    onPluginInstalled: (cb: (e: unknown, payload: { pluginId: string; version: string }) => void) => () => void;
+  };
+}
+
+export interface UpdaterStateDto {
+  kind: 'idle' | 'checking' | 'downloading' | 'downloaded' | 'failed';
+  currentVersion: string;
+  availableVersion?: string;
+  downloadProgress?: number;
+  error?: { message: string; detail?: string };
+}
+
+export interface MarketplacePluginItem {
+  entry: {
+    id: string;
+    name: string;
+    latestVersion: string;
+    category?: string;
+    iconUrl?: string;
+    description?: string;
+    downloadUrl: string;
+    sha512: string;
+    engine?: {
+      minAppVersion?: string;
+      maxAppVersion?: string;
+      apiVersion?: string;
+    };
+  };
+  installed: boolean;
+  installedVersion?: string;
+  hasUpdate: boolean;
+  incompatibleReason?: string;
+}
+
+export interface MarketplaceStateDto {
+  installing: string[];
+  uninstalling: string[];
+  lastCheckedAt?: string;
+  lastError?: string;
 }
 
 type ElectronBridgeWindow = Window & {

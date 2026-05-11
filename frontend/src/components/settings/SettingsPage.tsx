@@ -38,6 +38,9 @@ import { PluginManager } from '../plugins';
 import { MCPConfigManager } from './MCPConfigManager';
 import { AppearanceThemeSettings } from './AppearanceThemeSettings';
 import { LogDiagnosticsSettings } from './LogDiagnosticsSettings';
+import { AboutSettings } from './AboutSettings';
+// PluginMarketSettings 本期不挂载（入口已在 sections 中注释）；
+// 文件保留在 ./PluginMarketSettings.tsx，等开放插件市场时一行切回。
 
 const { Text } = Typography;
 
@@ -78,7 +81,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     { key: 'system-storage', icon: <FolderOutlined />, label: t('settings.storageAndCache'), group: t('settings.system') },
     { key: 'system-logs', icon: <FileTextOutlined />, label: '日志/诊断', group: t('settings.system') },
     { key: 'system-plugins', icon: <BlockOutlined />, label: t('settings.pluginManage'), group: t('settings.system') },
+    // 插件市场入口本期隐藏（等真有插件再开启）：组件与后端服务都保留，仅不暴露入口
+    // { key: 'system-plugin-market', icon: <BlockOutlined />, label: '插件市场', group: t('settings.system') },
     { key: 'system-mcp', icon: <ApiOutlined />, label: t('settings.mcpTools'), group: t('settings.system') },
+    { key: 'system-about', icon: <FileTextOutlined />, label: '关于', group: t('settings.system') },
   ];
 
   // Group sections for anchor display
@@ -309,8 +315,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
         return <LogDiagnosticsSettings />;
       case 'system-plugins':
         return <PluginManager />;
+      // case 'system-plugin-market':
+      //   return <PluginMarketSettings />;
       case 'system-mcp':
         return <MCPConfigManager onConfigChange={handleConfigChange} />;
+      case 'system-about':
+        return <AboutSettings />;
       default:
         return null;
     }

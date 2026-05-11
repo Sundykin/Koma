@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { electronService } from '../../services/electronService';
 import { createLogger } from '../../store/logger';
 import { AppLogo } from './AppLogo';
+import { UpdateButton } from './UpdateButton';
 
 const logger = createLogger('WindowControls');
 
@@ -57,8 +58,9 @@ export const WindowControls: React.FC = () => {
         <span className="ml-2 text-xs text-text-secondary font-medium">Koma</span>
       </div>
 
-      {/* 右侧窗口控制按钮 */}
+      {/* 右侧：更新按钮 + 窗口控制按钮 */}
       <div className="flex h-full no-drag">
+        <UpdateButton />
         <button
           onClick={handleMinimize}
           className="w-12 h-full flex items-center justify-center text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"

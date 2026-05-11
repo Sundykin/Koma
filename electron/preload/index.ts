@@ -11,6 +11,8 @@ import { registerMediaPollHandlers } from '../service/tasks/handlers/mediaPoll';
 import { registerLLMCompleteHandler } from '../service/tasks/handlers/llmComplete';
 import { registerAnalysisHandlers } from '../service/tasks/handlers/analysisRunner';
 import { registerBuiltinLLMProviders } from '../service/chat/providers';
+import { initUpdaterService } from '../service/updater';
+import { initPluginMarketplaceService } from '../service/marketplace';
 
 function preload(): void {
   logger.info('[preload] load');
@@ -37,6 +39,16 @@ function preload(): void {
         );
       } catch (err) {
         logger.error('[preload] tasks reconcile/gc failed:', err);
+      }
+
+      // updater / marketplace 必须在 taskService 初始化之后启动
+      // （longTaskGuard 订阅 TaskService.addListener）
+      try {
+        initUpdaterService();
+        initPluginMarketplaceService();
+        logger.info('[preload] updater & marketplace services initialized');
+      } catch (err) {
+        logger.error('[preload] updater/marketplace init failed:', err);
       }
     })
     .catch(error => {

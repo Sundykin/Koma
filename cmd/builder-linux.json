@@ -27,14 +27,16 @@
   ],
   "publish": [
     {
-      "provider": "generic",
-      "url": ""
+      "provider": "github",
+      "owner": "Sundykin",
+      "repo": "KomaBuild",
+      "releaseType": "release"
     }
   ],
   "linux": {
     "artifactName": "${productName}-${os}-${version}-${arch}.${ext}",
     "target": [
-      "deb"
+      "AppImage"
     ],
     "category": "Utility"
   }

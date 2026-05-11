@@ -139,6 +139,14 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
 	  'controller/plugin/listMCPTools', 'controller/plugin/callMCPTool',
 	  'controller/plugin/listAgents',
 	  'controller/net/fetch',
+	  // 主程序自动更新（极简版：只 4 个通道）
+	  'controller/updater/getState', 'controller/updater/checkNow',
+	  'controller/updater/download', 'controller/updater/installNow',
+	  // 插件 marketplace
+	  'controller/marketplace/list', 'controller/marketplace/refresh',
+	  'controller/marketplace/checkUpdates', 'controller/marketplace/getState',
+	  'controller/marketplace/installOrUpdate', 'controller/marketplace/uninstall',
+	  'controller/marketplace/setAutoCheck',
 	]);
 
 const ALLOWED_LISTEN_CHANNELS = new Set([
@@ -148,6 +156,9 @@ const ALLOWED_LISTEN_CHANNELS = new Set([
   'channel:changed',
   'tasks:updated',
   'tasks:delegate:request',
+  'updater:state-changed',
+  'marketplace:state-changed',
+  'marketplace:plugin-installed',
 ]);
 
 function validateInvokeChannel(channel: string): void {
@@ -540,6 +551,36 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.on('tasks:delegate:request', callback);
         return () => ipcRenderer.removeListener('tasks:delegate:request', callback);
       },
+    },
+  },
+  updater: {
+    getState: () => invokeMain('controller/updater/getState', {}),
+    checkNow: () => invokeMain('controller/updater/checkNow', {}),
+    download: () => invokeMain('controller/updater/download', {}),
+    installNow: () => invokeMain('controller/updater/installNow', {}),
+    onStateChange: (callback: (event: any, data: any) => void) => {
+      ipcRenderer.on('updater:state-changed', callback);
+      return () => ipcRenderer.removeListener('updater:state-changed', callback);
+    },
+  },
+  marketplace: {
+    list: () => invokeMain('controller/marketplace/list', {}),
+    refresh: () => invokeMain('controller/marketplace/refresh', {}),
+    checkUpdates: () => invokeMain('controller/marketplace/checkUpdates', {}),
+    getState: () => invokeMain('controller/marketplace/getState', {}),
+    installOrUpdate: (pluginId: string) =>
+      invokeMain('controller/marketplace/installOrUpdate', { pluginId }),
+    uninstall: (pluginId: string) =>
+      invokeMain('controller/marketplace/uninstall', { pluginId }),
+    setAutoCheck: (enabled: boolean) =>
+      invokeMain('controller/marketplace/setAutoCheck', { enabled }),
+    onStateChange: (callback: (event: any, data: any) => void) => {
+      ipcRenderer.on('marketplace:state-changed', callback);
+      return () => ipcRenderer.removeListener('marketplace:state-changed', callback);
+    },
+    onPluginInstalled: (callback: (event: any, data: any) => void) => {
+      ipcRenderer.on('marketplace:plugin-installed', callback);
+      return () => ipcRenderer.removeListener('marketplace:plugin-installed', callback);
     },
   },
 });

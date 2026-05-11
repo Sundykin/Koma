@@ -23,6 +23,16 @@ export type MCPTransportType = 'stdio' | 'sse' | 'websocket' | 'internal';
 export interface PluginEngine {
   minAppVersion: string;
   sdkVersion: string;
+  /**
+   * 主程序版本上限。超过则插件不被激活。
+   * 缺省视为无上限（兼容旧插件）。
+   */
+  maxAppVersion?: string;
+  /**
+   * 插件依赖的 API 契约版本。
+   * 主程序声明 SUPPORTED_API_VERSIONS 列表；缺省视为 'v1'。
+   */
+  apiVersion?: string;
 }
 
 export interface PluginEntry {
@@ -97,6 +107,13 @@ export interface PluginManifest {
   globalMeta?: GlobalMeta;
   mcpMeta?: MCPMeta;
   agentMeta?: AgentMeta;
+  /**
+   * 对 manifest 中除 signature 字段外的规范化 JSON（键名按字典序递归排序后 JSON.stringify）
+   * 用 ed25519 签名后的 base64。
+   *   - marketplace 安装路径下，缺失/不通过即拒绝
+   *   - 本地手动安装路径下仅警告
+   */
+  signature?: string;
   [key: string]: any;
 }
 

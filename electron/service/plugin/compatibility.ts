@@ -20,6 +20,17 @@ import type { PluginManifest } from './types';
  *
  * 与 frontend/src/services/plugin/PluginSandbox.ts 中的 SCOPE_DESCRIPTIONS 同步维护。
  */
+/**
+ * 主程序当前支持的插件 API 契约版本集合。
+ *
+ * 含义：插件 manifest.engine.apiVersion 必须在此集合中，否则 fatal。
+ * 当主程序做 API 破坏性变更时，应：
+ *   1. 把新版本号（如 'v2'）加进来
+ *   2. 几个版本后再把旧版本（'v1'）从此集合里移除
+ * 这样老插件可以提前在 marketplace 上对应升级，避免一次性切换造成全面不可用。
+ */
+export const SUPPORTED_API_VERSIONS: readonly string[] = ['v1'] as const;
+
 export const KNOWN_PLUGIN_SCOPES: readonly string[] = [
   'settings:read',
   'settings:write',
@@ -107,7 +118,15 @@ function compareSemver(a: string, b: string): number {
 }
 
 export interface CompatibilityIssue {
-  code: 'app_too_old' | 'sdk_major_mismatch' | 'sdk_too_new' | 'unknown_scope';
+  code:
+    | 'app_too_old'
+    | 'app_too_new'
+    | 'sdk_major_mismatch'
+    | 'sdk_too_new'
+    | 'unknown_scope'
+    | 'api_version_unsupported'
+    | 'signature_missing'
+    | 'signature_invalid';
   message: string;
 }
 
@@ -121,9 +140,15 @@ export interface RuntimeVersions {
   sdkVersion: string;
 }
 
+/**
+ * @param options.strictSignature  插件来源是否要求强制 manifest 签名。
+ *   - marketplace 安装 → true（缺签名 / 签名无效都视为 fatal）
+ *   - 本地手动安装 → false（缺签名仅 warn，便于开发者本地调试）
+ */
 export function validatePluginCompatibility(
   manifest: PluginManifest,
   runtime: RuntimeVersions = { appVersion: getRuntimeAppVersion(), sdkVersion: getRuntimeSdkVersion() },
+  options: { strictSignature?: boolean } = {},
 ): CompatibilityReport {
   const fatal: CompatibilityIssue[] = [];
   const warnings: CompatibilityIssue[] = [];
@@ -136,6 +161,14 @@ export function validatePluginCompatibility(
     warnings.push({
       code: 'app_too_old',
       message: `plugin "${manifest.id}" suggests app >= ${minApp}, current ${runtime.appVersion}; activation continues but plugin may not work as intended`,
+    });
+  }
+
+  const maxApp = manifest.engine?.maxAppVersion;
+  if (maxApp && compareSemver(runtime.appVersion, maxApp) > 0) {
+    fatal.push({
+      code: 'app_too_new',
+      message: `plugin "${manifest.id}" requires app <= ${maxApp}, current ${runtime.appVersion}`,
     });
   }
 
@@ -156,6 +189,36 @@ export function validatePluginCompatibility(
     }
   }
 
+  const apiVersion = manifest.engine?.apiVersion ?? 'v1';
+  if (!SUPPORTED_API_VERSIONS.includes(apiVersion)) {
+    fatal.push({
+      code: 'api_version_unsupported',
+      message: `plugin "${manifest.id}" requires apiVersion ${apiVersion}, app supports [${SUPPORTED_API_VERSIONS.join(', ')}]`,
+    });
+  }
+
+  // signature 校验：marketplace 路径下缺签名 / 签名无效都 fatal；
+  // 本地手动安装路径下缺签名仅 warn（签名 verify 失败仍 fatal，因为篡改是更强信号）。
+  if (manifest.signature) {
+    const verifiedOk = verifyManifestSignature(manifest);
+    if (!verifiedOk) {
+      fatal.push({
+        code: 'signature_invalid',
+        message: `plugin "${manifest.id}" manifest signature verification failed`,
+      });
+    }
+  } else if (options.strictSignature) {
+    fatal.push({
+      code: 'signature_missing',
+      message: `plugin "${manifest.id}" missing manifest signature (required for marketplace installs)`,
+    });
+  } else {
+    warnings.push({
+      code: 'signature_missing',
+      message: `plugin "${manifest.id}" is unsigned (manual install); proceed with caution`,
+    });
+  }
+
   const scopes = manifest.scopes ?? [];
   for (const scope of scopes) {
     if (!KNOWN_PLUGIN_SCOPES.includes(scope)) {
@@ -167,6 +230,26 @@ export function validatePluginCompatibility(
   }
 
   return { fatal, warnings };
+}
+
+/**
+ * 用全局公钥验签 manifest.signature。
+ *
+ * 实现注意：本函数与签名脚本必须使用同一份"规范化 JSON"——键名按字典序递归排序后
+ * JSON.stringify，不带 signature 字段。
+ *
+ * 这里 require 时机故意延迟到调用点，避免 plugin/compatibility 模块在 lifecycle 极早期
+ * 被加载时拉起整个 release-signing 子树。
+ */
+function verifyManifestSignature(manifest: PluginManifest): boolean {
+  try {
+    // 延迟 require 避免循环依赖
+    const { verifyPluginManifest } = require('../release-signing/manifestVerifier') as typeof import('../release-signing/manifestVerifier');
+    const result = verifyPluginManifest(manifest as Record<string, unknown>, null);
+    return result.ok;
+  } catch {
+    return false;
+  }
 }
 
 export function formatCompatibilityErrors(report: CompatibilityReport): string {
