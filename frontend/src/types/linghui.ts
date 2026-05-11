@@ -170,6 +170,26 @@ export interface LinghuiPanoramaNodeProperties extends LinghuiImageNodePropertie
    * @ref_{nodeId}__item_N 引用任意一张。
    */
   detailCrops?: LinghuiImageAssetItem[];
+  /**
+   * 通过球面重投影抽取出的"伪 3D 透视视角"。每条记录一个虚拟相机角度，
+   * source 是落盘后的 koma-local URL（PNG）。executor 把这些作为 result.items 输出，
+   * 让下游图片 / 视频节点用 @ref_{nodeId}__item_N 拿到同一场景的不同角度，做场景一致性。
+   * 详见 panorama/panoramaPerspectiveExtractor.ts。
+   */
+  perspectiveViews?: LinghuiPanoramaPerspectiveView[];
+}
+
+export interface LinghuiPanoramaPerspectiveView {
+  id: string;
+  label: string;
+  yaw: number;
+  pitch: number;
+  fovDeg: number;
+  /** 落盘后的 koma-local URL（PNG） */
+  source: string;
+  /** 输出图宽高（PNG 尺寸） */
+  width?: number;
+  height?: number;
 }
 
 export interface LinghuiMultiAngleConfig {
