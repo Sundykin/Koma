@@ -14,10 +14,12 @@ const CURRENT_LINGHUI_TYPES: readonly LinghuiNodeType[] = [
   'linghui/text',
   'linghui/agent',
   'linghui/image',
+  'linghui/image-generator',
   'linghui/panorama',
   'linghui/video',
   'linghui/audio',
   'linghui/script',
+  'linghui/storyboard',
   'linghui/director3d',
 ] as const;
 
@@ -25,10 +27,12 @@ const CURRENT_RF_TYPES: readonly LinghuiRFNodeTypeKey[] = [
   'linghui-text',
   'linghui-agent',
   'linghui-image',
+  'linghui-image-generator',
   'linghui-panorama',
   'linghui-video',
   'linghui-audio',
   'linghui-script',
+  'linghui-storyboard',
   'linghui-director3d',
 ] as const;
 
@@ -52,6 +56,7 @@ const LINGHUI_TYPE_TO_RF_TYPE_MAP: Record<LinghuiNodeType, LinghuiRFNodeTypeKey>
   'linghui/text': 'linghui-text',
   'linghui/agent': 'linghui-agent',
   'linghui/image': 'linghui-image',
+  'linghui/image-generator': 'linghui-image-generator',
   'linghui/panorama': 'linghui-panorama',
   'linghui/video': 'linghui-video',
   'linghui/audio': 'linghui-audio',
@@ -64,6 +69,7 @@ const RF_TYPE_TO_LINGHUI_TYPE_MAP: Record<LinghuiRFNodeTypeKey, LinghuiNodeType>
   'linghui-text': 'linghui/text',
   'linghui-agent': 'linghui/agent',
   'linghui-image': 'linghui/image',
+  'linghui-image-generator': 'linghui/image-generator',
   'linghui-panorama': 'linghui/panorama',
   'linghui-video': 'linghui/video',
   'linghui-audio': 'linghui/audio',

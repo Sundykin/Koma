@@ -29,6 +29,11 @@ export interface LinghuiGlobalAsset {
   propType?: LinghuiGlobalAssetPropType;
   category?: LinghuiGlobalAssetCategory;
   favorite: boolean;
+  /**
+   * 参考图（koma-local URL 数组）。character 用作角色脸 / 服装参考；
+   * 加入场景时 snapshot 到 actor.referenceImages，下游图片节点可直接消费。
+   */
+  referenceImages?: string[];
   createdAt: number;
   updatedAt: number;
 }
@@ -45,6 +50,7 @@ export interface LinghuiGlobalAssetInput {
   propType?: LinghuiGlobalAssetPropType;
   category?: LinghuiGlobalAssetCategory;
   favorite?: boolean;
+  referenceImages?: string[];
 }
 
 function normalize(raw: unknown): LinghuiGlobalAsset | null {
@@ -67,6 +73,9 @@ function normalize(raw: unknown): LinghuiGlobalAsset | null {
     propType: typeof r.propType === 'string' ? r.propType as LinghuiGlobalAssetPropType : undefined,
     category: typeof r.category === 'string' ? r.category as LinghuiGlobalAssetCategory : undefined,
     favorite: Boolean(r.favorite),
+    referenceImages: Array.isArray(r.referenceImages)
+      ? (r.referenceImages as unknown[]).filter((item): item is string => typeof item === 'string' && item.length > 0)
+      : undefined,
     createdAt: typeof r.createdAt === 'number' ? r.createdAt : Date.now(),
     updatedAt: typeof r.updatedAt === 'number' ? r.updatedAt : Date.now(),
   };

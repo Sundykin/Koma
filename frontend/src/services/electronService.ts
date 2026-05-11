@@ -1077,6 +1077,7 @@ export const linghuiApi = {
     propType?: string;
     category?: string;
     favorite?: boolean;
+    referenceImages?: string[];
   }) => {
     const a = getElectronAPI();
     if (!a?.linghui) throw new Error('Linghui API not available');

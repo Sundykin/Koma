@@ -1489,12 +1489,40 @@ export async function executeDirector3DNode(
     label: '3D 导演线稿',
   };
 
-  const items = [primaryItem, ...angleItems];
+  // 全局资产参考图聚合：把 scene.actors 上 snapshot 的 referenceImages 全部拼进 result.items，
+  // 让下游图片节点拿到真实角色脸 / 服装 / 道具样式做参考。去重，按 actor.label 命名。
+  interface ReferenceItem { id: string; source: string; mimeType: string; label: string }
+  const referenceItems: ReferenceItem[] = [];
+  const sceneActors = Array.isArray((properties?.scene as { actors?: unknown })?.actors)
+    ? ((properties?.scene as { actors: unknown[] }).actors)
+    : [];
+  const seenReferenceUrls = new Set<string>();
+  for (const actorRaw of sceneActors) {
+    if (!actorRaw || typeof actorRaw !== 'object') continue;
+    const actor = actorRaw as { label?: unknown; referenceImages?: unknown; id?: unknown };
+    if (!Array.isArray(actor.referenceImages)) continue;
+    const actorLabel = typeof actor.label === 'string' ? actor.label : '资产';
+    const actorId = typeof actor.id === 'string' ? actor.id : 'unknown';
+    let refIndex = 0;
+    for (const url of actor.referenceImages) {
+      if (typeof url !== 'string' || !url || seenReferenceUrls.has(url)) continue;
+      seenReferenceUrls.add(url);
+      refIndex += 1;
+      referenceItems.push({
+        id: `director3d-${node.id}-ref-${actorId}-${refIndex}`,
+        source: url,
+        mimeType: 'image/png',
+        label: `${actorLabel} 参考图 ${refIndex}`,
+      });
+    }
+  }
+
+  const items = [primaryItem, ...angleItems, ...referenceItems];
 
   return {
-    // angleViews 有内容 → images 集合（用户可在下游用 @ref_{nodeId}__item_N 引用）
+    // angleViews / referenceImages 任一非空 → images 集合（用户可用 @ref_{nodeId}__item_N 引用）
     // 否则保持单图 kind，避免破坏既有节点行为
-    kind: angleItems.length > 0 ? 'images' : 'image',
+    kind: (angleItems.length > 0 || referenceItems.length > 0) ? 'images' : 'image',
     status: 'succeeded',
     label: '3D 导演线稿',
     items,
@@ -1508,6 +1536,7 @@ export async function executeDirector3DNode(
       description: directorPromptFragment || undefined,
       scene: sceneJson,
       angleViewCount: angleItems.length,
+      referenceImageCount: referenceItems.length,
     },
   } as unknown as LinghuiNodeResult;
 }
@@ -1536,6 +1565,14 @@ async function executeNodeInner(
       return executeStoryboardNode(node, onProgress, signal);
     case 'linghui/director3d':
       return executeDirector3DNode(node, onProgress, signal);
+    case 'linghui/image-generator':
+      // 控制器节点不参与 workflow 执行：用户点「生成图片」按钮 → canvas 派生下游 image
+      // 节点（已自动 trigger 执行）。这里返回空 text 结果让 workflow 调度不卡死。
+      return {
+        kind: 'text',
+        text: '',
+        metadata: { mode: 'image-generator-controller' },
+      };
     default:
       throw new Error(`暂不支持执行节点类型：${node.type}`);
   }

@@ -5,6 +5,7 @@ export type LinghuiNodeType =
   | 'linghui/text'
   | 'linghui/agent'
   | 'linghui/image'
+  | 'linghui/image-generator'
   | 'linghui/panorama'
   | 'linghui/video'
   | 'linghui/audio'
@@ -16,6 +17,7 @@ export type LinghuiRFNodeTypeKey =
   | 'linghui-text'
   | 'linghui-agent'
   | 'linghui-image'
+  | 'linghui-image-generator'
   | 'linghui-panorama'
   | 'linghui-video'
   | 'linghui-audio'
@@ -123,6 +125,34 @@ export interface LinghuiImageNodeProperties extends LinghuiScriptDerivedProperti
   gridType: LinghuiGridType;
   batchCount: number;
   multiAngle?: LinghuiMultiAngleConfig;
+  /**
+   * 该展示节点是由哪个 image-generator 控制器派生而来。
+   * 仅记录来源，便于控制器维护生成历史；展示节点本身仍是独立 image 节点，
+   * 用户可以单独删除 / 再跑 / 改 prompt。
+   */
+  generatedFromNodeId?: string;
+  /** 第几次生成（从 1 开始），用于自动 label */
+  generatedSequence?: number;
+}
+
+/**
+ * 图片生成"控制器节点"属性。
+ *  - 节点本身没有图片预览区，UI 只有 prompt / 模型 / 比例 / 批量 / 生成按钮
+ *  - 点击"生成"按钮 → canvas 自动派生一个 linghui/image 展示节点（mode='generate'），
+ *    自动连边，自动触发执行；展示节点维持 loading → 出图 → 失败的状态
+ *  - 每次点击都派生一个新节点，纵向堆叠在右侧，形成生成历史
+ *  - 控制器本身不参与 workflow 执行（没有 result，没有 output 数据）
+ */
+export interface LinghuiImageGeneratorNodeProperties {
+  prompt: string;
+  ttiSelection: string;
+  aspectRatio: string;
+  resolution: string;
+  batchCount: number;
+  /** 已生成的展示节点 id 列表（按生成顺序，最新在末尾） */
+  generatedImageNodeIds?: string[];
+  /** 累计生成次数（即使后面手动删了某个展示节点也只增不减），决定下一次 label 序号 */
+  generationCount?: number;
 }
 
 export interface LinghuiPanoramaNodeProperties extends LinghuiImageNodeProperties {
@@ -236,8 +266,49 @@ export interface LinghuiDirector3DActor {
   /** 颜色（参考图区分用），CSS 颜色串 */
   color: string;
   posePreset: LinghuiDirector3DActorPose;
+  /**
+   * 骨骼姿态（rig）。仅 type='mannequin' 时有意义。
+   * 每个关节存局部欧拉角（XYZ，弧度）。详见 director3d/director3dRig.ts。
+   * 不存在时回退 RIG_PRESETS[posePreset]，保持老 scene 向后兼容。
+   * 关键帧 / timeline 之间可按关节线性插值，做连续骨骼动画。
+   */
+  rig?: LinghuiDirector3DRig;
   /** 方阵元数据，仅 type='formation' 时存在 */
   formation?: LinghuiDirector3DFormationConfig;
+  /**
+   * 参考图（koma-local URL 数组）。从全局资产库加入场景时一次性 snapshot 复制过来；
+   * director3d executor 把所有 actor 的参考图聚合后写入 result.items，
+   * 让下游图片节点直接拿到真实视觉指引（角色脸 / 服装 / 道具样式）。
+   */
+  referenceImages?: string[];
+  /** 来自哪个全局资产 id（弱引用，用于未来同步更新） */
+  sourceGlobalAssetId?: string;
+}
+
+/**
+ * 骨骼绑定（rig）。每个关节为局部欧拉角 [x,y,z]，单位弧度。
+ * 渲染时 Mannequin 组件把这些值挂到对应的 group rotation 上；
+ * 时间轴插值时关节角度独立 LERP，做连续骨骼动画。
+ *
+ * 关节命名：
+ *  - spine：躯干前后倾 / 转
+ *  - neck：头部俯仰 / 转
+ *  - left/right shoulder：肩关节
+ *  - left/right elbow：肘关节（前臂）
+ *  - left/right hip：髋关节
+ *  - left/right knee：膝关节（小腿）
+ */
+export interface LinghuiDirector3DRig {
+  spine: [number, number, number];
+  neck: [number, number, number];
+  leftShoulder: [number, number, number];
+  rightShoulder: [number, number, number];
+  leftElbow: [number, number, number];
+  rightElbow: [number, number, number];
+  leftHip: [number, number, number];
+  rightHip: [number, number, number];
+  leftKnee: [number, number, number];
+  rightKnee: [number, number, number];
 }
 
 export interface LinghuiDirector3DCamera {
@@ -301,6 +372,11 @@ export interface LinghuiDirector3DKeyframeActor {
   scale: number;
   /** 假人姿势（mannequin 才有意义）；alpha>=0.5 时切到 next 的值 */
   posePreset?: LinghuiDirector3DActorPose;
+  /**
+   * 骨骼姿态。两个关键帧都存在 rig 时按关节线性插值，做连续动画；
+   * 单边缺失时按"中立站立"补齐再插值。详见 director3d/director3dRig.ts。
+   */
+  rig?: LinghuiDirector3DRig;
   /** 颜色；alpha>=0.5 时切换 */
   color?: string;
   /** 方阵参数（仅 type='formation' 时有效）；rows/cols/memberFacing 离散切换，spacing 线性 */
@@ -770,6 +846,7 @@ const LINGHUI_TYPE_TO_RF_TYPE_MAP: Record<LinghuiNodeType, LinghuiRFNodeTypeKey>
   'linghui/text': 'linghui-text',
   'linghui/agent': 'linghui-agent',
   'linghui/image': 'linghui-image',
+  'linghui/image-generator': 'linghui-image-generator',
   'linghui/panorama': 'linghui-panorama',
   'linghui/video': 'linghui-video',
   'linghui/audio': 'linghui-audio',
@@ -782,6 +859,7 @@ const RF_TYPE_TO_LINGHUI_TYPE_MAP: Record<LinghuiRFNodeTypeKey, LinghuiNodeType>
   'linghui-text': 'linghui/text',
   'linghui-agent': 'linghui/agent',
   'linghui-image': 'linghui/image',
+  'linghui-image-generator': 'linghui/image-generator',
   'linghui-panorama': 'linghui/panorama',
   'linghui-video': 'linghui/video',
   'linghui-audio': 'linghui/audio',

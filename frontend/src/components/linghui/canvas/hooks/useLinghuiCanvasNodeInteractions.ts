@@ -89,6 +89,7 @@ export function useLinghuiCanvasNodeInteractions({
       nodeData.linghuiType !== 'linghui/text' &&
       nodeData.linghuiType !== 'linghui/agent' &&
       nodeData.linghuiType !== 'linghui/image' &&
+      nodeData.linghuiType !== 'linghui/image-generator' &&
       nodeData.linghuiType !== 'linghui/panorama' &&
       nodeData.linghuiType !== 'linghui/video' &&
       nodeData.linghuiType !== 'linghui/audio' &&

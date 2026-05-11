@@ -248,7 +248,7 @@ describe('Grok2ApiImagineITVProvider', () => {
     expect(body.seconds).toBe('16');
   });
 
-  it('falls back to 6 seconds when duration is missing or invalid', async () => {
+  it('falls back to default 10 seconds when duration is missing or invalid', async () => {
     mockCreateResponse({ id: 'task-duration-default' });
 
     const p = createProvider({ defaultResolution: undefined });
@@ -260,7 +260,7 @@ describe('Grok2ApiImagineITVProvider', () => {
     } as any);
 
     const body = firstRequestBody();
-    expect(body.seconds).toBe('6');
+    expect(body.seconds).toBe('10');
     expect(body.quality).toBe('high');
   });
 
