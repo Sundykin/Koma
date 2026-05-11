@@ -84,9 +84,6 @@ export function LinghuiCanvasSurface({
     gridSplitUpscaleFactor: overlayProps.gridSplitUpscaleFactor,
     onSetGridSplitUpscaleFactor: overlayProps.onSetGridSplitUpscaleFactor,
     onRevertGridSplit: overlayProps.onRevertGridSplit,
-    directorPreviewBindings: overlayProps.directorPreviewBindings,
-    setDirectorPreviewBinding: overlayProps.setDirectorPreviewBinding,
-    onRunDirectorWithPreview: overlayProps.onRunDirectorWithPreview,
   }), [canvasInteractionVersion, overlayProps]);
 
   return (

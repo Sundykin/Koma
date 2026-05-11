@@ -15,6 +15,7 @@ import type {
   LinghuiDirector3DActorPose,
   LinghuiDirector3DBackground,
   LinghuiDirector3DCamera,
+  LinghuiDirector3DKeyframeActor,
   LinghuiDirector3DEasing,
   LinghuiDirector3DKeyframe,
   LinghuiDirector3DRig,
@@ -23,6 +24,13 @@ import type {
 } from '../../../types/linghui';
 import { DIRECTOR3D_ACTOR_COLOR_TOKENS } from './director3dColors';
 import { describeRigForPrompt, lerpRig, resolveActorRig } from './director3dRig';
+import {
+  CREATURE_SPECIES_LIBRARY,
+  findCreatureSpecies,
+  lerpCreatureRig,
+  resolveCreatureRig,
+  type CreatureSpeciesKind,
+} from './director3dCreature';
 
 const TWO_PI = Math.PI * 2;
 const ACTOR_DEFAULT_COLORS = DIRECTOR3D_ACTOR_COLOR_TOKENS;
@@ -71,6 +79,10 @@ export function createDirector3DActor(overrides: Partial<LinghuiDirector3DActor>
     posePreset: overrides.posePreset ?? 'idle',
     // formation 字段仅在 type='formation' 时使用，平时不写入 actor
     ...(overrides.formation ? { formation: overrides.formation } : {}),
+    // creature 字段仅在 type='creature' 时使用
+    ...(overrides.species ? { species: overrides.species } : {}),
+    ...(overrides.creatureAction ? { creatureAction: overrides.creatureAction } : {}),
+    ...(overrides.creatureRig ? { creatureRig: overrides.creatureRig } : {}),
     // 全局资产 snapshot：referenceImages 数组 + 来源 id（弱引用，未来用于同步更新）
     ...(Array.isArray(overrides.referenceImages) && overrides.referenceImages.length > 0
       ? { referenceImages: [...overrides.referenceImages] }
@@ -100,8 +112,8 @@ export interface Director3DPropPreset {
   id: string;
   label: string;
   category: Director3DPropCategory;
-  // 仅道具几何类型；假人 / 低级假人 / 方阵都通过专门入口添加，不进 prop 库
-  type: Exclude<LinghuiDirector3DActor['type'], 'mannequin' | 'mannequin-lite' | 'formation'>;
+  // 仅道具几何类型；假人 / 低级假人 / 方阵 / 生物都通过专门入口添加，不进 prop 库
+  type: Exclude<LinghuiDirector3DActor['type'], 'mannequin' | 'mannequin-lite' | 'formation' | 'creature'>;
   scale: number;
   defaultColor?: string;
   /** 写到 prompt fragment 时用的英文术语，让 AI 看懂"这是什么道具" */
@@ -307,6 +319,29 @@ export function createDirector3DLiteSoldier(overrides: Partial<LinghuiDirector3D
     ...overrides,
   });
 }
+
+/**
+ * 动物 / 玄幻生物。species 决定几何与配色，creatureAction 决定起始姿态。
+ */
+export function createDirector3DCreature(
+  species: CreatureSpeciesKind,
+  overrides: Partial<LinghuiDirector3DActor> = {},
+): LinghuiDirector3DActor {
+  const spec = findCreatureSpecies(species);
+  return createDirector3DActor({
+    type: 'creature',
+    label: overrides.label ?? spec.label,
+    color: overrides.color ?? spec.color,
+    scale: overrides.scale ?? 1,
+    species,
+    creatureAction: overrides.creatureAction ?? 'idle',
+    posePreset: 'idle',
+    ...overrides,
+  });
+}
+
+/** 暴露 species 库给 UI 资产 tab */
+export { CREATURE_SPECIES_LIBRARY };
 
 export interface Director3DSceneTemplate {
   id: string;
@@ -667,6 +702,192 @@ export const DIRECTOR3D_SCENE_TEMPLATES: Director3DSceneTemplate[] = [
       render: { mode: 'lineart', showGrid: true, showCameraFrame: false, transparentBackground: false },
     }),
   },
+
+  // ─────── 玄幻场景 ───────
+  {
+    id: 'tpl-sword-duel',
+    label: '剑修对峙',
+    hint: '两位剑修隔山涧对峙，长剑指地，灵狐侧立',
+    build: () => ({
+      version: 1,
+      background: defaultDirector3DBackground(),
+      camera: {
+        position: [0, 1.4, 5.5],
+        target: [0, 1.5, 0],
+        fov: 38,
+        roll: 0,
+        aspectRatio: '21:9',
+      },
+      actors: [
+        templateActor(0, '剑修甲', [-1.6, 0, 0], Math.PI / 2.2, 'point'),
+        templateActor(1, '剑修乙', [1.6, 0, 0], -Math.PI / 2.2, 'point'),
+        createDirector3DCreature('fox', {
+          id: 'tpl_sword_fox',
+          position: [-1.6, 0, 0.8],
+          scale: 0.6,
+          creatureAction: 'idle',
+        }),
+        createDirector3DActor({ id: 'tpl_sword_pillar_l', type: 'prop-cylinder', label: '石柱', position: [-2.6, 0, -0.6], rotationY: 0, scale: 2.2, color: 'var(--token-text-muted)' }),
+        createDirector3DActor({ id: 'tpl_sword_pillar_r', type: 'prop-cylinder', label: '石柱', position: [2.6, 0, -0.6], rotationY: 0, scale: 2.2, color: 'var(--token-text-muted)' }),
+      ],
+      render: { mode: 'lineart', showGrid: true, showCameraFrame: false, transparentBackground: false },
+    }),
+  },
+  {
+    id: 'tpl-altar',
+    label: '祭祀法坛',
+    hint: '圆台居中，主祭手举法器，仙鹤盘旋',
+    build: () => ({
+      version: 1,
+      background: defaultDirector3DBackground(),
+      camera: {
+        position: [0, 2.2, 5.5],
+        target: [0, 1.0, 0],
+        fov: 42,
+        roll: 0,
+        aspectRatio: '16:9',
+      },
+      actors: [
+        templateActor(0, '主祭', [0, 0, 0], 0, 'wave'),
+        createDirector3DCreature('crane', {
+          id: 'tpl_altar_crane',
+          position: [-1.4, 1.8, 0.6],
+          scale: 0.9,
+          creatureAction: 'fly',
+        }),
+        createDirector3DActor({ id: 'tpl_altar_dais', type: 'prop-cylinder', label: '法坛圆台', position: [0, 0, 0], rotationY: 0, scale: 1.6, color: 'var(--token-text-muted)' }),
+        createDirector3DActor({ id: 'tpl_altar_pillar_1', type: 'prop-cylinder', label: '香烛', position: [-1.0, 0, 0.8], rotationY: 0, scale: 0.6, color: 'var(--token-status-warning)' }),
+        createDirector3DActor({ id: 'tpl_altar_pillar_2', type: 'prop-cylinder', label: '香烛', position: [1.0, 0, 0.8], rotationY: 0, scale: 0.6, color: 'var(--token-status-warning)' }),
+      ],
+      render: { mode: 'lineart', showGrid: true, showCameraFrame: false, transparentBackground: false },
+    }),
+  },
+  {
+    id: 'tpl-dragon-confront',
+    label: '神龙降世',
+    hint: '主角立于山巅，神龙盘旋俯视',
+    build: () => ({
+      version: 1,
+      background: defaultDirector3DBackground(),
+      camera: {
+        position: [3.0, 2.5, 6.5],
+        target: [0, 2.0, 0],
+        fov: 46,
+        roll: 0,
+        aspectRatio: '21:9',
+      },
+      actors: [
+        templateActor(0, '主角', [0, 0, 0], -Math.PI / 6, 'point'),
+        createDirector3DCreature('dragon', {
+          id: 'tpl_dragon_main',
+          position: [0, 2.8, -2.0],
+          rotationY: Math.PI / 4,
+          scale: 1.1,
+          creatureAction: 'fly',
+        }),
+        createDirector3DActor({ id: 'tpl_dragon_peak', type: 'prop-cylinder', label: '山巅岩', position: [0, 0, 0], rotationY: 0, scale: 1.8, color: 'var(--token-text-muted)' }),
+      ],
+      render: { mode: 'lineart', showGrid: true, showCameraFrame: false, transparentBackground: false },
+    }),
+  },
+  {
+    id: 'tpl-phoenix-rebirth',
+    label: '凤凰涅槃',
+    hint: '凤凰展翅升空，下方仰望者',
+    build: () => ({
+      version: 1,
+      background: defaultDirector3DBackground(),
+      camera: {
+        position: [0, 0.6, 5.5],
+        target: [0, 2.5, 0],
+        fov: 50,
+        roll: 0,
+        aspectRatio: '9:16',
+      },
+      actors: [
+        templateActor(0, '仰望者', [0, 0, 0], 0, 'idle'),
+        createDirector3DCreature('phoenix', {
+          id: 'tpl_phoenix_main',
+          position: [0, 3.2, -0.4],
+          rotationY: 0,
+          scale: 1.0,
+          creatureAction: 'fly',
+        }),
+      ],
+      render: { mode: 'lineart', showGrid: true, showCameraFrame: false, transparentBackground: false },
+    }),
+  },
+  {
+    id: 'tpl-cloud-summit',
+    label: '云海仙境',
+    hint: '仙鹤盘旋云上，仙人对坐论道',
+    build: () => ({
+      version: 1,
+      background: defaultDirector3DBackground(),
+      camera: {
+        position: [0, 2.0, 6.0],
+        target: [0, 1.6, 0],
+        fov: 44,
+        roll: 0,
+        aspectRatio: '16:9',
+      },
+      actors: [
+        templateActor(0, '仙人甲', [-1.2, 0, 0], Math.PI / 2, 'sit'),
+        templateActor(1, '仙人乙', [1.2, 0, 0], -Math.PI / 2, 'sit'),
+        createDirector3DCreature('crane', {
+          id: 'tpl_cloud_crane_l',
+          position: [-2.5, 2.0, -1.0],
+          scale: 0.85,
+          creatureAction: 'fly',
+        }),
+        createDirector3DCreature('crane', {
+          id: 'tpl_cloud_crane_r',
+          position: [2.5, 2.4, -1.2],
+          scale: 0.85,
+          creatureAction: 'fly',
+        }),
+        createDirector3DActor({ id: 'tpl_cloud_plinth', type: 'prop-cylinder', label: '云台', position: [0, 0, 0], rotationY: 0, scale: 1.4, color: 'var(--token-bg-elevated)' }),
+      ],
+      render: { mode: 'lineart', showGrid: true, showCameraFrame: false, transparentBackground: false },
+    }),
+  },
+  {
+    id: 'tpl-mythical-battlefield',
+    label: '玄幻战场',
+    hint: '麒麟坐镇，士兵方阵冲锋',
+    build: () => ({
+      version: 1,
+      background: defaultDirector3DBackground(),
+      camera: {
+        position: [0, 2.8, 7.5],
+        target: [0, 1.0, 0],
+        fov: 50,
+        roll: 0,
+        aspectRatio: '21:9',
+      },
+      actors: [
+        createDirector3DCreature('qilin', {
+          id: 'tpl_battle_qilin',
+          position: [0, 0, -2.0],
+          rotationY: 0,
+          scale: 1.2,
+          creatureAction: 'roar',
+        }),
+        createDirector3DActor({
+          id: 'tpl_battle_army',
+          type: 'formation',
+          label: '将士',
+          position: [0, 0, 2.5],
+          rotationY: Math.PI,
+          scale: 0.95,
+          color: ACTOR_DEFAULT_COLORS[3],
+          posePreset: 'idle',
+          formation: { rows: 4, cols: 8, spacing: 0.85, memberFacing: 'forward' },
+        }),
+      ],
+      render: { mode: 'lineart', showGrid: true, showCameraFrame: false, transparentBackground: false },
+    }),
+  },
 ];
 
 export function createDefaultDirector3DScene(): LinghuiDirector3DScene {
@@ -715,11 +936,26 @@ export function compileDirector3DPromptFragment(scene: LinghuiDirector3DScene): 
   const mannequins = scene.actors.filter(actor => actor.type === 'mannequin');
   const liteMannequins = scene.actors.filter(actor => actor.type === 'mannequin-lite');
   const formations = scene.actors.filter(actor => actor.type === 'formation');
+  const creatures = scene.actors.filter(actor => actor.type === 'creature');
   const props = scene.actors.filter(actor => (
     actor.type !== 'mannequin'
     && actor.type !== 'mannequin-lite'
     && actor.type !== 'formation'
+    && actor.type !== 'creature'
   ));
+
+  if (creatures.length > 0) {
+    const creatureLines = creatures.map((actor) => {
+      const pos = actor.position.map(v => v.toFixed(1)).join(', ');
+      const facing = Math.round((actor.rotationY * 180) / Math.PI);
+      const spec = findCreatureSpecies(actor.species);
+      const action = actor.creatureAction ?? 'idle';
+      // 把 species hint + 动作翻译成英文，让下游 AI 看到具体生物 + 姿态
+      return `  - ${actor.label} (${spec.promptHint}) at (${pos}), facing ${facing}deg, ${action} pose`;
+    });
+    lines.push('Creatures / mythical beasts on scene:');
+    lines.push(...creatureLines);
+  }
 
   if (mannequins.length > 0) {
     const actorLines = mannequins.map((actor) => {
@@ -1241,6 +1477,39 @@ export function createDefaultDirector3DTimeline(): LinghuiDirector3DTimeline {
  * actors / camera / background 全部克隆一份（含 pose / color / formation），
  * 避免后续编辑 scene 影响历史 keyframe。
  */
+export function snapshotActorAsKeyframeActor(actor: LinghuiDirector3DActor): LinghuiDirector3DKeyframeActor {
+  return {
+    id: actor.id,
+    position: [...actor.position] as [number, number, number],
+    rotationY: actor.rotationY,
+    scale: actor.scale,
+    posePreset: actor.posePreset,
+    color: actor.color,
+    ...(actor.rig ? { rig: cloneRig(actor.rig) } : {}),
+    ...(actor.formation ? { formation: { ...actor.formation } } : {}),
+    ...(actor.creatureAction ? { creatureAction: actor.creatureAction } : {}),
+    ...(actor.creatureRig ? {
+      creatureRig: {
+        spine: [...actor.creatureRig.spine] as [number, number, number],
+        neck: [...actor.creatureRig.neck] as [number, number, number],
+        frontLeftLeg: [...actor.creatureRig.frontLeftLeg] as [number, number, number],
+        frontRightLeg: [...actor.creatureRig.frontRightLeg] as [number, number, number],
+        rearLeftLeg: [...actor.creatureRig.rearLeftLeg] as [number, number, number],
+        rearRightLeg: [...actor.creatureRig.rearRightLeg] as [number, number, number],
+        tail: [...actor.creatureRig.tail] as [number, number, number],
+      },
+    } : {}),
+  };
+}
+
+export function cloneCameraForKeyframe(camera: LinghuiDirector3DCamera): LinghuiDirector3DCamera {
+  return {
+    ...camera,
+    position: [...camera.position] as [number, number, number],
+    target: [...camera.target] as [number, number, number],
+  };
+}
+
 export function captureSceneAsKeyframe(
   scene: LinghuiDirector3DScene,
   time: number,
@@ -1250,23 +1519,9 @@ export function captureSceneAsKeyframe(
     id: `kf_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 5)}`,
     time: Math.max(0, Number(time.toFixed(3))),
     label,
-    actors: scene.actors.map(actor => ({
-      id: actor.id,
-      position: [...actor.position] as [number, number, number],
-      rotationY: actor.rotationY,
-      scale: actor.scale,
-      posePreset: actor.posePreset,
-      color: actor.color,
-      // 把当前骨骼姿态写到关键帧里：用户在 t=2s 调整了胳膊角度后录关键帧，
-      // 时间轴回放时就能从初始位置平滑过渡到这个姿态
-      ...(actor.rig ? { rig: cloneRig(actor.rig) } : {}),
-      ...(actor.formation ? { formation: { ...actor.formation } } : {}),
-    })),
-    camera: {
-      ...scene.camera,
-      position: [...scene.camera.position] as [number, number, number],
-      target: [...scene.camera.target] as [number, number, number],
-    },
+    scope: 'scene',
+    actors: scene.actors.map(snapshotActorAsKeyframeActor),
+    camera: cloneCameraForKeyframe(scene.camera),
     background: scene.background ? { ...scene.background } : undefined,
   };
 }
@@ -1354,24 +1609,57 @@ export function interpolateSceneAt(
     return scene;
   }
 
-  const { left, right, alpha } = locateKeyframeSegment(timeline.keyframes, time);
-  if (left < 0) return scene;
+  // 按 scope 拆轨。原则：scope-specific（actor:{id} / camera）优先；scene 帧只在没有
+  // specific 帧时作为 fallback —— 让每个图层真正独立。
+  const actorPrimaryTracks = new Map<string, LinghuiDirector3DKeyframe[]>();
+  const actorFallbackTracks = new Map<string, LinghuiDirector3DKeyframe[]>();
+  const cameraPrimaryTrack: LinghuiDirector3DKeyframe[] = [];
+  const cameraFallbackTrack: LinghuiDirector3DKeyframe[] = [];
+  for (const kf of timeline.keyframes) {
+    const scope = kf.scope ?? 'scene';
+    if (scope === 'camera') {
+      cameraPrimaryTrack.push(kf);
+    } else if (scope === 'scene') {
+      cameraFallbackTrack.push(kf);
+      for (const actor of kf.actors) {
+        const list = actorFallbackTracks.get(actor.id) ?? [];
+        list.push(kf);
+        actorFallbackTracks.set(actor.id, list);
+      }
+    } else if (scope.startsWith('actor:')) {
+      const actorId = scope.slice('actor:'.length);
+      const list = actorPrimaryTracks.get(actorId) ?? [];
+      list.push(kf);
+      actorPrimaryTracks.set(actorId, list);
+    }
+  }
+  // 每个 actor 选用的实际轨：有 primary 用 primary，否则 fallback
+  const resolveActorTrack = (actorId: string): LinghuiDirector3DKeyframe[] => {
+    const primary = actorPrimaryTracks.get(actorId);
+    if (primary && primary.length > 0) return primary;
+    return actorFallbackTracks.get(actorId) ?? [];
+  };
+  const cameraTrack = cameraPrimaryTrack.length > 0 ? cameraPrimaryTrack : cameraFallbackTrack;
 
-  const k1 = timeline.keyframes[left];
-  const k2 = timeline.keyframes[right];
-  const easedAlpha = left === right ? 0 : applyEasing(alpha, timeline.easing);
-
-  const k1ActorMap = new Map(k1.actors.map(a => [a.id, a]));
-  const k2ActorMap = new Map(k2.actors.map(a => [a.id, a]));
+  // 兼容老插值流程：用 scene 全量轨道找全局段（只为 background 兜底）
+  const { left: sceneLeft } = locateKeyframeSegment(timeline.keyframes, time);
+  const sceneSegmentLeft = sceneLeft >= 0 ? timeline.keyframes[sceneLeft] : null;
 
   const nextActors: LinghuiDirector3DActor[] = scene.actors.map((actor) => {
-    const a1 = k1ActorMap.get(actor.id);
-    const a2 = k2ActorMap.get(actor.id);
-    if (!a1 && !a2) {
+    const actorKeyframes = resolveActorTrack(actor.id);
+    if (!actorKeyframes || actorKeyframes.length === 0) {
       return actor;
     }
+    const segment = locateKeyframeSegment(actorKeyframes, time);
+    if (segment.left < 0) return actor;
+    const k1 = actorKeyframes[segment.left];
+    const k2 = actorKeyframes[segment.right];
+    const a1 = k1.actors.find(a => a.id === actor.id);
+    const a2 = k2.actors.find(a => a.id === actor.id);
+    if (!a1 && !a2) return actor;
     const start = a1 ?? a2!;
     const end = a2 ?? a1!;
+    const easedAlpha = segment.left === segment.right ? 0 : applyEasing(segment.alpha, timeline.easing);
     // 离散字段切换时机：alpha>=0.5 用 end 的值（避免逐帧抖动；端点态都用本端值）
     const pickDiscrete = <T>(s: T | undefined, e: T | undefined, fallback: T): T => {
       if (easedAlpha < 0.5) return s ?? e ?? fallback;
@@ -1392,6 +1680,16 @@ export function interpolateSceneAt(
       const startRig = start.rig ?? resolveActorRig(undefined, start.posePreset ?? actor.posePreset);
       const endRig = end.rig ?? resolveActorRig(undefined, end.posePreset ?? actor.posePreset);
       next.rig = lerpRig(startRig, endRig, easedAlpha);
+    }
+
+    // 生物动作 / rig 插值：creatureAction 离散切换，creatureRig 关节 LERP（缺失时按 action 兜底）
+    if (actor.type === 'creature') {
+      next.creatureAction = pickDiscrete(start.creatureAction, end.creatureAction, actor.creatureAction ?? 'idle');
+      if (start.creatureRig || end.creatureRig) {
+        const startRig = start.creatureRig ?? resolveCreatureRig(undefined, start.creatureAction ?? actor.creatureAction ?? 'idle');
+        const endRig = end.creatureRig ?? resolveCreatureRig(undefined, end.creatureAction ?? actor.creatureAction ?? 'idle');
+        next.creatureRig = lerpCreatureRig(startRig, endRig, easedAlpha);
+      }
     }
 
     // formation 仅在该 actor type=='formation' 时参与插值
@@ -1420,20 +1718,55 @@ export function interpolateSceneAt(
     return next;
   });
 
-  const nextCamera: LinghuiDirector3DCamera = {
-    ...k1.camera,
-    position: lerpVec3(k1.camera.position, k2.camera.position, easedAlpha),
-    target: lerpVec3(k1.camera.target, k2.camera.target, easedAlpha),
-    fov: Number(lerp(k1.camera.fov, k2.camera.fov, easedAlpha).toFixed(2)),
-    roll: Number(lerp(k1.camera.roll, k2.camera.roll, easedAlpha).toFixed(2)),
-    aspectRatio: k1.camera.aspectRatio,
-  };
+  // 相机独立轨：从 cameraTrack 取段（scope='camera' 或 'scene'）
+  let nextCamera: LinghuiDirector3DCamera = scene.camera;
+  if (cameraTrack.length > 0) {
+    const camSegment = locateKeyframeSegment(cameraTrack, time);
+    if (camSegment.left >= 0) {
+      const kf1 = cameraTrack[camSegment.left];
+      const kf2 = cameraTrack[camSegment.right];
+      const c1 = kf1.camera;
+      const c2 = kf2.camera;
+      const camAlpha = camSegment.left === camSegment.right ? 0 : applyEasing(camSegment.alpha, timeline.easing);
+      // 优先用 cameraOrbit (累计 yaw) 做轨道空间插值，重算 position
+      // → 用户拍下 yaw=0 与 yaw=4π 的两帧时，插值真的走完两圈环绕
+      if (kf1.cameraOrbit && kf2.cameraOrbit) {
+        const yaw = lerp(kf1.cameraOrbit.yaw, kf2.cameraOrbit.yaw, camAlpha);
+        const pitch = lerp(kf1.cameraOrbit.pitch, kf2.cameraOrbit.pitch, camAlpha);
+        const distance = lerp(kf1.cameraOrbit.distance, kf2.cameraOrbit.distance, camAlpha);
+        const target = lerpVec3(c1.target, c2.target, camAlpha);
+        const cosP = Math.cos(pitch);
+        const position: [number, number, number] = [
+          Math.sin(yaw) * cosP * distance + target[0],
+          Math.sin(pitch) * distance + target[1],
+          Math.cos(yaw) * cosP * distance + target[2],
+        ];
+        nextCamera = {
+          ...c1,
+          position,
+          target,
+          fov: Number(lerp(c1.fov, c2.fov, camAlpha).toFixed(2)),
+          roll: Number(lerp(c1.roll, c2.roll, camAlpha).toFixed(2)),
+          aspectRatio: c1.aspectRatio,
+        };
+      } else {
+        nextCamera = {
+          ...c1,
+          position: lerpVec3(c1.position, c2.position, camAlpha),
+          target: lerpVec3(c1.target, c2.target, camAlpha),
+          fov: Number(lerp(c1.fov, c2.fov, camAlpha).toFixed(2)),
+          roll: Number(lerp(c1.roll, c2.roll, camAlpha).toFixed(2)),
+          aspectRatio: c1.aspectRatio,
+        };
+      }
+    }
+  }
 
   return {
     ...scene,
     actors: nextActors,
     camera: nextCamera,
-    background: k1.background ?? scene.background,
+    background: sceneSegmentLeft?.background ?? scene.background,
   };
 }
 

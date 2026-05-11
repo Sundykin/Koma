@@ -1,5 +1,21 @@
 import type { MediaAssetSource, ProviderAssetInput } from '../../types';
-import type { PromptCompilationReferenceItem } from './types';
+import type { PromptCompilationReferenceItem, PromptCompilationReferenceKind } from './types';
+
+/**
+ * 每种媒体类型的引用上限：image 不限；video / audio 各 3 个，超出的引用回退到 name。
+ * 上限按 provider 实际可消费的 reference 数量定（视频/音频接受多源的 provider 罕见）。
+ */
+const KIND_CAPS: Record<PromptCompilationReferenceKind, number | undefined> = {
+  image: undefined,
+  video: 3,
+  audio: 3,
+};
+
+const KIND_LABEL: Record<PromptCompilationReferenceKind, string> = {
+  image: 'Image',
+  video: 'Video',
+  audio: 'Audio',
+};
 
 export interface ParsedPromptReference {
   id: string;
@@ -50,6 +66,16 @@ interface OrderedVisualReference {
   source: MediaAssetSource | ProviderAssetInput;
 }
 
+/**
+ * 提示词引用编译。把 prompt 里的 @ref_xxx 替换为：
+ *   - image-index 策略：按 kind 分组 @Image N / @Video N / @Audio N（video / audio 上限 3，超出回退到 name）
+ *   - readable-name 策略：替换为 item.name
+ *
+ * compiledReferences 是「全能参考」扁平数组：image / video / audio 走同一个引用通道，
+ * 按推入顺序排列（primary → extra → 声明顺序）；上游会按需上传到图床并塞进
+ * additionalReferences / referenceImages 等同一组字段，body 不区分类型。
+ * 调用方仅靠 prompt 文本里的 @Image N / @Video N / @Audio N 让模型自行对位。
+ */
 export function compilePromptReferences(params: {
   prompt: string;
   references: PromptCompilationReferenceItem[];
@@ -74,54 +100,54 @@ export function compilePromptReferences(params: {
 
   const primaryReference = primaryReferenceId ? refMap.get(primaryReferenceId) : undefined;
   const primarySourceKey = primaryReference?.source ? buildRefKey(primaryReference.source) : null;
-  const requiredVisualKeys = new Set<string>();
 
-  if (primarySourceKey) {
-    requiredVisualKeys.add(primarySourceKey);
-  }
-
-  for (const ref of extraReferences) {
-    requiredVisualKeys.add(buildRefKey(ref));
-  }
-
-  for (const parsed of parsedRefs) {
-    const item = refMap.get(parsed.id);
-    if (item?.source) {
-      requiredVisualKeys.add(buildRefKey(item.source));
-    }
-  }
-
+  /**
+   * 把 references 按 kind 分桶 + 顺序保留（primary 优先 → extra → references）。
+   * 每桶按 KIND_CAPS 截断（image 不限；video / audio 各 3 个）。
+   * compiledReferences 是扁平的 image/video/audio 混排数组（全能参考通道），
+   * indexByKind 保存 sourceKey → 本桶内编号，用于生成 @Image N / @Video N / @Audio N。
+   */
   const orderedVisualRefs: OrderedVisualReference[] = [];
   const orderedVisualKeys = new Set<string>();
-  const pushOrderedVisualRef = (source?: MediaAssetSource | ProviderAssetInput) => {
+  const indexByKind: Record<PromptCompilationReferenceKind, Map<string, number>> = {
+    image: new Map(),
+    video: new Map(),
+    audio: new Map(),
+  };
+  const counterByKind: Record<PromptCompilationReferenceKind, number> = { image: 0, video: 0, audio: 0 };
+
+  const pushRefByKind = (kind: PromptCompilationReferenceKind, source?: MediaAssetSource | ProviderAssetInput) => {
     if (!source) return;
     const key = buildRefKey(source);
-    if (!requiredVisualKeys.has(key) || orderedVisualKeys.has(key)) {
-      return;
+    if (indexByKind[kind].has(key)) return; // 同 kind 同 source 已编号 → 跳过
+    const cap = KIND_CAPS[kind];
+    if (cap !== undefined && counterByKind[kind] >= cap) return; // 桶已满
+    counterByKind[kind] += 1;
+    indexByKind[kind].set(key, counterByKind[kind]);
+    // 全能参考通道：image / video / audio 一视同仁，按推入顺序进 compiledReferences。
+    // 同一 source 跨 kind 复用时也只入一次（key 去重）。
+    if (!orderedVisualKeys.has(key)) {
+      orderedVisualKeys.add(key);
+      orderedVisualRefs.push({ key, source });
     }
-
-    orderedVisualKeys.add(key);
-    orderedVisualRefs.push({ key, source });
   };
 
+  // 优先级 1：primary 引用（一定占位 @Image 1 / @Video 1 / @Audio 1，按其 kind）
   if (primaryReference?.source) {
-    pushOrderedVisualRef(primaryReference.source);
+    pushRefByKind(primaryReference.kind ?? 'image', primaryReference.source);
   }
 
+  // 优先级 2：extraReferences 视为 image 类型
   for (const ref of extraReferences) {
-    pushOrderedVisualRef(ref);
+    pushRefByKind('image', ref);
   }
 
+  // 优先级 3：所有声明的 references（按声明顺序）
   for (const item of references) {
     if (item.source) {
-      pushOrderedVisualRef(item.source);
+      pushRefByKind(item.kind ?? 'image', item.source);
     }
   }
-
-  const imageIndexBySourceKey = new Map<string, number>();
-  orderedVisualRefs.forEach((item, index) => {
-    imageIndexBySourceKey.set(item.key, index + 1);
-  });
 
   const replacements = parsedRefs.map(parsed => {
     const item = refMap.get(parsed.id);
@@ -131,13 +157,15 @@ export function compilePromptReferences(params: {
     }
 
     if (item.source) {
+      const kind = item.kind ?? 'image';
       const sourceKey = buildRefKey(item.source);
 
       if (replacementStrategy === 'image-index') {
-        const index = imageIndexBySourceKey.get(sourceKey);
+        const index = indexByKind[kind].get(sourceKey);
         if (index != null) {
-          return { ...parsed, replacement: `@Image ${index}` };
+          return { ...parsed, replacement: `@${KIND_LABEL[kind]} ${index}` };
         }
+        // 该 kind 超出上限 / 没占到编号 → 回退到 readable name
       }
 
       return { ...parsed, replacement: item.name };
@@ -156,6 +184,8 @@ export function compilePromptReferences(params: {
 
   void ensurePrimaryReference;
 
+  // compiledReferences = image + video + audio 扁平混排，primary 单独剔除（外层会把它
+  // 塞进 primaryImage / 首位 referenceImages 等专用槽位，避免重复进 additionalReferences）。
   const compiledReferences = orderedVisualRefs
     .filter(item => item.key !== primarySourceKey)
     .map(item => item.source);

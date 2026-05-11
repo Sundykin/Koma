@@ -24,9 +24,19 @@ export interface PromptCompilationAsset {
   source?: MediaAssetSource | ProviderAssetInput;
 }
 
+/**
+ * 引用条目的媒体类型。决定 @ 占位符在协议编译时的命名空间：
+ *   - image → @Image N（不限上限）
+ *   - video → @Video N（最多 3 个，超出的引用替换为 name fallback）
+ *   - audio → @Audio N（最多 3 个）
+ * 缺省视为 image（向后兼容）。
+ */
+export type PromptCompilationReferenceKind = 'image' | 'video' | 'audio';
+
 export interface PromptCompilationReferenceItem {
   id: string;
   name: string;
+  kind?: PromptCompilationReferenceKind;
   textValue?: string;
   source?: MediaAssetSource | ProviderAssetInput;
 }

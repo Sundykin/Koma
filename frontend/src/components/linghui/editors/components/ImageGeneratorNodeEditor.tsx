@@ -1,16 +1,18 @@
 /**
  * 图片生成器（控制器节点）编辑器。
  *
- * UI 要点：
- *  - 只暴露 prompt / 模型选择 / 比例 / batch
- *  - 「生成」按钮：调用 onGenerateImageFromController → canvas 在右侧派生展示节点 + 自动执行
- *  - 显示生成历史摘要：已生成 N 次，最新展示节点 id（可点击跳转）
- *  - 没有结果区域：所有出图状态在派生的下游 image 节点上展现
+ * 视觉对齐 ImageNodeEditor：
+ *  - 顶层 linghuiEditorPanel
+ *  - linghuiEditorPrompt 包 LinghuiPromptEditor
+ *  - linghuiEditorControlRow：模型按钮 + 参数 Popover（比例·分辨率·张数）+ 生成按钮
+ *
+ * 行为差异：点击「生成」→ onGenerate() 让 canvas 派生展示节点 + 自动执行；
+ * 控制器自身没有 nodeRun，所有出图状态由派生的下游 image 节点承载。
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Dropdown, InputNumber, Segmented } from 'antd';
+import { Button, Dropdown, Popover } from 'antd';
 import type { MenuProps } from 'antd';
-import { Sparkles } from 'lucide-react';
+import { ArrowUp } from 'lucide-react';
 import type {
   LinghuiImageGeneratorNodeProperties,
   LinghuiNodeData,
@@ -30,12 +32,19 @@ interface ProviderOption {
 }
 
 const ASPECT_RATIO_OPTIONS = ['1:1', '3:4', '4:3', '9:16', '16:9', '21:9'] as const;
+const RESOLUTION_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'auto', label: '自动' },
+  { value: '1K', label: '1K' },
+  { value: '2K', label: '2K' },
+  { value: '4K', label: '4K' },
+];
+const BATCH_OPTIONS = [1, 2, 4, 6, 8];
 
 interface ImageGeneratorNodeEditorProps {
   nodeId: string;
   nodeData: LinghuiNodeData;
   promptReferences?: LinghuiPromptReferenceItem[];
-  /** 点击「生成」时回调，参数是控制器节点 id，返回新建的展示节点 id */
+  /** 点击「生成」时回调，返回新建的展示节点 id */
   onGenerate: () => string | null;
 }
 
@@ -50,9 +59,8 @@ export const ImageGeneratorNodeEditor: React.FC<ImageGeneratorNodeEditorProps> =
   const prompt = String(props.prompt ?? '');
   const ttiSelection = String(props.ttiSelection ?? '');
   const aspectRatio = String(props.aspectRatio ?? '3:4');
+  const resolution = String(props.resolution ?? 'auto');
   const batchCount = Math.max(1, Math.min(8, Math.round(Number(props.batchCount ?? 1))));
-  const generationCount = props.generationCount ?? 0;
-  const aliveCount = (props.generatedImageNodeIds ?? []).length;
 
   const [providers, setProviders] = useState<ProviderOption[]>([]);
   const { locked: isGenerateLocked, runWithActionLock } = useLinghuiActionLock();
@@ -72,7 +80,8 @@ export const ImageGeneratorNodeEditor: React.FC<ImageGeneratorNodeEditorProps> =
     () => providers.find(option => option.value === ttiSelection) ?? providers[0],
     [providers, ttiSelection],
   );
-  const modelSummary = selectedProvider?.label || '未配置图片模型';
+  const modelSummary = selectedProvider?.label || '未配置生图模型';
+  const parameterSummary = `${aspectRatio} · ${resolution} · ${batchCount}张`;
 
   const updateProp = useCallback((key: keyof LinghuiImageGeneratorNodeProperties, value: unknown) => {
     updateNodeData(nodeId, prev => ({
@@ -105,26 +114,74 @@ export const ImageGeneratorNodeEditor: React.FC<ImageGeneratorNodeEditorProps> =
     });
   }, [onGenerate, runWithActionLock]);
 
-  return (
-    <div className="linghuiNodeEditorContent">
-      <div className="linghuiEditorField linghuiEditorFieldNoBottomGap">
-        <div className="linghuiEditorInlineHeader">
-          <span className="linghuiEditorSettingsLabel">提示词</span>
-          {generationCount > 0 ? (
-            <span className="linghuiEditorSummaryPill">
-              已生成 {generationCount} 次
-              {aliveCount !== generationCount ? ` · 保留 ${aliveCount}` : ''}
-            </span>
-          ) : null}
+  const parametersPopover = (
+    <div
+      className="linghuiEditorSettingsPopover"
+      onClick={event => event.stopPropagation()}
+      onMouseDown={event => event.stopPropagation()}
+      onPointerDown={event => event.stopPropagation()}
+    >
+      <div className="linghuiEditorSettingsBlock">
+        <div className="linghuiEditorSettingsLabel">比例</div>
+        <div className="linghuiEditorOptionGrid">
+          {ASPECT_RATIO_OPTIONS.map(value => (
+            <button
+              key={value}
+              type="button"
+              className={`linghuiEditorOptionTile ${aspectRatio === value ? 'isActive' : ''}`}
+              onClick={() => updateProp('aspectRatio', value)}
+            >
+              {value}
+            </button>
+          ))}
         </div>
+      </div>
+
+      <div className="linghuiEditorSettingsBlock">
+        <div className="linghuiEditorSettingsLabel">分辨率</div>
+        <div className="linghuiEditorOptionGrid isCompact">
+          {RESOLUTION_OPTIONS.map(option => (
+            <button
+              key={option.value}
+              type="button"
+              className={`linghuiEditorOptionTile ${resolution === option.value ? 'isActive' : ''}`}
+              onClick={() => updateProp('resolution', option.value)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="linghuiEditorSettingsBlock">
+        <div className="linghuiEditorSettingsLabel">出图数量</div>
+        <div className="linghuiEditorOptionGrid">
+          {BATCH_OPTIONS.map(value => (
+            <button
+              key={value}
+              type="button"
+              className={`linghuiEditorOptionTile ${batchCount === value ? 'isActive' : ''}`}
+              onClick={() => updateProp('batchCount', value)}
+            >
+              {value}张
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="linghuiEditorPanel" onMouseDown={event => event.stopPropagation()}>
+      <div className="linghuiEditorPrompt">
         <LinghuiPromptEditor
           value={prompt}
           onChange={value => updateProp('prompt', value)}
           references={promptReferences}
-          placeholder="描述你想要生成的画面。例如：暴雨夜的废弃车站，少年的特写，冷蓝色调..."
+          placeholder="输入 @ 引用上游产物"
           surfaceStyle="fusion"
-          minHeight="100px"
-          maxHeight="220px"
+          minHeight="76px"
+          maxHeight="176px"
         />
       </div>
 
@@ -138,7 +195,7 @@ export const ImageGeneratorNodeEditor: React.FC<ImageGeneratorNodeEditorProps> =
           }}
           classNames={{ root: 'linghuiNodeEditorDropdownMenu' }}
           getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
-          overlayClassName="linghuiNodeEditorDropdownOverlay"
+          styles={{ root: { zIndex: 1200 } }}
         >
           <button
             type="button"
@@ -150,46 +207,35 @@ export const ImageGeneratorNodeEditor: React.FC<ImageGeneratorNodeEditorProps> =
           </button>
         </Dropdown>
 
-        <div className="linghuiEditorInlineTrigger" onClick={event => event.stopPropagation()}>
-          <Segmented
-            size="small"
-            options={ASPECT_RATIO_OPTIONS.map(value => ({ label: value, value }))}
-            value={aspectRatio}
-            onChange={value => updateProp('aspectRatio', String(value))}
-          />
-        </div>
-
-        <div className="linghuiEditorInlineTrigger" onClick={event => event.stopPropagation()}>
-          <span style={{ marginRight: 6 }}>张数</span>
-          <InputNumber
-            size="small"
-            min={1}
-            max={8}
-            value={batchCount}
-            onChange={value => updateProp('batchCount', typeof value === 'number' ? value : 1)}
-            controls
-            style={{ width: 60 }}
-          />
-        </div>
+        <Popover
+          trigger="click"
+          placement="bottomRight"
+          content={parametersPopover}
+          overlayClassName="linghuiEditorPopover"
+          getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
+          zIndex={1200}
+        >
+          <button
+            type="button"
+            className="linghuiEditorInlineTrigger"
+            onClick={event => event.stopPropagation()}
+          >
+            {parameterSummary}
+          </button>
+        </Popover>
 
         <div className="linghuiEditorActionGroup">
           <Button
             type="primary"
             size="small"
-            icon={<Sparkles size={12} />}
+            icon={<ArrowUp size={12} />}
             onClick={handleGenerate}
             disabled={isGenerateLocked || !prompt.trim()}
           >
-            生成图片
+            生成
           </Button>
         </div>
       </div>
-
-      {generationCount === 0 ? (
-        <div className="linghuiEditorEmptyState">
-          点击「生成图片」后，会在画布右侧新建一个图片展示节点，每次点击都会保留为生成历史。
-        </div>
-      ) : null}
     </div>
   );
 };

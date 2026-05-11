@@ -20,7 +20,9 @@ import type {
 import { Director3DMannequin } from './Director3DMannequin';
 import { Director3DLiteMannequin } from './Director3DLiteMannequin';
 import { Director3DFormation, deriveFormationMembers } from './Director3DFormation';
+import { Director3DCreature } from './Director3DCreatureMesh';
 import { Director3DProp } from './Director3DProp';
+import { buildExportCreatureGroup, buildExportMannequinGroup } from './director3dExportGeometry';
 import { resolvePanoramaViewerMode } from '../panorama/panoramaProjection';
 import { safeFetch } from '../../../utils/safeFetch';
 import { resolveDirector3DColor } from './director3dColors';
@@ -32,6 +34,12 @@ export interface Director3DCaptureOptions {
   renderMode?: LinghuiDirector3DRenderMode;
   /** 临时相机参数。提供时使用该相机渲染（不改 viewport 当前视角），用于批量多视角导出 */
   cameraOverride?: LinghuiDirector3DScene['camera'];
+  /**
+   * 强制使用此 scene 渲染（不读 props.scene）。
+   * 时间轴逐帧导出用：外部直接传入 interpolateSceneAt(scene, t) 算出来的快照，
+   * 避免依赖 React state 更新链路导致 capture 闭包仍是旧 scene 而产出静态视频。
+   */
+  sceneOverride?: LinghuiDirector3DScene;
 }
 
 export interface Director3DViewportHandle {
@@ -39,6 +47,11 @@ export interface Director3DViewportHandle {
   captureCurrentView: (options?: Director3DCaptureOptions) => Promise<string | null>;
   /** 返回当前工作台视角对应的相机参数。 */
   getCurrentCamera: () => LinghuiDirector3DScene['camera'];
+  /**
+   * 返回当前轨道相机的 yaw (累计弧度，不取模) / pitch / distance。
+   * 用于关键帧记录环绕镜头：position 是 [x,y,z] 看不出转了几圈，但 yaw 累计可以。
+   */
+  getCurrentOrbit: () => { yaw: number; pitch: number; distance: number };
 }
 
 interface Director3DViewportProps {
@@ -47,13 +60,81 @@ interface Director3DViewportProps {
   onActorClick?: (actorId: string) => void;
   onActorMove?: (actorId: string, position: [number, number, number]) => void;
   onCanvasClick?: () => void;
-  onCameraChange?: (camera: LinghuiDirector3DScene['camera']) => void;
+  onCameraChange?: (
+    camera: LinghuiDirector3DScene['camera'],
+    orbit: { yaw: number; pitch: number; distance: number },
+  ) => void;
   /** lineart 渲染模式（影响假人材质 / 背景显隐 / 网格颜色） */
   renderMode?: 'preview' | 'lineart' | 'silhouette';
+  /**
+   * 相机模式：
+   *  - 'output'（默认）：拖动 / 缩放 / 视角预设 直接写到 scene.camera = 输出相机
+   *    所有关键帧 / 导出 lineart / 时间轴插值用的就是这个
+   *  - 'editor'：拖动 / 缩放只改 viewport 内部 ref，不写回 scene.camera，
+   *    不影响最终输出。用于"我想从其他角度看一眼场景"。
+   *    切回 output 模式时 viewport 视角会重新对齐到 scene.camera。
+   */
+  cameraMode?: 'output' | 'editor';
   className?: string;
 }
 
 const PIVOT = new THREE.Vector3(0, 0.8, 0);
+
+/**
+ * 离屏导出复用的 WebGL renderer。如果每帧都 new THREE.WebGLRenderer()，
+ * 浏览器会很快撞到 WebGL context 数量上限（~16），导致老 context 被踢、
+ * 渲染崩溃。这里全局复用一个 canvas + renderer，只在尺寸变化时 setSize。
+ */
+let offscreenSingleton: { canvas: HTMLCanvasElement; renderer: THREE.WebGLRenderer } | null = null;
+
+function getOrCreateOffscreenRenderer(width: number, height: number): {
+  canvas: HTMLCanvasElement;
+  renderer: THREE.WebGLRenderer;
+} {
+  if (!offscreenSingleton) {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: true,
+      alpha: true,
+      preserveDrawingBuffer: true,
+    });
+    renderer.setPixelRatio(1);
+    renderer.setSize(width, height, false);
+    offscreenSingleton = { canvas, renderer };
+  } else if (offscreenSingleton.canvas.width !== width || offscreenSingleton.canvas.height !== height) {
+    offscreenSingleton.canvas.width = width;
+    offscreenSingleton.canvas.height = height;
+    offscreenSingleton.renderer.setSize(width, height, false);
+  }
+  return offscreenSingleton;
+}
+
+/**
+ * 递归 dispose 整棵 scene 的临时 geometry / material 资源 —— 避免逐帧导出内存泄漏。
+ */
+function disposeSceneGraph(root: THREE.Object3D): void {
+  root.traverse((obj) => {
+    const mesh = obj as THREE.Mesh;
+    if (mesh.isMesh) {
+      mesh.geometry?.dispose();
+      const mat = mesh.material;
+      if (Array.isArray(mat)) {
+        mat.forEach(m => m.dispose());
+      } else if (mat) {
+        mat.dispose();
+      }
+    }
+    // LineSegments 用 EdgesGeometry，也是 disposable
+    const line = obj as THREE.LineSegments;
+    if ((line as { isLineSegments?: boolean }).isLineSegments) {
+      line.geometry?.dispose();
+      if (line.material instanceof THREE.Material) line.material.dispose();
+    }
+  });
+}
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
 
 interface OrbitCameraState {
@@ -117,13 +198,115 @@ function buildCameraFromOrbit(
   };
 }
 
-function GroundGrid({ visible, lineColor }: { visible: boolean; lineColor: string }) {
+/**
+ * 工作台环境常量：geometry 尺寸 + 云朵 / 凸起的固定位置。
+ * 缩到低配能跑：圆盘 r=15, sky r=20，grid 与圆盘同步 (30×30 总宽，30 分割 = 1m/格)。
+ * 云朵 / 凸起用确定性位置，避免渲染时抖动。
+ */
+const GROUND_RADIUS = 15;
+const SKY_RADIUS = 20;
+const GROUND_GRID_TOTAL = GROUND_RADIUS * 2;
+const GROUND_GRID_DIVISIONS = 30;
+
+// 6 朵固定云（避免每帧重新随机导致抖动）
+const ENV_CLOUDS: Array<{ x: number; z: number; y: number; rx: number; rz: number }> = [
+  { x: -8, z: -6, y: 11, rx: 2.0, rz: 1.4 },
+  { x: 7, z: -9, y: 12, rx: 2.6, rz: 1.6 },
+  { x: -4, z: 8, y: 13, rx: 1.8, rz: 1.1 },
+  { x: 9, z: 5, y: 10, rx: 2.2, rz: 1.5 },
+  { x: 0, z: 10, y: 14, rx: 2.4, rz: 1.4 },
+  { x: -10, z: 1, y: 13, rx: 1.9, rz: 1.2 },
+];
+
+/**
+ * 用 canvas 程序化生成"颗粒感" data URL（深浅斑点 PNG），给地面 / 凸起的 material.map / bumpMap 用。
+ * 一次生成、模块级缓存，导出 192 帧只跑一次。
+ */
+function generateGroundNoiseDataUrl(size = 128, seed = 0xa1b2c3): string {
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return '';
+  // 基底浅米
+  ctx.fillStyle = '#e0ddd5';
+  ctx.fillRect(0, 0, size, size);
+  // pseudo-random 颗粒 (LCG，确定性，避免每次渲染都变)
+  let s = seed >>> 0;
+  const rand = () => {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    return s / 0xffffffff;
+  };
+  for (let i = 0; i < size * size * 0.55; i++) {
+    const x = (rand() * size) | 0;
+    const y = (rand() * size) | 0;
+    const r = rand();
+    const dim = r < 0.5 ? 28 : r < 0.8 ? 14 : 8;
+    ctx.fillStyle = r < 0.5
+      ? `rgba(180,176,168,${0.18 + rand() * 0.18})`
+      : `rgba(255,253,246,${0.14 + rand() * 0.14})`;
+    ctx.fillRect(x, y, 1, 1);
+    if (dim > 8 && r > 0.7) {
+      ctx.fillRect(x + 1, y, 1, 1);
+      ctx.fillRect(x, y + 1, 1, 1);
+    }
+  }
+  return canvas.toDataURL('image/png');
+}
+
+let _groundNoiseTexture: THREE.Texture | null = null;
+function getGroundNoiseTexture(): THREE.Texture {
+  if (_groundNoiseTexture) return _groundNoiseTexture;
+  const loader = new THREE.TextureLoader();
+  const url = generateGroundNoiseDataUrl();
+  _groundNoiseTexture = loader.load(url);
+  _groundNoiseTexture.wrapS = THREE.RepeatWrapping;
+  _groundNoiseTexture.wrapT = THREE.RepeatWrapping;
+  _groundNoiseTexture.repeat.set(8, 8); // 平铺 8 次 → 看起来更碎
+  return _groundNoiseTexture;
+}
+
+function GroundGrid({ visible }: { visible: boolean; lineColor?: string }) {
+  const groundTexture = useMemo(() => (visible ? getGroundNoiseTexture() : null), [visible]);
   if (!visible) return null;
   return (
-    <gridHelper
-      args={[24, 24, lineColor, lineColor]}
-      position={[0, 0, 0]}
-    />
+    <>
+      {/* 圆盘地面：颗粒感纹理 + 高粗糙度 → 看起来像泥地/沙地，无大型凸起 */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.001, 0]} receiveShadow={false}>
+        <circleGeometry args={[GROUND_RADIUS, 48]} />
+        <meshStandardMaterial
+          color="#dcd6c9"
+          roughness={0.95}
+          metalness={0}
+          map={groundTexture ?? undefined}
+        />
+      </mesh>
+      {/* 网格线 —— 与圆盘同范围、间距 1m，淡灰不抢主体 */}
+      <gridHelper
+        args={[GROUND_GRID_TOTAL, GROUND_GRID_DIVISIONS, '#c8c4bd', '#dad6cd']}
+        position={[0, 0.001, 0]}
+      />
+    </>
+  );
+}
+
+function SkyDome({ visible }: { visible: boolean }) {
+  if (!visible) return null;
+  return (
+    <>
+      {/* 半球穹顶 —— 用更柔和的天蓝色 */}
+      <mesh>
+        <sphereGeometry args={[SKY_RADIUS, 24, 12, 0, Math.PI * 2, 0, Math.PI * 0.5]} />
+        <meshBasicMaterial color="#9ec6e8" side={THREE.BackSide} />
+      </mesh>
+      {/* 6 朵固定白云 —— 在天空里给画面参考点 */}
+      {ENV_CLOUDS.map((cloud, i) => (
+        <mesh key={`cloud-${i}`} position={[cloud.x, cloud.y, cloud.z]} scale={[cloud.rx, 0.45, cloud.rz]}>
+          <sphereGeometry args={[1, 12, 8]} />
+          <meshBasicMaterial color="#fefefe" />
+        </mesh>
+      ))}
+    </>
   );
 }
 
@@ -324,29 +507,30 @@ interface CaptureRendererProps {
 }
 
 const CaptureRenderer: React.FC<CaptureRendererProps> = ({ scene, texture, cameraStateRef, registerCapture }) => {
+  // 把 props.scene 同步到 ref：capture 里读 ref 而不是闭包的 scene，
+  // 这样即使 props 异步更新到位前 capture 被调用，也能拿到最新 scene
+  const sceneRef = useRef<LinghuiDirector3DScene>(scene);
+  useEffect(() => {
+    sceneRef.current = scene;
+  }, [scene]);
+
   const capture = useCallback(async (options?: Director3DCaptureOptions) => {
-    const currentCamera = options?.cameraOverride ?? cameraStateRef.current;
+    // 优先级：sceneOverride > sceneRef.current（最新 props.scene）
+    const effectiveScene = options?.sceneOverride ?? sceneRef.current;
+    const currentCamera = options?.cameraOverride ?? effectiveScene.camera ?? cameraStateRef.current;
     const width = options?.width ?? 1024;
     const aspectParts = currentCamera.aspectRatio.split(':');
     const ratio = aspectParts.length === 2 ? Number(aspectParts[0]) / Number(aspectParts[1]) : 16 / 9;
     const height = options?.height ?? Math.round(width / ratio);
     const exportMode: LinghuiDirector3DRenderMode = options?.renderMode ?? 'lineart';
 
-    // 临时离屏渲染：用 scene 里的 camera 数据 + 按 exportMode 切换材质风格
-    const offscreen = document.createElement('canvas');
-    offscreen.width = width;
-    offscreen.height = height;
-    const renderer = new THREE.WebGLRenderer({ canvas: offscreen, antialias: true, alpha: true, preserveDrawingBuffer: true });
-    renderer.setPixelRatio(1);
-    renderer.setSize(width, height, false);
+    // 复用单一 WebGLRenderer：每帧 new WebGLRenderer 会创建独立 WebGL context，
+    // 浏览器有 ~16 个 context 上限，逐帧导出 192 帧会触发 "Too many active WebGL contexts"。
+    const { renderer, canvas: offscreen } = getOrCreateOffscreenRenderer(width, height);
 
-    // 不同导出风格的画布背景：
-    //  - lineart / composition：白底（线稿习惯）
-    //  - silhouette：白底，主体填黑
-    //  - depth：白底，主体按距离取灰
-    const backdropColor = exportMode === 'silhouette' || exportMode === 'depth' || exportMode === 'composition'
-      ? 0xffffff
-      : resolveDirector3DColor('var(--token-bg-base)', 'black');
+    // 背景色：preview 用淡天蓝（被 sky 穹顶完全包裹时影响小但渲染缓冲外区域有色调），
+    // 其他模式（lineart / silhouette / depth / composition）纯白便于下游 AI 识别主体
+    const backdropColor = exportMode === 'preview' ? 0xcfe4f5 : 0xffffff;
     renderer.setClearColor(backdropColor, 1);
 
     const offscreenScene = new THREE.Scene();
@@ -357,18 +541,35 @@ const CaptureRenderer: React.FC<CaptureRendererProps> = ({ scene, texture, camer
     offscreenScene.add(dirLight);
 
     // 按风格构造主体 mesh 材质：
-    //  - lineart / composition：纯白填充 + 黑色 EdgesGeometry 描边
+    //  - preview：MeshStandardMaterial + actor.color，受光照，无描边 → 与画布完全一致
+    //  - lineart / composition：保留 actor.color（彩色实色填充）+ 黑色描边
     //  - silhouette：纯黑填充，不画边
     //  - depth：MeshDepthMaterial（远=白 近=黑，便于下游 ControlNet 直接用）
-    const fillMat: THREE.Material = exportMode === 'silhouette'
-      ? new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.DoubleSide })
-      : exportMode === 'depth'
-        ? new THREE.MeshDepthMaterial({ side: THREE.DoubleSide })
-        : new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
     const wireMat = new THREE.LineBasicMaterial({ color: 0x000000 });
     const drawEdges = exportMode === 'lineart' || exportMode === 'composition';
-    const addLineartMesh = (group: THREE.Group, geometry: THREE.BufferGeometry, offset: [number, number, number] = [0, 0, 0]) => {
-      const mesh = new THREE.Mesh(geometry, fillMat);
+    const makeFillMat = (actorColor?: string): THREE.Material => {
+      if (exportMode === 'silhouette') return new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.DoubleSide });
+      if (exportMode === 'depth') return new THREE.MeshDepthMaterial({ side: THREE.DoubleSide });
+      const colorStr = resolveDirector3DColor(actorColor || '', '#ffffff');
+      if (exportMode === 'preview') {
+        return new THREE.MeshStandardMaterial({
+          color: new THREE.Color(colorStr),
+          roughness: 0.7,
+          metalness: 0.05,
+          side: THREE.DoubleSide,
+        });
+      }
+      // lineart / composition：纯色 + 描边
+      return new THREE.MeshBasicMaterial({ color: new THREE.Color(colorStr), side: THREE.DoubleSide });
+    };
+    // 每个 actor 的 fillMat 通过闭包变量传给 addLineartMesh，避免改函数签名
+    let currentActorFillMat: THREE.Material = makeFillMat();
+    const addLineartMesh = (
+      group: THREE.Group,
+      geometry: THREE.BufferGeometry,
+      offset: [number, number, number] = [0, 0, 0],
+    ) => {
+      const mesh = new THREE.Mesh(geometry, currentActorFillMat);
       mesh.position.set(offset[0], offset[1], offset[2]);
       group.add(mesh);
       if (drawEdges) {
@@ -378,24 +579,36 @@ const CaptureRenderer: React.FC<CaptureRendererProps> = ({ scene, texture, camer
       }
     };
 
-    for (const actor of scene.actors) {
+    for (const actor of effectiveScene.actors) {
+      currentActorFillMat = makeFillMat(actor.color);
+
+      // 主角假人 / 生物：跟 viewport 的 Director3DMannequin / Director3DCreatureMesh
+      // 保持同一份关节层级 + rig 旋转，避免导出后动作丢失（所见即所得）
+      if (actor.type === 'mannequin') {
+        const exportGroup = buildExportMannequinGroup(actor, {
+          drawEdges,
+          wireMat,
+          fillMat: currentActorFillMat,
+        });
+        offscreenScene.add(exportGroup);
+        continue;
+      }
+      if (actor.type === 'creature') {
+        const exportGroup = buildExportCreatureGroup(actor, {
+          drawEdges,
+          wireMat,
+          fillMat: currentActorFillMat,
+        });
+        offscreenScene.add(exportGroup);
+        continue;
+      }
+
       const group = new THREE.Group();
       group.position.fromArray(actor.position);
       group.rotation.y = actor.rotationY;
       group.scale.setScalar(actor.scale);
 
-      if (actor.type === 'mannequin') {
-        addLineartMesh(group, new THREE.BoxGeometry(0.36, 0.6, 0.2), [0, 0.86 + 0.3, 0]);
-        addLineartMesh(group, new THREE.SphereGeometry(0.12, 24, 18), [0, 0.86 + 0.6 + 0.16, 0]);
-        const armGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.55, 12);
-        [-1, 1].forEach((sign) => {
-          addLineartMesh(group, armGeo, [sign * 0.21, 0.86 + 0.3 - 0.04 - 0.275, 0]);
-        });
-        const legGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.86, 12);
-        [-1, 1].forEach((sign) => {
-          addLineartMesh(group, legGeo, [sign * 0.13, 0.86 - 0.43, 0]);
-        });
-      } else if (actor.type === 'mannequin-lite') {
+      if (actor.type === 'mannequin-lite') {
         // 低级群演单兵：头 + 锥形躯干 + 两臂 + 两腿（与 Director3DLiteMannequin 几何一致）
         const torsoTop = 0.18;
         const torsoBot = 0.13;
@@ -453,30 +666,63 @@ const CaptureRenderer: React.FC<CaptureRendererProps> = ({ scene, texture, camer
         const lens = new THREE.CylinderGeometry(0.12, 0.16, 0.25, 18);
         lens.rotateX(Math.PI / 2);
         addLineartMesh(group, lens, [0, 0.5, 0.4]);
+        // 取景方向指示：从相机正前方伸出的细线，与 viewport Director3DProp 一致
+        const aim = new THREE.CylinderGeometry(0.01, 0.01, 1.2, 8);
+        aim.rotateX(Math.PI / 2);
+        addLineartMesh(group, aim, [0, 0.5, 1.05]);
       } else if (actor.type === 'prop-arrow') {
         const shaft = new THREE.CylinderGeometry(0.05, 0.05, 1, 12);
         shaft.rotateX(Math.PI / 2);
         addLineartMesh(group, shaft, [0, 0.1, 0.5]);
         const head = new THREE.ConeGeometry(0.16, 0.32, 18);
-        head.rotateX(Math.PI / 2);
+        // viewport 用 -π/2，让锥尖指向 +Z 与 shaft 方向一致
+        head.rotateX(-Math.PI / 2);
         addLineartMesh(group, head, [0, 0.1, 1.1]);
       }
 
       offscreenScene.add(group);
     }
 
-    // 地面线稿：仅在 lineart 模式下保留浅色网格；silhouette / depth / composition 不画地面
-    if (exportMode === 'lineart') {
-      const gridHelper = new THREE.GridHelper(24, 24, 0x404040, 0x808080);
-      offscreenScene.add(gridHelper);
+    // preview 模式：与画布完全同步的地面 + 天空 + 云朵（确定性位置不抖动）
+    if (exportMode === 'preview') {
+      // 圆盘地面 + 颗粒纹理（与 viewport GroundGrid 共用 getGroundNoiseTexture）
+      const groundMat = new THREE.MeshStandardMaterial({
+        color: 0xdcd6c9,
+        roughness: 0.95,
+        metalness: 0,
+        map: getGroundNoiseTexture(),
+        side: THREE.DoubleSide,
+      });
+      const ground = new THREE.Mesh(new THREE.CircleGeometry(GROUND_RADIUS, 48), groundMat);
+      ground.rotation.x = -Math.PI / 2;
+      ground.position.y = -0.001;
+      offscreenScene.add(ground);
+
+      // 天空半球
+      const sky = new THREE.Mesh(
+        new THREE.SphereGeometry(SKY_RADIUS, 24, 12, 0, Math.PI * 2, 0, Math.PI * 0.5),
+        new THREE.MeshBasicMaterial({ color: 0x9ec6e8, side: THREE.BackSide }),
+      );
+      offscreenScene.add(sky);
+
+      // 白云（用 ENV_CLOUDS 固定位置）
+      for (const cloud of ENV_CLOUDS) {
+        const cloudMesh = new THREE.Mesh(
+          new THREE.SphereGeometry(1, 12, 8),
+          new THREE.MeshBasicMaterial({ color: 0xfefefe }),
+        );
+        cloudMesh.position.set(cloud.x, cloud.y, cloud.z);
+        cloudMesh.scale.set(cloud.rx, 0.45, cloud.rz);
+        offscreenScene.add(cloudMesh);
+      }
     }
 
-    if (scene.background.mode === 'panorama' && texture && exportMode === 'lineart') {
+    if (effectiveScene.background.mode === 'panorama' && texture && exportMode === 'lineart') {
       const aspect = (texture.image && (texture.image as { width: number }).width)
         ? (texture.image as { width: number; height: number }).width / (texture.image as { height: number }).height
         : 21 / 9;
       const viewerMode = resolvePanoramaViewerMode({
-        projectionMode: scene.background.projectionMode,
+        projectionMode: effectiveScene.background.projectionMode,
         width: (texture.image as { width?: number } | undefined)?.width,
         height: (texture.image as { height?: number } | undefined)?.height,
       });
@@ -548,7 +794,9 @@ const CaptureRenderer: React.FC<CaptureRendererProps> = ({ scene, texture, camer
     } catch {
       dataUrl = null;
     }
-    renderer.dispose();
+    // 不 dispose renderer（复用），但要 dispose 本次构造的临时 scene 资源
+    disposeSceneGraph(offscreenScene);
+    offscreenScene.clear();
     return dataUrl;
   }, [cameraStateRef, scene, texture]);
 
@@ -696,22 +944,24 @@ const ActorDragLayer: React.FC<ActorDragLayerProps> = ({
           ? { ...actor, position: dragPreview.position }
           : actor;
         const shared = {
-          key: actor.id,
           actor: renderActor,
           selected: actor.id === selectedActorId,
           renderMode,
           onPointerDown: (event: import('@react-three/fiber').ThreeEvent<PointerEvent>) => handleActorPointerDown(actor, event),
         };
         if (actor.type === 'mannequin') {
-          return <Director3DMannequin {...shared} />;
+          return <Director3DMannequin key={actor.id} {...shared} />;
         }
         if (actor.type === 'mannequin-lite') {
-          return <Director3DLiteMannequin {...shared} />;
+          return <Director3DLiteMannequin key={actor.id} {...shared} />;
         }
         if (actor.type === 'formation') {
-          return <Director3DFormation {...shared} />;
+          return <Director3DFormation key={actor.id} {...shared} />;
         }
-        return <Director3DProp {...shared} />;
+        if (actor.type === 'creature') {
+          return <Director3DCreature key={actor.id} {...shared} />;
+        }
+        return <Director3DProp key={actor.id} {...shared} />;
       })}
     </>
   );
@@ -727,10 +977,12 @@ export const Director3DViewport = forwardRef<Director3DViewportHandle, Director3
       onCanvasClick,
       onCameraChange,
       renderMode = 'preview',
+      cameraMode = 'output',
       className,
     },
     ref,
   ) {
+    const cameraModeRef = useRef<'output' | 'editor'>(cameraMode);
     const initialOrbit = useMemo(() => resolveOrbitCameraState(scene.camera), []);
     const yawTargetRef = useRef(initialOrbit.yaw);
     const pitchTargetRef = useRef(initialOrbit.pitch);
@@ -746,17 +998,38 @@ export const Director3DViewport = forwardRef<Director3DViewportHandle, Director3
 
     useImperativeHandle(ref, () => ({
       captureCurrentView: (options) => captureFnRef.current(options),
-      getCurrentCamera: () => cameraStateRef.current,
-    }), []);
+      // viewport 当前显示的相机参数（编辑模式下 ≠ scene.camera，输出模式下 = scene.camera）
+      // 用法：编辑器调用 viewport.getCurrentCamera() 拿到编辑视角，写到 scene.camera 即"应用为输出"
+      getCurrentCamera: () => buildCameraFromOrbit(
+        yawTargetRef.current,
+        pitchTargetRef.current,
+        distanceRef.current,
+        panOffsetRef.current,
+        scene.camera,
+      ),
+      // 用户拖动相机时 yawTargetRef 是累计弧度（不取模），所以连续转两圈 yaw = 4π
+      getCurrentOrbit: () => ({
+        yaw: yawTargetRef.current,
+        pitch: pitchTargetRef.current,
+        distance: distanceRef.current,
+      }),
+    }), [scene.camera]);
 
     useEffect(() => {
-      const orbit = resolveOrbitCameraState(scene.camera);
-      yawTargetRef.current = orbit.yaw;
-      pitchTargetRef.current = orbit.pitch;
-      distanceRef.current = orbit.distance;
-      panOffsetRef.current.copy(orbit.pan);
-      cameraStateRef.current = scene.camera;
-    }, [scene.camera]);
+      // 当 scene.camera（输出相机）变化、或 mode 切回 output 时，重置 viewport 视角到输出相机
+      // mode 切到 editor 时不重置：保留用户当前视角作为编辑起点
+      const previousMode = cameraModeRef.current;
+      cameraModeRef.current = cameraMode;
+      const switchedBackToOutput = previousMode === 'editor' && cameraMode === 'output';
+      if (cameraMode === 'output' || switchedBackToOutput) {
+        const orbit = resolveOrbitCameraState(scene.camera);
+        yawTargetRef.current = orbit.yaw;
+        pitchTargetRef.current = orbit.pitch;
+        distanceRef.current = orbit.distance;
+        panOffsetRef.current.copy(orbit.pan);
+        cameraStateRef.current = scene.camera;
+      }
+    }, [scene.camera, cameraMode]);
 
     const commitCurrentCamera = useCallback(() => {
       const currentCamera = buildCameraFromOrbit(
@@ -767,7 +1040,14 @@ export const Director3DViewport = forwardRef<Director3DViewportHandle, Director3
         scene.camera,
       );
       cameraStateRef.current = currentCamera;
-      onCameraChange?.(currentCamera);
+      // 编辑模式：viewport 视角变化只留在本地 ref，不写回 scene.camera，
+      // 也就不会影响关键帧 / 导出 lineart / 时间轴动画
+      if (cameraModeRef.current === 'editor') return;
+      onCameraChange?.(currentCamera, {
+        yaw: yawTargetRef.current,
+        pitch: pitchTargetRef.current,
+        distance: distanceRef.current,
+      });
     }, [onCameraChange, scene.camera]);
 
     const onPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
@@ -879,7 +1159,8 @@ export const Director3DViewport = forwardRef<Director3DViewportHandle, Director3
           <directionalLight position={[6, 8, 4]} intensity={0.65} />
           <directionalLight position={[-4, 6, -6]} intensity={0.3} />
           <Background scene={scene} texture={texture} renderMode={renderMode} />
-          <GroundGrid visible={scene.render.showGrid} lineColor={lineColor} />
+          <SkyDome visible={renderMode === 'preview'} />
+          <GroundGrid visible={scene.render.showGrid} />
 
           {/* 原点指示 */}
           <axesHelper args={[1.2]} position={[0, 0.01, 0]} />

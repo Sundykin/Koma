@@ -963,11 +963,35 @@ export async function executePanoramaNode(
     }),
   )).filter((value): value is DetailItem => value !== null);
 
+  // 全景"伪 3D 视角"：用户在 PanoramaViewer 上抽取的虚拟相机角度产物。
+  // 这些图已经在编辑器侧通过 panoramaPerspectiveExtractor 重采样并落盘，
+  // 这里直接当 image collection item 输出给下游做场景一致性。
+  const rawPerspectiveViews = Array.isArray(node.properties.perspectiveViews) ? node.properties.perspectiveViews : [];
+  const perspectiveItems: DetailItem[] = (await Promise.all(
+    rawPerspectiveViews.map(async (view, index): Promise<DetailItem | null> => {
+      const source = typeof (view as { source?: unknown })?.source === 'string' ? (view as { source: string }).source : '';
+      if (!source) return null;
+      const label = typeof (view as { label?: unknown })?.label === 'string' ? (view as { label: string }).label : `视角 ${index + 1}`;
+      const width = typeof (view as { width?: unknown })?.width === 'number' ? (view as { width: number }).width : undefined;
+      const height = typeof (view as { height?: unknown })?.height === 'number' ? (view as { height: number }).height : undefined;
+      // perspectiveViews.source 一般已经是 koma-local（PanoramaViewer 抽取时调 persistMediaAsset）；
+      // 若仍是 dataUrl（比如老数据 / 离线场景），这里兜底落盘
+      const persistedSource = await persistDirectorMediaSource({
+        source,
+        nodeId: node.id,
+        slot: `panorama-view-${index}`,
+        mimeType: 'image/png',
+      });
+      return { kind: 'image', source: persistedSource, label, width, height, mimeType: 'image/png' };
+    }),
+  )).filter((value): value is DetailItem => value !== null);
+
   let merged: LinghuiNodeResult = result;
-  if (detailItems.length > 0 && (result.kind === 'image' || result.kind === 'images')) {
+  const extraItems = [...detailItems, ...perspectiveItems];
+  if (extraItems.length > 0 && (result.kind === 'image' || result.kind === 'images')) {
     const baseItems = result.kind === 'images' ? result.items : [result.primary];
     const dedupe = new Set<string>();
-    const items = [...baseItems, ...detailItems].filter(item => {
+    const items = [...baseItems, ...extraItems].filter(item => {
       const source = item.source || '';
       if (!source || dedupe.has(source)) return false;
       dedupe.add(source);
@@ -990,6 +1014,7 @@ export async function executePanoramaNode(
       panoramaProjection: projectionMode,
       originalPrompt: originalPrompt.trim(),
       detailCropCount: detailItems.length,
+      perspectiveViewCount: perspectiveItems.length,
     },
   } as LinghuiNodeResult;
 }

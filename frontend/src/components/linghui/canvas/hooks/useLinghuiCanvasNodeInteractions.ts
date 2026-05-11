@@ -152,6 +152,8 @@ export function useLinghuiCanvasNodeInteractions({
       element.closest('.linghuiNodeEditorMainSurface') ||
       element.closest('.linghuiEditorPanel') ||
       element.closest('.react-flow__handle') ||
+      // 节点上标注的「预览区」：点这里只看产物，不展开编辑器（Director3D 节点用）
+      element.closest('[data-node-preview-area="true"]') ||
       element.closest('button, input, textarea, select, a, [role="button"], [contenteditable="true"]'),
     );
   }, []);

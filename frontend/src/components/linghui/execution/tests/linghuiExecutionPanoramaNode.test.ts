@@ -124,4 +124,61 @@ describe('executePanoramaNode detailCrops 合并 + 落盘', () => {
     expect(result.metadata?.detailCropCount).toBe(1);
     expect(persistenceMod.persistMediaAsset).toHaveBeenCalledTimes(1);
   });
+
+  it('perspectiveViews 被聚合到 result.items，按 view.label 命名，images kind', async () => {
+    const persistenceMod = await import('../../../../services/mediaPersistenceService');
+    let counter = 0;
+    vi.mocked(persistenceMod.persistMediaAsset).mockImplementation(async () => ({
+      kind: 'image',
+      localPath: `/abs/pano-view-${++counter}.png`,
+      mimeType: 'image/png',
+      createdAt: Date.now(),
+    }));
+
+    const { executePanoramaNode } = await import('../state/linghuiExecutionNodeExecutors');
+    const node = buildPanoramaNodeView({
+      perspectiveViews: [
+        { id: 'v-1', label: '正前', yaw: 0, pitch: 0, fovDeg: 90, source: 'koma-local://files/front.png' },
+        { id: 'v-2', label: '正右', yaw: 1.57, pitch: 0, fovDeg: 90, source: 'koma-local://files/right.png' },
+      ],
+    });
+
+    const result = await executePanoramaNode(node);
+    expect(result.kind).toBe('images');
+    if (result.kind !== 'images') return;
+    expect(result.items).toHaveLength(3); // 主图 + 2 个视角
+    expect(result.items[1].label).toBe('正前');
+    expect(result.items[2].label).toBe('正右');
+    expect(result.metadata?.perspectiveViewCount).toBe(2);
+  });
+
+  it('detailCrops 和 perspectiveViews 同时存在时都被合并，且互不冲突', async () => {
+    const persistenceMod = await import('../../../../services/mediaPersistenceService');
+    let counter = 0;
+    vi.mocked(persistenceMod.persistMediaAsset).mockImplementation(async () => ({
+      kind: 'image',
+      localPath: `/abs/pano-mixed-${++counter}.png`,
+      mimeType: 'image/png',
+      createdAt: Date.now(),
+    }));
+
+    const { executePanoramaNode } = await import('../state/linghuiExecutionNodeExecutors');
+    const node = buildPanoramaNodeView({
+      detailCrops: [
+        { id: 'd-1', source: 'data:image/png;base64,DIR_N', label: '北' },
+      ],
+      perspectiveViews: [
+        { id: 'v-1', label: '正前', yaw: 0, pitch: 0, fovDeg: 90, source: 'koma-local://files/p1.png' },
+        { id: 'v-2', label: '正后', yaw: 3.14, pitch: 0, fovDeg: 90, source: 'koma-local://files/p2.png' },
+      ],
+    });
+
+    const result = await executePanoramaNode(node);
+    expect(result.kind).toBe('images');
+    if (result.kind !== 'images') return;
+    // 主图 + 1 detailCrop + 2 perspectiveViews = 4
+    expect(result.items).toHaveLength(4);
+    expect(result.metadata?.detailCropCount).toBe(1);
+    expect(result.metadata?.perspectiveViewCount).toBe(2);
+  });
 });

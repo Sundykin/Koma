@@ -319,3 +319,117 @@ describe('createNodeView', () => {
     }));
   });
 });
+
+describe('collectReferenceSources / collectVideoSources：下游识别 director3d 视频产物', () => {
+  it('上游 video 节点的 posterSource 视为图片参考，避免下游 image 节点拿不到任何输入', async () => {
+    const { collectReferenceSources } = await import('../state/linghuiExecutionShared');
+
+    const videoResult = {
+      kind: 'video' as const,
+      primary: {
+        kind: 'video' as const,
+        source: 'koma-local://files/timeline.mp4',
+        posterSource: 'koma-local://files/timeline-frame-0.png',
+        label: 'Director3D 时间轴动画',
+        mimeType: 'video/mp4',
+      },
+      metadata: { mode: 'director3d-video' as const },
+    };
+
+    const sources = collectReferenceSources([videoResult]);
+    expect(sources).toContain('koma-local://files/timeline-frame-0.png');
+  });
+
+  it('collectVideoSources 从视频结果里提取真实 mp4 源（区别于 posterSource）', async () => {
+    const { collectVideoSources } = await import('../state/linghuiExecutionShared');
+
+    const videoResult = {
+      kind: 'video' as const,
+      primary: {
+        kind: 'video' as const,
+        source: 'koma-local://files/timeline.mp4',
+        posterSource: 'koma-local://files/timeline-frame-0.png',
+        label: 'Director3D 时间轴动画',
+        mimeType: 'video/mp4',
+      },
+    };
+
+    const sources = collectVideoSources([videoResult]);
+    expect(sources).toEqual(['koma-local://files/timeline.mp4']);
+  });
+
+  it('image 槽位的 slot 类型过滤接受带 posterSource 的视频（director3d 视频可流到下游 image 节点）', async () => {
+    const { createNodeView } = await import('../state/linghuiExecutionShared');
+    const context: LinghuiExecutionContext = {
+      nodes: [
+        {
+          id: 'dir3d',
+          type: 'linghui-director3d',
+          position: { x: 0, y: 0 },
+          data: {
+            linghuiType: 'linghui/director3d',
+            label: '3D 导演',
+            accent: '#22c55e',
+            background: '#0f1720',
+            properties: { prompt: '', scene: { version: 1 } },
+            inputs: [],
+            outputs: [
+              { name: 'image', dataType: 'image' },
+              { name: 'text', dataType: 'text' },
+            ],
+            active: false,
+          },
+        },
+        {
+          id: 'image',
+          type: 'linghui-image',
+          position: { x: 200, y: 0 },
+          data: {
+            linghuiType: 'linghui/image',
+            label: '图片',
+            accent: '#22c55e',
+            background: '#0f1720',
+            properties: { mode: 'generate', source: '', prompt: '', ttiSelection: '', aspectRatio: '3:4', resolution: 'auto', gridType: 'none', batchCount: 1 },
+            inputs: [
+              { name: '参考', dataType: 'image' },
+              { name: '文本', dataType: 'text' },
+            ],
+            outputs: [{ name: 'image', dataType: 'image' }],
+            active: false,
+          },
+        },
+      ],
+      edges: [
+        {
+          id: 'e1',
+          source: 'dir3d',
+          target: 'image',
+          sourceHandle: 'output-0',
+          targetHandle: 'input-0',
+          type: 'linghui-edge',
+          data: { sourceSlotType: 'image', targetSlotType: 'image' },
+        },
+      ],
+      nodeOutputs: {
+        dir3d: {
+          kind: 'video',
+          primary: {
+            kind: 'video',
+            source: 'koma-local://files/timeline.mp4',
+            posterSource: 'koma-local://files/timeline-frame-0.png',
+            label: 'Director3D 时间轴动画',
+            mimeType: 'video/mp4',
+          },
+          metadata: { mode: 'director3d-video' },
+        },
+      },
+    };
+
+    const imageNode = context.nodes[1];
+    const view = createNodeView(context, imageNode);
+    const inputImages = view.getAllInputImages();
+    expect(inputImages).toHaveLength(1);
+    // resolveResultsByDataType('image') 在我修复前会过滤掉 kind=video 的结果，现在保留
+    expect(inputImages[0].kind).toBe('video');
+  });
+});

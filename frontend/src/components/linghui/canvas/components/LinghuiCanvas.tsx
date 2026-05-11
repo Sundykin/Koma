@@ -59,8 +59,6 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     onCancelRun,
     executionQueue,
     onOpenDrawer,
-    onSetDirectorPreviewBinding,
-    onRunDirectorWithPreview,
   },
   ref,
 ) {
@@ -316,6 +314,7 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
   const {
     bindNodeSurface,
     openNodeContextMenu,
+    openNodeEditor,
     openNodeToolPanel,
     handleNodeContextMenu,
     handleNodeClick,
@@ -337,13 +336,14 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
   const nodeInteractionApi = useMemo(() => ({
     bindNodeSurface,
     openNodeContextMenu,
+    openNodeEditor,
     openImageToolPanel(nodeId: string, tool: 'multi-angle' | 'outpaint' | 'relight' | 'repaint' | 'grid-split') {
       openNodeToolPanel({ kind: 'image', nodeId, tool });
     },
     openVideoToolPanel(nodeId: string, tool: 'upscale' | 'analyze' | 'compose') {
       openNodeToolPanel({ kind: 'video', nodeId, tool });
     },
-  }), [bindNodeSurface, openNodeContextMenu, openNodeToolPanel]);
+  }), [bindNodeSurface, openNodeContextMenu, openNodeEditor, openNodeToolPanel]);
 
   const clearNodeRunState = useCallback((nodeId: string) => {
     onClearNodeRunState?.(nodeId);
@@ -446,9 +446,6 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     buildClipboardSnapshot,
     undoHistory,
     redoHistory,
-    directorPreviewBindings: workspace?.directorPreviewBindings,
-    setDirectorPreviewBinding: onSetDirectorPreviewBinding,
-    onRunDirectorWithPreview,
   });
 
   useLinghuiCanvasImperativeHandle({

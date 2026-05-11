@@ -252,6 +252,30 @@ describe('Timeline interpolateSceneAt', () => {
     expect(mid.actors[0].rig!.leftShoulder[0]).toBeCloseTo(0, 5);
   });
 
+  it('cameraOrbit 双帧存在时按累计 yaw 线性插值：720° 环绕真走两圈', () => {
+    const scene = withTimeline(createDefaultDirector3DScene());
+    scene.timeline!.easing = 'linear';
+    const kf1 = captureSceneAsKeyframe(scene, 0);
+    const kf2 = captureSceneAsKeyframe(scene, 2);
+    kf1.scope = 'camera';
+    kf2.scope = 'camera';
+    // 起点 yaw=0，终点 yaw=4π (720° 累计)
+    kf1.cameraOrbit = { yaw: 0, pitch: 0, distance: 5 };
+    kf2.cameraOrbit = { yaw: 4 * Math.PI, pitch: 0, distance: 5 };
+    kf1.camera = { ...kf1.camera, target: [0, 1, 0] };
+    kf2.camera = { ...kf2.camera, target: [0, 1, 0] };
+    scene.timeline!.keyframes = [kf1, kf2];
+
+    // t=1.0 半程 → yaw=2π → position 回到起点附近（cos(2π)*5 ≈ 5）
+    const mid = interpolateSceneAt(scene, 1.0);
+    expect(Math.abs(mid.camera.position[0])).toBeLessThan(0.01);
+    expect(Math.abs(mid.camera.position[2] - 5)).toBeLessThan(0.01);
+
+    // t=0.5 → yaw=π → position 在反向（cos(π)*5 = -5）
+    const quarter = interpolateSceneAt(scene, 0.5);
+    expect(quarter.camera.position[2]).toBeLessThan(-4.5);
+  });
+
   it('单边关键帧缺 rig 时按 posePreset 兜底再插值（向后兼容）', () => {
     const scene = withTimeline(createDefaultDirector3DScene());
     scene.timeline!.easing = 'linear';

@@ -115,9 +115,14 @@ export async function exportDirector3DTimelineVideo(params: ExportTimelineVideoP
   throwIfAborted(params.signal);
 
   // 2. ffmpeg 拼视频
+  // 主进程 doComposeVideo 用 path.join(frameDir, framePattern)，所以这里必须分开传：
+  // frameDir = 帧序列所在目录，framePattern = 文件名占位（不含目录）。
+  // 之前把完整路径塞进 framePattern + 不传 frameDir，导致 path.join(undefined, ...) 拼接
+  // 错误 → ffmpeg 只能读到 0 张或 1 张帧 → 视频变成静态画面循环。
   const outputPath = `${workDir}/timeline.${format}`;
-  const framePattern = `${workDir}/frame_%05d.png`;
+  const framePattern = 'frame_%05d.png';
   await ffmpegManager.composeVideo({
+    frameDir: workDir,
     framePattern,
     fps,
     width,
