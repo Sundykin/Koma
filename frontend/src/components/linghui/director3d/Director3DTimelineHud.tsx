@@ -99,9 +99,11 @@ export const Director3DTimelineHud: React.FC<Director3DTimelineHudProps> = ({
 
   const duration = Math.max(0.5, timeline.duration);
 
-  // 当前图层可见的关键帧 + 是否为"全局帧"（scene 帧在 actor / camera 图层均显示为虚化）：
-  //   - camera 层：scope='camera' 实心 / scope='scene' 虚化
-  //   - actor:X 层：scope='actor:X' 实心 / scope='scene' 且含此 actor 虚化
+  // 当前图层可见的关键帧（**按实例 id 严格过滤**）：
+  //   - camera 层：scope='camera' 实心 / scope='scene' 虚化（同含 camera 数据）
+  //   - actor:X 层：仅 scope='actor:X'（按实例 id 唯一）。
+  //     scene 帧虽然含此 actor 数据，但同时也含其他所有 actor 数据，UI 不展示，
+  //     避免"切了图层看起来一模一样"的按类型过滤错觉。数据上仍参与 fallback 插值。
   const visibleKeyframes = React.useMemo<Array<{ kf: LinghuiDirector3DKeyframe; isGlobal: boolean }>>(() => {
     const acc: Array<{ kf: LinghuiDirector3DKeyframe; isGlobal: boolean }> = [];
     for (const kf of timeline.keyframes) {
@@ -109,11 +111,8 @@ export const Director3DTimelineHud: React.FC<Director3DTimelineHudProps> = ({
       if (activeLayer.kind === 'camera') {
         if (scope === 'camera') acc.push({ kf, isGlobal: false });
         else if (scope === 'scene') acc.push({ kf, isGlobal: true });
-      } else {
-        if (scope === `actor:${activeLayer.actorId}`) acc.push({ kf, isGlobal: false });
-        else if (scope === 'scene' && kf.actors.some(a => a.id === activeLayer.actorId)) {
-          acc.push({ kf, isGlobal: true });
-        }
+      } else if (scope === `actor:${activeLayer.actorId}`) {
+        acc.push({ kf, isGlobal: false });
       }
     }
     return acc;
