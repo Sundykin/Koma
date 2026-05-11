@@ -61,8 +61,4 @@ export interface LinghuiCanvasProps {
   onCancelRun?: () => void;
   executionQueue?: LinghuiExecutionQueueState | null;
   onOpenDrawer?: (drawer: LinghuiLibraryDrawerKey) => void;
-  /** 3D 导演 split-view 绑定写入回调（previewNodeId=null 表示解绑） */
-  onSetDirectorPreviewBinding?: (directorNodeId: string, previewNodeId: string | null) => void;
-  /** 串联跑 director3d + 预览节点（实时模式用，确保 lineart 先落盘） */
-  onRunDirectorWithPreview?: (directorNodeId: string, previewNodeId: string) => Promise<void> | void;
 }

@@ -148,27 +148,35 @@
    * 各 popover 完全独立，hover 一个 tab 只展示该 tab 的资产面板，互不连体。
    */
 
-  /* Rail 现在是 body flex 内的列项，不再 absolute */
+  /* Rail：极简纵向图标条；几乎隐形、整体上下居中 */
   &Rail {
     flex-shrink: 0;
-    width: 48px;
+    width: 44px;
+    /* 默认无背景无边框，hover/focus-within 时才轻微显形 */
+    background: transparent;
+    border: 1px solid transparent;
     border-radius: 12px;
-    border: 1px solid color-mix(in srgb, var(--token-text-primary) 8%, transparent);
-    background: color-mix(in srgb, var(--token-bg-app) 86%, transparent);
-    backdrop-filter: blur(14px);
-    box-shadow: 0 8px 28px color-mix(in srgb, var(--token-bg-app) 40%, transparent);
     display: flex;
     flex-direction: column;
+    justify-content: center;
+    align-items: center;
     gap: 4px;
-    padding: 6px 0;
+    padding: 8px 0;
     z-index: 5;
     align-self: stretch;
+    transition: background $lh-transition-base, border-color $lh-transition-base;
+
+    &:hover,
+    &:focus-within {
+      background: color-mix(in srgb, var(--token-bg-app) 30%, transparent);
+      border-color: color-mix(in srgb, var(--token-text-primary) 6%, transparent);
+    }
   }
 
   &RailButton {
-    width: 36px;
-    height: 44px;
-    margin: 0 auto;
+    width: 32px;
+    height: 40px;
+    flex-shrink: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -182,17 +190,16 @@
     font-weight: 600;
     line-height: 1;
     cursor: pointer;
-    transition: color $lh-transition-base, background $lh-transition-base, border-color $lh-transition-base;
+    transition: color $lh-transition-base, background $lh-transition-base;
 
     &:hover {
       color: var(--token-text-primary);
-      background: color-mix(in srgb, var(--token-text-primary) 6%, transparent);
+      background: color-mix(in srgb, var(--token-text-primary) 8%, transparent);
     }
 
     &.isActive {
       color: var(--token-accent-base);
-      background: color-mix(in srgb, var(--token-accent-base) 14%, transparent);
-      border-color: color-mix(in srgb, var(--token-accent-base) 36%, transparent);
+      background: color-mix(in srgb, var(--token-accent-base) 16%, transparent);
     }
 
     span {
@@ -1329,7 +1336,9 @@
 
   .linghuiDirector3DRailPopoverInner {
     width: 256px;
-    max-height: 72vh;
+    /* 自适应高度：永远不能超过视口可用区域。antd Popover 已经根据触发点定位，
+       这里给一个 absolute max 防止 popover 高度超过屏幕 */
+    max-height: min(70vh, 560px);
     display: flex;
     flex-direction: column;
     overflow: hidden;

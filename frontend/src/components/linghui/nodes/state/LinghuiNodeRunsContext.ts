@@ -199,15 +199,6 @@ export interface LinghuiNodeEditorApi {
   gridSplitUpscaleFactor: 2 | 4;
   onSetGridSplitUpscaleFactor?: (factor: 2 | 4) => void;
   onRevertGridSplit?: () => void;
-  /**
-   * 3D 导演 split-view 绑定（key = director3d nodeId，value = 下游被绑预览的节点 id）
-   * 跨会话持久化在 workspace.directorPreviewBindings 字段
-   */
-  directorPreviewBindings?: Record<string, string>;
-  /** 设置 / 解绑 director3d 节点的预览源；previewNodeId 为 null/undefined 时表示解绑 */
-  setDirectorPreviewBinding?: (directorNodeId: string, previewNodeId: string | null) => void;
-  /** 串联跑 director3d + 预览节点（实时模式用，先让 director3d 重新落盘 lineart） */
-  onRunDirectorWithPreview?: (directorNodeId: string, previewNodeId: string) => Promise<void> | void;
 }
 
 const noopNodeEditorApi: LinghuiNodeEditorApi = {

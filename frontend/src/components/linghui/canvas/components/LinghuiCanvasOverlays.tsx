@@ -51,11 +51,6 @@ export interface LinghuiCanvasOverlaysProps {
   gridSplitUpscaleFactor: 2 | 4;
   onSetGridSplitUpscaleFactor: (factor: 2 | 4) => void;
   onRevertGridSplit: () => void;
-  /** 3D 导演 split-view 当前绑定（director3d nodeId → preview imgNodeId） */
-  directorPreviewBindings?: Record<string, string>;
-  setDirectorPreviewBinding?: (directorNodeId: string, previewNodeId: string | null) => void;
-  /** 串联跑 director3d + 预览节点（实时模式用） */
-  onRunDirectorWithPreview?: (directorNodeId: string, previewNodeId: string) => Promise<void> | void;
   pendingGroupFrameStyle: CssVarStyle | null;
   pendingGroupActionsStyle: CssVarStyle | null;
   pendingGroupCreatableIds: string[];

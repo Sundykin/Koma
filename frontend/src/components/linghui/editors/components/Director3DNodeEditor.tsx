@@ -122,57 +122,29 @@ const RENDER_MODE_LABELS: Record<LinghuiDirector3DRenderMode, string> = {
 
 function getScene(properties: Record<string, unknown> | undefined): LinghuiDirector3DScene {
   const raw = (properties as Partial<LinghuiDirector3DNodeProperties> | undefined)?.scene;
-  if (raw && typeof raw === 'object') return raw as LinghuiDirector3DScene;
-  return createDefaultDirector3DScene();
+  if (!raw || typeof raw !== 'object') return createDefaultDirector3DScene();
+  const scene = raw as LinghuiDirector3DScene;
+  // 旧数据迁移：所有缺 scope 的关键帧统一标 'scene'，移除运行时兜底分支
+  if (scene.timeline && Array.isArray(scene.timeline.keyframes)) {
+    const needsMigration = scene.timeline.keyframes.some(k => !k.scope);
+    if (needsMigration) {
+      return {
+        ...scene,
+        timeline: {
+          ...scene.timeline,
+          keyframes: scene.timeline.keyframes.map(k => (k.scope ? k : { ...k, scope: 'scene' as const })),
+        },
+      };
+    }
+  }
+  return scene;
 }
 
 export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ nodeId, nodeData }) => {
   const { message } = App.useApp();
   const { updateNodeData } = useLinghuiNodeMutation();
   const editorApi = useLinghuiNodeEditorApi();
-  const canvasNodes = useNodes();
-  // split-view 候选源：画布上所有 image / panorama / video 节点
-  const previewCandidates = useMemo(() => {
-    return (canvasNodes as Array<Node<Record<string, unknown>>>).flatMap((node) => {
-      const data = node.data as { linghuiType?: string; label?: string } | undefined;
-      const kind = data?.linghuiType;
-      if (kind !== 'linghui/image' && kind !== 'linghui/panorama' && kind !== 'linghui/video') {
-        return [];
-      }
-      return [{
-        id: node.id,
-        label: data?.label || node.id.slice(0, 6),
-        kind: kind as 'linghui/image' | 'linghui/panorama' | 'linghui/video',
-      }];
-    });
-  }, [canvasNodes]);
-
-  const previewBindingId = editorApi.directorPreviewBindings?.[nodeId];
-  const previewNodeRun = previewBindingId ? editorApi.nodeRuns[previewBindingId] : undefined;
-  const previewCandidate = previewBindingId ? previewCandidates.find(item => item.id === previewBindingId) : undefined;
-  const previewPrimary = getLinghuiResultPrimaryMedia(previewNodeRun?.result);
-  const previewSource = toFileSystemDisplayUrl(previewPrimary?.source) ?? previewPrimary?.posterSource ?? '';
-  const [previewPickerOpen, setPreviewPickerOpen] = useState(false);
-
-  const handleBindPreview = useCallback((previewNodeId: string) => {
-    editorApi.setDirectorPreviewBinding?.(nodeId, previewNodeId);
-    setPreviewPickerOpen(false);
-  }, [editorApi, nodeId]);
-
-  const handleUnbindPreview = useCallback(() => {
-    editorApi.setDirectorPreviewBinding?.(nodeId, null);
-  }, [editorApi, nodeId]);
-
-  const handleRunBoundPreview = useCallback(() => {
-    if (!previewBindingId) return;
-    editorApi.onRunNode?.(previewBindingId);
-  }, [editorApi, previewBindingId]);
-
-  // 实时模式状态：场景变更（actors / camera）→ 防抖 800ms → 静默重导出 lineart → 跑预览节点
-  // 实际 useEffect 在 scene / renderModeForExport / viewportRef 声明之后定义
-  const [realtimeOn, setRealtimeOn] = useState(false);
-  const realtimePendingRef = useRef<number | null>(null);
-  const realtimeRunningRef = useRef(false);
+  // preview binding 已移除 — editorApi 仍提供 nodeRuns / onRunNode 等共享 API
 
   const scene = useMemo(() => getScene(nodeData.properties), [nodeData.properties]);
   const [selection, setSelection] = useState<Selection>({ kind: null });
@@ -745,7 +717,10 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
     updateScene(prev => ({ ...prev, camera: { ...prev.camera, [field]: value } }));
   }, [updateScene]);
 
-  const handleCameraChange = useCallback((camera: LinghuiDirector3DScene['camera']) => {
+  const handleCameraChange = useCallback((
+    camera: LinghuiDirector3DScene['camera'],
+    orbit?: { yaw: number; pitch: number; distance: number },
+  ) => {
     updateScene(prev => {
       const tl = prev.timeline;
       if (!tl || tl.keyframes.length === 0) {
@@ -755,11 +730,13 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
       const cameraClone = cloneCameraForKeyframe(camera);
       const sceneAtT = tl.keyframes.find(k => (k.scope ?? 'scene') === 'scene' && Math.abs(k.time - t) < 0.02);
       const camAtT = tl.keyframes.find(k => (k.scope ?? 'scene') === 'camera' && Math.abs(k.time - t) < 0.02);
+      // orbit 是累计弧度的快照（不取模），让"转 720°"能在两关键帧之间真的转两圈
+      const cameraOrbit = orbit ? { ...orbit } : undefined;
       let nextKeyframes = tl.keyframes;
       if (sceneAtT) {
-        nextKeyframes = nextKeyframes.map(k => (k.id === sceneAtT.id ? { ...k, camera: cameraClone } : k));
+        nextKeyframes = nextKeyframes.map(k => (k.id === sceneAtT.id ? { ...k, camera: cameraClone, ...(cameraOrbit ? { cameraOrbit } : {}) } : k));
       } else if (camAtT) {
-        nextKeyframes = nextKeyframes.map(k => (k.id === camAtT.id ? { ...k, camera: cameraClone } : k));
+        nextKeyframes = nextKeyframes.map(k => (k.id === camAtT.id ? { ...k, camera: cameraClone, ...(cameraOrbit ? { cameraOrbit } : {}) } : k));
       } else {
         const newKf = {
           id: `kf_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 5)}`,
@@ -767,6 +744,7 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
           scope: 'camera' as const,
           actors: [],
           camera: cameraClone,
+          ...(cameraOrbit ? { cameraOrbit } : {}),
         };
         nextKeyframes = [...nextKeyframes, newKf].sort((a, b) => a.time - b.time);
       }
@@ -891,64 +869,7 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
     background: scene.background,
   }), [scene]);
 
-  useEffect(() => {
-    if (!realtimeOn || !previewBindingId) return undefined;
-    if (realtimePendingRef.current !== null) {
-      window.clearTimeout(realtimePendingRef.current);
-    }
-    realtimePendingRef.current = window.setTimeout(async () => {
-      realtimePendingRef.current = null;
-      if (realtimeRunningRef.current) return;
-      realtimeRunningRef.current = true;
-      try {
-        // 1. 静默重导出 lineart 到 properties，让 director3d.executeNode 拿到新数据
-        const dataUrl = await viewportRef.current?.captureCurrentView({ width: 1280, renderMode: renderModeForExport });
-        if (dataUrl) {
-          updateNodeData(nodeId, prev => {
-            const baseScene = getScene(prev.properties);
-            const nextScene = {
-              ...baseScene,
-              camera: viewportRef.current?.getCurrentCamera() ?? baseScene.camera,
-              render: { ...baseScene.render, mode: renderModeForExport },
-            };
-            return {
-              ...prev,
-              properties: {
-                ...prev.properties,
-                scene: nextScene,
-                lineartDataUrl: dataUrl,
-                directorPromptFragment: compileDirector3DPromptFragment(nextScene),
-                exportRenderMode: renderModeForExport,
-              },
-            };
-          });
-        }
-        // 2. 串联跑 director3d + 预览节点
-        if (editorApi.onRunDirectorWithPreview) {
-          await editorApi.onRunDirectorWithPreview(nodeId, previewBindingId);
-        }
-      } catch (_error) {
-        // 静默失败：实时模式不应该因为一次失败而炸窗
-      } finally {
-        realtimeRunningRef.current = false;
-      }
-    }, 800);
-
-    return () => {
-      if (realtimePendingRef.current !== null) {
-        window.clearTimeout(realtimePendingRef.current);
-        realtimePendingRef.current = null;
-      }
-    };
-  }, [editorApi, nodeId, previewBindingId, realtimeOn, renderModeForExport, sceneSignature, updateNodeData]);
-
-  useEffect(() => () => {
-    // 卸载（关闭 Modal / 切节点）时清掉 pending，防止后台炸 run
-    if (realtimePendingRef.current !== null) {
-      window.clearTimeout(realtimePendingRef.current);
-      realtimePendingRef.current = null;
-    }
-  }, []);
+  // preview binding 已移除：不再有"绑定下游节点 + 实时联动"流程
 
   const lineartPreview = (nodeData.properties as { lineartDataUrl?: string } | undefined)?.lineartDataUrl;
   const angleViews = useMemo<LinghuiDirector3DAngleView[]>(() => {
@@ -1076,7 +997,8 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
             <Popover
               key={tab.id}
               trigger="hover"
-              placement="rightTop"
+              placement="right"
+              align={{ overflow: { adjustY: true, adjustX: true } }}
               mouseEnterDelay={0.1}
               mouseLeaveDelay={0.2}
               overlayClassName="linghuiDirector3DRailPopover"
@@ -1485,117 +1407,12 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
           ) : null}
         </main>
 
-        {/* 右上：split-view 预览 HUD（沉浸态自动隐藏） */}
-        {!immersive ? (
-          <div className="linghuiDirector3DPreviewHud">
-            {!previewBindingId ? (
-              <Popover
-                open={previewPickerOpen}
-                onOpenChange={setPreviewPickerOpen}
-                trigger="click"
-                placement="bottomRight"
-                getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
-                overlayClassName="linghuiDirector3DPreviewPickerPopover"
-                content={(
-                  <div className="linghuiDirector3DPreviewPicker" onClick={event => event.stopPropagation()}>
-                    <div className="linghuiDirector3DPreviewPickerTitle">绑定 split-view 预览节点</div>
-                    {previewCandidates.length === 0 ? (
-                      <div className="linghuiDirector3DPreviewPickerEmpty">
-                        画布上还没有图片 / 全景 / 视频节点，无法绑定。
-                      </div>
-                    ) : (
-                      <ul className="linghuiDirector3DPreviewPickerList">
-                        {previewCandidates.map(item => (
-                          <li key={item.id}>
-                            <button
-                              type="button"
-                              className="linghuiDirector3DPreviewPickerItem"
-                              onClick={() => handleBindPreview(item.id)}
-                              title={item.id}
-                            >
-                              <span className="linghuiDirector3DPreviewPickerKind">
-                                {item.kind === 'linghui/video' ? '视频' : item.kind === 'linghui/panorama' ? '全景' : '图片'}
-                              </span>
-                              <span className="linghuiDirector3DPreviewPickerName">{item.label}</span>
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                )}
-              >
-                <button type="button" className="linghuiDirector3DPreviewBindButton">
-                  <Link2 size={14} />
-                  <span>绑定预览节点</span>
-                </button>
-              </Popover>
-            ) : (
-              <div className="linghuiDirector3DPreviewCard">
-                <div className="linghuiDirector3DPreviewCardHeader">
-                  <span className="linghuiDirector3DPreviewCardLabel">
-                    <Eye size={11} />
-                    {previewCandidate?.label ?? '（已删除节点）'}
-                  </span>
-                  <span className="linghuiDirector3DPreviewCardActions">
-                    <Tooltip title={realtimeOn ? '关闭实时模式（场景变动自动重出图）' : '开启实时模式（场景变动 800ms 后自动重出图）'}>
-                      <button
-                        type="button"
-                        className={`linghuiDirector3DPreviewCardAction ${realtimeOn ? 'isActive' : ''}`}
-                        onClick={() => setRealtimeOn(v => !v)}
-                      >
-                        <Zap size={11} />
-                      </button>
-                    </Tooltip>
-                    <Tooltip title="重新执行预览节点">
-                      <button
-                        type="button"
-                        className="linghuiDirector3DPreviewCardAction"
-                        onClick={handleRunBoundPreview}
-                        disabled={previewNodeRun?.status === 'running'}
-                      >
-                        <Wand2 size={11} />
-                      </button>
-                    </Tooltip>
-                    <Tooltip title="解绑">
-                      <button
-                        type="button"
-                        className="linghuiDirector3DPreviewCardAction"
-                        onClick={handleUnbindPreview}
-                      >
-                        <Link2Off size={11} />
-                      </button>
-                    </Tooltip>
-                  </span>
-                </div>
-                <div className="linghuiDirector3DPreviewCardBody">
-                  {previewSource ? (
-                    <img src={previewSource} alt={previewCandidate?.label ?? 'preview'} />
-                  ) : (
-                    <div className="linghuiDirector3DPreviewCardPlaceholder">
-                      <ImageIcon size={20} />
-                      {previewNodeRun?.status === 'running' ? '正在生成...' : '暂无产物，先执行一次'}
-                    </div>
-                  )}
-                </div>
-                <div className="linghuiDirector3DPreviewCardFooter">
-                  <span className={`linghuiDirector3DPreviewCardStatus is-${previewNodeRun?.status ?? 'idle'}`}>
-                    {previewNodeRun?.status === 'running' ? '执行中' :
-                      previewNodeRun?.status === 'succeeded' ? '已就绪' :
-                        previewNodeRun?.status === 'failed' ? '失败' :
-                          previewNodeRun?.status === 'stale' ? '已失效' : '空闲'}
-                  </span>
-                </div>
-              </div>
-            )}
-          </div>
-        ) : null}
-
         {/* 右侧 activity rail：属性 + 时间轴关键帧入口；属性 popover 内容根据选中状态切换 */}
         <aside className="linghuiDirector3DRail isRight">
           <Popover
             trigger="hover"
-            placement="leftTop"
+            placement="left"
+            align={{ overflow: { adjustY: true, adjustX: true } }}
             mouseEnterDelay={0.1}
             mouseLeaveDelay={0.2}
             overlayClassName="linghuiDirector3DRailPopover"

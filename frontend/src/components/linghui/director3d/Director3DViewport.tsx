@@ -40,6 +40,11 @@ export interface Director3DViewportHandle {
   captureCurrentView: (options?: Director3DCaptureOptions) => Promise<string | null>;
   /** 返回当前工作台视角对应的相机参数。 */
   getCurrentCamera: () => LinghuiDirector3DScene['camera'];
+  /**
+   * 返回当前轨道相机的 yaw (累计弧度，不取模) / pitch / distance。
+   * 用于关键帧记录环绕镜头：position 是 [x,y,z] 看不出转了几圈，但 yaw 累计可以。
+   */
+  getCurrentOrbit: () => { yaw: number; pitch: number; distance: number };
 }
 
 interface Director3DViewportProps {
@@ -48,7 +53,10 @@ interface Director3DViewportProps {
   onActorClick?: (actorId: string) => void;
   onActorMove?: (actorId: string, position: [number, number, number]) => void;
   onCanvasClick?: () => void;
-  onCameraChange?: (camera: LinghuiDirector3DScene['camera']) => void;
+  onCameraChange?: (
+    camera: LinghuiDirector3DScene['camera'],
+    orbit: { yaw: number; pitch: number; distance: number },
+  ) => void;
   /** lineart 渲染模式（影响假人材质 / 背景显隐 / 网格颜色） */
   renderMode?: 'preview' | 'lineart' | 'silhouette';
   /**
@@ -770,6 +778,12 @@ export const Director3DViewport = forwardRef<Director3DViewportHandle, Director3
         panOffsetRef.current,
         scene.camera,
       ),
+      // 用户拖动相机时 yawTargetRef 是累计弧度（不取模），所以连续转两圈 yaw = 4π
+      getCurrentOrbit: () => ({
+        yaw: yawTargetRef.current,
+        pitch: pitchTargetRef.current,
+        distance: distanceRef.current,
+      }),
     }), [scene.camera]);
 
     useEffect(() => {
@@ -800,7 +814,11 @@ export const Director3DViewport = forwardRef<Director3DViewportHandle, Director3
       // 编辑模式：viewport 视角变化只留在本地 ref，不写回 scene.camera，
       // 也就不会影响关键帧 / 导出 lineart / 时间轴动画
       if (cameraModeRef.current === 'editor') return;
-      onCameraChange?.(currentCamera);
+      onCameraChange?.(currentCamera, {
+        yaw: yawTargetRef.current,
+        pitch: pitchTargetRef.current,
+        distance: distanceRef.current,
+      });
     }, [onCameraChange, scene.camera]);
 
     const onPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {

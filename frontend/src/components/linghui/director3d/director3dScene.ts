@@ -1613,6 +1613,7 @@ export function interpolateSceneAt(
   const actorTracks = new Map<string, LinghuiDirector3DKeyframe[]>();
   const cameraTrack: LinghuiDirector3DKeyframe[] = [];
   for (const kf of timeline.keyframes) {
+    // 经 getScene 迁移后所有 keyframe 必有 scope，仍兜底 'scene' 防御未知调用方
     const scope = kf.scope ?? 'scene';
     if (scope === 'scene' || scope === 'camera') {
       cameraTrack.push(kf);
@@ -1714,17 +1715,42 @@ export function interpolateSceneAt(
   if (cameraTrack.length > 0) {
     const camSegment = locateKeyframeSegment(cameraTrack, time);
     if (camSegment.left >= 0) {
-      const c1 = cameraTrack[camSegment.left].camera;
-      const c2 = cameraTrack[camSegment.right].camera;
+      const kf1 = cameraTrack[camSegment.left];
+      const kf2 = cameraTrack[camSegment.right];
+      const c1 = kf1.camera;
+      const c2 = kf2.camera;
       const camAlpha = camSegment.left === camSegment.right ? 0 : applyEasing(camSegment.alpha, timeline.easing);
-      nextCamera = {
-        ...c1,
-        position: lerpVec3(c1.position, c2.position, camAlpha),
-        target: lerpVec3(c1.target, c2.target, camAlpha),
-        fov: Number(lerp(c1.fov, c2.fov, camAlpha).toFixed(2)),
-        roll: Number(lerp(c1.roll, c2.roll, camAlpha).toFixed(2)),
-        aspectRatio: c1.aspectRatio,
-      };
+      // 优先用 cameraOrbit (累计 yaw) 做轨道空间插值，重算 position
+      // → 用户拍下 yaw=0 与 yaw=4π 的两帧时，插值真的走完两圈环绕
+      if (kf1.cameraOrbit && kf2.cameraOrbit) {
+        const yaw = lerp(kf1.cameraOrbit.yaw, kf2.cameraOrbit.yaw, camAlpha);
+        const pitch = lerp(kf1.cameraOrbit.pitch, kf2.cameraOrbit.pitch, camAlpha);
+        const distance = lerp(kf1.cameraOrbit.distance, kf2.cameraOrbit.distance, camAlpha);
+        const target = lerpVec3(c1.target, c2.target, camAlpha);
+        const cosP = Math.cos(pitch);
+        const position: [number, number, number] = [
+          Math.sin(yaw) * cosP * distance + target[0],
+          Math.sin(pitch) * distance + target[1],
+          Math.cos(yaw) * cosP * distance + target[2],
+        ];
+        nextCamera = {
+          ...c1,
+          position,
+          target,
+          fov: Number(lerp(c1.fov, c2.fov, camAlpha).toFixed(2)),
+          roll: Number(lerp(c1.roll, c2.roll, camAlpha).toFixed(2)),
+          aspectRatio: c1.aspectRatio,
+        };
+      } else {
+        nextCamera = {
+          ...c1,
+          position: lerpVec3(c1.position, c2.position, camAlpha),
+          target: lerpVec3(c1.target, c2.target, camAlpha),
+          fov: Number(lerp(c1.fov, c2.fov, camAlpha).toFixed(2)),
+          roll: Number(lerp(c1.roll, c2.roll, camAlpha).toFixed(2)),
+          aspectRatio: c1.aspectRatio,
+        };
+      }
     }
   }
 

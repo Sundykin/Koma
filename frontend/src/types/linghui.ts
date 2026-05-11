@@ -459,6 +459,15 @@ export interface LinghuiDirector3DKeyframe {
   actors: LinghuiDirector3DKeyframeActor[];
   /** 该时刻相机参数（完整复用 LinghuiDirector3DCamera） */
   camera: LinghuiDirector3DCamera;
+  /**
+   * 相机的"轨道"参数（绕 target 的 yaw 累计弧度 + pitch + distance）。
+   *
+   * 为什么单独存：camera.position 是 [x,y,z]，绕 360° 后 position 与起点相同，
+   * 仅看 position 无法区分"没动"与"转了一圈"。orbit 段记录用户实际累计的 yaw
+   * （不取模），插值时优先用 yaw/pitch/distance 线性 lerp 重算 position，
+   * 这样用户拍下"720° 环绕"关键帧后，回放能真实地转两圈而不是直接停在起点。
+   */
+  cameraOrbit?: { yaw: number; pitch: number; distance: number };
   /** 背景（不插值，按 segment 起点取） */
   background?: LinghuiDirector3DBackground;
 }
