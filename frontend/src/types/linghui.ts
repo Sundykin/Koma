@@ -219,11 +219,33 @@ export type LinghuiDirector3DActorType =
   | 'mannequin'
   | 'mannequin-lite'
   | 'formation'
+  | 'creature'
   | 'prop-box'
   | 'prop-cylinder'
   | 'prop-plane'
   | 'prop-camera'
   | 'prop-arrow';
+
+/**
+ * 动物 / 玄幻生物子类型（actor.type='creature' 时使用）。
+ * 详见 director3d/director3dCreature.ts。
+ */
+export type LinghuiDirector3DCreatureSpecies =
+  | 'lion' | 'wolf' | 'tiger' | 'bear' | 'horse' | 'eagle'
+  | 'dragon' | 'phoenix' | 'qilin' | 'fox' | 'deer' | 'crane';
+
+export type LinghuiDirector3DCreatureAction =
+  | 'idle' | 'walk' | 'run' | 'pounce' | 'fly' | 'roar';
+
+export interface LinghuiDirector3DCreatureRig {
+  spine: [number, number, number];
+  neck: [number, number, number];
+  frontLeftLeg: [number, number, number];
+  frontRightLeg: [number, number, number];
+  rearLeftLeg: [number, number, number];
+  rearRightLeg: [number, number, number];
+  tail: [number, number, number];
+}
 
 /**
  * 方阵元数据（actor.type === 'formation' 时使用）。
@@ -275,6 +297,12 @@ export interface LinghuiDirector3DActor {
   rig?: LinghuiDirector3DRig;
   /** 方阵元数据，仅 type='formation' 时存在 */
   formation?: LinghuiDirector3DFormationConfig;
+  /** 生物子类型（仅 type='creature' 时存在） */
+  species?: LinghuiDirector3DCreatureSpecies;
+  /** 生物当前动作（仅 type='creature' 时使用，离散切换） */
+  creatureAction?: LinghuiDirector3DCreatureAction;
+  /** 生物骨架姿态（仅 type='creature' 时使用，关节级 LERP 动画） */
+  creatureRig?: LinghuiDirector3DCreatureRig;
   /**
    * 参考图（koma-local URL 数组）。从全局资产库加入场景时一次性 snapshot 复制过来；
    * director3d executor 把所有 actor 的参考图聚合后写入 result.items，
@@ -381,6 +409,10 @@ export interface LinghuiDirector3DKeyframeActor {
   color?: string;
   /** 方阵参数（仅 type='formation' 时有效）；rows/cols/memberFacing 离散切换，spacing 线性 */
   formation?: LinghuiDirector3DFormationConfig;
+  /** 生物动作（仅 type='creature'）；离散切换 */
+  creatureAction?: LinghuiDirector3DCreatureAction;
+  /** 生物骨架；关节级 LERP 动画 */
+  creatureRig?: LinghuiDirector3DCreatureRig;
 }
 
 export interface LinghuiDirector3DKeyframe {

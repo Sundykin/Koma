@@ -20,6 +20,7 @@ import type {
 import { Director3DMannequin } from './Director3DMannequin';
 import { Director3DLiteMannequin } from './Director3DLiteMannequin';
 import { Director3DFormation, deriveFormationMembers } from './Director3DFormation';
+import { Director3DCreature } from './Director3DCreatureMesh';
 import { Director3DProp } from './Director3DProp';
 import { resolvePanoramaViewerMode } from '../panorama/panoramaProjection';
 import { safeFetch } from '../../../utils/safeFetch';
@@ -50,6 +51,15 @@ interface Director3DViewportProps {
   onCameraChange?: (camera: LinghuiDirector3DScene['camera']) => void;
   /** lineart 渲染模式（影响假人材质 / 背景显隐 / 网格颜色） */
   renderMode?: 'preview' | 'lineart' | 'silhouette';
+  /**
+   * 相机模式：
+   *  - 'output'（默认）：拖动 / 缩放 / 视角预设 直接写到 scene.camera = 输出相机
+   *    所有关键帧 / 导出 lineart / 时间轴插值用的就是这个
+   *  - 'editor'：拖动 / 缩放只改 viewport 内部 ref，不写回 scene.camera，
+   *    不影响最终输出。用于"我想从其他角度看一眼场景"。
+   *    切回 output 模式时 viewport 视角会重新对齐到 scene.camera。
+   */
+  cameraMode?: 'output' | 'editor';
   className?: string;
 }
 
@@ -711,6 +721,9 @@ const ActorDragLayer: React.FC<ActorDragLayerProps> = ({
         if (actor.type === 'formation') {
           return <Director3DFormation {...shared} />;
         }
+        if (actor.type === 'creature') {
+          return <Director3DCreature {...shared} />;
+        }
         return <Director3DProp {...shared} />;
       })}
     </>
@@ -727,10 +740,12 @@ export const Director3DViewport = forwardRef<Director3DViewportHandle, Director3
       onCanvasClick,
       onCameraChange,
       renderMode = 'preview',
+      cameraMode = 'output',
       className,
     },
     ref,
   ) {
+    const cameraModeRef = useRef<'output' | 'editor'>(cameraMode);
     const initialOrbit = useMemo(() => resolveOrbitCameraState(scene.camera), []);
     const yawTargetRef = useRef(initialOrbit.yaw);
     const pitchTargetRef = useRef(initialOrbit.pitch);
@@ -746,17 +761,32 @@ export const Director3DViewport = forwardRef<Director3DViewportHandle, Director3
 
     useImperativeHandle(ref, () => ({
       captureCurrentView: (options) => captureFnRef.current(options),
-      getCurrentCamera: () => cameraStateRef.current,
-    }), []);
+      // viewport 当前显示的相机参数（编辑模式下 ≠ scene.camera，输出模式下 = scene.camera）
+      // 用法：编辑器调用 viewport.getCurrentCamera() 拿到编辑视角，写到 scene.camera 即"应用为输出"
+      getCurrentCamera: () => buildCameraFromOrbit(
+        yawTargetRef.current,
+        pitchTargetRef.current,
+        distanceRef.current,
+        panOffsetRef.current,
+        scene.camera,
+      ),
+    }), [scene.camera]);
 
     useEffect(() => {
-      const orbit = resolveOrbitCameraState(scene.camera);
-      yawTargetRef.current = orbit.yaw;
-      pitchTargetRef.current = orbit.pitch;
-      distanceRef.current = orbit.distance;
-      panOffsetRef.current.copy(orbit.pan);
-      cameraStateRef.current = scene.camera;
-    }, [scene.camera]);
+      // 当 scene.camera（输出相机）变化、或 mode 切回 output 时，重置 viewport 视角到输出相机
+      // mode 切到 editor 时不重置：保留用户当前视角作为编辑起点
+      const previousMode = cameraModeRef.current;
+      cameraModeRef.current = cameraMode;
+      const switchedBackToOutput = previousMode === 'editor' && cameraMode === 'output';
+      if (cameraMode === 'output' || switchedBackToOutput) {
+        const orbit = resolveOrbitCameraState(scene.camera);
+        yawTargetRef.current = orbit.yaw;
+        pitchTargetRef.current = orbit.pitch;
+        distanceRef.current = orbit.distance;
+        panOffsetRef.current.copy(orbit.pan);
+        cameraStateRef.current = scene.camera;
+      }
+    }, [scene.camera, cameraMode]);
 
     const commitCurrentCamera = useCallback(() => {
       const currentCamera = buildCameraFromOrbit(
@@ -767,6 +797,9 @@ export const Director3DViewport = forwardRef<Director3DViewportHandle, Director3
         scene.camera,
       );
       cameraStateRef.current = currentCamera;
+      // 编辑模式：viewport 视角变化只留在本地 ref，不写回 scene.camera，
+      // 也就不会影响关键帧 / 导出 lineart / 时间轴动画
+      if (cameraModeRef.current === 'editor') return;
       onCameraChange?.(currentCamera);
     }, [onCameraChange, scene.camera]);
 

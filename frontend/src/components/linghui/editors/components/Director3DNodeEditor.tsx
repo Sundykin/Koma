@@ -22,6 +22,8 @@ import type {
   LinghuiDirector3DActorPose,
   LinghuiDirector3DAngleView,
   LinghuiDirector3DBackgroundMode,
+  LinghuiDirector3DCreatureAction,
+  LinghuiDirector3DCreatureSpecies,
   LinghuiDirector3DEasing,
   LinghuiDirector3DKeyframe,
   LinghuiDirector3DNodeProperties,
@@ -55,14 +57,21 @@ import {
   createDirector3DActor,
   createDirector3DBattalion,
   createDirector3DCharacter,
+  createDirector3DCreature,
   createDirector3DLiteSoldier,
+  CREATURE_SPECIES_LIBRARY,
   createDirector3DProp,
   groupDirector3DCameraPresets,
   interpolateSceneAt,
 } from '../../director3d/director3dScene';
 import { Director3DTimelineHud, type Director3DTimelineExportState } from '../../director3d/Director3DTimelineHud';
 import { exportDirector3DTimelineVideo } from '../../director3d/director3dTimelineExport';
-import { DIRECTOR3D_RIG_PRESET_OPTIONS } from '../../director3d/director3dRig';
+import {
+  DIRECTOR3D_JOINT_META,
+  DIRECTOR3D_RIG_PRESET_OPTIONS,
+  patchRigJoint,
+  resolveActorRig,
+} from '../../director3d/director3dRig';
 import { useLinghuiGlobalAssets, type LinghuiGlobalAsset, type LinghuiGlobalAssetCategory, type LinghuiGlobalAssetPropType } from '../../../../store/linghuiGlobalAssets';
 import { pickReferenceImagesAndPersist } from '../../director3d/director3dReferenceImageUpload';
 import { Save as SaveIcon, Bookmark, BookmarkCheck, Upload } from 'lucide-react';
@@ -165,13 +174,17 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
 
   const scene = useMemo(() => getScene(nodeData.properties), [nodeData.properties]);
   const [selection, setSelection] = useState<Selection>({ kind: null });
-  const [activeAssetTab, setActiveAssetTab] = useState<'props' | 'characters' | 'cameras' | 'templates'>('characters');
+  const [activeAssetTab, setActiveAssetTab] = useState<'props' | 'characters' | 'creatures' | 'cameras' | 'templates'>('characters');
   const [renderModeForExport, setRenderModeForExport] = useState<LinghuiDirector3DRenderMode>('lineart');
   const [previewMode, setPreviewMode] = useState<'preview' | 'lineart' | 'silhouette'>('preview');
   // HUD 控制：左/右两侧浮层可分别折叠；Cmd+F 进入沉浸（隐藏全部）
   const [assetsHudOpen, setAssetsHudOpen] = useState(true);
   const [inspectorHudOpen, setInspectorHudOpen] = useState(true);
   const [immersive, setImmersive] = useState(false);
+  // 相机模式：
+  //  - 'output'（默认）：拖动 → 写入 scene.camera = 关键帧 / 导出图视频用的相机
+  //  - 'editor'：拖动只改 viewport 本地视角，不影响输出，方便从其他角度看场景
+  const [cameraMode, setCameraMode] = useState<'output' | 'editor'>('output');
   const viewportRef = useRef<Director3DViewportHandle | null>(null);
 
   const updateScene = useCallback((updater: (prev: LinghuiDirector3DScene) => LinghuiDirector3DScene) => {
@@ -243,6 +256,18 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
         position: [Number(offsetX.toFixed(2)), 0, 0],
       });
       return { ...prev, actors: [...prev.actors, character] };
+    });
+  }, [updateScene]);
+
+  const handleAddCreature = useCallback((species: LinghuiDirector3DCreatureSpecies) => {
+    updateScene(prev => {
+      const seq = prev.actors.filter(a => a.type === 'creature').length + 1;
+      const offsetX = (seq % 2 === 1 ? 1 : -1) * 1.2 * Math.ceil(seq / 2);
+      const creature = createDirector3DCreature(species, {
+        id: `creature_${species}_${Date.now().toString(36)}`,
+        position: [Number(offsetX.toFixed(2)), 0, 0],
+      });
+      return { ...prev, actors: [...prev.actors, creature] };
     });
   }, [updateScene]);
 
@@ -1022,6 +1047,7 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
           <div className="linghuiDirector3DTabs">
             <button type="button" className={`linghuiDirector3DTab ${activeAssetTab === 'props' ? 'isActive' : ''}`} onClick={() => setActiveAssetTab('props')}>道具</button>
             <button type="button" className={`linghuiDirector3DTab ${activeAssetTab === 'characters' ? 'isActive' : ''}`} onClick={() => setActiveAssetTab('characters')}>人物</button>
+            <button type="button" className={`linghuiDirector3DTab ${activeAssetTab === 'creatures' ? 'isActive' : ''}`} onClick={() => setActiveAssetTab('creatures')}>生物</button>
             <button type="button" className={`linghuiDirector3DTab ${activeAssetTab === 'cameras' ? 'isActive' : ''}`} onClick={() => setActiveAssetTab('cameras')}>视角</button>
             <button type="button" className={`linghuiDirector3DTab ${activeAssetTab === 'templates' ? 'isActive' : ''}`} onClick={() => setActiveAssetTab('templates')}>模板</button>
           </div>
@@ -1170,6 +1196,42 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
                 </button>
               </Popover>
             )}
+            {activeAssetTab === 'creatures' && (
+              <>
+                <div className="linghuiDirector3DCameraGroupHeading">现实动物</div>
+                {CREATURE_SPECIES_LIBRARY.filter(spec => (
+                  spec.kind === 'lion' || spec.kind === 'wolf' || spec.kind === 'tiger'
+                  || spec.kind === 'bear' || spec.kind === 'horse' || spec.kind === 'eagle'
+                )).map(spec => (
+                  <button
+                    key={spec.kind}
+                    type="button"
+                    className="linghuiDirector3DAssetTile"
+                    onClick={() => handleAddCreature(spec.kind)}
+                    title={spec.promptHint}
+                  >
+                    <Users size={20} />
+                    <span>{spec.label}</span>
+                  </button>
+                ))}
+                <div className="linghuiDirector3DCameraGroupHeading">玄幻生物</div>
+                {CREATURE_SPECIES_LIBRARY.filter(spec => (
+                  spec.kind === 'dragon' || spec.kind === 'phoenix' || spec.kind === 'qilin'
+                  || spec.kind === 'fox' || spec.kind === 'deer' || spec.kind === 'crane'
+                )).map(spec => (
+                  <button
+                    key={spec.kind}
+                    type="button"
+                    className="linghuiDirector3DAssetTile"
+                    onClick={() => handleAddCreature(spec.kind)}
+                    title={spec.promptHint}
+                  >
+                    <Zap size={20} />
+                    <span>{spec.label}</span>
+                  </button>
+                ))}
+              </>
+            )}
             {activeAssetTab === 'cameras' && CAMERA_PRESET_CATEGORY_ORDER.flatMap(category => {
               const presets = cameraPresetGroups[category] ?? [];
               if (presets.length === 0) return [];
@@ -1273,13 +1335,53 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
               onCanvasClick={() => setSelection({ kind: null })}
               onCameraChange={handleCameraChange}
               renderMode={previewMode}
+              cameraMode={cameraMode}
             />
+            {cameraMode === 'editor' ? (
+              <div className="linghuiDirector3DCameraModeBanner" title="编辑视角拖动不影响输出">
+                编辑视角 · 拖动不会影响输出
+              </div>
+            ) : null}
           </div>
 
           <div className="linghuiDirector3DCameraBar">
             <div className="linghuiDirector3DCameraChip">
               <Camera size={14} />
               <span>{Math.round(scene.camera.fov)}° FOV · {scene.camera.aspectRatio}</span>
+            </div>
+            <div className="linghuiDirector3DCameraModeGroup">
+              <button
+                type="button"
+                className={`linghuiDirector3DCameraModeBtn ${cameraMode === 'output' ? 'isActive' : ''}`}
+                onClick={() => setCameraMode('output')}
+                title="拖动 / 缩放将直接写入输出相机（关键帧 / 图片视频用这个）"
+              >
+                输出视角
+              </button>
+              <button
+                type="button"
+                className={`linghuiDirector3DCameraModeBtn ${cameraMode === 'editor' ? 'isActive' : ''}`}
+                onClick={() => setCameraMode('editor')}
+                title="拖动 / 缩放只用于查看，不会改变输出相机"
+              >
+                编辑视角
+              </button>
+              {cameraMode === 'editor' ? (
+                <button
+                  type="button"
+                  className="linghuiDirector3DCameraModeBtn"
+                  onClick={() => {
+                    const current = viewportRef.current?.getCurrentCamera();
+                    if (!current) return;
+                    // 把编辑视角参数写入 scene.camera = 输出相机
+                    updateScene(prev => ({ ...prev, camera: { ...current } }));
+                    setCameraMode('output');
+                  }}
+                  title="把当前编辑视角固化为输出相机"
+                >
+                  应用为输出
+                </button>
+              ) : null}
             </div>
             <div className="linghuiDirector3DRenderModes">
               {(Object.keys(RENDER_MODE_LABELS) as LinghuiDirector3DRenderMode[]).map(mode => (
@@ -1472,31 +1574,122 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
                 />
               </Field>
               {selectedActor.type === 'mannequin' ? (
-                <Field label="预置动作">
-                  <div className="linghuiDirector3DPoseGrid">
-                    {DIRECTOR3D_RIG_PRESET_OPTIONS.map(option => {
-                      // 选中态：基础 6 个对照 posePreset；扩展的看 actor.rig 是否就是该预置的 rig
-                      const isBuiltinMatch = Boolean(option.posePreset && selectedActor.posePreset === option.posePreset && !selectedActor.rig);
-                      const isRigMatch = Boolean(selectedActor.rig && JSON.stringify(selectedActor.rig) === JSON.stringify(option.rig));
-                      const active = isBuiltinMatch || isRigMatch;
-                      return (
+                <>
+                  <Field label="预置动作">
+                    <div className="linghuiDirector3DPoseGrid">
+                      {DIRECTOR3D_RIG_PRESET_OPTIONS.map(option => {
+                        // 选中态：基础 6 个对照 posePreset；扩展的看 actor.rig 是否就是该预置的 rig
+                        const isBuiltinMatch = Boolean(option.posePreset && selectedActor.posePreset === option.posePreset && !selectedActor.rig);
+                        const isRigMatch = Boolean(selectedActor.rig && JSON.stringify(selectedActor.rig) === JSON.stringify(option.rig));
+                        const active = isBuiltinMatch || isRigMatch;
+                        return (
+                          <button
+                            key={option.key}
+                            type="button"
+                            className={`linghuiDirector3DPoseTile ${active ? 'isActive' : ''}`}
+                            onClick={() => handleActorChange(selectedActor.id, {
+                              // 预置：基础 6 个直接更新 posePreset 字符串；扩展的把 rig 写到 actor.rig（保持 posePreset=idle 兜底）
+                              ...(option.posePreset
+                                ? { posePreset: option.posePreset, rig: option.rig }
+                                : { posePreset: 'idle' as LinghuiDirector3DActorPose, rig: option.rig }),
+                            })}
+                          >
+                            {option.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </Field>
+
+                  <Field label="骨骼微调">
+                    <div className="linghuiDirector3DRigGrid">
+                      {DIRECTOR3D_JOINT_META.map(joint => {
+                        const currentRig = resolveActorRig(selectedActor.rig, selectedActor.posePreset);
+                        return (
+                          <div key={joint.key} className="linghuiDirector3DRigJoint">
+                            <div className="linghuiDirector3DRigJointHeader">{joint.label}</div>
+                            {joint.axes.map(({ axis, name, hint }) => {
+                              const radValue = currentRig[joint.key][axis];
+                              const degValue = Math.round((radValue * 180) / Math.PI);
+                              return (
+                                <div key={`${joint.key}-${axis}`} className="linghuiDirector3DRigSliderRow">
+                                  <span className="linghuiDirector3DRigSliderLabel" title={hint}>{name}</span>
+                                  <Slider
+                                    min={-180}
+                                    max={180}
+                                    step={1}
+                                    value={degValue}
+                                    onChange={(deg) => {
+                                      const nextRad = ((deg as number) * Math.PI) / 180;
+                                      const nextRig = patchRigJoint(currentRig, joint.key, axis, nextRad);
+                                      handleActorChange(selectedActor.id, { rig: nextRig });
+                                    }}
+                                    style={{ flex: 1 }}
+                                  />
+                                  <span className="linghuiDirector3DRigSliderValue">{degValue}°</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })}
+                      <Button
+                        size="small"
+                        block
+                        onClick={() => handleActorChange(selectedActor.id, { rig: undefined })}
+                        disabled={!selectedActor.rig}
+                      >
+                        重置到预置动作
+                      </Button>
+                    </div>
+                  </Field>
+                </>
+              ) : null}
+              {selectedActor.type === 'creature' ? (
+                <>
+                  <Field label="物种">
+                    <div className="linghuiDirector3DPoseGrid">
+                      {CREATURE_SPECIES_LIBRARY.map(spec => (
                         <button
-                          key={option.key}
+                          key={spec.kind}
                           type="button"
-                          className={`linghuiDirector3DPoseTile ${active ? 'isActive' : ''}`}
+                          className={`linghuiDirector3DPoseTile ${selectedActor.species === spec.kind ? 'isActive' : ''}`}
                           onClick={() => handleActorChange(selectedActor.id, {
-                            // 预置：基础 6 个直接更新 posePreset 字符串；扩展的把 rig 写到 actor.rig（保持 posePreset=idle 兜底）
-                            ...(option.posePreset
-                              ? { posePreset: option.posePreset, rig: option.rig }
-                              : { posePreset: 'idle' as LinghuiDirector3DActorPose, rig: option.rig }),
+                            species: spec.kind,
+                            color: spec.color,
                           })}
+                          title={spec.promptHint}
                         >
-                          {option.label}
+                          {spec.label}
                         </button>
-                      );
-                    })}
-                  </div>
-                </Field>
+                      ))}
+                    </div>
+                  </Field>
+                  <Field label="动作">
+                    <div className="linghuiDirector3DPoseGrid">
+                      {(['idle', 'walk', 'run', 'pounce', 'fly', 'roar'] as LinghuiDirector3DCreatureAction[]).map(action => {
+                        const labels: Record<LinghuiDirector3DCreatureAction, string> = {
+                          idle: '站立', walk: '行走', run: '奔跑', pounce: '扑击', fly: '飞行', roar: '咆哮',
+                        };
+                        const active = (selectedActor.creatureAction ?? 'idle') === action;
+                        return (
+                          <button
+                            key={action}
+                            type="button"
+                            className={`linghuiDirector3DPoseTile ${active ? 'isActive' : ''}`}
+                            onClick={() => handleActorChange(selectedActor.id, {
+                              creatureAction: action,
+                              // 切动作时同步清掉手调骨架，让 mesh 回到该动作预置
+                              creatureRig: undefined,
+                            })}
+                          >
+                            {labels[action]}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </Field>
+                </>
               ) : null}
               {selectedActor.type === 'formation' && selectedActor.formation ? (
                 <>

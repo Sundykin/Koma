@@ -228,6 +228,123 @@ export const EXTENDED_RIG_PRESETS = {
 
 export type ExtendedRigKey = keyof typeof EXTENDED_RIG_PRESETS;
 
+export type Director3DRigJointKey = keyof Director3DRig;
+
+/**
+ * 骨骼关节的中文标签与轴约束（用户在 inspector 拖 slider 时看到的友好名称）。
+ * 顺序按"上→下、躯干→四肢"排，方便用户找到关节。
+ */
+export interface Director3DJointMeta {
+  key: Director3DRigJointKey;
+  label: string;
+  /** 哪些轴有意义（其他轴保持 0，避免给用户三个滑块但实际只有一个有用） */
+  axes: Array<{ axis: 0 | 1 | 2; name: string; hint: string }>;
+}
+
+export const DIRECTOR3D_JOINT_META: Director3DJointMeta[] = [
+  {
+    key: 'spine',
+    label: '躯干',
+    axes: [
+      { axis: 0, name: '俯仰', hint: '正值后仰 / 负值前倾' },
+      { axis: 1, name: '转身', hint: '左右转动腰部' },
+      { axis: 2, name: '侧倾', hint: '左右倾斜' },
+    ],
+  },
+  {
+    key: 'neck',
+    label: '头部',
+    axes: [
+      { axis: 0, name: '俯仰', hint: '正值仰头 / 负值低头' },
+      { axis: 1, name: '左右转', hint: '正值向左 / 负值向右' },
+      { axis: 2, name: '侧倾', hint: '歪头' },
+    ],
+  },
+  {
+    key: 'leftShoulder',
+    label: '左肩',
+    axes: [
+      { axis: 0, name: '前后摆', hint: '负值前摆 / 正值后摆' },
+      { axis: 1, name: '水平转', hint: '横向旋转' },
+      { axis: 2, name: '外展', hint: '正值上抬外展' },
+    ],
+  },
+  {
+    key: 'rightShoulder',
+    label: '右肩',
+    axes: [
+      { axis: 0, name: '前后摆', hint: '负值前摆 / 正值后摆' },
+      { axis: 1, name: '水平转', hint: '横向旋转' },
+      { axis: 2, name: '外展', hint: '负值上抬外展' },
+    ],
+  },
+  {
+    key: 'leftElbow',
+    label: '左肘',
+    axes: [
+      { axis: 0, name: '弯曲', hint: '负值前臂内收' },
+    ],
+  },
+  {
+    key: 'rightElbow',
+    label: '右肘',
+    axes: [
+      { axis: 0, name: '弯曲', hint: '负值前臂内收' },
+    ],
+  },
+  {
+    key: 'leftHip',
+    label: '左髋',
+    axes: [
+      { axis: 0, name: '前后摆', hint: '正值前迈 / 负值后摆' },
+      { axis: 1, name: '左右转', hint: '腿向内 / 外旋转' },
+      { axis: 2, name: '外展', hint: '正值向外打开' },
+    ],
+  },
+  {
+    key: 'rightHip',
+    label: '右髋',
+    axes: [
+      { axis: 0, name: '前后摆', hint: '正值前迈 / 负值后摆' },
+      { axis: 1, name: '左右转', hint: '腿向内 / 外旋转' },
+      { axis: 2, name: '外展', hint: '负值向外打开' },
+    ],
+  },
+  {
+    key: 'leftKnee',
+    label: '左膝',
+    axes: [
+      { axis: 0, name: '弯曲', hint: '负值小腿后弯' },
+    ],
+  },
+  {
+    key: 'rightKnee',
+    label: '右膝',
+    axes: [
+      { axis: 0, name: '弯曲', hint: '负值小腿后弯' },
+    ],
+  },
+];
+
+/**
+ * 把当前 actor.rig（缺省时按 posePreset 补齐）+ 关节级 patch 合并成新的 rig。
+ * 不在这里写到 actor.rig，调用方负责 setActor / updateNodeData。
+ */
+export function patchRigJoint(
+  baseRig: Director3DRig,
+  jointKey: Director3DRigJointKey,
+  axis: 0 | 1 | 2,
+  value: number,
+): Director3DRig {
+  const current = baseRig[jointKey];
+  const next: Director3DJointRotation = [...current];
+  next[axis] = value;
+  return {
+    ...baseRig,
+    [jointKey]: next,
+  };
+}
+
 /**
  * 所有可选的"预置动作"清单（UI 下拉用）。
  *  - 基础 6 个（与 LinghuiDirector3DActorPose 同名）来自 RIG_PRESETS
