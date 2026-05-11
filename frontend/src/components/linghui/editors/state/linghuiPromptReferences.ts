@@ -438,6 +438,41 @@ function buildFallbackReference(
     }];
   }
 
+  if (nodeData.linghuiType === 'linghui/director3d') {
+    // 3D 导演台：用户导出时间轴视频或线稿后 properties 就有数据，不需要等节点 run 完。
+    // outputMode='video' → 视频引用（source=mp4, preview=首帧）
+    // outputMode='lineart' → 线稿图引用
+    const props = nodeData.properties as Record<string, unknown> | undefined;
+    const outputMode = props?.outputMode === 'video' ? 'video' : 'lineart';
+    const timelineVideoUrl = getDescriptionText(props?.timelineVideoUrl);
+    const timelineVideoPoster = getDescriptionText(props?.timelineVideoPosterUrl);
+    const lineart = getDescriptionText(props?.lineartDataUrl);
+
+    if (outputMode === 'video' && timelineVideoUrl) {
+      return [{
+        id: nodeId,
+        nodeId,
+        kind: 'video',
+        name: nodeData.label,
+        description: `来自上游节点：${nodeData.label}（3D 导演时间轴动画）`,
+        source: timelineVideoPoster || timelineVideoUrl,
+        previewSource: timelineVideoPoster || undefined,
+      }];
+    }
+    if (lineart && (lineart.startsWith('koma-local://') || lineart.startsWith('http'))) {
+      return [{
+        id: nodeId,
+        nodeId,
+        kind: 'image',
+        name: nodeData.label,
+        description: `来自上游节点：${nodeData.label}（3D 线稿）`,
+        source: lineart,
+        previewSource: lineart,
+      }];
+    }
+    return [];
+  }
+
   return [];
 }
 
