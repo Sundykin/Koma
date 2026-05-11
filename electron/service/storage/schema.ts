@@ -1102,4 +1102,30 @@ ALTER TABLE shots ADD COLUMN current_audio_index INTEGER;
 ALTER TABLE projects ADD COLUMN metadata_json TEXT;
 `,
   },
+  8: {
+    description: 'Linghui global assets (3D Director user-defined characters / props, cross-workspace)',
+    sql: `
+CREATE TABLE IF NOT EXISTS linghui_global_assets (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL CHECK (kind IN ('character', 'prop')),
+  label TEXT NOT NULL,
+  hint TEXT,
+  prompt_hint TEXT,
+  /* character 专用：color / scale / pose */
+  color TEXT,
+  scale REAL,
+  pose_preset TEXT,
+  /* prop 专用：底层几何 type + category */
+  prop_type TEXT,
+  category TEXT,
+  /* 收藏标记，用户可置顶常用项 */
+  favorite INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_linghui_global_assets_kind ON linghui_global_assets(kind, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_linghui_global_assets_favorite ON linghui_global_assets(favorite DESC, updated_at DESC);
+`,
+  },
 };

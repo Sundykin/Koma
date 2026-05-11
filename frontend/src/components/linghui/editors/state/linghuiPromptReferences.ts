@@ -403,6 +403,22 @@ function buildFallbackReference(
     }];
   }
 
+  if (nodeData.linghuiType === 'linghui/storyboard') {
+    const properties = nodeData.properties as Record<string, unknown> | undefined;
+    const content = getDescriptionText(properties?.prompt);
+    if (!content) {
+      return [];
+    }
+    return [{
+      id: `${nodeId}__text`,
+      nodeId,
+      kind: 'text',
+      name: nodeData.label,
+      description: `来自上游节点：${nodeData.label}`,
+      textValue: content,
+    }];
+  }
+
   if (nodeData.linghuiType === 'linghui/script') {
     const properties = nodeData.properties as unknown as LinghuiScriptNodeProperties;
     const content = getDescriptionText(

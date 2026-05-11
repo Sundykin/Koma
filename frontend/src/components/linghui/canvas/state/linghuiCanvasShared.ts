@@ -112,6 +112,7 @@ const LINGHUI_RF_TYPE_TO_NODE_TYPE: Record<string, LinghuiNodeType> = {
   'linghui-video': 'linghui/video',
   'linghui-audio': 'linghui/audio',
   'linghui-script': 'linghui/script',
+  'linghui-storyboard': 'linghui/storyboard',
   'linghui-director3d': 'linghui/director3d',
 };
 

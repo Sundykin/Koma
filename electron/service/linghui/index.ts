@@ -421,6 +421,17 @@ function remapLinghuiImportedDocument(doc: LinghuiWorkspaceDocument): {
     };
   });
 
+  // 导入工作区时把 split-view 预览绑定的 nodeId 也重映射，避免 dangling
+  const nextBindings: Record<string, string> = {};
+  if (doc.directorPreviewBindings) {
+    for (const [directorId, previewId] of Object.entries(doc.directorPreviewBindings)) {
+      if (typeof directorId !== 'string' || typeof previewId !== 'string') continue;
+      const nextDirectorId = nodeIds.get(directorId) ?? directorId;
+      const nextPreviewId = nodeIds.get(previewId) ?? previewId;
+      nextBindings[nextDirectorId] = nextPreviewId;
+    }
+  }
+
   return {
     nodeIds,
     groupIds,
@@ -433,6 +444,7 @@ function remapLinghuiImportedDocument(doc: LinghuiWorkspaceDocument): {
         id: randomLinghuiId(),
         nodeId: mapLinghuiId(entry.nodeId, nodeIds),
       })),
+      directorPreviewBindings: nextBindings,
     },
   };
 }
@@ -1556,6 +1568,125 @@ export class LinghuiService {
       filenameHint,
     });
   }
+
+  /* ============================================================================
+   * 全局资产库（C-5B）：用户自定义的角色 / 道具，跨 workspace 共享。
+   * 内置预设（DIRECTOR3D_CHARACTER_PRESETS / DIRECTOR3D_PROP_LIBRARY）在前端，
+   * 这里只存"用户保存的"自定义条目。
+   * ============================================================================ */
+
+  listGlobalAssets(kind?: 'character' | 'prop'): LinghuiGlobalAssetRecord[] {
+    const sql = kind
+      ? 'SELECT * FROM linghui_global_assets WHERE kind = ? ORDER BY favorite DESC, updated_at DESC'
+      : 'SELECT * FROM linghui_global_assets ORDER BY favorite DESC, updated_at DESC';
+    const rows = kind
+      ? this.getDb().prepare(sql).all(kind) as LinghuiGlobalAssetRow[]
+      : this.getDb().prepare(sql).all() as LinghuiGlobalAssetRow[];
+    return rows.map(rowToGlobalAsset);
+  }
+
+  upsertGlobalAsset(input: LinghuiGlobalAssetInput): LinghuiGlobalAssetRecord {
+    const now = Date.now();
+    const id = input.id ?? `gasset_${now.toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+    const existing = this.getDb()
+      .prepare('SELECT created_at FROM linghui_global_assets WHERE id = ?')
+      .get(id) as { created_at: number } | undefined;
+    const createdAt = existing?.created_at ?? now;
+
+    this.getDb().prepare(`
+      INSERT OR REPLACE INTO linghui_global_assets (
+        id, kind, label, hint, prompt_hint, color, scale, pose_preset,
+        prop_type, category, favorite, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      input.kind,
+      input.label,
+      input.hint ?? null,
+      input.promptHint ?? null,
+      input.color ?? null,
+      typeof input.scale === 'number' ? input.scale : null,
+      input.posePreset ?? null,
+      input.propType ?? null,
+      input.category ?? null,
+      input.favorite ? 1 : 0,
+      createdAt,
+      now,
+    );
+
+    return rowToGlobalAsset(
+      this.getDb().prepare('SELECT * FROM linghui_global_assets WHERE id = ?').get(id) as LinghuiGlobalAssetRow,
+    );
+  }
+
+  deleteGlobalAsset(id: string): boolean {
+    const info = this.getDb().prepare('DELETE FROM linghui_global_assets WHERE id = ?').run(id);
+    return (info?.changes ?? 0) > 0;
+  }
+}
+
+interface LinghuiGlobalAssetRow {
+  id: string;
+  kind: 'character' | 'prop';
+  label: string;
+  hint: string | null;
+  prompt_hint: string | null;
+  color: string | null;
+  scale: number | null;
+  pose_preset: string | null;
+  prop_type: string | null;
+  category: string | null;
+  favorite: number;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface LinghuiGlobalAssetRecord {
+  id: string;
+  kind: 'character' | 'prop';
+  label: string;
+  hint?: string;
+  promptHint?: string;
+  color?: string;
+  scale?: number;
+  posePreset?: string;
+  propType?: string;
+  category?: string;
+  favorite: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface LinghuiGlobalAssetInput {
+  id?: string;
+  kind: 'character' | 'prop';
+  label: string;
+  hint?: string;
+  promptHint?: string;
+  color?: string;
+  scale?: number;
+  posePreset?: string;
+  propType?: string;
+  category?: string;
+  favorite?: boolean;
+}
+
+function rowToGlobalAsset(row: LinghuiGlobalAssetRow): LinghuiGlobalAssetRecord {
+  return {
+    id: row.id,
+    kind: row.kind,
+    label: row.label,
+    hint: row.hint ?? undefined,
+    promptHint: row.prompt_hint ?? undefined,
+    color: row.color ?? undefined,
+    scale: row.scale ?? undefined,
+    posePreset: row.pose_preset ?? undefined,
+    propType: row.prop_type ?? undefined,
+    category: row.category ?? undefined,
+    favorite: row.favorite === 1,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
 }
 
 export const linghuiService = new LinghuiService();

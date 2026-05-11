@@ -56,6 +56,7 @@ const LINGHUI_TYPE_TO_RF_TYPE_MAP: Record<LinghuiNodeType, LinghuiRFNodeTypeKey>
   'linghui/video': 'linghui-video',
   'linghui/audio': 'linghui-audio',
   'linghui/script': 'linghui-script',
+  'linghui/storyboard': 'linghui-storyboard',
   'linghui/director3d': 'linghui-director3d',
 };
 
@@ -67,6 +68,7 @@ const RF_TYPE_TO_LINGHUI_TYPE_MAP: Record<LinghuiRFNodeTypeKey, LinghuiNodeType>
   'linghui-video': 'linghui/video',
   'linghui-audio': 'linghui/audio',
   'linghui-script': 'linghui/script',
+  'linghui-storyboard': 'linghui/storyboard',
   'linghui-director3d': 'linghui/director3d',
 };
 
@@ -219,6 +221,16 @@ export function normalizeLinghuiWorkspaceDocument(
   const stats = buildStats(graphData);
   const nodeRuns = clone(input.nodeRuns ?? EMPTY_LINGHUI_NODE_RUNS) as Record<string, LinghuiNodeRunState>;
   const executionLogs = clone(input.executionLogs ?? EMPTY_LINGHUI_EXECUTION_LOGS) as LinghuiExecutionLogEntry[];
+  // 3D 导演 split-view 绑定：把已删除节点的绑定一并清掉，避免 dangling 引用
+  const liveNodeIds = new Set(graphData.nodes.map(node => node.id));
+  const rawBindings = (input.directorPreviewBindings ?? {}) as Record<string, string>;
+  const directorPreviewBindings: Record<string, string> = {};
+  for (const [directorId, previewId] of Object.entries(rawBindings)) {
+    if (typeof directorId !== 'string' || typeof previewId !== 'string') continue;
+    if (liveNodeIds.has(directorId) && liveNodeIds.has(previewId)) {
+      directorPreviewBindings[directorId] = previewId;
+    }
+  }
 
   return {
     id: input.id,
@@ -231,6 +243,7 @@ export function normalizeLinghuiWorkspaceDocument(
     graphData,
     nodeRuns,
     executionLogs,
+    directorPreviewBindings,
     nodeCount: input.nodeCount ?? stats.nodeCount,
     linkCount: input.linkCount ?? stats.linkCount,
     groupCount: input.groupCount ?? stats.groupCount,

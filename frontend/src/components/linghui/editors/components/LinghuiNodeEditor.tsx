@@ -24,6 +24,7 @@ import { ImageNodeEditor } from './ImageNodeEditor';
 import { PanoramaNodeEditor } from './PanoramaNodeEditor';
 import { Director3DNodeEditor } from './Director3DNodeEditor';
 import { ScriptNodeEditor } from './ScriptNodeEditor';
+import { StoryboardNodeEditor } from './StoryboardNodeEditor';
 import { TextNodeEditor } from './TextNodeEditor';
 import { VideoNodeEditor } from './VideoNodeEditor';
 import { EditableCompactNodeLabel } from '../../nodes/components/EditableCompactNodeLabel';
@@ -173,6 +174,8 @@ function getNodeTypeLabel(nodeType: LinghuiNodeType): string {
       return '音频节点';
     case 'linghui/script':
       return '脚本节点';
+    case 'linghui/storyboard':
+      return '故事板节点';
     case 'linghui/text':
       return '文本节点';
     case 'linghui/director3d':
@@ -184,6 +187,7 @@ function getNodeTypeLabel(nodeType: LinghuiNodeType): string {
 
 function getPanelWidth(nodeType: LinghuiNodeType): number {
   if (nodeType === 'linghui/script') return 760;
+  if (nodeType === 'linghui/storyboard') return 760;
   if (nodeType === 'linghui/audio') return 540;
   if (nodeType === 'linghui/agent') return 620;
   if (nodeType === 'linghui/director3d') return 1080;
@@ -192,6 +196,7 @@ function getPanelWidth(nodeType: LinghuiNodeType): number {
 
 function getPanelMaxHeight(nodeType: LinghuiNodeType): number {
   if (nodeType === 'linghui/script') return 760;
+  if (nodeType === 'linghui/storyboard') return 760;
   if (nodeType === 'linghui/agent') return 640;
   if (nodeType === 'linghui/text') return 520;
   if (nodeType === 'linghui/director3d') return 720;
@@ -729,6 +734,18 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
           )}
           {nodeType === 'linghui/script' && (
             <ScriptNodeEditor
+              nodeId={nodeId}
+              nodeData={nodeData}
+              nodeRun={nodeRuns[nodeId]}
+              promptReferences={promptReferences}
+              onRun={() => onRunNode(nodeId)}
+              onDeriveShots={shots => onDeriveScriptShots(nodeId, shots)}
+              onGenerateImages={shots => onGenerateScriptImages(nodeId, shots)}
+              onGenerateVideos={shots => onGenerateScriptVideos(nodeId, shots)}
+            />
+          )}
+          {nodeType === 'linghui/storyboard' && (
+            <StoryboardNodeEditor
               nodeId={nodeId}
               nodeData={nodeData}
               nodeRun={nodeRuns[nodeId]}

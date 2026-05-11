@@ -141,6 +141,9 @@ interface ElectronAPI {
     listWorkspaceHistoryRecords: (workspaceId: string) => Promise<any[]>;
     createWorkspaceHistoryRecord: (payload: any) => Promise<any>;
     importWorkspaceAsset: (workspaceId: string, sourcePath: string, filenameHint?: string) => Promise<string | { path: string }>;
+    listGlobalAssets: (args?: { kind?: 'character' | 'prop' }) => Promise<any[]>;
+    upsertGlobalAsset: (payload: any) => Promise<any>;
+    deleteGlobalAsset: (args: { id: string }) => Promise<{ deleted: boolean }>;
   };
   updater?: {
     getState: () => Promise<UpdaterStateDto>;
@@ -1054,6 +1057,35 @@ export const linghuiApi = {
     return typeof result === 'object' && result !== null && 'path' in result
       ? (result as { path: string }).path
       : (result as string);
+  },
+
+  // 全局资产库（C-5B）
+  listGlobalAssets: async (kind?: 'character' | 'prop') => {
+    const a = getElectronAPI();
+    if (!a?.linghui) throw new Error('Linghui API not available');
+    return await a.linghui.listGlobalAssets(kind ? { kind } : undefined);
+  },
+  upsertGlobalAsset: async (payload: {
+    id?: string;
+    kind: 'character' | 'prop';
+    label: string;
+    hint?: string;
+    promptHint?: string;
+    color?: string;
+    scale?: number;
+    posePreset?: string;
+    propType?: string;
+    category?: string;
+    favorite?: boolean;
+  }) => {
+    const a = getElectronAPI();
+    if (!a?.linghui) throw new Error('Linghui API not available');
+    return await a.linghui.upsertGlobalAsset(payload);
+  },
+  deleteGlobalAsset: async (id: string) => {
+    const a = getElectronAPI();
+    if (!a?.linghui) throw new Error('Linghui API not available');
+    return await a.linghui.deleteGlobalAsset({ id });
   },
 };
 

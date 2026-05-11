@@ -12,7 +12,9 @@
  * 节点卡片本体的全景预览仍由 ImageNode 渲染，这里聚焦在编辑/调试侧。
  * 在主结果存在时，编辑器底部会渲染 seam 诊断面板（左右边界 + 横向重复 + 风险等级）。
  */
-import React, { useEffect, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { App, Button } from 'antd';
+import { Compass } from 'lucide-react';
 import type { ImageNodeEditorProps } from './ImageNodeEditor';
 import { ImageNodeEditor } from './ImageNodeEditor';
 import {
@@ -25,8 +27,10 @@ import {
   resolvePanoramaProjectionMode,
 } from '../../panorama/panoramaProjection';
 import { PanoramaSeamDiagnostics } from '../../panorama/PanoramaSeamDiagnostics';
+import { panoramaSplitDirections, type PanoramaDetailDirectionCount } from '../../panorama/panoramaDetailCrop';
 import { useLinghuiNodeMutation } from '../../nodes/state/LinghuiNodeRunsContext';
 import { resolveLinghuiImageCollection } from '../state/linghuiImageCollections';
+import type { LinghuiImageAssetItem } from '../../../../types/linghui';
 
 export type PanoramaNodeEditorProps = ImageNodeEditorProps;
 
@@ -36,7 +40,9 @@ function resolveTemplateKind(value: unknown): PanoramaTemplateKind {
 
 export const PanoramaNodeEditor: React.FC<PanoramaNodeEditorProps> = (props) => {
   const { nodeId, nodeData, nodeRun } = props;
+  const { message } = App.useApp();
   const { updateNodeData } = useLinghuiNodeMutation();
+  const [splitting, setSplitting] = useState<PanoramaDetailDirectionCount | null>(null);
   const currentTemplate = resolveTemplateKind(nodeData.properties?.panoramaTemplate);
   const currentProjection = resolvePanoramaProjectionMode(nodeData.properties?.projectionMode);
 
@@ -85,6 +91,48 @@ export const PanoramaNodeEditor: React.FC<PanoramaNodeEditorProps> = (props) => 
   );
   const seamPreviewUrl = collection.primary?.source || '';
 
+  const detailCrops = useMemo<LinghuiImageAssetItem[]>(() => {
+    const raw = (nodeData.properties as { detailCrops?: unknown } | undefined)?.detailCrops;
+    return Array.isArray(raw) ? (raw as LinghuiImageAssetItem[]) : [];
+  }, [nodeData.properties]);
+
+  const handleSplitDirections = useCallback(async (count: PanoramaDetailDirectionCount) => {
+    if (!seamPreviewUrl) {
+      message.warning('请先生成或导入一张全景图');
+      return;
+    }
+    setSplitting(count);
+    try {
+      const items = await panoramaSplitDirections({
+        sourceUrl: seamPreviewUrl,
+        count,
+        projectionMode: currentProjection,
+      });
+      updateNodeData(nodeId, prev => ({
+        ...prev,
+        properties: {
+          ...prev.properties,
+          detailCrops: items,
+        },
+      }));
+      message.success(`已切出 ${count} 个方向，下游可用 item N 引用任意一张`);
+    } catch (error: unknown) {
+      message.error(error instanceof Error ? error.message : '切分多视角失败');
+    } finally {
+      setSplitting(null);
+    }
+  }, [currentProjection, message, nodeId, seamPreviewUrl, updateNodeData]);
+
+  const handleClearDirections = useCallback(() => {
+    updateNodeData(nodeId, prev => ({
+      ...prev,
+      properties: {
+        ...prev.properties,
+        detailCrops: [],
+      },
+    }));
+  }, [nodeId, updateNodeData]);
+
   return (
     <>
       <ImageNodeEditor
@@ -114,6 +162,55 @@ export const PanoramaNodeEditor: React.FC<PanoramaNodeEditorProps> = (props) => 
           },
         ]}
       />
+      {seamPreviewUrl ? (
+        <div className="linghuiPanoramaDirectionToolbar">
+          <span className="linghuiPanoramaDirectionToolbarLabel">
+            <Compass size={14} />
+            分方向细节
+          </span>
+          <Button
+            size="small"
+            loading={splitting === 4}
+            disabled={splitting !== null}
+            onClick={() => { void handleSplitDirections(4); }}
+          >
+            切 4 方向
+          </Button>
+          <Button
+            size="small"
+            loading={splitting === 6}
+            disabled={splitting !== null}
+            onClick={() => { void handleSplitDirections(6); }}
+          >
+            切 6 方向
+          </Button>
+          <Button
+            size="small"
+            loading={splitting === 8}
+            disabled={splitting !== null}
+            onClick={() => { void handleSplitDirections(8); }}
+          >
+            切 8 方向
+          </Button>
+          {detailCrops.length > 0 ? (
+            <Button size="small" type="text" danger onClick={handleClearDirections}>
+              清空 ({detailCrops.length})
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {detailCrops.length > 0 ? (
+        <div className="linghuiPanoramaDirectionStrip">
+          {detailCrops.map(item => (
+            <figure key={item.id} className="linghuiPanoramaDirectionCell">
+              <img src={item.source} alt={item.label ?? ''} />
+              <figcaption>{item.label}</figcaption>
+            </figure>
+          ))}
+        </div>
+      ) : null}
+
       {seamPreviewUrl ? (
         <PanoramaSeamDiagnostics imageUrl={seamPreviewUrl} className="linghuiPanoramaSeamSection" />
       ) : null}

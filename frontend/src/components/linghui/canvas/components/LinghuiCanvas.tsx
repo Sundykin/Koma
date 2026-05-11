@@ -59,6 +59,8 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     onCancelRun,
     executionQueue,
     onOpenDrawer,
+    onSetDirectorPreviewBinding,
+    onRunDirectorWithPreview,
   },
   ref,
 ) {
@@ -442,6 +444,9 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     buildClipboardSnapshot,
     undoHistory,
     redoHistory,
+    directorPreviewBindings: workspace?.directorPreviewBindings,
+    setDirectorPreviewBinding: onSetDirectorPreviewBinding,
+    onRunDirectorWithPreview,
   });
 
   useLinghuiCanvasImperativeHandle({
