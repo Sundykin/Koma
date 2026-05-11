@@ -66,7 +66,7 @@ import {
   groupDirector3DCameraPresets,
   interpolateSceneAt,
 } from '../../director3d/director3dScene';
-import { Director3DTimelineHud, type Director3DTimelineExportState } from '../../director3d/Director3DTimelineHud';
+import { Director3DTimelineHud, type Director3DTimelineExportState, type Director3DTimelineLayer } from '../../director3d/Director3DTimelineHud';
 import { exportDirector3DTimelineVideo } from '../../director3d/director3dTimelineExport';
 import {
   DIRECTOR3D_JOINT_META,
@@ -471,20 +471,79 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
     });
   }, [updateScene]);
 
+  /**
+   * 当前激活图层：
+   *  - 选中 actor → 该 actor 的图层（编辑物体轨）
+   *  - 否则 → 镜头图层
+   * 时间线 UI / 加帧 / 删帧都按此图层走，避免不同物体的关键帧互相覆盖。
+   */
+  const activeTimelineLayer = useMemo<Director3DTimelineLayer>(() => {
+    if (selection.kind === 'actor' && selectedActor) {
+      return { kind: 'actor', actorId: selectedActor.id, label: selectedActor.label || '物体' };
+    }
+    return { kind: 'camera', label: '镜头' };
+  }, [selectedActor, selection.kind]);
+
   const handleAddKeyframe = useCallback(() => {
     updateScene(prev => {
       const baseTimeline = prev.timeline ?? createDefaultDirector3DTimeline();
-      // 同时间点已存在 → 覆盖；否则插入并排序
-      const captureTime = Math.max(0, Math.min(baseTimeline.duration, currentTime));
-      const existing = baseTimeline.keyframes.find(k => Math.abs(k.time - captureTime) < 0.01);
-      const newKf = captureSceneAsKeyframe(prev, captureTime);
-      const nextKeyframes = existing
-        ? baseTimeline.keyframes.map(k => (k.id === existing.id ? { ...newKf, id: existing.id, label: existing.label } : k))
-        : [...baseTimeline.keyframes, newKf].sort((a, b) => a.time - b.time);
-      setSelectedKeyframeId(existing ? existing.id : newKf.id);
-      return { ...prev, timeline: { ...baseTimeline, keyframes: nextKeyframes } };
+      const captureTime = Math.max(0, Math.min(baseTimeline.duration, Number(currentTime.toFixed(3))));
+      const newKfId = `kf_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 5)}`;
+
+      if (activeTimelineLayer.kind === 'camera') {
+        // 镜头图层：写 scope='camera' 关键帧。同 scope + 同时间已存在 → 覆盖
+        const existing = baseTimeline.keyframes.find(k => {
+          const scope = k.scope ?? 'scene';
+          return (scope === 'camera' || scope === 'scene') && Math.abs(k.time - captureTime) < 0.02;
+        });
+        const cameraSnapshot = cloneCameraForKeyframe(prev.camera);
+        // viewport 当前 yaw 不取模 → cameraOrbit 记录累计弧度，环绕镜头可跨 360°
+        const currentOrbit = viewportRef.current?.getCurrentOrbit();
+        const cameraOrbit = currentOrbit ? { ...currentOrbit } : undefined;
+        if (existing) {
+          const updated = {
+            ...existing,
+            camera: cameraSnapshot,
+            ...(cameraOrbit ? { cameraOrbit } : {}),
+          };
+          setSelectedKeyframeId(existing.id);
+          return { ...prev, timeline: { ...baseTimeline, keyframes: baseTimeline.keyframes.map(k => (k.id === existing.id ? updated : k)) } };
+        }
+        const newKf: LinghuiDirector3DKeyframe = {
+          id: newKfId,
+          time: captureTime,
+          scope: 'camera',
+          actors: [],
+          camera: cameraSnapshot,
+          ...(cameraOrbit ? { cameraOrbit } : {}),
+        };
+        setSelectedKeyframeId(newKfId);
+        return { ...prev, timeline: { ...baseTimeline, keyframes: [...baseTimeline.keyframes, newKf].sort((a, b) => a.time - b.time) } };
+      }
+
+      // actor 图层：写 scope='actor:{id}' 关键帧。同 scope + 同时间已存在 → 覆盖
+      const actorId = activeTimelineLayer.actorId;
+      const actor = prev.actors.find(a => a.id === actorId);
+      if (!actor) return prev;
+      const scope = `actor:${actorId}` as const;
+      const existing = baseTimeline.keyframes.find(k => (k.scope ?? 'scene') === scope && Math.abs(k.time - captureTime) < 0.02);
+      const snapshot = snapshotActorAsKeyframeActor(actor);
+      if (existing) {
+        const updated = { ...existing, actors: [snapshot] };
+        setSelectedKeyframeId(existing.id);
+        return { ...prev, timeline: { ...baseTimeline, keyframes: baseTimeline.keyframes.map(k => (k.id === existing.id ? updated : k)) } };
+      }
+      const newKf: LinghuiDirector3DKeyframe = {
+        id: newKfId,
+        time: captureTime,
+        scope,
+        actors: [snapshot],
+        camera: prev.camera,
+      };
+      setSelectedKeyframeId(newKfId);
+      return { ...prev, timeline: { ...baseTimeline, keyframes: [...baseTimeline.keyframes, newKf].sort((a, b) => a.time - b.time) } };
     });
-  }, [currentTime, updateScene]);
+  }, [activeTimelineLayer, currentTime, updateScene]);
 
   const handleRemoveKeyframe = useCallback((keyframeId: string) => {
     updateTimeline(prev => ({
@@ -1779,6 +1838,7 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
               playing={playing}
               selectedKeyframeId={selectedKeyframeId}
               exportState={timelineExport}
+              activeLayer={activeTimelineLayer}
               onPlayToggle={handlePlayToggle}
               onSeek={handleSeek}
               onAddKeyframe={handleAddKeyframe}

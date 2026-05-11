@@ -34,12 +34,25 @@ export interface Director3DTimelineExportState {
   total: number;
 }
 
+/**
+ * 时间线图层：每个图层对应一组独立关键帧轨道。
+ *  - 'camera'：镜头层（scope='camera' 或 'scene'）
+ *  - { kind: 'actor'; actorId; label }：某个 actor 的层（scope='actor:{id}' 或 'scene' 含此 actor）
+ *
+ * 时间线 UI 只显示当前图层的关键帧，新增 / 删除 / 拖动也只影响当前图层。
+ */
+export type Director3DTimelineLayer =
+  | { kind: 'camera'; label: string }
+  | { kind: 'actor'; actorId: string; label: string };
+
 interface Director3DTimelineHudProps {
   timeline: LinghuiDirector3DTimeline;
   currentTime: number;
   playing: boolean;
   selectedKeyframeId: string | null;
   exportState: Director3DTimelineExportState;
+  /** 当前激活图层（决定时间线显示哪些关键帧 + 增删针对哪条轨） */
+  activeLayer: Director3DTimelineLayer;
   onPlayToggle: () => void;
   onSeek: (time: number) => void;
   onAddKeyframe: () => void;
@@ -66,6 +79,7 @@ export const Director3DTimelineHud: React.FC<Director3DTimelineHudProps> = ({
   playing,
   selectedKeyframeId,
   exportState,
+  activeLayer,
   onPlayToggle,
   onSeek,
   onAddKeyframe,
@@ -84,6 +98,23 @@ export const Director3DTimelineHud: React.FC<Director3DTimelineHudProps> = ({
   const [scrubbing, setScrubbing] = useState(false);
 
   const duration = Math.max(0.5, timeline.duration);
+
+  // 当前图层可见的关键帧集合：
+  //   - camera 层：scope='camera' 或 'scene'
+  //   - actor:X 层：scope='actor:X' 或 'scene'（且 scene 帧含 actor.id===X）
+  const visibleKeyframes = React.useMemo<LinghuiDirector3DKeyframe[]>(() => {
+    return timeline.keyframes.filter(kf => {
+      const scope = kf.scope ?? 'scene';
+      if (activeLayer.kind === 'camera') {
+        return scope === 'camera' || scope === 'scene';
+      }
+      if (scope === `actor:${activeLayer.actorId}`) return true;
+      if (scope === 'scene') {
+        return kf.actors.some(a => a.id === activeLayer.actorId);
+      }
+      return false;
+    });
+  }, [activeLayer, timeline.keyframes]);
 
   const timeToPercent = useCallback((t: number): number => {
     return Math.min(100, Math.max(0, (t / duration) * 100));
@@ -166,7 +197,7 @@ export const Director3DTimelineHud: React.FC<Director3DTimelineHudProps> = ({
           {formatTime(currentTime)} / {formatTime(duration)}
         </span>
 
-        <Tooltip title="在当前时间点加关键帧（拍下场景快照）">
+        <Tooltip title={`在当前时间点为「${activeLayer.label}」加一帧`}>
           <button
             type="button"
             className="linghuiDirector3DTimelineButton isAccent"
@@ -177,7 +208,7 @@ export const Director3DTimelineHud: React.FC<Director3DTimelineHudProps> = ({
           </button>
         </Tooltip>
 
-        <Tooltip title="删除选中关键帧">
+        <Tooltip title="删除选中关键帧（仅当前图层）">
           <button
             type="button"
             className="linghuiDirector3DTimelineButton"
@@ -187,6 +218,11 @@ export const Director3DTimelineHud: React.FC<Director3DTimelineHudProps> = ({
             <Trash2 size={14} />
           </button>
         </Tooltip>
+
+        {/* 当前图层 chip：展示在编辑哪条轨；用户切换选中即切换图层 */}
+        <span className="linghuiDirector3DTimelineLayerChip" title="当前图层；选中视口里的物体可切换到对应轨">
+          {activeLayer.kind === 'camera' ? '镜头层' : `物体：${activeLayer.label}`}
+        </span>
 
         <span className="linghuiDirector3DTimelineSeparator" />
 
@@ -298,7 +334,7 @@ export const Director3DTimelineHud: React.FC<Director3DTimelineHudProps> = ({
         </div>
 
         {/* 关键帧标记 */}
-        {timeline.keyframes.map(kf => (
+        {visibleKeyframes.map(kf => (
           <div
             key={kf.id}
             className={`linghuiDirector3DTimelineKeyframe ${kf.id === selectedKeyframeId ? 'isSelected' : ''} ${draggingKeyframeId === kf.id ? 'isDragging' : ''}`}
