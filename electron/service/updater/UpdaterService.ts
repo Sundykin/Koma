@@ -60,11 +60,15 @@ export class UpdaterService {
       kind: 'idle',
       currentVersion: app.getVersion(),
     };
-    // 启动时把"已运行过的本地版本"作为防降级锚点
-    updaterStore.bumpLastInstalledVersion(app.getVersion(), compareSemver);
+    // 注意：不在 constructor 里 bumpLastInstalledVersion——版本迁移 (versionMigration.ts)
+    // 必须先读到旧版本号才能判断"是否升级"。bump 推迟到 start() 调用。
   }
 
   start(): void {
+    // 把当前版本写入防降级锚点。runVersionMigrationIfNeeded() 已经在本服务启动前
+    // 读取过旧值并执行了清理，到这一步可以安全地把锚点向前推进。
+    updaterStore.bumpLastInstalledVersion(app.getVersion(), compareSemver);
+
     this.startupTimer = setTimeout(() => {
       this.checkNow().catch((err) => logger.warn('[updater] startup check failed', err));
     }, STARTUP_CHECK_DELAY_MS);
