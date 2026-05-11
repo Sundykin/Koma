@@ -33,6 +33,12 @@ export interface Director3DCaptureOptions {
   renderMode?: LinghuiDirector3DRenderMode;
   /** 临时相机参数。提供时使用该相机渲染（不改 viewport 当前视角），用于批量多视角导出 */
   cameraOverride?: LinghuiDirector3DScene['camera'];
+  /**
+   * 强制使用此 scene 渲染（不读 props.scene）。
+   * 时间轴逐帧导出用：外部直接传入 interpolateSceneAt(scene, t) 算出来的快照，
+   * 避免依赖 React state 更新链路导致 capture 闭包仍是旧 scene 而产出静态视频。
+   */
+  sceneOverride?: LinghuiDirector3DScene;
 }
 
 export interface Director3DViewportHandle {
@@ -342,8 +348,17 @@ interface CaptureRendererProps {
 }
 
 const CaptureRenderer: React.FC<CaptureRendererProps> = ({ scene, texture, cameraStateRef, registerCapture }) => {
+  // 把 props.scene 同步到 ref：capture 里读 ref 而不是闭包的 scene，
+  // 这样即使 props 异步更新到位前 capture 被调用，也能拿到最新 scene
+  const sceneRef = useRef<LinghuiDirector3DScene>(scene);
+  useEffect(() => {
+    sceneRef.current = scene;
+  }, [scene]);
+
   const capture = useCallback(async (options?: Director3DCaptureOptions) => {
-    const currentCamera = options?.cameraOverride ?? cameraStateRef.current;
+    // 优先级：sceneOverride > sceneRef.current（最新 props.scene）
+    const effectiveScene = options?.sceneOverride ?? sceneRef.current;
+    const currentCamera = options?.cameraOverride ?? effectiveScene.camera ?? cameraStateRef.current;
     const width = options?.width ?? 1024;
     const aspectParts = currentCamera.aspectRatio.split(':');
     const ratio = aspectParts.length === 2 ? Number(aspectParts[0]) / Number(aspectParts[1]) : 16 / 9;
@@ -375,18 +390,27 @@ const CaptureRenderer: React.FC<CaptureRendererProps> = ({ scene, texture, camer
     offscreenScene.add(dirLight);
 
     // 按风格构造主体 mesh 材质：
-    //  - lineart / composition：纯白填充 + 黑色 EdgesGeometry 描边
+    //  - lineart / composition：保留 actor.color（彩色实色填充）+ 黑色描边
+    //    这样下游 AI 视频 / 图片 prompt 能直接读到"红色狮子 / 蓝色主角"颜色特征
     //  - silhouette：纯黑填充，不画边
     //  - depth：MeshDepthMaterial（远=白 近=黑，便于下游 ControlNet 直接用）
-    const fillMat: THREE.Material = exportMode === 'silhouette'
-      ? new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.DoubleSide })
-      : exportMode === 'depth'
-        ? new THREE.MeshDepthMaterial({ side: THREE.DoubleSide })
-        : new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
     const wireMat = new THREE.LineBasicMaterial({ color: 0x000000 });
     const drawEdges = exportMode === 'lineart' || exportMode === 'composition';
-    const addLineartMesh = (group: THREE.Group, geometry: THREE.BufferGeometry, offset: [number, number, number] = [0, 0, 0]) => {
-      const mesh = new THREE.Mesh(geometry, fillMat);
+    const makeFillMat = (actorColor?: string): THREE.Material => {
+      if (exportMode === 'silhouette') return new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.DoubleSide });
+      if (exportMode === 'depth') return new THREE.MeshDepthMaterial({ side: THREE.DoubleSide });
+      // lineart / composition：取 actor.color；缺省退到白
+      const colorStr = resolveDirector3DColor(actorColor || '', '#ffffff');
+      return new THREE.MeshBasicMaterial({ color: new THREE.Color(colorStr), side: THREE.DoubleSide });
+    };
+    // 每个 actor 的 fillMat 通过闭包变量传给 addLineartMesh，避免改函数签名
+    let currentActorFillMat: THREE.Material = makeFillMat();
+    const addLineartMesh = (
+      group: THREE.Group,
+      geometry: THREE.BufferGeometry,
+      offset: [number, number, number] = [0, 0, 0],
+    ) => {
+      const mesh = new THREE.Mesh(geometry, currentActorFillMat);
       mesh.position.set(offset[0], offset[1], offset[2]);
       group.add(mesh);
       if (drawEdges) {
@@ -396,11 +420,12 @@ const CaptureRenderer: React.FC<CaptureRendererProps> = ({ scene, texture, camer
       }
     };
 
-    for (const actor of scene.actors) {
+    for (const actor of effectiveScene.actors) {
       const group = new THREE.Group();
       group.position.fromArray(actor.position);
       group.rotation.y = actor.rotationY;
       group.scale.setScalar(actor.scale);
+      currentActorFillMat = makeFillMat(actor.color);
 
       if (actor.type === 'mannequin') {
         addLineartMesh(group, new THREE.BoxGeometry(0.36, 0.6, 0.2), [0, 0.86 + 0.3, 0]);
@@ -483,18 +508,15 @@ const CaptureRenderer: React.FC<CaptureRendererProps> = ({ scene, texture, camer
       offscreenScene.add(group);
     }
 
-    // 地面线稿：仅在 lineart 模式下保留浅色网格；silhouette / depth / composition 不画地面
-    if (exportMode === 'lineart') {
-      const gridHelper = new THREE.GridHelper(24, 24, 0x404040, 0x808080);
-      offscreenScene.add(gridHelper);
-    }
+    // 地面：不画网格 —— 用户反馈导出视频里的地面网格会干扰下游 AI 识别画面主体。
+    // 工作台内 viewport 的网格仍由 GroundGrid 组件根据 scene.render.showGrid 控制。
 
-    if (scene.background.mode === 'panorama' && texture && exportMode === 'lineart') {
+    if (effectiveScene.background.mode === 'panorama' && texture && exportMode === 'lineart') {
       const aspect = (texture.image && (texture.image as { width: number }).width)
         ? (texture.image as { width: number; height: number }).width / (texture.image as { height: number }).height
         : 21 / 9;
       const viewerMode = resolvePanoramaViewerMode({
-        projectionMode: scene.background.projectionMode,
+        projectionMode: effectiveScene.background.projectionMode,
         width: (texture.image as { width?: number } | undefined)?.width,
         height: (texture.image as { height?: number } | undefined)?.height,
       });

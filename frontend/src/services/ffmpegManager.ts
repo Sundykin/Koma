@@ -68,7 +68,10 @@ export interface ResourceProcessResult {
 
 // 视频合成选项
 export interface ComposeVideoOptions {
-  framePattern: string;    // 帧文件模式，如 '/tmp/frame_%05d.png'
+  /** 帧序列所在目录（绝对路径） */
+  frameDir: string;
+  /** 帧文件名占位（不含目录），例如 'frame_%05d.png' */
+  framePattern: string;
   fps: number;
   width: number;
   height: number;

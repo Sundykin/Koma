@@ -644,11 +644,20 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
         height,
         signal: abort.signal,
         renderFrameToDataUrl: async (t: number) => {
-          setCurrentTime(t);
-          // 等两个 RAF 让 React 状态提交 + r3f 渲染完成
-          await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
           if (abort.signal.aborted) return null;
-          return await viewport.captureCurrentView({ width, height, renderMode: renderModeForExport });
+          // 关键：直接在导出流程算好 frame scene 传给 viewport.captureCurrentView，
+          // 不依赖 setCurrentTime 触发的 React 重渲染链路 —— 之前那套 2-RAF 等待
+          // 在 React 18 并发模式下 capture 闭包仍可能拿不到新 scene，导致每帧都是同一张图
+          const frameScene = interpolateSceneAt(scene, t);
+          // 同步更新游标，让 UI 上有视觉进度反馈（不依赖它做渲染）
+          setCurrentTime(t);
+          return await viewport.captureCurrentView({
+            width,
+            height,
+            renderMode: renderModeForExport,
+            sceneOverride: frameScene,
+            cameraOverride: frameScene.camera,
+          });
         },
         onProgress: (current, total, phase) => {
           setTimelineExport({ active: true, phase, current, total });
