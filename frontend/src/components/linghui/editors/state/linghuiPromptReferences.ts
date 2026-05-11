@@ -111,17 +111,34 @@ function buildRefKey(ref: MediaAssetSource | ProviderAssetInput): string {
   return remoteUrl || localPath || JSON.stringify(ref);
 }
 
-function getMediaReferenceSource(media?: {
+/**
+ * 上传/编译用源：image → 原图；video → 真实 mp4；audio → 真实 mp3。
+ * 这是参与图床上传和 prompt `@kind N` 编号的 URL。
+ */
+function getMediaUploadSource(media?: {
+  kind?: string;
+  source?: string;
+  posterSource?: string;
+}): string | undefined {
+  if (!media) return undefined;
+  return media.source || undefined;
+}
+
+/**
+ * UI 预览用源：video → 首帧 poster；audio → 波形/封面（若有）；image → 自身。
+ * 仅给参考面板缩略图，不进上传链。
+ */
+function getMediaPreviewSource(media?: {
   kind?: string;
   source?: string;
   posterSource?: string;
 }): string | undefined {
   if (!media) return undefined;
   if (media.kind === 'video') {
-    return media.posterSource || undefined;
+    return media.posterSource || media.source || undefined;
   }
   if (media.kind === 'audio') {
-    return undefined;
+    return media.posterSource || undefined;
   }
   return media.source || undefined;
 }
@@ -201,18 +218,32 @@ function buildResultReferences(
   const primaryKind = primary?.kind;
 
   if (primaryKind === 'audio') {
-    refs.push({
-      id: nodeId,
-      nodeId,
-      kind: 'audio',
-      name: baseName,
-      description: baseDescription,
-      textValue:
-        getDescriptionText(textValue) ||
-        getDescriptionText(getLinghuiResultDescriptionText(normalizedResult)) ||
-        baseName,
-    });
-  } else if (primaryKind === 'video' && !getMediaReferenceSource(primary)) {
+    const audioSource = getMediaUploadSource(primary);
+    if (audioSource) {
+      // 真实 mp3 → 走全能参考通道，编号成 @Audio N
+      pushVisualReference(refs, {
+        id: nodeId,
+        nodeId,
+        kind: 'audio',
+        name: baseName,
+        description: baseDescription,
+        source: audioSource,
+        previewSource: getMediaPreviewSource(primary) ?? audioSource,
+      });
+    } else {
+      refs.push({
+        id: nodeId,
+        nodeId,
+        kind: 'audio',
+        name: baseName,
+        description: baseDescription,
+        textValue:
+          getDescriptionText(textValue) ||
+          getDescriptionText(getLinghuiResultDescriptionText(normalizedResult)) ||
+          baseName,
+      });
+    }
+  } else if (primaryKind === 'video' && !getMediaUploadSource(primary)) {
     refs.push({
       id: nodeId,
       nodeId,
@@ -222,7 +253,8 @@ function buildResultReferences(
       textValue: baseName,
     });
   } else {
-    const primarySource = getMediaReferenceSource(primary);
+    const primarySource = getMediaUploadSource(primary);
+    const primaryPreview = getMediaPreviewSource(primary) ?? primarySource;
     pushVisualReference(refs, {
       id: nodeId,
       nodeId,
@@ -230,26 +262,40 @@ function buildResultReferences(
       name: baseName,
       description: baseDescription,
       source: primarySource,
-      previewSource: primarySource,
+      previewSource: primaryPreview,
     });
   }
 
   if (nodeData.linghuiType !== 'linghui/image') {
     items.forEach((item, index) => {
-      const itemSource = getMediaReferenceSource(item);
-      if (primaryKind !== 'audio' && index === 0 && itemSource && getMediaReferenceSource(primary) === itemSource) {
+      const itemSource = getMediaUploadSource(item);
+      const itemPreview = getMediaPreviewSource(item) ?? itemSource;
+      if (primaryKind !== 'audio' && index === 0 && itemSource && getMediaUploadSource(primary) === itemSource) {
         return;
       }
 
       if (item.kind === 'audio') {
-        refs.push({
-          id: `${nodeId}__item_${index + 1}`,
-          nodeId,
-          kind: 'audio',
-          name: getDescriptionText(item.label, `${baseName} ${index + 1}`) || `${baseName} ${index + 1}`,
-          description: `${baseDescription} · 产物 ${index + 1}`,
-          textValue: getDescriptionText(item.label, `${baseName} ${index + 1}`) || `${baseName} ${index + 1}`,
-        });
+        const audioName = getDescriptionText(item.label, `${baseName} ${index + 1}`) || `${baseName} ${index + 1}`;
+        if (itemSource) {
+          pushVisualReference(refs, {
+            id: `${nodeId}__item_${index + 1}`,
+            nodeId,
+            kind: 'audio',
+            name: audioName,
+            description: `${baseDescription} · 产物 ${index + 1}`,
+            source: itemSource,
+            previewSource: itemPreview,
+          });
+        } else {
+          refs.push({
+            id: `${nodeId}__item_${index + 1}`,
+            nodeId,
+            kind: 'audio',
+            name: audioName,
+            description: `${baseDescription} · 产物 ${index + 1}`,
+            textValue: audioName,
+          });
+        }
         return;
       }
 
@@ -272,13 +318,13 @@ function buildResultReferences(
         name: getDescriptionText(item.label, `${baseName} ${index + 1}`) || `${baseName} ${index + 1}`,
         description: `${baseDescription} · 产物 ${index + 1}`,
         source: itemSource,
-        previewSource: itemSource,
+        previewSource: itemPreview,
       });
     });
   }
 
   shots.forEach((shot, index) => {
-    const shotSource = getMediaReferenceSource(shot.image);
+    const shotSource = getMediaUploadSource(shot.image);
     const shotId = `${nodeId}__shot_${index + 1}`;
     const shotName = getDescriptionText(shot.title, `${baseName} 分镜 ${index + 1}`) || `${baseName} 分镜 ${index + 1}`;
     const shotDescription = getDescriptionText(shot.description, `${baseDescription} · 分镜 ${index + 1}`);
@@ -334,7 +380,9 @@ function buildFallbackReference(
       kind: 'audio',
       name: nodeData.label,
       description: `来自上游节点：${nodeData.label}`,
-      textValue: nodeData.label,
+      // 真实 mp3 走全能参考通道（@Audio N），不再仅作 textValue
+      source,
+      previewSource: source,
     }];
   }
 
@@ -371,10 +419,11 @@ function buildFallbackReference(
       kind: 'video',
       name: nodeData.label,
       description: `来自上游节点：${nodeData.label}`,
-      ...(posterSource
+      // 优先把真实 mp4 作为上传源；只有 poster 时回退到 textValue（无内容可上传给视频通道）
+      ...(source
         ? {
-            source: posterSource,
-            previewSource: posterSource,
+            source,
+            previewSource: posterSource || source,
           }
         : {
             textValue: nodeData.label,
@@ -455,8 +504,9 @@ function buildFallbackReference(
         kind: 'video',
         name: nodeData.label,
         description: `来自上游节点：${nodeData.label}（3D 导演时间轴动画）`,
-        source: timelineVideoPoster || timelineVideoUrl,
-        previewSource: timelineVideoPoster || undefined,
+        // 真实 mp4 进上传/编译链，poster 仅作 UI 预览
+        source: timelineVideoUrl,
+        previewSource: timelineVideoPoster || timelineVideoUrl,
       }];
     }
     if (lineart && (lineart.startsWith('koma-local://') || lineart.startsWith('http'))) {

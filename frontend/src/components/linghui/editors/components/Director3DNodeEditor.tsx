@@ -15,12 +15,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { App, Button, InputNumber, Popover, Slider, Tooltip } from 'antd';
 import { useNodes } from '@xyflow/react';
 import type { Node } from '@xyflow/react';
-import { ArrowRight, Box, Camera, Cylinder, Eye, Grid2x2, Grid3x3, Image as ImageIcon, LayoutTemplate, Layers, Link2, Link2Off, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Plus, Square, Trash2, Users, Wand2, Zap } from 'lucide-react';
+import { ArrowRight, Box, Camera, Cylinder, Eye, Grid2x2, Image as ImageIcon, LayoutTemplate, Link2, Link2Off, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Plus, Square, Trash2, Users, Wand2, Zap } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type {
   LinghuiDirector3DActor,
   LinghuiDirector3DActorPose,
-  LinghuiDirector3DAngleView,
   LinghuiDirector3DBackgroundMode,
   LinghuiDirector3DCreatureAction,
   LinghuiDirector3DCreatureSpecies,
@@ -37,19 +36,15 @@ import {
   DIRECTOR3D_CAMERA_PRESETS,
   DIRECTOR3D_CAMERA_PRESET_CATEGORY_LABELS,
   DIRECTOR3D_CHARACTER_PRESETS,
-  DIRECTOR3D_ORBIT_9_DEGREES,
   DIRECTOR3D_PROP_CATEGORY_LABELS,
   DIRECTOR3D_PROP_LIBRARY,
   DIRECTOR3D_SCENE_TEMPLATES,
-  DIRECTOR3D_THREE_VIEW_DEGREES,
   type Director3DBattalionOptions,
   type Director3DCameraPreset,
   type Director3DCameraPresetCategory,
   type Director3DCharacterPreset,
   type Director3DPropCategory,
   type Director3DPropPreset,
-  buildOrbitCameras,
-  buildTopDownCamera,
   captureSceneAsKeyframe,
   cloneCameraForKeyframe,
   snapshotActorAsKeyframeActor,
@@ -150,6 +145,11 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
   const scene = useMemo(() => getScene(nodeData.properties), [nodeData.properties]);
   const [selection, setSelection] = useState<Selection>({ kind: null });
   const [activeAssetTab, setActiveAssetTab] = useState<'props' | 'characters' | 'creatures' | 'cameras' | 'templates'>('characters');
+  // 左右 rail 用受控 open：hover 触发开，关闭只走 ① 点击工作台之外区域 ② Esc ③ 切到另一个 tab。
+  // 之前 antd 默认 hover-leave 在用户 mouse 移到 body-mounted 子 popup（Select 下拉 / ColorPicker /
+  // 派兵布阵 popover）上时会触发，从而提前关闭外层 rail；切受控避开这条路径。
+  const [openLeftRailTab, setOpenLeftRailTab] = useState<'props' | 'characters' | 'creatures' | 'cameras' | 'templates' | null>(null);
+  const [rightRailOpen, setRightRailOpen] = useState(false);
   // 默认彩色预览：保留物体颜色 + 含地面/天空 + 无描边 → 所见即所得
   const [renderModeForExport, setRenderModeForExport] = useState<LinghuiDirector3DRenderMode>('preview');
   const [previewMode, setPreviewMode] = useState<'preview' | 'lineart' | 'silhouette'>('preview');
@@ -160,6 +160,9 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
   //  - 'editor'：拖动只改 viewport 本地视角，不影响输出，方便从其他角度看场景
   const [cameraMode, setCameraMode] = useState<'output' | 'editor'>('output');
   const viewportRef = useRef<Director3DViewportHandle | null>(null);
+  // panelRootRef：用于把 director3d 自己的快捷键 + 全键盘事件拦截绑在 panel 根上，
+  // capture 阶段 stopPropagation，避免 ReactFlow / 外层画布快捷键在用户编辑时被触发。
+  const panelRootRef = useRef<HTMLDivElement | null>(null);
 
   const updateScene = useCallback((updater: (prev: LinghuiDirector3DScene) => LinghuiDirector3DScene) => {
     updateNodeData(nodeId, prev => ({
@@ -458,6 +461,43 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [playing, timeline.duration, timeline.keyframes.length]);
+
+  // 左右 rail popover 外部点击关闭：rail / rail popover / 任何 antd body-portal 子弹层
+  // 都算「安全区」，点这些不关；点其他地方才关。Esc 也关。
+  useEffect(() => {
+    if (openLeftRailTab === null && !rightRailOpen) return undefined;
+    const isInsideRailZone = (target: EventTarget | null): boolean => {
+      if (!(target instanceof Element)) return false;
+      return Boolean(
+        target.closest('.linghuiDirector3DRail')
+        || target.closest('.linghuiDirector3DRailPopover')
+        || target.closest('.linghuiDirector3DBattalionPopover')
+        || target.closest('.ant-popover')
+        || target.closest('.ant-select-dropdown')
+        || target.closest('.ant-picker-dropdown')
+        || target.closest('.ant-color-picker-dropdown')
+        || target.closest('.ant-dropdown')
+        || target.closest('.ant-slider-tooltip'),
+      );
+    };
+    const closeAll = () => {
+      setOpenLeftRailTab(null);
+      setRightRailOpen(false);
+    };
+    const onMouseDown = (e: MouseEvent) => {
+      if (isInsideRailZone(e.target)) return;
+      closeAll();
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeAll();
+    };
+    document.addEventListener('mousedown', onMouseDown, true);
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => {
+      document.removeEventListener('mousedown', onMouseDown, true);
+      document.removeEventListener('keydown', onKeyDown, true);
+    };
+  }, [openLeftRailTab, rightRailOpen]);
 
   // runtimeScene：用于 viewport 渲染的"当前时间帧"，不回写到 properties
   const runtimeScene = useMemo<LinghuiDirector3DScene>(() => {
@@ -854,75 +894,6 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
     message.success(`${modeLabel}已生成，可在下游图片节点引用`);
   }, [message, nodeId, renderModeForExport, updateNodeData]);
 
-  const handleBatchExport = useCallback(async (
-    kind: 'three-view' | 'orbit-9',
-  ) => {
-    const viewport = viewportRef.current;
-    if (!viewport) return;
-    const baseCamera = viewport.getCurrentCamera();
-
-    const cameras = kind === 'three-view'
-      ? buildOrbitCameras(baseCamera, DIRECTOR3D_THREE_VIEW_DEGREES).map((cam, idx) => ({
-          camera: cam,
-          label: ['正面', '侧面', '背面'][idx] ?? `视角 ${idx + 1}`,
-        }))
-      : [
-          ...buildOrbitCameras(baseCamera, DIRECTOR3D_ORBIT_9_DEGREES).map((cam, idx) => ({
-            camera: cam,
-            label: `环绕 ${DIRECTOR3D_ORBIT_9_DEGREES[idx]}°`,
-          })),
-          { camera: buildTopDownCamera(baseCamera), label: '俯视' },
-        ];
-
-    const exported: LinghuiDirector3DAngleView[] = [];
-    for (let i = 0; i < cameras.length; i += 1) {
-      const { camera, label } = cameras[i];
-      const dataUrl = await viewport.captureCurrentView({
-        width: 768,
-        renderMode: renderModeForExport,
-        cameraOverride: camera,
-      });
-      if (!dataUrl) continue;
-      exported.push({
-        id: `angle_${Date.now().toString(36)}_${i}`,
-        label,
-        dataUrl,
-        camera,
-        renderMode: renderModeForExport,
-      });
-    }
-
-    if (!exported.length) {
-      message.warning('批量导出失败，请重试');
-      return;
-    }
-
-    // 主图取第一张，scene.camera 也跟着第一张视角；其余存入 angleViews
-    const [primary, ...rest] = exported;
-    updateNodeData(nodeId, prev => {
-      const baseScene = getScene(prev.properties);
-      const nextScene = {
-        ...baseScene,
-        camera: primary.camera,
-        render: { ...baseScene.render, mode: renderModeForExport },
-      };
-      return {
-        ...prev,
-        properties: {
-          ...prev.properties,
-          scene: nextScene,
-          lineartDataUrl: primary.dataUrl,
-          directorPromptFragment: compileDirector3DPromptFragment(nextScene),
-          exportRenderMode: renderModeForExport,
-          angleViews: rest,
-          lastAngleBatchKind: kind,
-        },
-      };
-    });
-    const label = kind === 'three-view' ? '三视图' : '九宫格';
-    message.success(`${label}已生成 ${exported.length} 张，主图为第一张，其余可在下游用 item N 引用`);
-  }, [message, nodeId, renderModeForExport, updateNodeData]);
-
   // 监听场景关键变化（actors / camera / background），实时模式下据此触发防抖出图
   const sceneSignature = useMemo(() => JSON.stringify({
     actors: scene.actors.map(a => ({ id: a.id, pos: a.position, rot: a.rotationY, scale: a.scale, pose: a.posePreset, type: a.type, formation: a.formation })),
@@ -933,46 +904,55 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
   // preview binding 已移除：不再有"绑定下游节点 + 实时联动"流程
 
   const lineartPreview = (nodeData.properties as { lineartDataUrl?: string } | undefined)?.lineartDataUrl;
-  const angleViews = useMemo<LinghuiDirector3DAngleView[]>(() => {
-    const raw = (nodeData.properties as { angleViews?: unknown } | undefined)?.angleViews;
-    return Array.isArray(raw) ? (raw as LinghuiDirector3DAngleView[]) : [];
-  }, [nodeData.properties]);
 
-  // HUD 快捷键：Tab 折叠、Cmd/Ctrl+F 沉浸、1-4 切渲染模式、F 聚焦演员（暂未实装聚焦相机，仅切换选中）
+  // HUD 快捷键：Cmd/Ctrl+F 沉浸、1-9 切渲染模式
+  // 一并接管 panel 内全部 keydown/keyup/keypress —— 工作台打开时画布的任何快捷键
+  // （ReactFlow / 外层 hotkey）都不应触发，否则用户在场景里按 Backspace、空格、字母都会
+  // 误删节点 / 切画布工具。capture 阶段 stopPropagation 切断事件流。
   const renderModeKeys = useMemo<LinghuiDirector3DRenderMode[]>(
     () => Object.keys(RENDER_MODE_LABELS) as LinghuiDirector3DRenderMode[],
     [],
   );
   useEffect(() => {
-    const handler = (event: KeyboardEvent) => {
-      // 在文本输入控件里时不接管快捷键（避免与 InputNumber / 命名输入冲突）
-      const target = event.target as HTMLElement | null;
-      if (target) {
-        const tag = target.tagName;
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable) {
-          return;
-        }
-      }
+    const root = panelRootRef.current;
+    if (!root) return undefined;
 
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f') {
-        event.preventDefault();
-        setImmersive(prev => !prev);
-        return;
-      }
-
-      if (/^[1-9]$/.test(event.key)) {
-        const idx = Number(event.key) - 1;
-        const mode = renderModeKeys[idx];
-        if (mode) {
-          event.preventDefault();
-          setRenderModeForExport(mode);
-          setPreviewMode(mode === 'silhouette' ? 'silhouette' : mode === 'lineart' ? 'lineart' : 'preview');
-        }
-      }
+    const isTextInput = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable;
     };
 
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
+    const onKeyDown = (event: KeyboardEvent) => {
+      // 文本输入态：放行键盘事件给输入框自身，但仍 stopPropagation 阻止冒泡到画布
+      if (!isTextInput(event.target)) {
+        if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f') {
+          event.preventDefault();
+          setImmersive(prev => !prev);
+        } else if (/^[1-9]$/.test(event.key)) {
+          const idx = Number(event.key) - 1;
+          const mode = renderModeKeys[idx];
+          if (mode) {
+            event.preventDefault();
+            setRenderModeForExport(mode);
+            setPreviewMode(mode === 'silhouette' ? 'silhouette' : mode === 'lineart' ? 'lineart' : 'preview');
+          }
+        }
+      }
+      event.stopPropagation();
+    };
+    const blockBubble = (event: KeyboardEvent) => {
+      event.stopPropagation();
+    };
+
+    root.addEventListener('keydown', onKeyDown, true);
+    root.addEventListener('keyup', blockBubble, true);
+    root.addEventListener('keypress', blockBubble, true);
+    return () => {
+      root.removeEventListener('keydown', onKeyDown, true);
+      root.removeEventListener('keyup', blockBubble, true);
+      root.removeEventListener('keypress', blockBubble, true);
+    };
   }, [renderModeKeys]);
 
   const stats = useMemo(() => {
@@ -996,7 +976,12 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
   ].filter(Boolean).join(' ');
 
   return (
-    <div className={panelClassName} onMouseDown={event => event.stopPropagation()}>
+    <div
+      ref={panelRootRef}
+      className={panelClassName}
+      onMouseDown={event => event.stopPropagation()}
+      tabIndex={-1}
+    >
       <div className="linghuiDirector3DLayout">
         {/* 顶部 HUD：状态条 */}
         <div className="linghuiDirector3DTopBar">
@@ -1057,6 +1042,7 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
           ]).map(tab => (
             <Popover
               key={tab.id}
+              open={openLeftRailTab === tab.id}
               trigger="hover"
               placement="right"
               align={{ overflow: { adjustY: true, adjustX: true } }}
@@ -1064,7 +1050,13 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
               mouseLeaveDelay={0.2}
               overlayClassName="linghuiDirector3DRailPopover"
               getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
-              onOpenChange={(open) => { if (open) setActiveAssetTab(tab.id); }}
+              // 只接受「开」事件；关闭交给外部点击 / Esc，避免鼠标移到子 popup 时被错关
+              onOpenChange={(open) => {
+                if (open) {
+                  setOpenLeftRailTab(tab.id);
+                  setActiveAssetTab(tab.id);
+                }
+              }}
               content={(
                 <div className="linghuiDirector3DRailPopoverInner" onMouseDown={event => event.stopPropagation()}>
                   <div className="linghuiDirector3DRailPopoverTitle">{tab.label}</div>
@@ -1433,36 +1425,13 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
             <Button type="primary" size="small" icon={<Wand2 size={14} />} onClick={handleExportLineart}>
               导出 {RENDER_MODE_LABELS[renderModeForExport]}
             </Button>
-            <Button
-              size="small"
-              icon={<Layers size={14} />}
-              onClick={() => { void handleBatchExport('three-view'); }}
-              title="围绕场景中心生成正面 / 侧面 / 背面 3 张"
-            >
-              三视图
-            </Button>
-            <Button
-              size="small"
-              icon={<Grid3x3 size={14} />}
-              onClick={() => { void handleBatchExport('orbit-9'); }}
-              title="环绕 8 个方位 + 俯视，共 9 张"
-            >
-              九宫格
-            </Button>
           </div>
 
-          {lineartPreview || angleViews.length ? (
+          {lineartPreview ? (
             <div className="linghuiDirector3DLineartPreview">
-              <span className="linghuiDirector3DLineartLabel">
-                最近导出{angleViews.length ? ` · ${1 + angleViews.length} 张` : ''}
-              </span>
+              <span className="linghuiDirector3DLineartLabel">最近导出</span>
               <div className="linghuiDirector3DAngleStrip">
-                {lineartPreview ? (
-                  <img src={lineartPreview} alt="primary export" title="主图" />
-                ) : null}
-                {angleViews.map((view) => (
-                  <img key={view.id} src={view.dataUrl} alt={view.label} title={view.label} />
-                ))}
+                <img src={lineartPreview} alt="primary export" title="主图" />
               </div>
             </div>
           ) : null}
@@ -1471,6 +1440,7 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
         {/* 右侧 activity rail：属性 + 时间轴关键帧入口；属性 popover 内容根据选中状态切换 */}
         <aside className="linghuiDirector3DRail isRight">
           <Popover
+            open={rightRailOpen}
             trigger="hover"
             placement="left"
             align={{ overflow: { adjustY: true, adjustX: true } }}
@@ -1478,6 +1448,10 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
             mouseLeaveDelay={0.2}
             overlayClassName="linghuiDirector3DRailPopover"
             getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
+            // 同左 rail：受控开，关闭走外部点击 / Esc
+            onOpenChange={(open) => {
+              if (open) setRightRailOpen(true);
+            }}
             content={(
               <div className="linghuiDirector3DRailPopoverInner" onMouseDown={event => event.stopPropagation()}>
                 <div className="linghuiDirector3DRailPopoverTitle">
@@ -1829,11 +1803,9 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
           </Popover>
         </aside>
 
-        </div>{/* /body */}
-
-        {/* 底部 footer：时间轴 HUD（沉浸态隐藏） */}
+        {/* 时间轴 HUD：移到右侧浮动面板，常驻不需要 hover；沉浸态隐藏 */}
         {!immersive ? (
-          <div className="linghuiDirector3DFooter">
+          <div className="linghuiDirector3DTimelineSidePanel">
             <Director3DTimelineHud
               timeline={timeline}
               currentTime={currentTime}
@@ -1862,6 +1834,8 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
             />
           </div>
         ) : null}
+
+        </div>{/* /body */}
       </div>
     </div>
   );

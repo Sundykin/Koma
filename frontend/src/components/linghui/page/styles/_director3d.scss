@@ -55,7 +55,7 @@
     &.isImmersive {
       .linghuiDirector3DRail,
       .linghuiDirector3DTopBar,
-      .linghuiDirector3DFooter,
+      .linghuiDirector3DTimelineSidePanel,
       .linghuiDirector3DLineartPreview,
       .linghuiDirector3DPreviewHud {
         opacity: 0;
@@ -1392,5 +1392,60 @@
 
   .linghuiDirector3DInspectorBody {
     padding: 8px 10px;
+  }
+}
+
+/* 紧凑节点上的「打开工作台」按钮：唯一会展开 Director3DNodeEditor 的入口；
+   其余区域（预览缩略图 + 统计行）都标记 data-node-preview-area，
+   点击只看产物，不进编辑器（避免误展开覆盖整个画布）。 */
+/* 时间轴 HUD 现在挂在视口右侧（替代之前的底部 footer）。
+   宽度 320px，纵向占据右侧大半个 viewport 高度；内部沿用原 HUD 的 column 布局，
+   只是把它从全屏底部移到了视口右边，给画布腾出底部空间。 */
+.linghuiDirector3DTimelineSidePanel {
+  position: absolute;
+  top: 64px;
+  right: 16px;
+  bottom: 16px;
+  width: 320px;
+  max-height: calc(100% - 80px);
+  display: flex;
+  flex-direction: column;
+  pointer-events: auto;
+  z-index: 5;
+
+  .linghuiDirector3DTimelineHud {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .linghuiDirector3DTimelineControls {
+    flex-wrap: wrap;
+  }
+}
+
+.linghuiDirector3DOpenButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  margin-top: 6px;
+  align-self: flex-start;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 6px;
+  border: 1px solid var(--token-border-base);
+  background: var(--token-bg-elevated);
+  color: var(--token-text-primary);
+  cursor: pointer;
+  transition: background 160ms, border-color 160ms;
+
+  &:hover {
+    background: color-mix(in srgb, var(--token-accent-base) 10%, var(--token-bg-elevated));
+    border-color: var(--token-accent-base);
+  }
+
+  &:active {
+    transform: translateY(1px);
   }
 }

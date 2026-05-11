@@ -99,6 +99,11 @@ export interface LinghuiNodeInteractionApi {
   openNodeContextMenu: (nodeId: string, clientX: number, clientY: number) => void;
   openImageToolPanel: (nodeId: string, tool: LinghuiImageToolKey) => void;
   openVideoToolPanel: (nodeId: string, tool: LinghuiVideoToolKey) => void;
+  /**
+   * 显式打开节点编辑器面板。供需要把"展开节点"绑定到节点内部按钮的场景（如 Director3D
+   * 节点上的「打开工作台」按钮）使用 —— 整张卡片不再 click 即展开。
+   */
+  openNodeEditor: (nodeId: string) => void;
 }
 
 const noopHandlers: LinghuiNodeInteractionHandlers = {
@@ -110,6 +115,7 @@ const noopHandlers: LinghuiNodeInteractionHandlers = {
 
 const noopInteractionApi: LinghuiNodeInteractionApi = {
   bindNodeSurface: () => noopHandlers,
+  openNodeEditor: () => undefined,
   openNodeContextMenu: () => undefined,
   openImageToolPanel: () => undefined,
   openVideoToolPanel: () => undefined,

@@ -15,8 +15,39 @@ describe('compilePromptReferences 多类型编译协议', () => {
         replacementStrategy: 'image-index',
       });
       expect(result.compiledPrompt).toBe('主角 @Image 1 在 @Image 2 场景中说 @Audio 1，配上 @Video 1');
-      // compiledReferences 只含 image 源（视频音频通过其他通道消费）
-      expect(result.compiledReferences).toEqual(['https://x/a.png', 'https://x/b.png']);
+      // 全能参考通道：image / video / audio 一并按推入顺序进 compiledReferences
+      expect(result.compiledReferences).toEqual([
+        'https://x/a.png',
+        'https://x/b.png',
+        'https://x/v.mp3',
+        'https://x/v.mp4',
+      ]);
+    });
+
+    it('全能参考通道：video / audio 与 image 一起进 compiledReferences，受各自上限约束', () => {
+      const result = compilePromptReferences({
+        prompt: '@ref_i1 @ref_v1 @ref_v2 @ref_v3 @ref_v4 @ref_a1 @ref_a2',
+        references: [
+          { id: 'i1', name: 'I1', kind: 'image', source: 'https://x/i1.png' },
+          { id: 'v1', name: 'V1', kind: 'video', source: 'https://x/v1.mp4' },
+          { id: 'v2', name: 'V2', kind: 'video', source: 'https://x/v2.mp4' },
+          { id: 'v3', name: 'V3', kind: 'video', source: 'https://x/v3.mp4' },
+          { id: 'v4', name: 'V4', kind: 'video', source: 'https://x/v4.mp4' },
+          { id: 'a1', name: 'A1', kind: 'audio', source: 'https://x/a1.mp3' },
+          { id: 'a2', name: 'A2', kind: 'audio', source: 'https://x/a2.mp3' },
+        ],
+        replacementStrategy: 'image-index',
+      });
+      expect(result.compiledPrompt).toBe('@Image 1 @Video 1 @Video 2 @Video 3 V4 @Audio 1 @Audio 2');
+      // 第 4 个 video 超 cap → 不进数组；其余按声明顺序混排进同一通道
+      expect(result.compiledReferences).toEqual([
+        'https://x/i1.png',
+        'https://x/v1.mp4',
+        'https://x/v2.mp4',
+        'https://x/v3.mp4',
+        'https://x/a1.mp3',
+        'https://x/a2.mp3',
+      ]);
     });
 
     it('video / audio 超出 3 个时，超出部分回退到 readable name', () => {

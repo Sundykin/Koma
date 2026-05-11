@@ -327,16 +327,71 @@ async function rememberCachedRemoteUrl(params: {
   await writeRemoteUrlCache(params.projectId, cache);
 }
 
-function safeFilenameFromPath(path: string): string {
-  if (path.startsWith('data:')) return 'image.png';
-  const name = path.split(/[/\\]/).pop() || 'image.png';
+/**
+ * MIME → 文件后缀。图床实际接受任何类型，但下游 provider / CDN 常按扩展名判 mime，
+ * 因此视频音频要保留真实后缀（mp4 / mp3 / webm 等），不能统一 .png。
+ */
+const MIME_EXTENSION_MAP: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/jpg': 'jpg',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+  'image/bmp': 'bmp',
+  'image/avif': 'avif',
+  'image/heic': 'heic',
+  'image/svg+xml': 'svg',
+  'video/mp4': 'mp4',
+  'video/quicktime': 'mov',
+  'video/webm': 'webm',
+  'video/x-matroska': 'mkv',
+  'video/x-msvideo': 'avi',
+  'audio/mpeg': 'mp3',
+  'audio/mp3': 'mp3',
+  'audio/wav': 'wav',
+  'audio/x-wav': 'wav',
+  'audio/ogg': 'ogg',
+  'audio/webm': 'weba',
+  'audio/aac': 'aac',
+  'audio/mp4': 'm4a',
+  'audio/x-m4a': 'm4a',
+  'audio/flac': 'flac',
+};
+
+function extensionFromMimeType(mimeType: string | undefined): string | undefined {
+  if (!mimeType) return undefined;
+  const normalized = mimeType.split(';')[0].trim().toLowerCase();
+  return MIME_EXTENSION_MAP[normalized];
+}
+
+function mimeTypeFromDataUrl(dataUrl: string): string | undefined {
+  const match = /^data:([^;,]+)[;,]/.exec(dataUrl);
+  return match?.[1];
+}
+
+function defaultFilenameForMime(mimeType: string | undefined): string {
+  const ext = extensionFromMimeType(mimeType);
+  if (!ext) return 'asset.bin';
+  if (ext === 'mp3' || ext === 'wav' || ext === 'ogg' || ext === 'weba' || ext === 'aac' || ext === 'm4a' || ext === 'flac') {
+    return `audio.${ext}`;
+  }
+  if (ext === 'mp4' || ext === 'mov' || ext === 'webm' || ext === 'mkv' || ext === 'avi') {
+    return `video.${ext}`;
+  }
+  return `image.${ext}`;
+}
+
+function safeFilenameFromPath(path: string, mimeType?: string): string {
+  const fallback = defaultFilenameForMime(mimeType);
+  if (path.startsWith('data:')) return defaultFilenameForMime(mimeType || mimeTypeFromDataUrl(path));
+  const name = path.split(/[/\\]/).pop() || fallback;
   // Avoid accidentally persisting huge data-url strings as a "filename".
-  if (name.startsWith('data:')) return 'image.png';
-  return name.length > 200 ? 'image.png' : name;
+  if (name.startsWith('data:')) return fallback;
+  return name.length > 200 ? fallback : name;
 }
 
 function appendIndexToFilename(filename: string, index: number): string {
-  const safe = filename || 'image.png';
+  const safe = filename || 'asset.bin';
   const dot = safe.lastIndexOf('.');
   if (dot <= 0) {
     return `${safe}-${index + 1}`;
@@ -348,13 +403,20 @@ function inferFilenameHintFromSource(
   source: MediaAssetSource | ProviderAssetInput | undefined,
 ): string {
   if (!source) {
-    return 'image.png';
+    return 'asset.bin';
   }
-  if (typeof source === 'object' && 'value' in source) {
-    return safeFilenameFromPath(source.value);
+  if (typeof source === 'object' && 'transport' in source && 'value' in source) {
+    return safeFilenameFromPath(source.value, source.mimeType);
   }
   if (typeof source === 'object') {
-    return safeFilenameFromPath(String(source.localPath || source.remoteUrl || 'image.png'));
+    const stored = source as StoredMediaAsset;
+    return safeFilenameFromPath(
+      String(stored.localPath || stored.remoteUrl || ''),
+      stored.mimeType,
+    );
+  }
+  if (isDataUri(source)) {
+    return safeFilenameFromPath(source, mimeTypeFromDataUrl(source));
   }
   return safeFilenameFromPath(source);
 }
@@ -369,7 +431,7 @@ async function uploadImageBytesToRemoteUrl(
   policy: RemoteUrlPolicy,
   options?: RemoteUrlUploadFailureOptions
 ): Promise<string | undefined> {
-  logger.info('开始上传图片到图床', {
+  logger.info('开始上传媒体到图床', {
     filename,
     bytes: bytes.byteLength,
     policy,
@@ -390,7 +452,7 @@ async function uploadImageBytesToRemoteUrl(
   }
 
   if (result.success && result.url) {
-    logger.info('图片上传到图床成功', {
+    logger.info('媒体上传到图床成功', {
       filename,
       policy,
       remoteUrl: result.url,
@@ -470,7 +532,7 @@ export async function ensureRemoteUrlForImageAsset(params: {
     return asset;
   }
 
-  const filename = filenameHint || safeFilenameFromPath(source);
+  const filename = filenameHint || safeFilenameFromPath(source, asset.mimeType);
   const sourceKey = buildRemoteUrlSourceKey(asset);
   const cached = await lookupCachedRemoteUrl({
     projectId: params.projectId,
@@ -632,7 +694,8 @@ export async function ensureRemoteUrlForImageSource(params: {
       return source;
     }
     // data-url -> remote-url
-    const filename = filenameHint || 'image.png';
+    const filename = filenameHint
+      || defaultFilenameForMime(source.mimeType || mimeTypeFromDataUrl(source.value));
     const sourceKey = buildRemoteUrlSourceKey(source);
     const cached = await lookupCachedRemoteUrl({
       projectId: params.projectId,
@@ -681,7 +744,8 @@ export async function ensureRemoteUrlForImageSource(params: {
     return source;
   }
 
-  const filename = filenameHint || safeFilenameFromPath(source);
+  const filename = filenameHint
+    || safeFilenameFromPath(source, isDataUri(source) ? mimeTypeFromDataUrl(source) : undefined);
   const sourceKey = buildRemoteUrlSourceKey(source);
   const cached = await lookupCachedRemoteUrl({
     projectId: params.projectId,
@@ -727,7 +791,7 @@ export async function ensureRemoteUrlForImageSources(params: {
     const firstIndex = firstIndexBySourceKey.get(sourceKey);
     if (firstIndex != null) {
       const firstResult = results[firstIndex];
-      logger.info('跳过重复图片远程地址归一化', {
+      logger.info('跳过重复媒体远程地址归一化', {
         index,
         firstIndex,
         policy: rest.policy,
@@ -742,7 +806,7 @@ export async function ensureRemoteUrlForImageSources(params: {
       rest.filenameHint || inferFilenameHintFromSource(source),
       index,
     );
-    logger.info('准备归一化图片远程地址', {
+    logger.info('准备归一化媒体远程地址', {
       index,
       policy: rest.policy,
       filenameHint: indexedFilenameHint,

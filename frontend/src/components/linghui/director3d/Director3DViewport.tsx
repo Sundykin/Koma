@@ -666,12 +666,17 @@ const CaptureRenderer: React.FC<CaptureRendererProps> = ({ scene, texture, camer
         const lens = new THREE.CylinderGeometry(0.12, 0.16, 0.25, 18);
         lens.rotateX(Math.PI / 2);
         addLineartMesh(group, lens, [0, 0.5, 0.4]);
+        // 取景方向指示：从相机正前方伸出的细线，与 viewport Director3DProp 一致
+        const aim = new THREE.CylinderGeometry(0.01, 0.01, 1.2, 8);
+        aim.rotateX(Math.PI / 2);
+        addLineartMesh(group, aim, [0, 0.5, 1.05]);
       } else if (actor.type === 'prop-arrow') {
         const shaft = new THREE.CylinderGeometry(0.05, 0.05, 1, 12);
         shaft.rotateX(Math.PI / 2);
         addLineartMesh(group, shaft, [0, 0.1, 0.5]);
         const head = new THREE.ConeGeometry(0.16, 0.32, 18);
-        head.rotateX(Math.PI / 2);
+        // viewport 用 -π/2，让锥尖指向 +Z 与 shaft 方向一致
+        head.rotateX(-Math.PI / 2);
         addLineartMesh(group, head, [0, 0.1, 1.1]);
       }
 

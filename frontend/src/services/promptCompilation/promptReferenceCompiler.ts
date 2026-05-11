@@ -71,9 +71,10 @@ interface OrderedVisualReference {
  *   - image-index 策略：按 kind 分组 @Image N / @Video N / @Audio N（video / audio 上限 3，超出回退到 name）
  *   - readable-name 策略：替换为 item.name
  *
- * compiledReferences 仍只含图片源（按 @Image N 顺序），video / audio 的实际数据不进数组 ——
- * provider 通常通过其他通道（如 posterSource、独立 audioTrack 字段）消费它们；这里只负责
- * prompt 文本占位的协议化命名。
+ * compiledReferences 是「全能参考」扁平数组：image / video / audio 走同一个引用通道，
+ * 按推入顺序排列（primary → extra → 声明顺序）；上游会按需上传到图床并塞进
+ * additionalReferences / referenceImages 等同一组字段，body 不区分类型。
+ * 调用方仅靠 prompt 文本里的 @Image N / @Video N / @Audio N 让模型自行对位。
  */
 export function compilePromptReferences(params: {
   prompt: string;
@@ -103,7 +104,8 @@ export function compilePromptReferences(params: {
   /**
    * 把 references 按 kind 分桶 + 顺序保留（primary 优先 → extra → references）。
    * 每桶按 KIND_CAPS 截断（image 不限；video / audio 各 3 个）。
-   * 返回 sourceKey → { kind, index } 的查找表 + 编号过的 visual sources（仅 image）。
+   * compiledReferences 是扁平的 image/video/audio 混排数组（全能参考通道），
+   * indexByKind 保存 sourceKey → 本桶内编号，用于生成 @Image N / @Video N / @Audio N。
    */
   const orderedVisualRefs: OrderedVisualReference[] = [];
   const orderedVisualKeys = new Set<string>();
@@ -122,8 +124,9 @@ export function compilePromptReferences(params: {
     if (cap !== undefined && counterByKind[kind] >= cap) return; // 桶已满
     counterByKind[kind] += 1;
     indexByKind[kind].set(key, counterByKind[kind]);
-    // 只有 image 进 compiledReferences（视频音频通过其他通道消费）
-    if (kind === 'image' && !orderedVisualKeys.has(key)) {
+    // 全能参考通道：image / video / audio 一视同仁，按推入顺序进 compiledReferences。
+    // 同一 source 跨 kind 复用时也只入一次（key 去重）。
+    if (!orderedVisualKeys.has(key)) {
       orderedVisualKeys.add(key);
       orderedVisualRefs.push({ key, source });
     }
@@ -181,8 +184,8 @@ export function compilePromptReferences(params: {
 
   void ensurePrimaryReference;
 
-  // compiledReferences 仍只含图片源（按 image-index 顺序）。primary 已在 visual refs 头部，
-  // 这里按需要剔除（外层会单独把 primary 设到 image-to-video 的 primaryImage 字段）。
+  // compiledReferences = image + video + audio 扁平混排，primary 单独剔除（外层会把它
+  // 塞进 primaryImage / 首位 referenceImages 等专用槽位，避免重复进 additionalReferences）。
   const compiledReferences = orderedVisualRefs
     .filter(item => item.key !== primarySourceKey)
     .map(item => item.source);
