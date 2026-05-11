@@ -137,6 +137,40 @@ class LinghuiController extends BaseController {
     await ensureServicesReady();
     return { path: await services.linghui.importWorkspaceAsset(args.workspaceId, args.sourcePath, args.filenameHint) };
   }
+
+  /* ============ 全局资产库（C-5B，跨 workspace 共享） ============ */
+
+  async listGlobalAssets(args?: { kind?: 'character' | 'prop' }) {
+    await ensureServicesReady();
+    return services.linghui.listGlobalAssets(args?.kind);
+  }
+
+  async upsertGlobalAsset(args: {
+    id?: string;
+    kind: 'character' | 'prop';
+    label: string;
+    hint?: string;
+    promptHint?: string;
+    color?: string;
+    scale?: number;
+    posePreset?: string;
+    propType?: string;
+    category?: string;
+    favorite?: boolean;
+  }) {
+    try {
+      await ensureServicesReady();
+      const result = services.linghui.upsertGlobalAsset(args);
+      return result;
+    } catch (error) {
+      return toLinghuiControllerError('upsertGlobalAsset', error);
+    }
+  }
+
+  async deleteGlobalAsset(args: { id: string }) {
+    await ensureServicesReady();
+    return { deleted: services.linghui.deleteGlobalAsset(args.id) };
+  }
 }
 
 export = LinghuiController;

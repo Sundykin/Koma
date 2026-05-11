@@ -14,16 +14,29 @@ import type { ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import type {
   LinghuiDirector3DActor,
+  LinghuiDirector3DRenderMode,
   LinghuiDirector3DScene,
 } from '../../../types/linghui';
 import { Director3DMannequin } from './Director3DMannequin';
+import { Director3DLiteMannequin } from './Director3DLiteMannequin';
+import { Director3DFormation, deriveFormationMembers } from './Director3DFormation';
+import { Director3DProp } from './Director3DProp';
 import { resolvePanoramaViewerMode } from '../panorama/panoramaProjection';
 import { safeFetch } from '../../../utils/safeFetch';
 import { resolveDirector3DColor } from './director3dColors';
 
+export interface Director3DCaptureOptions {
+  width?: number;
+  height?: number;
+  /** 导出风格：lineart（默认） / silhouette / depth / composition */
+  renderMode?: LinghuiDirector3DRenderMode;
+  /** 临时相机参数。提供时使用该相机渲染（不改 viewport 当前视角），用于批量多视角导出 */
+  cameraOverride?: LinghuiDirector3DScene['camera'];
+}
+
 export interface Director3DViewportHandle {
   /** 渲染当前镜头视角并把画面导出为 PNG dataUrl。 */
-  captureCurrentView: (options?: { width?: number; height?: number }) => Promise<string | null>;
+  captureCurrentView: (options?: Director3DCaptureOptions) => Promise<string | null>;
   /** 返回当前工作台视角对应的相机参数。 */
   getCurrentCamera: () => LinghuiDirector3DScene['camera'];
 }
@@ -311,80 +324,154 @@ interface CaptureRendererProps {
 }
 
 const CaptureRenderer: React.FC<CaptureRendererProps> = ({ scene, texture, cameraStateRef, registerCapture }) => {
-  const capture = useCallback(async (options?: { width?: number; height?: number }) => {
-    const currentCamera = cameraStateRef.current;
+  const capture = useCallback(async (options?: Director3DCaptureOptions) => {
+    const currentCamera = options?.cameraOverride ?? cameraStateRef.current;
     const width = options?.width ?? 1024;
     const aspectParts = currentCamera.aspectRatio.split(':');
     const ratio = aspectParts.length === 2 ? Number(aspectParts[0]) / Number(aspectParts[1]) : 16 / 9;
     const height = options?.height ?? Math.round(width / ratio);
+    const exportMode: LinghuiDirector3DRenderMode = options?.renderMode ?? 'lineart';
 
-    // 临时离屏渲染：用 scene 里的 camera 数据 + lineart 材质
+    // 临时离屏渲染：用 scene 里的 camera 数据 + 按 exportMode 切换材质风格
     const offscreen = document.createElement('canvas');
     offscreen.width = width;
     offscreen.height = height;
     const renderer = new THREE.WebGLRenderer({ canvas: offscreen, antialias: true, alpha: true, preserveDrawingBuffer: true });
     renderer.setPixelRatio(1);
     renderer.setSize(width, height, false);
-    renderer.setClearColor(resolveDirector3DColor('var(--token-bg-base)', 'black'), 1);
+
+    // 不同导出风格的画布背景：
+    //  - lineart / composition：白底（线稿习惯）
+    //  - silhouette：白底，主体填黑
+    //  - depth：白底，主体按距离取灰
+    const backdropColor = exportMode === 'silhouette' || exportMode === 'depth' || exportMode === 'composition'
+      ? 0xffffff
+      : resolveDirector3DColor('var(--token-bg-base)', 'black');
+    renderer.setClearColor(backdropColor, 1);
 
     const offscreenScene = new THREE.Scene();
-    offscreenScene.background = new THREE.Color(resolveDirector3DColor('var(--token-bg-base)', 'black'));
+    offscreenScene.background = new THREE.Color(backdropColor);
     offscreenScene.add(new THREE.AmbientLight(0xffffff, 1.0));
     const dirLight = new THREE.DirectionalLight(0xffffff, 0.7);
     dirLight.position.set(3, 6, 4);
     offscreenScene.add(dirLight);
 
-    // 导出场景里画线稿：边缘描边（EdgesGeometry）+ 纯白填充
+    // 按风格构造主体 mesh 材质：
+    //  - lineart / composition：纯白填充 + 黑色 EdgesGeometry 描边
+    //  - silhouette：纯黑填充，不画边
+    //  - depth：MeshDepthMaterial（远=白 近=黑，便于下游 ControlNet 直接用）
+    const fillMat: THREE.Material = exportMode === 'silhouette'
+      ? new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.DoubleSide })
+      : exportMode === 'depth'
+        ? new THREE.MeshDepthMaterial({ side: THREE.DoubleSide })
+        : new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+    const wireMat = new THREE.LineBasicMaterial({ color: 0x000000 });
+    const drawEdges = exportMode === 'lineart' || exportMode === 'composition';
+    const addLineartMesh = (group: THREE.Group, geometry: THREE.BufferGeometry, offset: [number, number, number] = [0, 0, 0]) => {
+      const mesh = new THREE.Mesh(geometry, fillMat);
+      mesh.position.set(offset[0], offset[1], offset[2]);
+      group.add(mesh);
+      if (drawEdges) {
+        const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geometry), wireMat);
+        edges.position.copy(mesh.position);
+        group.add(edges);
+      }
+    };
+
     for (const actor of scene.actors) {
       const group = new THREE.Group();
       group.position.fromArray(actor.position);
       group.rotation.y = actor.rotationY;
       group.scale.setScalar(actor.scale);
-      // 简化：导出时也用与预览一致的几何，但材质换成线稿
-      const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
-      const wireMat = new THREE.LineBasicMaterial({ color: 0x000000 });
-      const torsoGeo = new THREE.BoxGeometry(0.36, 0.6, 0.2);
-      const torso = new THREE.Mesh(torsoGeo, mat);
-      torso.position.y = 0.86 + 0.3;
-      const torsoEdges = new THREE.LineSegments(new THREE.EdgesGeometry(torsoGeo), wireMat);
-      torsoEdges.position.copy(torso.position);
-      group.add(torso);
-      group.add(torsoEdges);
 
-      const headGeo = new THREE.SphereGeometry(0.12, 24, 18);
-      const head = new THREE.Mesh(headGeo, mat);
-      head.position.y = 0.86 + 0.6 + 0.16;
-      const headEdges = new THREE.LineSegments(new THREE.EdgesGeometry(headGeo), wireMat);
-      headEdges.position.copy(head.position);
-      group.add(head);
-      group.add(headEdges);
+      if (actor.type === 'mannequin') {
+        addLineartMesh(group, new THREE.BoxGeometry(0.36, 0.6, 0.2), [0, 0.86 + 0.3, 0]);
+        addLineartMesh(group, new THREE.SphereGeometry(0.12, 24, 18), [0, 0.86 + 0.6 + 0.16, 0]);
+        const armGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.55, 12);
+        [-1, 1].forEach((sign) => {
+          addLineartMesh(group, armGeo, [sign * 0.21, 0.86 + 0.3 - 0.04 - 0.275, 0]);
+        });
+        const legGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.86, 12);
+        [-1, 1].forEach((sign) => {
+          addLineartMesh(group, legGeo, [sign * 0.13, 0.86 - 0.43, 0]);
+        });
+      } else if (actor.type === 'mannequin-lite') {
+        // 低级群演单兵：头 + 锥形躯干 + 两臂 + 两腿（与 Director3DLiteMannequin 几何一致）
+        const torsoTop = 0.18;
+        const torsoBot = 0.13;
+        const torsoHeight = 0.55;
+        const armRadius = 0.045;
+        const armLength = 0.5;
+        const legRadius = 0.07;
+        const legLength = 0.75;
+        const headRadius = 0.11;
+        const torsoCenter = legLength + torsoHeight / 2;
+        const shoulderY = legLength + torsoHeight - 0.06;
+        const headCenter = shoulderY + headRadius + 0.04;
+        const shoulderX = 0.18 + armRadius * 0.6;
+        const hipX = 0.13 - legRadius * 0.2;
+        addLineartMesh(group, new THREE.CylinderGeometry(torsoTop, torsoBot, torsoHeight, 14), [0, torsoCenter, 0]);
+        addLineartMesh(group, new THREE.SphereGeometry(headRadius, 16, 12), [0, headCenter, 0]);
+        [-1, 1].forEach((sign) => {
+          addLineartMesh(group, new THREE.CylinderGeometry(armRadius, armRadius, armLength, 10), [sign * shoulderX, shoulderY - armLength / 2, 0]);
+        });
+        [-1, 1].forEach((sign) => {
+          addLineartMesh(group, new THREE.CylinderGeometry(legRadius, legRadius, legLength, 10), [sign * hipX, legLength / 2, 0]);
+        });
+      } else if (actor.type === 'formation' && actor.formation) {
+        // 方阵线稿：每个成员画"头 + 锥形躯干 + 两腿"，无手臂保持低多边
+        const torsoTop = 0.16;
+        const torsoBot = 0.12;
+        const torsoHeight = 0.50;
+        const legRadius = 0.065;
+        const legLength = 0.70;
+        const headRadius = 0.10;
+        const torsoCenter = legLength + torsoHeight / 2;
+        const shoulderY = legLength + torsoHeight - 0.05;
+        const headCenter = shoulderY + headRadius + 0.03;
+        const hipX = 0.11 - legRadius * 0.2;
+        const members = deriveFormationMembers(actor.formation);
+        for (const member of members) {
+          const memberGroup = new THREE.Group();
+          memberGroup.position.set(member.x, 0, member.z);
+          memberGroup.rotation.y = member.rotationY;
+          addLineartMesh(memberGroup, new THREE.CylinderGeometry(torsoTop, torsoBot, torsoHeight, 12), [0, torsoCenter, 0]);
+          addLineartMesh(memberGroup, new THREE.SphereGeometry(headRadius, 14, 10), [0, headCenter, 0]);
+          [-1, 1].forEach((sign) => {
+            addLineartMesh(memberGroup, new THREE.CylinderGeometry(legRadius, legRadius, legLength, 10), [sign * hipX, legLength / 2, 0]);
+          });
+          group.add(memberGroup);
+        }
+      } else if (actor.type === 'prop-box') {
+        addLineartMesh(group, new THREE.BoxGeometry(0.9, 0.8, 0.6), [0, 0.4, 0]);
+      } else if (actor.type === 'prop-cylinder') {
+        addLineartMesh(group, new THREE.CylinderGeometry(0.35, 0.35, 0.9, 24), [0, 0.45, 0]);
+      } else if (actor.type === 'prop-plane') {
+        addLineartMesh(group, new THREE.BoxGeometry(1.6, 2, 0.05), [0, 1, 0]);
+      } else if (actor.type === 'prop-camera') {
+        addLineartMesh(group, new THREE.BoxGeometry(0.4, 0.3, 0.55), [0, 0.5, 0]);
+        const lens = new THREE.CylinderGeometry(0.12, 0.16, 0.25, 18);
+        lens.rotateX(Math.PI / 2);
+        addLineartMesh(group, lens, [0, 0.5, 0.4]);
+      } else if (actor.type === 'prop-arrow') {
+        const shaft = new THREE.CylinderGeometry(0.05, 0.05, 1, 12);
+        shaft.rotateX(Math.PI / 2);
+        addLineartMesh(group, shaft, [0, 0.1, 0.5]);
+        const head = new THREE.ConeGeometry(0.16, 0.32, 18);
+        head.rotateX(Math.PI / 2);
+        addLineartMesh(group, head, [0, 0.1, 1.1]);
+      }
 
-      const armGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.55, 12);
-      [-1, 1].forEach((sign) => {
-        const arm = new THREE.Mesh(armGeo, mat);
-        arm.position.set(sign * 0.21, 0.86 + 0.3 - 0.04 - 0.275, 0);
-        const armEdges = new THREE.LineSegments(new THREE.EdgesGeometry(armGeo), wireMat);
-        armEdges.position.copy(arm.position);
-        group.add(arm);
-        group.add(armEdges);
-      });
-      const legGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.86, 12);
-      [-1, 1].forEach((sign) => {
-        const leg = new THREE.Mesh(legGeo, mat);
-        leg.position.set(sign * 0.13, 0.86 - 0.43, 0);
-        const legEdges = new THREE.LineSegments(new THREE.EdgesGeometry(legGeo), wireMat);
-        legEdges.position.copy(leg.position);
-        group.add(leg);
-        group.add(legEdges);
-      });
       offscreenScene.add(group);
     }
 
-    // 地面线稿
-    const gridHelper = new THREE.GridHelper(24, 24, 0x404040, 0x202020);
-    offscreenScene.add(gridHelper);
+    // 地面线稿：仅在 lineart 模式下保留浅色网格；silhouette / depth / composition 不画地面
+    if (exportMode === 'lineart') {
+      const gridHelper = new THREE.GridHelper(24, 24, 0x404040, 0x808080);
+      offscreenScene.add(gridHelper);
+    }
 
-    if (scene.background.mode === 'panorama' && texture) {
+    if (scene.background.mode === 'panorama' && texture && exportMode === 'lineart') {
       const aspect = (texture.image && (texture.image as { width: number }).width)
         ? (texture.image as { width: number; height: number }).width / (texture.image as { height: number }).height
         : 21 / 9;
@@ -411,11 +498,50 @@ const CaptureRenderer: React.FC<CaptureRendererProps> = ({ scene, texture, camer
       }
     }
 
-    const cam = new THREE.PerspectiveCamera(currentCamera.fov, ratio, 0.05, 200);
+    // depth 模式收紧远裁面，让深度灰阶在常见场景距离（~12m 内）映射均匀，
+    // 否则演员区距相机几米但 far=200，输出灰度近乎全白
+    const near = 0.1;
+    const far = exportMode === 'depth' ? 12 : 200;
+    const cam = new THREE.PerspectiveCamera(currentCamera.fov, ratio, near, far);
     cam.position.fromArray(currentCamera.position);
     cam.lookAt(new THREE.Vector3().fromArray(currentCamera.target));
 
     renderer.render(offscreenScene, cam);
+
+    // composition 模式：再叠一层 2D 三分线和黄金分割辅助框，画到 2D canvas 上方
+    if (exportMode === 'composition') {
+      const ctx = offscreen.getContext('2d');
+      if (ctx) {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.55)';
+        ctx.lineWidth = 1.5;
+        // 三分线
+        for (let i = 1; i <= 2; i += 1) {
+          const x = (width * i) / 3;
+          const y = (height * i) / 3;
+          ctx.beginPath();
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, height);
+          ctx.moveTo(0, y);
+          ctx.lineTo(width, y);
+          ctx.stroke();
+        }
+        // 中央十字（视觉中心）
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.25)';
+        ctx.beginPath();
+        ctx.moveTo(width / 2, 0);
+        ctx.lineTo(width / 2, height);
+        ctx.moveTo(0, height / 2);
+        ctx.lineTo(width, height / 2);
+        ctx.stroke();
+        // 安全框（90%）
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.35)';
+        ctx.setLineDash([6, 6]);
+        ctx.strokeRect(width * 0.05, height * 0.05, width * 0.9, height * 0.9);
+        ctx.restore();
+      }
+    }
+
     let dataUrl: string | null = null;
     try {
       dataUrl = offscreen.toDataURL('image/png');
@@ -569,15 +695,23 @@ const ActorDragLayer: React.FC<ActorDragLayerProps> = ({
         const renderActor = dragPreview?.id === actor.id
           ? { ...actor, position: dragPreview.position }
           : actor;
-        return (
-          <Director3DMannequin
-            key={actor.id}
-            actor={renderActor}
-            selected={actor.id === selectedActorId}
-            renderMode={renderMode}
-            onPointerDown={(event) => handleActorPointerDown(actor, event)}
-          />
-        );
+        const shared = {
+          key: actor.id,
+          actor: renderActor,
+          selected: actor.id === selectedActorId,
+          renderMode,
+          onPointerDown: (event: import('@react-three/fiber').ThreeEvent<PointerEvent>) => handleActorPointerDown(actor, event),
+        };
+        if (actor.type === 'mannequin') {
+          return <Director3DMannequin {...shared} />;
+        }
+        if (actor.type === 'mannequin-lite') {
+          return <Director3DLiteMannequin {...shared} />;
+        }
+        if (actor.type === 'formation') {
+          return <Director3DFormation {...shared} />;
+        }
+        return <Director3DProp {...shared} />;
       })}
     </>
   );

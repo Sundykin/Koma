@@ -57,6 +57,8 @@ import {
 import { createLogger } from '../../../../store/logger';
 import { runWithTask } from '../../../../services/taskRunner';
 import type { TaskSubType } from '../../../../services/TaskManager';
+import { persistMediaAsset } from '../../../../services/mediaPersistenceService';
+import { toFileSystemDisplayUrl } from '../../../../services/fileSystemPort';
 
 const imageExecutionLogger = createLogger('LinghuiImageExecution');
 
@@ -70,6 +72,8 @@ const LINGHUI_NODE_TASK_SUBTYPE: Record<string, TaskSubType> = {
   'linghui/video': 'linghui-video',
   'linghui/audio': 'linghui-audio',
   'linghui/script': 'linghui-script',
+  // 故事板节点本质上和 script 走同一条 LLM 链路，subtype 复用 linghui-script
+  'linghui/storyboard': 'linghui-script',
   // 3D 导演不真正调远程 provider，按 image subtype 分组（导出 lineart 走渲染器）
   'linghui/director3d': 'linghui-image',
 };
@@ -93,6 +97,38 @@ function buildScriptSystemPrompt(systemPrompt: string): string {
     '在严格遵守上述 JSON 输出要求的前提下，请额外满足以下要求：',
     normalized,
   ].join('\n\n');
+}
+
+/**
+ * 故事板节点专用 system prompt：比脚本节点更详尽，覆盖镜头数量、可拍性、节奏、剪辑逻辑，
+ * 让小白用户只填剧情大纲即可得到可拍摄的分镜表。
+ */
+function buildStoryboardSystemPrompt(targetShotCount: number): string {
+  const clamped = Math.max(4, Math.min(24, Math.round(Number(targetShotCount) || 8)));
+  return [
+    '你是灵绘的专业故事板生成助手，擅长把剧情大纲拆解成画面可拍的分镜序列。',
+    '请只输出 JSON，不要附加解释、不要 markdown 代码块、不要前后空行。',
+    '输出格式必须严格符合：',
+    '{"shots":[{"title":"镜头标题","description":"画面描述","durationSec":10}]}',
+    '',
+    '硬约束：',
+    `1. shots 数组长度严格落在 [${Math.max(4, clamped - 2)}, ${Math.min(24, clamped + 2)}] 区间，目标 ${clamped} 个镜头。`,
+    '2. durationSec 必须从 6 / 10 / 12 / 16 / 20 中选一个；无法判断时填 10。',
+    '3. title 限 4–12 个中文字，表达画面核心动作或主体。',
+    '4. description 限 30–80 个中文字，必须同时包含：',
+    '   a) 主体（谁 / 什么 / 几个人）',
+    '   b) 动作（在做什么、运动方向）',
+    '   c) 景别（特写 / 近景 / 中景 / 远景 / 大全景 / 过肩 / 主观）',
+    '   d) 光线或氛围（白昼 / 夜景 / 逆光 / 顶光 / 雨雾 / 暖色 / 冷色 等）',
+    '',
+    '叙事约束：',
+    '- 第一个镜头建立场景与角色定位（who / where）。',
+    '- 中段镜头之间要有清晰剪辑逻辑：连续动作、对切、平行、匹配剪辑、视线引导任选其一。',
+    '- 高潮镜头要给画面冲击或情绪转折。',
+    '- 收尾镜头要回应主题或留白，不能突兀结束。',
+    '- 避免抽象情绪形容词堆砌；优先具体可拍的视觉描述。',
+    '- 镜头描述使用中文。',
+  ].join('\n');
 }
 
 type NodeExecutionProgressHandler = (progress: number, message?: string, partialResult?: LinghuiNodeResult) => void;
@@ -903,14 +939,57 @@ export async function executePanoramaNode(
   };
 
   const result = await executeImageNode(wrappedNode, onProgress, signal);
+
+  // 把编辑器侧 crop 出的方向细节图合并到 result.items，让下游能用 @ref_xxx__item_N 引用。
+  // 编辑器 crop 出来的是 PNG dataUrl，必须落盘成 koma-local URL，
+  // 否则 grok / 视频 provider 会因 transport 限制 reject。
+  const rawDetailCrops = Array.isArray(node.properties.detailCrops) ? node.properties.detailCrops : [];
+  interface DetailItem { kind: 'image'; source: string; label?: string; width?: number; height?: number; mimeType?: string }
+  const detailItems: DetailItem[] = (await Promise.all(
+    rawDetailCrops.map(async (crop, index): Promise<DetailItem | null> => {
+      const source = typeof (crop as { source?: unknown })?.source === 'string' ? (crop as { source: string }).source : '';
+      if (!source) return null;
+      const label = typeof (crop as { label?: unknown })?.label === 'string' ? (crop as { label: string }).label : `方向 ${index + 1}`;
+      const width = typeof (crop as { width?: unknown })?.width === 'number' ? (crop as { width: number }).width : undefined;
+      const height = typeof (crop as { height?: unknown })?.height === 'number' ? (crop as { height: number }).height : undefined;
+      const mimeType = typeof (crop as { mimeType?: unknown })?.mimeType === 'string' ? (crop as { mimeType: string }).mimeType : undefined;
+      const persistedSource = await persistDirectorMediaSource({
+        source,
+        nodeId: node.id,
+        slot: `panorama-detail-${index}`,
+        mimeType: mimeType || 'image/png',
+      });
+      return { kind: 'image', source: persistedSource, label, width, height, mimeType };
+    }),
+  )).filter((value): value is DetailItem => value !== null);
+
+  let merged: LinghuiNodeResult = result;
+  if (detailItems.length > 0 && (result.kind === 'image' || result.kind === 'images')) {
+    const baseItems = result.kind === 'images' ? result.items : [result.primary];
+    const dedupe = new Set<string>();
+    const items = [...baseItems, ...detailItems].filter(item => {
+      const source = item.source || '';
+      if (!source || dedupe.has(source)) return false;
+      dedupe.add(source);
+      return true;
+    });
+    merged = {
+      ...result,
+      kind: 'images',
+      primary: result.primary,
+      items,
+    } as LinghuiNodeResult;
+  }
+
   return {
-    ...result,
+    ...merged,
     metadata: {
-      ...(result.metadata ?? {}),
+      ...(merged.metadata ?? {}),
       mode: 'panorama',
       panoramaTemplate: templateKind,
       panoramaProjection: projectionMode,
       originalPrompt: originalPrompt.trim(),
+      detailCropCount: detailItems.length,
     },
   } as LinghuiNodeResult;
 }
@@ -1009,6 +1088,93 @@ export async function executeScriptNode(
       parseSource: parsed.source,
       prompt: String(prompt).trim(),
       systemPrompt: String(systemPrompt).trim(),
+      rawGeneratedText: generatedText.trim(),
+    },
+  };
+}
+
+/**
+ * 故事板节点执行：剧情大纲 → 结构化分镜的傻瓜版。
+ *
+ * 与 script 节点相比：
+ *  - 没有 manual 模式：未填剧情直接报错，不解析任何遗留 content
+ *  - systemPrompt 完全由 buildStoryboardSystemPrompt 内置生成，用户不可改
+ *  - 复用 generateText / parseLinghuiScriptContent，输出同样的 storyboard kind result，
+ *    让现有 "派生镜头文本 / 生成分镜图 / 生成视频流程" 链路无需任何改动
+ */
+export async function executeStoryboardNode(
+  node: ExecutionNodeView,
+  onProgress?: NodeExecutionProgressHandler,
+  signal?: AbortSignal,
+): Promise<LinghuiNodeResult> {
+  const prompt = String(node.properties.prompt ?? '').trim();
+  const llmSelection = String(node.properties.llmSelection ?? '');
+  const targetShotCount = Number(node.properties.targetShotCount ?? 8);
+
+  if (!prompt) {
+    throw new Error('请先输入剧情大纲');
+  }
+
+  const promptReferences = node.getPromptReferences();
+  const textSnippets = collectTextSnippets([
+    ...node.getAllInputResults(1),
+    ...node.getAllInputResults(2),
+  ]);
+  const promptWithTextInputs = mergePromptWithTextInputs(prompt, textSnippets);
+  const compiledPrompt = promptReferences.length > 0
+    ? compileLinghuiPromptReferences({
+        prompt: promptWithTextInputs,
+        references: promptReferences,
+        replacementStrategy: 'readable-name',
+      }).compiledPrompt
+    : promptWithTextInputs;
+
+  const systemPrompt = buildStoryboardSystemPrompt(targetShotCount);
+
+  const generatedText = await generateTextWithProvider({
+    prompt: compiledPrompt,
+    systemPrompt,
+    llmSelection,
+    settingsSnapshot: node.settingsSnapshot,
+    onChunk: (_delta, accumulated) => {
+      const partialParsed = parseLinghuiScriptContent(accumulated);
+      onProgress?.(
+        resolveStreamingProgress(accumulated, 20, 94),
+        '故事板生成中',
+        {
+          kind: 'storyboard',
+          text: partialParsed.formattedText || accumulated,
+          shots: partialParsed.shots,
+          primary: partialParsed.shots[0]?.image,
+          metadata: {
+            mode: 'storyboard',
+            parseSource: partialParsed.source,
+            prompt,
+            targetShotCount,
+            rawGeneratedText: accumulated,
+            partial: true,
+          },
+        },
+      );
+    },
+    signal,
+  });
+
+  const parsed = parseLinghuiScriptContent(generatedText);
+  if (!parsed.shots.length) {
+    throw new Error('故事板生成结果无法解析成分镜，请调整剧情描述或更换 LLM 后重试');
+  }
+
+  return {
+    kind: 'storyboard',
+    text: parsed.formattedText || formatLinghuiScriptShots(parsed.shots),
+    primary: parsed.shots[0]?.image,
+    shots: parsed.shots,
+    metadata: {
+      mode: 'storyboard',
+      parseSource: parsed.source,
+      prompt,
+      targetShotCount,
       rawGeneratedText: generatedText.trim(),
     },
   };
@@ -1180,11 +1346,54 @@ export async function executeAudioNode(
 }
 
 /**
- * 3D 导演节点执行：把编辑器导出的 lineartDataUrl 当作主输出。
+ * 把 director3d / panorama 编辑器写到 properties 的 PNG dataUrl 落盘成 koma-local URL。
+ *
+ * 为什么必须落盘：
+ *  - grok-imagine-itv 等渠道 assetTransports 只接受 'remote-url'，dataUrl 会被 reject
+ *  - 视频 provider 多数要求文件路径，dataUrl 直接 fail
+ *  - 工作区文档存 base64 字符串会撑爆 IndexedDB（一张 1280px lineart ≈ 500KB）
+ *
+ * 落盘失败（非 Electron / 写盘异常）时回退到原 dataUrl，保证不阻塞用户。
+ */
+async function persistDirectorMediaSource(params: {
+  source: string;
+  nodeId: string;
+  slot: string;
+  mimeType?: string;
+}): Promise<string> {
+  const { source, nodeId, slot, mimeType = 'image/png' } = params;
+  if (!source || !source.startsWith('data:')) {
+    return source;
+  }
+  try {
+    const stored = await persistMediaAsset({
+      projectId: 'linghui',
+      kind: 'image',
+      source,
+      mimeType,
+      provider: 'director3d-local',
+      metadata: { nodeId, slot, origin: 'director3d-capture' },
+    });
+    if (stored.localPath) {
+      // toFileSystemDisplayUrl 把绝对路径转 koma-local://files/...
+      return toFileSystemDisplayUrl(stored.localPath) ?? stored.localPath;
+    }
+    return source;
+  } catch (error) {
+    // 在非 Electron 环境 / 写盘异常时静默回退
+    return source;
+  }
+}
+
+/**
+ * 3D 导演节点执行：把编辑器导出的 lineartDataUrl 落盘后当作主输出。
  *
  * 不调用任何远程 provider —— 渲染发生在编辑器里（Director3DViewport.captureCurrentView），
  * 用户点击「导出线稿参考」按钮即可写入 properties.lineartDataUrl。
- * 这里执行节点 = 把已经写入的 dataUrl 包装成 LinghuiNodeResult，让下游图片节点能引用。
+ * 执行节点时：
+ *   1. 把 dataUrl 落盘成 koma-local URL（下游 image/video provider 才接受）
+ *   2. angleViews 同样落盘
+ *   3. 主图 + 多视角包装成 LinghuiNodeResult，下游图片/视频节点可直接引用
  *
  * 如果还没导出，节点会失败并提示用户先在编辑器里导出。
  */
@@ -1208,26 +1417,97 @@ export async function executeDirector3DNode(
     }
   })();
 
+  // 视频输出模式：用户在编辑器导出时间轴动画后，properties.timelineVideoUrl 已经
+  // 是落盘 koma-local URL，直接打包成 video kind 给下游视频节点用（image-to-video / 视频参考）。
+  const outputMode = properties?.outputMode === 'video' ? 'video' : 'lineart';
+  const timelineVideoUrl = typeof properties?.timelineVideoUrl === 'string' ? properties.timelineVideoUrl : '';
+  const timelineVideoPosterUrl = typeof properties?.timelineVideoPosterUrl === 'string' ? properties.timelineVideoPosterUrl : '';
+
+  if (outputMode === 'video' && timelineVideoUrl) {
+    const meta = (properties?.timelineVideoMeta ?? {}) as { duration?: number; fps?: number; frameCount?: number; width?: number; height?: number };
+    // posterSource 优先用导出时落盘的首帧；缺失时回退到 lineartDataUrl 但仅当它已经是 koma-local
+    const posterCandidate = timelineVideoPosterUrl
+      || (lineartDataUrl.startsWith('koma-local://') ? lineartDataUrl : '');
+    return {
+      kind: 'video',
+      primary: {
+        kind: 'video',
+        source: timelineVideoUrl,
+        posterSource: posterCandidate || undefined,
+        label: '3D 导演时间轴动画',
+        mimeType: 'video/mp4',
+        durationSec: typeof meta.duration === 'number' ? meta.duration : undefined,
+        width: typeof meta.width === 'number' ? meta.width : undefined,
+        height: typeof meta.height === 'number' ? meta.height : undefined,
+      },
+      metadata: {
+        mode: 'director3d-video',
+        directorPromptFragment,
+        // description 写入 fragment：collectTextSnippets 自动喂给下游 video provider 的 prompt
+        description: directorPromptFragment || undefined,
+        scene: sceneJson,
+        timeline: {
+          duration: meta.duration,
+          fps: meta.fps,
+          frameCount: meta.frameCount,
+        },
+        // posterSource 显式标注：下游 image-to-video 用 posterSource 作为参考首帧
+        posterSource: posterCandidate || undefined,
+      },
+    } as unknown as LinghuiNodeResult;
+  }
+
+  // 主图落盘：dataUrl → koma-local URL
+  const persistedLineart = await persistDirectorMediaSource({
+    source: lineartDataUrl,
+    nodeId: node.id,
+    slot: 'lineart',
+  });
+
+  const rawAngleViews = Array.isArray(properties?.angleViews) ? properties.angleViews : [];
+  interface AngleItem { id: string; source: string; mimeType: string; label: string }
+  // angleViews 落盘：每张并行 persist，失败回退到原 dataUrl
+  const angleItems: AngleItem[] = (await Promise.all(
+    rawAngleViews.map(async (view, index): Promise<AngleItem | null> => {
+      const dataUrl = typeof (view as { dataUrl?: unknown })?.dataUrl === 'string' ? (view as { dataUrl: string }).dataUrl : '';
+      if (!dataUrl) return null;
+      const label = typeof (view as { label?: unknown })?.label === 'string' ? (view as { label: string }).label : `视角 ${index + 1}`;
+      const id = typeof (view as { id?: unknown })?.id === 'string' ? (view as { id: string }).id : `angle-${index + 1}`;
+      const persistedSource = await persistDirectorMediaSource({
+        source: dataUrl,
+        nodeId: node.id,
+        slot: `angle-${id}`,
+      });
+      return { id: `director3d-${node.id}-${id}`, source: persistedSource, mimeType: 'image/png', label };
+    }),
+  )).filter((value): value is AngleItem => value !== null);
+
+  const primaryItem = {
+    id: `director3d-${node.id}`,
+    source: persistedLineart,
+    mimeType: 'image/png',
+    label: '3D 导演线稿',
+  };
+
+  const items = [primaryItem, ...angleItems];
+
   return {
-    kind: 'image',
+    // angleViews 有内容 → images 集合（用户可在下游用 @ref_{nodeId}__item_N 引用）
+    // 否则保持单图 kind，避免破坏既有节点行为
+    kind: angleItems.length > 0 ? 'images' : 'image',
     status: 'succeeded',
     label: '3D 导演线稿',
-    items: [{
-      id: `director3d-${node.id}`,
-      source: lineartDataUrl,
-      mimeType: 'image/png',
-      label: '3D 导演线稿',
-    }],
-    primary: {
-      id: `director3d-${node.id}`,
-      source: lineartDataUrl,
-      mimeType: 'image/png',
-      label: '3D 导演线稿',
-    },
+    items,
+    primary: primaryItem,
     metadata: {
       mode: 'director3d',
       directorPromptFragment,
+      // 把构图意图（机位 / 演员位置 / 姿态）同步写进 description，下游 image/video
+      // executor 通过 collectTextSnippets → getLinghuiResultDescriptionText 会自动拼到
+      // prompt 前面，避免"线稿能传，但镜头/姿态描述消失"的断链
+      description: directorPromptFragment || undefined,
       scene: sceneJson,
+      angleViewCount: angleItems.length,
     },
   } as unknown as LinghuiNodeResult;
 }
@@ -1252,6 +1532,8 @@ async function executeNodeInner(
       return executeAudioNode(node, onProgress, signal);
     case 'linghui/script':
       return executeScriptNode(node, onProgress, signal);
+    case 'linghui/storyboard':
+      return executeStoryboardNode(node, onProgress, signal);
     case 'linghui/director3d':
       return executeDirector3DNode(node, onProgress, signal);
     default:
