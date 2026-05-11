@@ -36,7 +36,6 @@ import {
   DIRECTOR3D_CAMERA_PRESET_CATEGORY_LABELS,
   DIRECTOR3D_CHARACTER_PRESETS,
   DIRECTOR3D_ORBIT_9_DEGREES,
-  DIRECTOR3D_POSE_OPTIONS,
   DIRECTOR3D_PROP_CATEGORY_LABELS,
   DIRECTOR3D_PROP_LIBRARY,
   DIRECTOR3D_SCENE_TEMPLATES,
@@ -63,8 +62,10 @@ import {
 } from '../../director3d/director3dScene';
 import { Director3DTimelineHud, type Director3DTimelineExportState } from '../../director3d/Director3DTimelineHud';
 import { exportDirector3DTimelineVideo } from '../../director3d/director3dTimelineExport';
+import { DIRECTOR3D_RIG_PRESET_OPTIONS } from '../../director3d/director3dRig';
 import { useLinghuiGlobalAssets, type LinghuiGlobalAsset, type LinghuiGlobalAssetCategory, type LinghuiGlobalAssetPropType } from '../../../../store/linghuiGlobalAssets';
-import { Save as SaveIcon, Bookmark, BookmarkCheck } from 'lucide-react';
+import { pickReferenceImagesAndPersist } from '../../director3d/director3dReferenceImageUpload';
+import { Save as SaveIcon, Bookmark, BookmarkCheck, Upload } from 'lucide-react';
 import { toDirector3DColorInputValue } from '../../director3d/director3dColors';
 import { Director3DViewport, type Director3DViewportHandle } from '../../director3d/Director3DViewport';
 import { useLinghuiNodeEditorApi, useLinghuiNodeMutation } from '../../nodes/state/LinghuiNodeRunsContext';
@@ -249,6 +250,25 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
   const characterAssets = useLinghuiGlobalAssets({ kind: 'character' });
   const propAssets = useLinghuiGlobalAssets({ kind: 'prop' });
 
+  // 保存到全局库时的"参考图待入库"暂存：先 dialog 选图 → 落盘 → 暂存 URL，下次"保存"时一起入库
+  const [pendingReferenceImages, setPendingReferenceImages] = useState<string[]>([]);
+  const [saveAssetPopoverOpen, setSaveAssetPopoverOpen] = useState(false);
+
+  const handlePickReferenceImages = useCallback(async () => {
+    if (!selectedActor) return;
+    try {
+      const urls = await pickReferenceImagesAndPersist({
+        assetIdHint: selectedActor.id,
+        maxCount: 3 - pendingReferenceImages.length,
+      });
+      if (urls.length > 0) {
+        setPendingReferenceImages(prev => [...prev, ...urls].slice(0, 3));
+      }
+    } catch (error: unknown) {
+      message.error(error instanceof Error ? error.message : '上传参考图失败');
+    }
+  }, [message, pendingReferenceImages.length, selectedActor]);
+
   const handleSaveSelectedAsGlobalAsset = useCallback(async () => {
     if (selection.kind !== 'actor' || !selectedActor) {
       message.info('请先选中一个角色 / 道具再保存到全局库');
@@ -260,6 +280,12 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
     }
     const isProp = selectedActor.type.startsWith('prop-');
     try {
+      // 已有参考图（actor.referenceImages）+ 本次新上传（pendingReferenceImages）合并去重
+      const mergedReferences = Array.from(new Set([
+        ...(selectedActor.referenceImages ?? []),
+        ...pendingReferenceImages,
+      ])).slice(0, 3);
+
       const saved = isProp
         ? await propAssets.save({
             kind: 'prop',
@@ -268,6 +294,7 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
             scale: selectedActor.scale,
             propType: selectedActor.type as LinghuiGlobalAssetPropType,
             category: 'gear',
+            referenceImages: mergedReferences.length > 0 ? mergedReferences : undefined,
           })
         : await characterAssets.save({
             kind: 'character',
@@ -275,14 +302,21 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
             color: selectedActor.color,
             scale: selectedActor.scale,
             posePreset: selectedActor.posePreset,
+            referenceImages: mergedReferences.length > 0 ? mergedReferences : undefined,
           });
-      message.success(`已保存到全局库：${saved.label}`);
+      message.success(`已保存到全局库：${saved.label}（${mergedReferences.length} 张参考图）`);
+      setPendingReferenceImages([]);
+      setSaveAssetPopoverOpen(false);
     } catch (error: unknown) {
       message.error(error instanceof Error ? error.message : '保存到全局库失败');
     }
-  }, [characterAssets, message, propAssets, selectedActor, selection.kind]);
+  }, [characterAssets, message, pendingReferenceImages, propAssets, selectedActor, selection.kind]);
 
   const handleAddGlobalAsset = useCallback((asset: LinghuiGlobalAsset) => {
+    // 加入场景时 snapshot 参考图 + 源资产 id 到 actor，供 executor 输出时聚合到 result.items
+    const referenceImagesSnapshot = Array.isArray(asset.referenceImages) && asset.referenceImages.length > 0
+      ? [...asset.referenceImages]
+      : undefined;
     if (asset.kind === 'character') {
       updateScene(prev => {
         const seq = prev.actors.filter(a => a.type === 'mannequin').length + 1;
@@ -295,6 +329,8 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
           scale: asset.scale ?? 1,
           posePreset: asset.posePreset ?? 'idle',
           position: [Number(offsetX.toFixed(2)), 0, 0],
+          referenceImages: referenceImagesSnapshot,
+          sourceGlobalAssetId: asset.id,
         });
         return { ...prev, actors: [...prev.actors, actor] };
       });
@@ -313,6 +349,8 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
             0,
             -1.2,
           ],
+          referenceImages: referenceImagesSnapshot,
+          sourceGlobalAssetId: asset.id,
         });
         return { ...prev, actors: [...prev.actors, actor] };
       });
@@ -1434,18 +1472,29 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
                 />
               </Field>
               {selectedActor.type === 'mannequin' ? (
-                <Field label="姿势">
+                <Field label="预置动作">
                   <div className="linghuiDirector3DPoseGrid">
-                    {DIRECTOR3D_POSE_OPTIONS.map(option => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        className={`linghuiDirector3DPoseTile ${selectedActor.posePreset === option.value ? 'isActive' : ''}`}
-                        onClick={() => handleActorChange(selectedActor.id, { posePreset: option.value as LinghuiDirector3DActorPose })}
-                      >
-                        {option.label}
-                      </button>
-                    ))}
+                    {DIRECTOR3D_RIG_PRESET_OPTIONS.map(option => {
+                      // 选中态：基础 6 个对照 posePreset；扩展的看 actor.rig 是否就是该预置的 rig
+                      const isBuiltinMatch = Boolean(option.posePreset && selectedActor.posePreset === option.posePreset && !selectedActor.rig);
+                      const isRigMatch = Boolean(selectedActor.rig && JSON.stringify(selectedActor.rig) === JSON.stringify(option.rig));
+                      const active = isBuiltinMatch || isRigMatch;
+                      return (
+                        <button
+                          key={option.key}
+                          type="button"
+                          className={`linghuiDirector3DPoseTile ${active ? 'isActive' : ''}`}
+                          onClick={() => handleActorChange(selectedActor.id, {
+                            // 预置：基础 6 个直接更新 posePreset 字符串；扩展的把 rig 写到 actor.rig（保持 posePreset=idle 兜底）
+                            ...(option.posePreset
+                              ? { posePreset: option.posePreset, rig: option.rig }
+                              : { posePreset: 'idle' as LinghuiDirector3DActorPose, rig: option.rig }),
+                          })}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
                   </div>
                 </Field>
               ) : null}
@@ -1546,9 +1595,52 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
               </Field>
               <div className="linghuiDirector3DInspectorActions">
                 {selectedActor.type !== 'formation' && selectedActor.type !== 'mannequin-lite' ? (
-                  <Button size="small" icon={<SaveIcon size={14} />} onClick={handleSaveSelectedAsGlobalAsset}>
-                    存到全局库
-                  </Button>
+                  <Popover
+                    open={saveAssetPopoverOpen}
+                    onOpenChange={(next) => {
+                      setSaveAssetPopoverOpen(next);
+                      if (!next) setPendingReferenceImages([]);
+                    }}
+                    trigger="click"
+                    placement="leftTop"
+                    overlayClassName="linghuiDirector3DBattalionPopover"
+                    getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
+                    content={(
+                      <div className="linghuiDirector3DBattalionPanel" onClick={event => event.stopPropagation()}>
+                        <div className="linghuiDirector3DBattalionTitle">保存到全局库</div>
+                        <div className="linghuiDirector3DBattalionHint">
+                          可选附带 1-3 张参考图，下游图片节点会拿到当作真实视觉指引。
+                        </div>
+                        {(selectedActor.referenceImages?.length || pendingReferenceImages.length) > 0 ? (
+                          <div className="linghuiDirector3DAngleStrip" style={{ marginTop: 4 }}>
+                            {selectedActor.referenceImages?.map((url) => (
+                              <img key={`existing-${url}`} src={url} alt="已绑定" title="已在 actor 上的参考图" />
+                            ))}
+                            {pendingReferenceImages.map((url) => (
+                              <img key={`pending-${url}`} src={url} alt="待入库" title="本次上传，待保存入库" />
+                            ))}
+                          </div>
+                        ) : null}
+                        <div className="linghuiDirector3DBattalionActions">
+                          <Button
+                            size="small"
+                            icon={<Upload size={14} />}
+                            onClick={handlePickReferenceImages}
+                            disabled={pendingReferenceImages.length + (selectedActor.referenceImages?.length ?? 0) >= 3}
+                          >
+                            添加参考图
+                          </Button>
+                          <Button size="small" type="primary" icon={<SaveIcon size={14} />} onClick={handleSaveSelectedAsGlobalAsset}>
+                            保存
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  >
+                    <Button size="small" icon={<SaveIcon size={14} />}>
+                      存到全局库
+                    </Button>
+                  </Popover>
                 ) : null}
                 <Button danger size="small" icon={<Trash2 size={14} />} onClick={() => handleDeleteActor(selectedActor.id)}>
                   删除

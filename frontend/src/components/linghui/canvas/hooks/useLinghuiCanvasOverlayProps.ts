@@ -218,6 +218,7 @@ interface UseLinghuiCanvasOverlayPropsParams {
   deriveStoryboardVideosFromScript: (nodeId: string, shots: LinghuiStoryboardFrame[]) => string[];
   createDerivedImageNodesFromNode: (sourceNodeId: string, items: LinghuiImageAssetItem[]) => string[];
   createDerivedMultiAngleImageNodeFromNode: (sourceNodeId: string, options?: LinghuiExecuteMultiAngleOptions) => string | null;
+  spawnImageFromGenerator: (controllerNodeId: string) => string | null;
   copySelectionToClipboard: (requestedIds?: string[]) => boolean;
   duplicateSelection: (
     requestedIds?: string[],
@@ -284,6 +285,7 @@ export function useLinghuiCanvasOverlayProps({
   deriveStoryboardVideosFromScript,
   createDerivedImageNodesFromNode,
   createDerivedMultiAngleImageNodeFromNode,
+  spawnImageFromGenerator,
   copySelectionToClipboard,
   duplicateSelection,
   pasteClipboardSnapshot,
@@ -702,6 +704,18 @@ export function useLinghuiCanvasOverlayProps({
     },
     onCreateDerivedMultiAngleImage(nodeId, options) {
       return createDerivedMultiAngleImageNodeFromNode(nodeId, options);
+    },
+    onGenerateImageFromController(controllerNodeId) {
+      const spawnedId = spawnImageFromGenerator(controllerNodeId);
+      if (!spawnedId) {
+        message.warning('生成失败：找不到控制器节点');
+        return null;
+      }
+      // 等 react state 应用完成后再 trigger 执行（与 deriveStoryboardImagesFromScript 同一模式）
+      requestAnimationFrame(() => {
+        onRunSingleNodeRef.current?.(spawnedId);
+      });
+      return spawnedId;
     },
     onExecuteMultiAngle(options) {
       executeMultiAngle(options);

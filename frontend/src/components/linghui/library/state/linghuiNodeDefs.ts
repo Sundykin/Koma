@@ -65,6 +65,16 @@ export const NODE_META: Record<LinghuiNodeType, LinghuiNodeMeta> = {
     accent: LINGHUI_NODE_COLORS.image,
     background: LINGHUI_NODE_BACKGROUND,
   },
+  'linghui/image-generator': {
+    type: 'linghui/image-generator',
+    title: '图片生成器',
+    desc: '紧凑控制器：点击生成 → 自动派生下游展示节点，形成生成历史',
+    catalogCategory: 'creation',
+    catalogLabel: '图片生成器',
+    catalogDescription: '只配 prompt 和模型，每次点击在右侧新建一张图片展示节点',
+    accent: LINGHUI_NODE_COLORS.image,
+    background: LINGHUI_NODE_BACKGROUND,
+  },
   'linghui/panorama': {
     type: 'linghui/panorama',
     title: '全景',
@@ -161,6 +171,14 @@ export const NODE_SLOT_LAYOUTS: Record<LinghuiNodeType, { inputs: LinghuiSlotDef
     ],
     outputs: [{ name: 'image', dataType: 'image' }],
   },
+  'linghui/image-generator': {
+    // 控制器：能接受上游 image / text 参考拼进 prompt，但本身不输出（无产物）
+    inputs: [
+      { name: '参考', dataType: 'image' },
+      { name: '文本', dataType: 'text' },
+    ],
+    outputs: [],
+  },
   'linghui/panorama': {
     inputs: [
       { name: '参考', dataType: 'image' },
@@ -247,6 +265,15 @@ export const NODE_PROPERTY_DEFAULTS: Record<LinghuiNodeType, Record<string, unkn
     resolution: 'auto',
     gridType: 'none',
     batchCount: 1,
+  },
+  'linghui/image-generator': {
+    prompt: '',
+    ttiSelection: '',
+    aspectRatio: '3:4',
+    resolution: 'auto',
+    batchCount: 1,
+    generatedImageNodeIds: [],
+    generationCount: 0,
   },
   // 全景节点 = 独立节点类型：执行器自己包装提示词，编辑器自己渲染 720° 预览，
   // 与图片节点共享底层数据结构（mode/source/prompt/ttiSelection/...），但不复用 properties 里的 panorama 标志位

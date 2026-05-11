@@ -2,7 +2,7 @@
  * SQLite 数据库 Schema 定义
  */
 
-export const CURRENT_SCHEMA_VERSION = 7;
+export const CURRENT_SCHEMA_VERSION = 9;
 
 export const CREATE_TABLES_SQL = `
 -- 项目表
@@ -1126,6 +1126,12 @@ CREATE TABLE IF NOT EXISTS linghui_global_assets (
 
 CREATE INDEX IF NOT EXISTS idx_linghui_global_assets_kind ON linghui_global_assets(kind, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_linghui_global_assets_favorite ON linghui_global_assets(favorite DESC, updated_at DESC);
+`,
+  },
+  9: {
+    description: 'Linghui global assets: 参考图（character 的真实参考图 / prop 的样式图），JSON 数组存 koma-local URLs',
+    sql: `
+ALTER TABLE linghui_global_assets ADD COLUMN reference_images_json TEXT;
 `,
   },
 };

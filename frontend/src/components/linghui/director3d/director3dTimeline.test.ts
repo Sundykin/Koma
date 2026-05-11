@@ -220,4 +220,57 @@ describe('Timeline interpolateSceneAt', () => {
     expect(midLate.actors[0].formation!.memberFacing).toBe('inward');
     expect(midLate.actors[0].formation!.spacing).toBeCloseTo(1.42, 2);
   });
+
+  it('骨骼 rig 关节级 LERP：两关键帧都有 rig 时中点角度是平均值', () => {
+    const scene = withTimeline(createDefaultDirector3DScene());
+    scene.timeline!.easing = 'linear';
+    // 确保 actor 是 mannequin（rig 仅 mannequin 生效）
+    scene.actors[0] = { ...scene.actors[0], type: 'mannequin' };
+    const kf1 = captureSceneAsKeyframe(scene, 0);
+    const kf2 = captureSceneAsKeyframe(scene, 2);
+    // 给两个关键帧分别填不同的 rig：kf1 idle，kf2 wave（右肩从 0 → -2.4）
+    kf1.actors[0].rig = {
+      spine: [0, 0, 0], neck: [0, 0, 0],
+      leftShoulder: [0, 0, 0], rightShoulder: [0, 0, 0],
+      leftElbow: [0, 0, 0], rightElbow: [0, 0, 0],
+      leftHip: [0, 0, 0], rightHip: [0, 0, 0],
+      leftKnee: [0, 0, 0], rightKnee: [0, 0, 0],
+    };
+    kf2.actors[0].rig = {
+      spine: [0, 0, 0], neck: [0, 0, 0],
+      leftShoulder: [0, 0, 0], rightShoulder: [-2.4, 0, 0],
+      leftElbow: [0, 0, 0], rightElbow: [0, 0, 0],
+      leftHip: [0, 0, 0], rightHip: [0, 0, 0],
+      leftKnee: [0, 0, 0], rightKnee: [0, 0, 0],
+    };
+    scene.timeline!.keyframes = [kf1, kf2];
+
+    const mid = interpolateSceneAt(scene, 1.0);
+    // t=0.5 时右肩应为 -1.2，体现"挥手挥到一半"
+    expect(mid.actors[0].rig!.rightShoulder[0]).toBeCloseTo(-1.2, 3);
+    // 其他关节保持 0
+    expect(mid.actors[0].rig!.leftShoulder[0]).toBeCloseTo(0, 5);
+  });
+
+  it('单边关键帧缺 rig 时按 posePreset 兜底再插值（向后兼容）', () => {
+    const scene = withTimeline(createDefaultDirector3DScene());
+    scene.timeline!.easing = 'linear';
+    scene.actors[0] = { ...scene.actors[0], type: 'mannequin' };
+    const kf1 = captureSceneAsKeyframe(scene, 0);
+    const kf2 = captureSceneAsKeyframe(scene, 2);
+    // kf1 没 rig，但 posePreset='idle'；kf2 有 rig（手抬高）
+    kf1.actors[0].posePreset = 'idle';
+    kf2.actors[0].rig = {
+      spine: [0, 0, 0], neck: [0, 0, 0],
+      leftShoulder: [0, 0, 0], rightShoulder: [-2.0, 0, 0],
+      leftElbow: [0, 0, 0], rightElbow: [0, 0, 0],
+      leftHip: [0, 0, 0], rightHip: [0, 0, 0],
+      leftKnee: [0, 0, 0], rightKnee: [0, 0, 0],
+    };
+    scene.timeline!.keyframes = [kf1, kf2];
+
+    const mid = interpolateSceneAt(scene, 1.0);
+    // idle 预置的 rightShoulder.x 是 0，应该插值到 -1.0
+    expect(mid.actors[0].rig!.rightShoulder[0]).toBeCloseTo(-1.0, 2);
+  });
 });
