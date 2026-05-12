@@ -1,6 +1,7 @@
-# Design: 视频诊断报告 + 选菜式修改工作台
+# Design: 视频诊断报告 + 选菜式修改工作台（纯工具版）
 
-> 本设计文档综合 R4 三轮 agent 输出。**所有数字、模型选型、API 定价**已经过 WebSearch 实证（详见 `docs/strategy/r1-r4-decision-reference.md`）。
+> 本设计以"纯技术工具"为定位：所有合规 / 法务 / 财务 / 安全责任由客户自负。
+> Koma 仅交付能力，**不交付政策应对、不做内容审核、不签兜底条款**。
 
 ## 1. 整体架构
 
@@ -21,109 +22,94 @@
               │
 ┌─────────────▼──────────────────────────────────────────────────┐
 │ Main（Electron）                                                 │
-│  AnalysisOrchestrator  ────►  12 维度独立 Service               │
+│  AnalysisOrchestrator → 12 维度 Service                         │
 │         │                                                        │
-│         ├─►  TaskService（worker pool + GpuTaskQueue）          │
-│         │      ↓                                                 │
-│         │   Python Sidecar + ONNX GPU Workers                   │
-│         │   (PySceneDetect / WhisperX / Demucs / SAM2 / VideoMAE│
-│         │    / PaddleOCR / SCRFD / ArcFace / RT-DETR / CLIP /   │
-│         │    CLAP / DeepFaceLab / IDM-VTON / Wan-Animate)       │
+│         ├─► TaskService（worker pool + GpuTaskQueue）           │
+│         │     ↓                                                  │
+│         │   Python Sidecar / ONNX GPU Workers                   │
+│         │   (PySceneDetect / WhisperX / Demucs / SAM2 /         │
+│         │    VideoMAE / PaddleOCR / AuraFace / SCRFD / RT-DETR /│
+│         │    CLIP / CLAP / DeepFaceLab / IDM-VTON / Wan-Animate)│
 │         │                                                        │
 │         ▼                                                        │
 │  ModificationOrchestrator → DAG → 7 个 stage executor           │
-│         │                                                        │
-│         ▼                                                        │
-│  ComplianceLayer (C2PA / KYC / 名单 / 审计 / 销毁)              │
 │         │                                                        │
 │         ▼                                                        │
 │  Storage (SQLite + 写串行化 + Postgres CDC + 向量库)            │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-## 2. DiagnosticReport 完整 Schema
+**注意：原 R4 设计中的 ComplianceLayer 完全删除。** 不再有 C2PA / KYC / 审计哈希链 / 销毁 worker 等模块。
 
-完整 TypeScript 定义见 `specs/video-diagnostic-report/spec.md`，核心字段：
+## 2. DiagnosticReport Schema
 
 ```ts
 interface DiagnosticReport {
   reportId: string;
   sourceMediaId: string;
-  mediaSha256: string;
+  mediaSha256: string;        // 仅用于完整性校验，非合规用途
   durationMs: number;
   resolution: { w: number; h: number; fps: number };
   generatedAt: string;
   schemaVersion: '1.0.0';
-  dimensions: DimensionStatus[];  // 哪些跑了 / 模型版本 / 延迟
-  characters: Character[];         // 含 faceEmbedding 512d
+  dimensions: DimensionStatus[];
+  characters: Character[];     // 含 faceEmbedding 512d
   scenes: Scene[];
-  shots: Shot[];                   // 含 shotSize / cameraMovement / motionBlur / occlusion
-  scriptLines: ScriptLine[];       // ASR 词级时间戳
-  wardrobeTracks: Wardrobe[];      // 跨镜头跟踪
-  actions: Action[];               // Kinetics-700 类
+  shots: Shot[];
+  scriptLines: ScriptLine[];
+  wardrobeTracks: Wardrobe[];
+  actions: Action[];
   lightingSegments: Lighting[];
-  onScreenTexts: OnScreenText[];   // OCR
-  musicSegments: MusicSegment[];   // BPM + 情绪
-  riskMarks: RiskMark[];           // 自动评分
-  feasibility: ModificationFeasibility[];  // 每镜头可改性
-  signature: { algo: 'ed25519'; key: string; sig: string };
+  onScreenTexts: OnScreenText[];
+  musicSegments: MusicSegment[];
+  riskMarks: RiskMark[];       // 修改可行性辅助，非合规风险
+  feasibility: ModificationFeasibility[];
 }
 ```
 
-## 3. 12 维度技术栈（R4-C 实证）
+**注意：删除原 R4 设计中的 `signature: { algo: 'ed25519'; key; sig }` 字段** —— 报告完整性签名属于合规用途，本版本不强制做。如未来客户需要可由 release-signing 模块按需补。
+
+## 3. 12 维度技术栈（均可商用）
 
 | 维度 | 模型 | 4090 性能 | A100 性能 | 许可 |
 |---|---|---|---|---|
-| 人物 | InsightFace SCRFD-10G + ArcFace R100 + HDBSCAN | 3 min | 2 min | **权重 non-commercial，须商业授权** |
-| 场景 | OpenCLIP ViT-L + SAM2.1-Hiera-L + Qwen3-VL-Plus VLM 校验 | 2 min | 1.5 min | Apache / MIT |
-| 镜头 | TransNetV2 + 自训景别分类器 + 光流 | 6 min | 4.5 min | MIT |
-| 台词 | WhisperX large-v3 + pyannote 3.1 | 1 min | 50s | MIT |
-| 服装 | RT-DETR-L + OpenCLIP zero-shot + DeepSORT | 1 min | 45s | Apache |
+| 人物检测 | InsightFace SCRFD-10G | 3 min | 2 min | 代码 MIT（仅检测可用，识别 embedding 需替换） |
+| 人物识别 embedding | **AuraFace 或 buffalo_l Apache fork**（替换 InsightFace 商业权重） | + ~10% 时长 | + ~10% | Apache / CC-BY |
+| 跨镜头聚类 | HDBSCAN | < 30s | < 30s | BSD |
+| 场景 | OpenCLIP ViT-L + SAM2.1 + Qwen3-VL-Plus | 2 min | 1.5 min | Apache / MIT |
+| 镜头 | TransNetV2 + 自训分类器 + 光流 | 6 min | 4.5 min | MIT |
+| 台词 | WhisperX + pyannote 3.1 | 1 min | 50s | MIT |
+| 服装 | RT-DETR-L（替代 YOLOv8 AGPL）+ OpenCLIP + DeepSORT | 1 min | 45s | Apache |
 | 动作 | VideoMAE V2 distilled (MMAction2) | 1.8 min | 1.3 min | Apache |
 | 光照 | OpenCV 启发式 + 自研 CNN | 30s | 30s | — |
 | OCR | PaddleOCR PP-OCRv5 | 1.1 min | 50s | Apache |
 | 音乐 | Demucs htdemucs + LibROSA + CLAP-LAION | 3 min | 2 min | MIT |
-| 风险 | 组合规则 | <5s | <5s | — |
-| 可行性 | 组合规则 | <5s | <5s | — |
+| 风险 + 可行性 | 组合规则 | < 10s | < 10s | — |
 
 **总耗时（45 min 1080p）**：
-- H100 ×1：~6 min
-- A100 ×1：~8 min
-- 4090 ×1：~11 min
-- Mac M3 Max（云端 fallback）：~35-45 min
+- H100 ×1：6 min
+- A100 ×1：8 min（含 AuraFace ~10% 时长）
+- 4090 ×1：11 min
+- Mac M3 Max（云端 fallback）：35-45 min
 
-## 4. Modification Pipeline 选型
+## 4. Modification Pipeline 选型（均可商用）
 
-| 修改类型 | 主选模型 | 备选 | 许可 |
+| 修改类型 | 主选 | 备选 | 许可 |
 |---|---|---|---|
-| 换脸（中景以上） | InsightFace InSwapper-128 + GFPGAN v1.4 | SimSwap | 商业授权 |
-| 换脸（特写工业级） | DeepFaceLab SAEHD 512/768 + LivePortrait + GFPGAN + HiFiVFS | CanonSwap | 开源 / 商业 |
-| 体型替换（静态） | Wan2.2-Animate 14B Character Replacement + IPAdapter | OmniHuman | Apache / Apache |
-| 服装替换 | IDM-VTON + SAM2 + Wan-Animate 传播 | OutfitAnyone | 各开源 |
-| 横竖屏适配 | MediaPipe + 主体跟踪 + 智能裁切 + 字幕重排 + loudnorm | — | Apache |
-| 多语言 dub | ElevenLabs / Deepdub / 火山豆包 / 阿里 CosyVoice | — | API（BYOL） |
-| 嘴型对齐 | Sync.so lipsync-2-pro / HeyGen | wav2lip ONNX 兜底 | API（BYOL） |
-| 视频理解 | 阿里百炼 / 火山方舟 / Gemini 2.5 Pro/Flash / Doubao Vision | — | API（BYOL） |
-| 屏显文字 inpaint | PaddleOCR + IOPaint LaMa | — | Apache |
+| 换脸（中景） | SimSwap / Roop-Unleashed fork | InSwapper（注意 non-commercial 权重） | Apache / MIT 替代 |
+| 换脸（特写） | DeepFaceLab SAEHD 512/768 | CanonSwap fork | 开源 |
+| 表情迁移 | LivePortrait | FasterLivePortrait | Apache |
+| 后处理 | GFPGAN v1.4 / CodeFormer | — | Apache |
+| 体型替换 | Wan2.2-Animate 14B Character Replacement + IPAdapter | OmniHuman | Apache |
+| 服装替换 | IDM-VTON + SAM2 + Wan-Animate 传播 | OutfitAnyone | Apache |
+| 横竖屏 | MediaPipe 主体跟踪 + reframe + 字幕重排 + loudnorm | — | Apache |
+| 多语言 dub | ElevenLabs / Deepdub / 火山 / 阿里 | — | BYOL |
+| 嘴型对齐 | Sync.so / HeyGen API | wav2lip ONNX 兜底 | BYOL / MIT |
+| 视频理解 | 阿里百炼 / 火山 / Gemini / Doubao | — | BYOL |
+| 屏显 inpaint | PaddleOCR + IOPaint LaMa | — | Apache |
 | 风格化重生成 | AnimateDiff + LoRA | Wan2.2-Animate | Apache |
 
-## 5. 视频解析 Provider 抽象（R2 LLM provider 扩展）
-
-新增 `VideoAnalysisProvider` 接口（详见 `media-pipeline-pro/spec.md`），实现：
-
-```
-LocalProvider              本地 ffmpeg + onnxruntime（默认）
-AliyunRunVideoAnalysisProvider   ¥0.1-0.4 元/分钟
-DoubaoVisionProvider       豆包 Seed 1.6-vision，¥1.9-8/部 45 分钟
-GeminiVideoProvider        $0.21-0.89 / 45 分钟（Flash / Pro）
-TwelveLabsProvider         $0.042/min index + $0.021/min API
-```
-
-主备 fallback 策略：本地优先 → 云端兜底（VLM 校验 / 服装难判 / 长视频）。
-
-## 6. 选菜式修改的 ModificationPlan
-
-完整 TypeScript 定义见 `specs/modification-workbench/spec.md`，核心：
+## 5. 选菜式修改 ModificationPlan
 
 ```ts
 interface ModificationPlan {
@@ -132,7 +118,7 @@ interface ModificationPlan {
   sourceMediaId: string;
   items: ModificationItem[];
   createdAt: string;
-  dag: DagEdge[];        // 自动推导的依赖图
+  dag: DagEdge[];
 }
 
 type ModificationItem =
@@ -141,112 +127,115 @@ type ModificationItem =
   | WardrobeItem
   | AspectRatioItem
   | LanguageDubItem
-  | StylizationItem;     // conceptOnly: true
+  | StylizationItem;
+
+interface BaseItem {
+  itemId: string;
+  scope: { shotIds?: string[]; sceneIds?: string[]; allShots?: true };
+  estCostCents: number;       // BYOL API 累计估算
+  estDurationSec: number;
+  feasibilityScore: Score;
+  conceptOnly?: boolean;      // 风格化重生成必须 true
+}
 ```
 
-每个 item 含：
-- `scope`: 全片 / 规则筛选（DSL）/ 手动镜头列表
-- `feasibilityScore`: 从报告同步过来，UI 显示红绿灯
-- `estCostCents` / `estDurationSec`: 实时预估
-- `conceptOnly`: 风格化重生成强制 true，UI 强制显示警告
+DAG 依赖：换脸 → 表情对齐 → 体型 → 服装 → 调色 → 横竖屏 → 字幕 → 导出。
 
-DAG 依赖：换脸 → 表情对齐 → 体型 → 服装 → 调色 → 横竖屏 → 字幕 → C2PA → 导出。
+**导出不强制嵌入 C2PA**。若客户需要可在导出对话框勾选"嵌入 AI 标识"（默认关闭）。
 
-## 7. UX 关键设计（R4-B 输出）
+## 6. UX 关键设计
 
-### 7.1 二创工作台首页改造
+### 6.1 二创工作台首页
+大上传区 + 历史项目列表 + 报告库 + 渲染队列 + 推荐操作。
 
-```
-┌────────────────────────────────────────────────────────┐
-│ Koma 二创工作台                                          │
-│ ┌──大上传区──────────────────────────────────────┐   │
-│ │ 拖拽视频 或 [选择文件] [从已有项目] [从飞书]   │   │
-│ └────────────────────────────────────────────────┘   │
-│                                                        │
-│ ◆ 进行中（3） · 最近报告（5） · 推荐操作             │
-└────────────────────────────────────────────────────────┘
-```
+### 6.2 诊断报告浏览
+12 维度左侧导航 + 主区域可视化（人物卡片 / 镜头时间线 / 双栏台词 / 服装矩阵 / 动作色带）。
 
-### 7.2 诊断报告浏览界面 `<DiagnosticReportShell>`
+### 6.3 选菜界面
+浏览报告时随手"+ 改造" → 加入修改单 → 主页面统一管理（嵌套条件、DAG 自动排序、批量提交、估价估时实时显示）。
 
-12 维度左侧导航 + 主区域可视化（人物卡片网格 / 镜头时间线 / 双栏台词编辑 / 服装矩阵 / 动作色带）。
-
-### 7.3 选菜界面（推荐购物车式 + 规则化批量）
-
-浏览报告时随手"+ 改造"按钮 → `<QuickAddDrawer>` → 加入修改单 → `<ModificationCartView>` 主页面（支持嵌套条件、DAG 自动排序、批量提交）。
-
-### 7.4 任务进度
-
+### 6.4 任务进度
 `<RenderQueue>` 抽屉式，按物料分组，长任务每 5 分钟出片段预览，失败可单镜头重做。
 
-## 8. 性能预算
+### 6.5 风格化"概念演示"提示
+UI 文案标注（非强制水印）："此修改将完全重新生成画面，结果可能与原片差异较大"。客户决定是否接受。
 
-### 解析 pipeline（已列在 §3）
+## 7. 媒体处理层（与原 R4 一致，保留）
 
-### 修改 pipeline（45 分钟单集）
+- TaskService 双层调度（内核 + child_process worker pool）
+- GpuTaskQueue（H100 / A100 / 4090 调度）
+- FFmpeg hwaccel 自动检测 + proxy media
+- SQLite 写串行化
+- 跨项目向量库
 
-| 修改 | A100 ×4 | 4090 ×1 |
-|---|---|---|
-| 换脸 InSwapper Lite | 30 分钟 | 1.5 小时 |
-| 换脸 DFL Pro（含训练 14 天） | 22-32 小时（不含训练）/ 训练 9-12 天 | 不建议 |
-| 横竖屏 8 平台一键派生 | 8 分钟 | 25 分钟 |
-| 多语言完整链（dub + 嘴型 + 字幕 + 屏显） | 18-25 分钟（不含译审）| 35-50 分钟 |
-| 服装替换整集 | 15 小时 | 不建议 |
-| 风格化 demo 30s | 5-10 分钟 | 20-30 分钟 |
+详见 `specs/media-pipeline-pro/spec.md`。
 
-## 9. 14-16 月路线图（R4 重排）
+## 8. 10-12 月路线图
 
 | 阶段 | 时长 | 核心交付 |
 |---|---|---|
-| **M0** 基建月 | 30 天 | TaskService 双层 + GpuTaskQueue + hwaccel + proxy + 写串行化 + 算法备案启动 + InsightFace 授权采购 |
-| **M1** 诊断报告 MVP | 4-5 月 | 12 维度解析 pipeline + Web/PDF 报告 + 跨剧检索 + **报告独立可售产品上线** |
-| **M2** 选菜界面 + 首批修改 | 3-4 月 | 选菜 UI + 换脸 Lite + 横竖屏 + C2PA 全链路 + KYC + 名单审核 |
-| **M3** 扩充菜式 | 6-9 月 | 多语言（嘴型 + 屏显）→ 服装替换 → 体型替换 → 换脸 Pro（DFL）→ 风格化 demo → SPV 隔离 → 私有化打包 |
+| **M0** 基建月 | 15 天 | TaskService 双层 + GpuTaskQueue + hwaccel + proxy + 写串行化 |
+| **M1** 诊断报告 MVP | 4 月 | 12 维度解析 + Web/PDF 报告 + 跨剧检索 |
+| **M2** 选菜界面 + 首批修改 | 3 月 | 选菜 UI + 换脸 Lite + 横竖屏 |
+| **M3** 扩充菜式 | 4-5 月 | 多语言 → 服装 → 体型 → 换脸 Pro → 风格化 demo |
 
-**保守诚实总周期：14-16 个月到 M2 完成**（"AI 视频改造工作站"可对外推广），比 R3 形态快 6-9 个月。
+**比 R4 早期版本（14-16 月）快 4-6 月**，原因：
+- M0 无前置法务流程（算法备案 / 保险洽谈 / 客户合同 / InsightFace 授权 全部删除）
+- M2 无 C2PA / KYC / 名单审核 / SPV 实施
+- M3 无销毁 worker / 审计哈希链 / 私有化合规模式
 
-## 10. 商业模式
+## 9. 商业模式（参考，客户自定）
 
-- **诊断报告 SaaS**：¥99-299/部，企业年订阅 ¥30 万/年
-- **修改服务按项目**：换脸 Lite 80-150 万/部，Pro 300-1100 万/部，体型/服装 30-200 万/集，多语言 8-20 万/集
-- **私有化部署**：基础 50-70 万 / 专业 350-450 万 / 旗舰 700-900 万 客户硬件，软件按 License 收费
-- **B 端 KA**：3-5 家头部影视公司打标杆
+- 诊断报告 SaaS：¥99-299/部
+- 修改服务按项目：换脸 Lite 80-150 万/部 / Pro 300-1100 万/部 / 体型/服装 30-200 万/集 / 多语言 8-20 万/集
+- 私有化部署：客户自购 GPU 集群（Koma 不强制销售硬件），软件 License 按团队规模收费
 
-## 11. 与 Koma 现有架构的集成
+## 10. 与 Koma 现有架构的集成
 
 | 现有点 | 扩展方式 |
 |---|---|
-| TaskService (并发 4) | 4→32 + GpuTaskQueue + Python sidecar |
-| ffmpeg.ts (无 hwaccel) | hwaccel 自动检测 + proxy + progress |
-| SQLite | 写串行化 + 12 维度独立表 + 向量库 + Postgres CDC |
-| Provider 抽象（LLM/TTI/ITV/TTS/image-hosting） | + VideoAnalysisProvider + 7 类修改 provider |
-| ed25519 (release-signing) | + 内容签名子密钥（C2PA + 审计日志） |
-| 自动更新机制 | 复用，新增企业内网更新通道 |
-| 插件市场 | 复用，新增"企业插件仓库" |
+| TaskService | 并发 4 → 32 + GpuTaskQueue + Python sidecar |
+| ffmpeg.ts | hwaccel + proxy + progress |
+| SQLite | 写串行化 + 12 维度独立表 + 向量库 |
+| Provider 抽象（5 类）| + VideoAnalysisProvider + 7 类修改 provider，全 BYOL |
+| 自动更新机制 | 复用 |
+| 插件市场 | 复用 |
 | sidebar 二创占位入口 | 改造为 `<RecreationWorkbenchShell>` 主入口 |
 
-## 12. 风险时间表（R3-D + R4-D 累积）
+**ed25519 release-signing 不强制扩展为内容签名**。如未来客户要求 C2PA 可按需补，不在本 change。
 
-| 月份 | 事件 | 缓解 |
-|---|---|---|
-| 2026-06 | POC 客户素材不达标 | 合同附录 A 标准 + 拒绝权 |
-| 2026-08 | 算法 lead 离职 | 双工程师备份 + 期权激励 |
-| 2026-09 | Wan-Animate 一致性问题 | 提前公开覆盖率预期 |
-| 2026-10 | 影视行业回款延期 | 首付 30% + 里程碑 + 不接全后付 |
-| 2026-11 | 客户法务撕碎合同 | 8 条硬条款 + SPV + 保险 |
-| 2027-03 | 监管约谈 | 算法备案 + C2PA + 预案 |
-| 2027-06 | 舆论二次发酵 | 3 套公关模板预签 |
+## 11. 团队规模
 
-**关键监控**：每月现金流 / 团队 NPS / 客户付款 / 监管动态，任一指标恶化触发应急。
+20-25 人纯工程团队：
 
-## 13. 何时降级
+- 8 算法工程师（视频理解 + 换脸 + 体型 + 服装 + LoRA + 风格化）
+- 4 桌面端工程师（Electron + ee-core 扩展）
+- 3 平台 / DevOps
+- 3 算法 SRE / 数据工程
+- 4 QC（仅技术 QC，非合规 QC）
+- 2 PM
+- 销售 / 客户成功 / 法务 由客户公司自配（Koma 仅技术交付）
 
-如果以下任一发生，启动应急路径：
+## 12. 风险（仅技术风险，合规风险不在本范围）
 
-1. M1 后 6 个月内**无单家影视公司付费购买诊断报告**（独立营收线不成立）→ 砍 B 坊（IP 迁移），收缩到 A 坊
-2. 12 维度联合准确率始终 < 70% → 收缩为 6 维度
-3. 阿里 / 火山 视频理解 API 降价 50%+ → 转向"上层应用 + 调云端 API"路线，本地解析弃守
-4. 监管约谈 → 立即下线换脸 / IP 迁移 → 仅保留 S1-S3
-5. 团队走超 5 人 → SPV 切割 + Koma2 重组（仅保留 S1-S3 + 风格化）
+| 风险 | 缓解 |
+|---|---|
+| 12 维联合准确率天花板（理论 0.95^12 = 54%） | 工业目标 80-85%，每维度独立 QA 标注集回归 |
+| 阿里 / 火山 视频理解 API 价格战 | 全 BYOL 模式，价格由客户支付，Koma 不背 |
+| 团队核心算法 lead 被挖角 | 双工程师备份 + 模块文档化 |
+| Wan-Animate 工业一致性边界 | 提前公开覆盖率预期 + 必须人工补帧 |
+| Mac 性能不足 | 云端 fallback provider |
 
-详细预案见 `compliance-c2pa/spec.md` 最坏情况预案。
+**合规风险全部转嫁客户**。客户自负监管约谈 / 政策红线 / 舆论应对 / 黑产滥用。
+
+## 13. 用户已知情的事项（来自 4 轮多 agent 讨论）
+
+详见 `docs/strategy/r1-r4-decision-reference.md`。本设计**假设用户已读、已接受**所有警告，包括但不限于：
+
+- 主演正面特写换脸工业级 0 成功率（巴清传/三千鸦杀失败案例）
+- Twelve Labs（最接近对标）ARR 仅 420 万美元
+- 12 维联合准确率天花板
+- 影视行业 2026 票房腰斩 51.29%
+- 监管政策 2025-09-01 + 2026-01 治理趋势收紧
+
+**用户决定：Koma 不操心，由客户自处理。**

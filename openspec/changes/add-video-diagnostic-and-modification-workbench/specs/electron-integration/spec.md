@@ -1,44 +1,36 @@
-# Spec Delta: electron-integration（R4 接入）
+# Spec Delta: electron-integration
 
 ## ADDED Requirements
 
-### Requirement: 诊断 + 修改 + 合规 IPC 桥
-系统 SHALL 在 preload bridge 暴露 4 类新 namespace。
+### Requirement: 诊断 + 修改 IPC 桥
+系统 SHALL 在 preload bridge 暴露 2 类新 namespace（不含 compliance）。
 
 #### Scenario: namespace
 - **WHEN** preload 加载
 - **THEN** `window.electronAPI` 暴露：
   - `videoAnalysis.{run, incrementalRun, getReport, cancel, onProgress, crossProjectSearch}`
   - `modification.{createPlan, executePlan, onItemProgress, rollback, getVersionTree}`
-  - `compliance.{c2paSign, c2paVerify, auditExport, auditVerify, kycSubmit, destructionSchedule}`
-  - `enterprise.{loadProfile, getHardwareFingerprint, getAuditLog}`
+  - `enterprise.{loadLicense, getHardwareFingerprint}`（仅防盗版，非合规审计）
 
 #### Scenario: 广播事件
 - **WHEN** 解析 / 修改 进度变化
 - **THEN** main 通过 `analysis:progress` / `modification:progress` 广播
-- **AND** 合规事件通过 `compliance:audit-event`
 
 ### Requirement: 启动初始化顺序
 ee-core Lifecycle `electronAppReady` SHALL 按严格顺序初始化。
 
 #### Scenario: 顺序
 - **WHEN** Electron app ready
-- **THEN** 按：storage → taskService → compliance → mediaPipeline → analysis services → modification services → enterprise profile → marketplace + updater
-- **AND** 任一失败抛错，不允许静默 fallback
+- **THEN** 按：storage → taskService → mediaPipeline → analysis services → modification services → license 校验 → marketplace + updater
+- **AND** 任一失败抛错
 
-### Requirement: 企业版 License + 硬件指纹
-私有化版本 SHALL 通过 License + 企业账号 + 硬件指纹三锁绑定。
+### Requirement: License + 硬件指纹（仅防盗版）
+私有化版本 SHALL 通过 License + 硬件指纹绑定，**仅用于防盗版**，不用于合规审计。
 
 #### Scenario: License 文件
 - **WHEN** 企业版安装
-- **THEN** 必须导入 License（ed25519 签名）
-- **AND** License 含硬件指纹（CPU + 主板 + 网卡 UUID 哈希）+ 企业账号 + 有效期
-
-#### Scenario: AirGapMode
-- **WHEN** License airgap=true
-- **THEN** 三层网络拦截（fetch wrapper + session.webRequest + Node net.connect）
-- **AND** C2PA 签名走本地 HSM
-- **AND** 模型升级走客户内网 mirror
+- **THEN** 必须导入 License（ed25519 签名，复用 release-signing）
+- **AND** License 含硬件指纹 + 企业账号 + 有效期
 
 #### Scenario: 硬件指纹变更
 - **WHEN** 当前机器指纹 ≠ License 指纹
@@ -49,8 +41,7 @@ ee-core Lifecycle `electronAppReady` SHALL 按严格顺序初始化。
 
 #### Scenario: 入口接入
 - **WHEN** 用户点 sidebar 二创入口
-- **THEN** 进入 `<RecreationWorkbenchShell>`（替代原占位卡片页）
-- **AND** 默认 Tab "概览"
+- **THEN** 进入 `<RecreationWorkbenchShell>`
 - **AND** Tab 切换：概览 / 物料看板 / 报告库 / 修改单 / 渲染队列 / 模板
 
 ## MODIFIED Requirements
@@ -78,5 +69,11 @@ ee-core Lifecycle `electronAppReady` SHALL 按严格顺序初始化。
 
 #### Scenario: 视频理解 provider
 - **WHEN** provider 声明 `supportsVideoInput: true`
-- **THEN** 可处理 `request.videoInput.{url|base64}` 字段
-- **AND** 返回结构化输出（场景描述 / 动作 tag / 情绪 tag / 台词时码）
+- **THEN** 可处理 `request.videoInput.{url|base64}`
+- **AND** 返回结构化输出
+
+## 已删除 Requirements（相比 R4 早期版本）
+
+- ~~Compliance IPC namespace（c2pa / kyc / 审计 / 销毁）~~
+- ~~企业版强制水印~~
+- ~~AirGapMode 强制外网拦截~~（客户决定是否启用网络限制）
