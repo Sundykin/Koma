@@ -658,3 +658,22 @@
 ### Error Log
 | Error | Attempt | Resolution |
 |------|---------|------------|
+
+## Session: 2026-05-12 Director3D Structural Model Rework
+
+### Goal
+- 按开源 procedural / low-poly 模型代码思路重调动物和道具结构，不引入资源文件。
+- 修复动物不像、形状不对、头身体错位、脚和身体层级不对的问题。
+- 道具不再纯色大块，补材料分区和正确体块比例。
+
+### Phases
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Reference Review | complete | 查找 procedural animal / low-poly / bird geometry 思路，确认以骨架体块重排为主 |
+| 2. Creature Structural Rework | in_progress | 重排四足、飞禽、龙形的腿/身体/颈/头/尾/翼层级和比例 |
+| 3. Prop Structural Rework | pending | 重画主要道具体块、材料分区和边缘细节 |
+| 4. Validation | pending | 运行目标测试 / TypeScript / build / diff check |
+
+### Error Log
+| Error | Attempt | Resolution |
+|------|---------|------------|

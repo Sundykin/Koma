@@ -1351,3 +1351,14 @@
   - `npx tsc --noEmit --project tsconfig.json`（root）：passed。
   - `npm run build`（frontend）：passed，只有既有 chunk size / dynamic import chunking warnings。
   - `git diff --check`：passed。
+
+## Session: 2026-05-12 Director3D Structural Model Rework
+
+### Phase 1: Reference Review
+- **Status:** complete
+- Actions taken:
+  - 用户指出动物不像、头身体错位、道具形状和纯色表现差。
+  - 查找开源 procedural animal / low-poly / bird geometry 思路，决定以骨架体块重排为主，而不是继续贴局部细节。
+
+### Phase 2: Creature Structural Rework
+- **Status:** in_progress
