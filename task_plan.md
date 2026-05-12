@@ -677,3 +677,19 @@
 ### Error Log
 | Error | Attempt | Resolution |
 |------|---------|------------|
+
+### Follow-up: Shape Readability Pass
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Reference Recheck | complete | 复查 procedural animal / BirdGeometry / low-poly 参数化思路，继续保持本地程序化实现 |
+| 2. Animal Readability | complete | 增强四足动物物种轮廓、脚掌/蹄、鹿角、胡须、鸟类羽片扇面 |
+| 3. Prop Readability | complete | 强化桌椅床柜车/自行车/门窗屏幕/圆桶等结构件和材料分区 |
+| 4. Prompt + Validation | complete | 更新导演台 prompt fragment，并运行目标测试、tsc、build、diff check |
+
+### Follow-up: Export Geometry Parity
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Export Gap Audit | complete | 发现离屏导出仍使用旧 prop-box/prop-cylinder/prop-plane 占位几何 |
+| 2. Prop Export Parity | complete | 增加结构化道具导出构建器，线稿/时间轴导出复用车、门窗、家具、自行车等细节体块 |
+| 3. Creature Export Parity | complete | 四足动物导出同步胸腔/胯部/头颈/足部，鸟类导出增加左右翼和飞羽 |
+| 4. Regression Tests | complete | 新增导出几何测试，防止导出链路退回单盒子/单圆柱占位 |

@@ -22,7 +22,7 @@ import { Director3DLiteMannequin } from './Director3DLiteMannequin';
 import { Director3DFormation, deriveFormationMembers } from './Director3DFormation';
 import { Director3DCreature } from './Director3DCreatureMesh';
 import { Director3DProp } from './Director3DProp';
-import { buildExportCreatureGroup, buildExportMannequinGroup } from './director3dExportGeometry';
+import { buildExportCreatureGroup, buildExportMannequinGroup, buildExportPropGroup } from './director3dExportGeometry';
 import { resolvePanoramaViewerMode } from '../panorama/panoramaProjection';
 import { safeFetch } from '../../../utils/safeFetch';
 import { resolveDirector3DColor } from './director3dColors';
@@ -602,6 +602,21 @@ const CaptureRenderer: React.FC<CaptureRendererProps> = ({ scene, texture, camer
         offscreenScene.add(exportGroup);
         continue;
       }
+      if (
+        actor.type === 'prop-box'
+        || actor.type === 'prop-cylinder'
+        || actor.type === 'prop-plane'
+        || actor.type === 'prop-camera'
+        || actor.type === 'prop-arrow'
+      ) {
+        const exportGroup = buildExportPropGroup(actor, {
+          drawEdges,
+          wireMat,
+          fillMat: currentActorFillMat,
+        });
+        offscreenScene.add(exportGroup);
+        continue;
+      }
 
       const group = new THREE.Group();
       group.position.fromArray(actor.position);
@@ -655,29 +670,6 @@ const CaptureRenderer: React.FC<CaptureRendererProps> = ({ scene, texture, camer
           });
           group.add(memberGroup);
         }
-      } else if (actor.type === 'prop-box') {
-        addLineartMesh(group, new THREE.BoxGeometry(0.9, 0.8, 0.6), [0, 0.4, 0]);
-      } else if (actor.type === 'prop-cylinder') {
-        addLineartMesh(group, new THREE.CylinderGeometry(0.35, 0.35, 0.9, 24), [0, 0.45, 0]);
-      } else if (actor.type === 'prop-plane') {
-        addLineartMesh(group, new THREE.BoxGeometry(1.6, 2, 0.05), [0, 1, 0]);
-      } else if (actor.type === 'prop-camera') {
-        addLineartMesh(group, new THREE.BoxGeometry(0.4, 0.3, 0.55), [0, 0.5, 0]);
-        const lens = new THREE.CylinderGeometry(0.12, 0.16, 0.25, 18);
-        lens.rotateX(Math.PI / 2);
-        addLineartMesh(group, lens, [0, 0.5, 0.4]);
-        // 取景方向指示：从相机正前方伸出的细线，与 viewport Director3DProp 一致
-        const aim = new THREE.CylinderGeometry(0.01, 0.01, 1.2, 8);
-        aim.rotateX(Math.PI / 2);
-        addLineartMesh(group, aim, [0, 0.5, 1.05]);
-      } else if (actor.type === 'prop-arrow') {
-        const shaft = new THREE.CylinderGeometry(0.05, 0.05, 1, 12);
-        shaft.rotateX(Math.PI / 2);
-        addLineartMesh(group, shaft, [0, 0.1, 0.5]);
-        const head = new THREE.ConeGeometry(0.16, 0.32, 18);
-        // viewport 用 -π/2，让锥尖指向 +Z 与 shaft 方向一致
-        head.rotateX(-Math.PI / 2);
-        addLineartMesh(group, head, [0, 0.1, 1.1]);
       }
 
       offscreenScene.add(group);

@@ -388,3 +388,7 @@
   - `threejs-procedural-animal` 是 MIT 的 procedural animal 实验，核心思想是 rigged animal mesh / bone-ready，而不是随便堆几何。
   - Three Low Poly 项目强调 parametric modeling / prefabricated low-poly objects，适合用参数化体块重画道具。
   - Three.js Blocks 的 BirdGeometry 用“body + left wing + right wing”的最小结构读出鸟形，可作为飞禽低模结构参考。
+- 本轮二次细化发现，道具里最容易显得“形状不对”的不是缺少颜色，而是旋转平面和结构方向：自行车轮圈要留在 X/Y 侧视平面、汽车轮轴要沿 X 轴、圆桶箍要水平绕 Y 轴；这些比单纯加贴片更影响可读性。
+- 对动物同理，四足动物需要按物种分“肉掌/蹄/鹿角/胡须/狮尾/飞羽”等结构分支；否则即使头身对齐，也会像统一低模生物换色。
+- 继续检查发现导出链路是独立 vanilla three.js 构建器，不能只改 R3F 视口组件；否则工作台显示已细化，但导出的线稿参考图、时间轴首帧和下游图片/视频参考仍然是旧占位几何。
+- 因此结构化模型需要同时覆盖 `Director3DProp` / `Director3DCreatureMesh` 和 `director3dExportGeometry`，并用导出几何测试防止 CaptureRenderer 回退。
