@@ -275,40 +275,41 @@ export const Director3DTimelineHud: React.FC<Director3DTimelineHudProps> = ({
           />
         </Tooltip>
 
-        <Tooltip title="补间缓动算法">
-          <Select<LinghuiDirector3DEasing>
-            size="small"
-            value={timeline.easing ?? 'ease-in-out'}
-            onChange={(value) => onEasingChange(value as LinghuiDirector3DEasing)}
-            style={{ width: 96 }}
-            getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
-            // body-portal dropdown 需要 RF 约束 class，否则 option click 冒到 document
-            // 被 RF 当画布交互拦截，导致选项点不中
-            popupClassName="nopan nowheel nodrag linghuiDirector3DSelectDropdown"
-            options={[
-              { value: 'linear', label: '线性' },
-              { value: 'ease-in', label: '缓入' },
-              { value: 'ease-out', label: '缓出' },
-              { value: 'ease-in-out', label: '平滑' },
-            ]}
-          />
-        </Tooltip>
+        {/* getPopupContainer 改成 trigger.parentElement：editor 本身已经 portal 到 body，
+           Select dropdown 默认还会 portal 到 body，形成「body-portal A 包 body-portal B」
+           的双重 portal，React 19 在合成事件跨 portal 冒泡时 option onClick 不能
+           可靠 commit。挂到 parentElement 让 dropdown 留在 director3d portal 内部，
+           事件路径就只走一层 portal，select 正常生效。 */}
+        <Select<LinghuiDirector3DEasing>
+          size="small"
+          title="补间缓动算法"
+          value={timeline.easing ?? 'ease-in-out'}
+          onChange={(value) => onEasingChange(value as LinghuiDirector3DEasing)}
+          style={{ width: 96 }}
+          getPopupContainer={triggerNode => triggerNode.parentElement ?? triggerNode.ownerDocument.body}
+          popupClassName="nopan nowheel nodrag linghuiDirector3DSelectDropdown"
+          options={[
+            { value: 'linear', label: '线性' },
+            { value: 'ease-in', label: '缓入' },
+            { value: 'ease-out', label: '缓出' },
+            { value: 'ease-in-out', label: '平滑' },
+          ]}
+        />
 
-        <Tooltip title="视频导出分辨率（按 aspectRatio 计算宽）">
-          <Select<LinghuiDirector3DExportResolution>
-            size="small"
-            value={resolveDirector3DExportResolution(timeline.exportResolution)}
-            onChange={(value) => onExportResolutionChange(value)}
-            style={{ width: 96 }}
-            getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
-            popupClassName="nopan nowheel nodrag linghuiDirector3DSelectDropdown"
-            options={DIRECTOR3D_EXPORT_RESOLUTION_OPTIONS.map(option => ({
-              value: option.value,
-              label: option.label,
-              title: option.hint,
-            }))}
-          />
-        </Tooltip>
+        <Select<LinghuiDirector3DExportResolution>
+          size="small"
+          title="视频导出分辨率（按 aspectRatio 计算宽）"
+          value={resolveDirector3DExportResolution(timeline.exportResolution)}
+          onChange={(value) => onExportResolutionChange(value)}
+          style={{ width: 96 }}
+          getPopupContainer={triggerNode => triggerNode.parentElement ?? triggerNode.ownerDocument.body}
+          popupClassName="nopan nowheel nodrag linghuiDirector3DSelectDropdown"
+          options={DIRECTOR3D_EXPORT_RESOLUTION_OPTIONS.map(option => ({
+            value: option.value,
+            label: option.label,
+            title: option.hint,
+          }))}
+        />
 
         <span className="linghuiDirector3DTimelineSeparator" />
 
