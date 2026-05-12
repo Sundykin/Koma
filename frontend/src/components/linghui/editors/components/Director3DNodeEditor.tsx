@@ -971,13 +971,17 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
       event.stopPropagation();
     };
 
-    root.addEventListener('keydown', onKeyDown, true);
-    root.addEventListener('keyup', blockBubble, true);
-    root.addEventListener('keypress', blockBubble, true);
+    // bubble 阶段（capture=false）：先让 target / 子组件（antd Select / InputNumber /
+    // ColorPicker 内部 keydown handler）处理完事件，再 stopPropagation 阻止冒泡到
+    // ReactFlow / 画布。capture 阶段无条件 stopPropagation 会让 antd 内部状态错乱，
+    // 表现为下拉打开后选项点不中、Number 上下箭头键失灵。
+    root.addEventListener('keydown', onKeyDown, false);
+    root.addEventListener('keyup', blockBubble, false);
+    root.addEventListener('keypress', blockBubble, false);
     return () => {
-      root.removeEventListener('keydown', onKeyDown, true);
-      root.removeEventListener('keyup', blockBubble, true);
-      root.removeEventListener('keypress', blockBubble, true);
+      root.removeEventListener('keydown', onKeyDown, false);
+      root.removeEventListener('keyup', blockBubble, false);
+      root.removeEventListener('keypress', blockBubble, false);
     };
   }, [renderModeKeys]);
 
