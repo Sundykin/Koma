@@ -188,7 +188,10 @@ export const Director3DTimelineHud: React.FC<Director3DTimelineHudProps> = ({
   }, [onSeek, onSelectKeyframe]);
 
   return (
-    <div className="linghuiDirector3DTimelineHud nopan nowheel" onMouseDown={event => event.stopPropagation()}>
+    // nopan / nowheel 已经告诉 RF 不要拖拽 / 滚轮缩放；额外的 React onMouseDown
+    // stopPropagation 会破坏 antd Select / InputNumber 的内部状态机（dropdown
+    // option 选中失败、Number 上下箭头失灵），移除。
+    <div className="linghuiDirector3DTimelineHud nopan nowheel">
       <div className="linghuiDirector3DTimelineControls">
         <Tooltip title={playing ? '暂停 (Space)' : '播放 (Space)'}>
           <button
@@ -279,6 +282,9 @@ export const Director3DTimelineHud: React.FC<Director3DTimelineHudProps> = ({
             onChange={(value) => onEasingChange(value as LinghuiDirector3DEasing)}
             style={{ width: 96 }}
             getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
+            // body-portal dropdown 需要 RF 约束 class，否则 option click 冒到 document
+            // 被 RF 当画布交互拦截，导致选项点不中
+            popupClassName="nopan nowheel nodrag linghuiDirector3DSelectDropdown"
             options={[
               { value: 'linear', label: '线性' },
               { value: 'ease-in', label: '缓入' },
@@ -295,6 +301,7 @@ export const Director3DTimelineHud: React.FC<Director3DTimelineHudProps> = ({
             onChange={(value) => onExportResolutionChange(value)}
             style={{ width: 96 }}
             getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
+            popupClassName="nopan nowheel nodrag linghuiDirector3DSelectDropdown"
             options={DIRECTOR3D_EXPORT_RESOLUTION_OPTIONS.map(option => ({
               value: option.value,
               label: option.label,
