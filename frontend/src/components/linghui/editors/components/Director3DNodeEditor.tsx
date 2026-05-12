@@ -169,30 +169,16 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
   // capture 阶段 stopPropagation，避免 ReactFlow / 外层画布快捷键在用户编辑时被触发。
   const panelRootRef = useRef<HTMLDivElement | null>(null);
 
-  // 悬浮菜单内容 wrapper 用：阻断 React 合成事件冒泡到画布层（onClick → handleNodeClick /
-  // handlePaneClick 等），让 popover 里拖动 slider / 滚动 / 点选项时画布不会跟着平移 /
-  // 缩放 / 误选节点。
-  //
-  // 注意：**不能**调用 event.nativeEvent.stopPropagation()，否则原生 mouseup / pointerup
-  // 到不了 document，而 antd Slider / InputNumber 的拖拽是靠 document 级监听释放的，
-  // 一旦切断就表现为"松手后还跟随鼠标"。React 合成事件 stopPropagation 已经够挡住
-  // React Flow 的 React 处理链；RF 的 document 原生监听只关心 .react-flow 内的事件，
-  // 我们的 popover 在 body-portal，本就不会触发 RF 的画布交互。
-  const popoverEventBlockers = useMemo(() => {
-    const stop = (event: React.SyntheticEvent) => {
-      event.stopPropagation();
-    };
-    return {
-      onMouseDown: stop,
-      onMouseUp: stop,
-      onClick: stop,
-      onContextMenu: stop,
-      onPointerDown: stop,
-      onPointerUp: stop,
-      onWheel: stop,
-      onTouchStart: stop,
-    };
-  }, []);
+  // 历史的 popoverEventBlockers 已彻底删除：
+  //  - antd Slider / InputNumber / ColorPicker / Select 内部都靠 document 原生监听
+  //    （mouseup / pointerup / pointermove）来释放拖拽 / 切换焦点 / commit 选择。
+  //    任何形式的 stopPropagation（React 合成或 nativeEvent）都会在事件冒泡链上
+  //    某一节点拦截，让 document 收不到信号 → 拖拽不释放、选项点不中、滑块跟手。
+  //  - popover 稳定性由 controlled `open` state + 文档级外部点击检测实现，不再
+  //    依赖内部事件阻断。
+  //  - React Flow 的画布交互只在 `.react-flow` DOM 子树内监听，popover 走 body-portal
+  //    本就不在 RF 命中范围，不会误触发 pan / zoom / 节点选择。
+  // 所有 popover content / panel root / 全屏容器都让事件自然冒泡。
 
   const updateScene = useCallback((updater: (prev: LinghuiDirector3DScene) => LinghuiDirector3DScene) => {
     updateNodeData(nodeId, prev => ({
@@ -1015,7 +1001,6 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
     <div
       ref={panelRootRef}
       className={panelClassName}
-      onMouseDown={event => event.stopPropagation()}
       tabIndex={-1}
     >
       <div className="linghuiDirector3DLayout">
@@ -1094,7 +1079,7 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
                 }
               }}
               content={(
-                <div className="linghuiDirector3DRailPopoverInner" {...popoverEventBlockers}>
+                <div className="linghuiDirector3DRailPopoverInner">
                   <div className="linghuiDirector3DRailPopoverTitle">{tab.label}</div>
                   <div className="linghuiDirector3DAssetGrid">
             {activeAssetTab === 'characters' && (
@@ -1163,7 +1148,7 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
                 overlayClassName="linghuiDirector3DBattalionPopover"
                 getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
                 content={(
-                  <div className="linghuiDirector3DBattalionPanel" {...popoverEventBlockers}>
+                  <div className="linghuiDirector3DBattalionPanel">
                     <div className="linghuiDirector3DBattalionTitle">派兵布阵</div>
                     <div className="linghuiDirector3DBattalionHint">一键铺 M 行 × N 列的低级假人，用于群戏排布或受阅式构图。</div>
                     <div className="linghuiDirector3DBattalionRow">
@@ -1501,7 +1486,7 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
               if (open) setRightRailOpen(true);
             }}
             content={(
-              <div className="linghuiDirector3DRailPopoverInner" {...popoverEventBlockers}>
+              <div className="linghuiDirector3DRailPopoverInner">
                 <div className="linghuiDirector3DRailPopoverTitle">
                   {selection.kind === 'actor' && selectedActor ? (selectedActor.label || '属性') : '属性'}
                 </div>
@@ -1758,7 +1743,7 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
                     overlayClassName="linghuiDirector3DBattalionPopover"
                     getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
                     content={(
-                      <div className="linghuiDirector3DBattalionPanel" {...popoverEventBlockers}>
+                      <div className="linghuiDirector3DBattalionPanel">
                         <div className="linghuiDirector3DBattalionTitle">保存到全局库</div>
                         <div className="linghuiDirector3DBattalionHint">
                           可选附带 1-3 张参考图，下游图片节点会拿到当作真实视觉指引。

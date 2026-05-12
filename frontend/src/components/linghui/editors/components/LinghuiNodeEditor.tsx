@@ -461,7 +461,7 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
     // 3D 导演工作台脱离 Modal：用 portal 自建全屏容器，避免 modal 的内边距 / 默认动画
     // 干扰 viewport / timeline 的 flex 布局
     return ReactDOM.createPortal(
-      <div className="linghuiDirector3DFullscreen" onMouseDown={event => event.stopPropagation()}>
+      <div className="linghuiDirector3DFullscreen">
         <button
           type="button"
           className="linghuiDirector3DFullscreenClose"

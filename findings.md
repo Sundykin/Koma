@@ -383,3 +383,8 @@
 - 当前 `Director3DCreatureMesh.tsx` 的四足动物通用模型可用，但物种差异主要靠比例/颜色/鬃毛/角，缺少老虎条纹、狼/狐耳、熊厚掌、马鬃尾、鹿斑、麒麟鳞片、鸟类羽片/爪、凤凰尾羽、龙鳞/胡须/爪等辨识细节。
 - 当前 `Director3DProp.tsx` 根据 actor.type 只画 box/cylinder/plane/camera/arrow，具体“桌/椅/床/柜/车/树/岩石/麦克风”等语义只存在 label/promptHint 中，视口里还不够像具体物件。
 - 最稳妥方案：不扩展 actor schema，直接在渲染组件里根据 `actor.label` 的中文/英文语义或 type 分支决定附加小几何；这样旧场景兼容，导出和拖拽逻辑不用变。
+- 继续根据用户反馈复盘：上一轮细节仍是“贴上去”的，四足动物腿根 Y 坐标可能导致脚穿地/身头漂移，根因是没有按“脚底→腿→肩胯→躯干→颈→头”的骨架链重算；需要把四足、飞禽、龙形分别重排骨架层级。
+- 参考开源思路：
+  - `threejs-procedural-animal` 是 MIT 的 procedural animal 实验，核心思想是 rigged animal mesh / bone-ready，而不是随便堆几何。
+  - Three Low Poly 项目强调 parametric modeling / prefabricated low-poly objects，适合用参数化体块重画道具。
+  - Three.js Blocks 的 BirdGeometry 用“body + left wing + right wing”的最小结构读出鸟形，可作为飞禽低模结构参考。
