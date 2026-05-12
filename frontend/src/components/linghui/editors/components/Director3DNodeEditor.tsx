@@ -24,6 +24,7 @@ import type {
   LinghuiDirector3DCreatureAction,
   LinghuiDirector3DCreatureSpecies,
   LinghuiDirector3DEasing,
+  LinghuiDirector3DExportResolution,
   LinghuiDirector3DKeyframe,
   LinghuiDirector3DNodeProperties,
   LinghuiDirector3DRenderMode,
@@ -39,6 +40,9 @@ import {
   DIRECTOR3D_PROP_CATEGORY_LABELS,
   DIRECTOR3D_PROP_LIBRARY,
   DIRECTOR3D_SCENE_TEMPLATES,
+  DIRECTOR3D_EXPORT_RESOLUTION_OPTIONS,
+  resolveDirector3DExportDimensions,
+  resolveDirector3DExportResolution,
   type Director3DBattalionOptions,
   type Director3DCameraPreset,
   type Director3DCameraPresetCategory,
@@ -643,6 +647,10 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
     updateTimeline(prev => ({ ...prev, easing }));
   }, [updateTimeline]);
 
+  const handleExportResolutionChange = useCallback((resolution: LinghuiDirector3DExportResolution) => {
+    updateTimeline(prev => ({ ...prev, exportResolution: resolution }));
+  }, [updateTimeline]);
+
   const handleResetTimeline = useCallback(() => {
     updateScene(prev => ({ ...prev, timeline: createDefaultDirector3DTimeline() }));
     setSelectedKeyframeId(null);
@@ -686,11 +694,9 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
       return;
     }
 
-    // 计算输出尺寸：按当前镜头 aspectRatio 推 1024 宽
-    const aspectParts = scene.camera.aspectRatio.split(':');
-    const ratio = aspectParts.length === 2 ? Number(aspectParts[0]) / Number(aspectParts[1]) : 16 / 9;
-    const width = 1024;
-    const height = Math.round(width / ratio);
+    // 用户在 HUD 设置的导出分辨率档位 → (width, height)，按 aspectRatio 计算宽
+    const exportResolution = resolveDirector3DExportResolution(timeline.exportResolution);
+    const { width, height } = resolveDirector3DExportDimensions(exportResolution, scene.camera.aspectRatio);
 
     setPlaying(false);
     const abort = new AbortController();
@@ -1864,6 +1870,7 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
               onDurationChange={handleDurationChange}
               onFpsChange={handleFpsChange}
               onEasingChange={handleEasingChange}
+              onExportResolutionChange={handleExportResolutionChange}
               onResetTimeline={handleResetTimeline}
               onExportVideo={() => { void handleExportTimelineVideo(); }}
               onCancelExport={handleCancelTimelineExport}

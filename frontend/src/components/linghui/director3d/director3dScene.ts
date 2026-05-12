@@ -15,6 +15,7 @@ import type {
   LinghuiDirector3DActorPose,
   LinghuiDirector3DBackground,
   LinghuiDirector3DCamera,
+  LinghuiDirector3DExportResolution,
   LinghuiDirector3DKeyframeActor,
   LinghuiDirector3DEasing,
   LinghuiDirector3DKeyframe,
@@ -1462,7 +1463,63 @@ export const DIRECTOR3D_DEFAULT_TIMELINE: LinghuiDirector3DTimeline = {
   duration: 8,
   fps: 24,
   easing: 'ease-in-out',
+  exportResolution: '720p',
 };
+
+/**
+ * 视频导出分辨率档位 → 垂直像素数。宽度运行时按 aspectRatio 计算（width = round(h * ratio)），
+ * 这样 16:9 给 1280×720、21:9 给 2520×1080，符合常见视频生成模型的输入预期。
+ */
+export const DIRECTOR3D_EXPORT_RESOLUTION_HEIGHTS: Record<LinghuiDirector3DExportResolution, number> = {
+  '480p': 480,
+  '720p': 720,
+  '1080p': 1080,
+  '1440p': 1440,
+  '2160p': 2160,
+};
+
+export const DIRECTOR3D_EXPORT_RESOLUTION_OPTIONS: Array<{
+  value: LinghuiDirector3DExportResolution;
+  label: string;
+  hint: string;
+}> = [
+  { value: '480p', label: '480p', hint: '低质量预览，导出最快' },
+  { value: '720p', label: '720p', hint: 'HD（默认）' },
+  { value: '1080p', label: '1080p', hint: 'Full HD' },
+  { value: '1440p', label: '1440p', hint: '2K' },
+  { value: '2160p', label: '2160p', hint: '4K，耗时长 + 显存吃紧' },
+];
+
+/** 解析持久化数据里的 exportResolution，缺失或非法时回退到 720p */
+export function resolveDirector3DExportResolution(
+  value: unknown,
+): LinghuiDirector3DExportResolution {
+  if (value === '480p' || value === '720p' || value === '1080p' || value === '1440p' || value === '2160p') {
+    return value;
+  }
+  return '720p';
+}
+
+/**
+ * 把分辨率档位 + aspectRatio 转成最终输出 (width, height)。
+ * 长边夹在 [256, 3840]；short edge 也保底 256。
+ */
+export function resolveDirector3DExportDimensions(
+  resolution: LinghuiDirector3DExportResolution,
+  aspectRatio: string,
+): { width: number; height: number } {
+  const targetHeight = DIRECTOR3D_EXPORT_RESOLUTION_HEIGHTS[resolution] ?? 720;
+  const parts = (aspectRatio || '16:9').split(':');
+  const ratio = parts.length === 2 ? Number(parts[0]) / Number(parts[1]) : 16 / 9;
+  const safeRatio = Number.isFinite(ratio) && ratio > 0 ? ratio : 16 / 9;
+  const rawWidth = Math.round(targetHeight * safeRatio);
+  // 编码器通常要求偶数尺寸；夹紧到 [256, 3840] 并 floor 到偶数
+  const clamp = (value: number) => Math.max(256, Math.min(3840, value)) & ~1;
+  return {
+    width: clamp(rawWidth),
+    height: clamp(targetHeight),
+  };
+}
 
 /** 创建一个空 timeline（一次性 helper，避免外部把 DEFAULT 当 mutable） */
 export function createDefaultDirector3DTimeline(): LinghuiDirector3DTimeline {
