@@ -470,11 +470,16 @@ export function compileVideoRequestPromptReferences<TAsset extends VideoRequestA
     };
   }
 
-  const replacementStrategy =
-    params.promptProtocol === 'grok-image-index' &&
-    supportsVisualReferenceCompilation(params.request.capability)
+  // 协议 → 占位符策略：
+  //   grok-image-index → @Image N / @Video N / @Audio N
+  //   koma-jimeng      → @image_file_N / @video_file_N / @audio_file_N
+  //   其它 / 不支持视觉参考的能力 → readable-name
+  const replacementStrategy: 'image-index' | 'readable-name' | 'koma-jimeng-file' =
+    params.promptProtocol === 'grok-image-index' && supportsVisualReferenceCompilation(params.request.capability)
       ? 'image-index'
-      : 'readable-name';
+      : params.promptProtocol === 'koma-jimeng' && supportsVisualReferenceCompilation(params.request.capability)
+        ? 'koma-jimeng-file'
+        : 'readable-name';
 
   const compiled = compilePromptReferences({
     prompt: params.request.prompt,
@@ -485,44 +490,63 @@ export function compileVideoRequestPromptReferences<TAsset extends VideoRequestA
     ensurePrimaryReference: Boolean(promptReferences.ensurePrimaryReference),
   });
 
+  // 协议 = koma-jimeng 时把按 kind 拆分的 URL 列表附在 request.metadata 里，
+  // 供 Provider 透传到 metadata.image_urls / video_urls / audio_urls，让网关分发到
+  // image_file_N / video_file_N / audio_file_N。
+  const mergeKomaJimengMetadata = <T>(req: T): T => {
+    if (params.promptProtocol !== 'koma-jimeng') return req;
+    const existing = (req as unknown as { metadata?: Record<string, unknown> }).metadata ?? {};
+    return {
+      ...(req as object),
+      metadata: {
+        ...existing,
+        komaJimengAssets: {
+          image_urls: compiled.compiledByKind.image,
+          video_urls: compiled.compiledByKind.video,
+          audio_urls: compiled.compiledByKind.audio,
+        },
+      },
+    } as T;
+  };
+
   if (isImageToVideoRequest(params.request)) {
     return {
-      request: {
+      request: mergeKomaJimengMetadata({
         ...params.request,
         prompt: compiled.compiledPrompt,
         additionalReferences: compiled.compiledReferences as TAsset[],
-      },
+      }),
       unresolvedMentions: compiled.unresolvedMentions,
     };
   }
 
   if (isReferenceToVideoRequest(params.request)) {
     return {
-      request: {
+      request: mergeKomaJimengMetadata({
         ...params.request,
         prompt: compiled.compiledPrompt,
         referenceImages: compiled.compiledReferences as TAsset[],
-      },
+      }),
       unresolvedMentions: compiled.unresolvedMentions,
     };
   }
 
   if (isStartEndToVideoRequest(params.request)) {
     return {
-      request: {
+      request: mergeKomaJimengMetadata({
         ...params.request,
         prompt: compiled.compiledPrompt,
         endFrame: (compiled.compiledReferences[0] as TAsset | undefined) || params.request.endFrame,
-      },
+      }),
       unresolvedMentions: compiled.unresolvedMentions,
     };
   }
 
   return {
-    request: {
+    request: mergeKomaJimengMetadata({
       ...params.request,
       prompt: compiled.compiledPrompt,
-    },
+    }),
     unresolvedMentions: compiled.unresolvedMentions,
   };
 }

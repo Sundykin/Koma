@@ -94,6 +94,28 @@ describe('compilePromptReferences 多类型编译协议', () => {
       expect(result.compiledPrompt).toBe('@Image 1');
     });
 
+    it('koma-jimeng-file 策略：占位符为 @image_file_N / @video_file_N / @audio_file_N', () => {
+      const result = compilePromptReferences({
+        prompt: '@ref_a 站在 @ref_b 前 @ref_v_1 @ref_au_1',
+        references: [
+          { id: 'a', name: '主角', kind: 'image', source: 'https://x/a.png' },
+          { id: 'b', name: '场景', kind: 'image', source: 'https://x/b.jpg' },
+          { id: 'v_1', name: '运镜', kind: 'video', source: 'https://x/v1.mp4' },
+          { id: 'au_1', name: '台词', kind: 'audio', source: 'https://x/au1.mp3' },
+        ],
+        replacementStrategy: 'koma-jimeng-file',
+      });
+      expect(result.compiledPrompt).toBe(
+        '@image_file_1 站在 @image_file_2 前 @video_file_1 @audio_file_1',
+      );
+      // compiledByKind 按 kind 分列，直接给 Koma 即梦 metadata.image_urls 等用
+      expect(result.compiledByKind).toEqual({
+        image: ['https://x/a.png', 'https://x/b.jpg'],
+        video: ['https://x/v1.mp4'],
+        audio: ['https://x/au1.mp3'],
+      });
+    });
+
     it('readable-name 策略下：不按 kind 编号，直接替换为 name', () => {
       const result = compilePromptReferences({
         prompt: '@ref_a @ref_v',

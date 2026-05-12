@@ -17,6 +17,19 @@ const KIND_LABEL: Record<PromptCompilationReferenceKind, string> = {
   audio: 'Audio',
 };
 
+/**
+ * Koma 即梦协议下的占位符 label：
+ *   image → image_file（最终成 @image_file_N）
+ *   video → video_file
+ *   audio → audio_file
+ * 与上游 multipart 字段名一一对应。
+ */
+const KOMA_JIMENG_KIND_LABEL: Record<PromptCompilationReferenceKind, string> = {
+  image: 'image_file',
+  video: 'video_file',
+  audio: 'audio_file',
+};
+
 export interface ParsedPromptReference {
   id: string;
   fullMatch: string;
@@ -26,7 +39,19 @@ export interface ParsedPromptReference {
 
 export interface CompilePromptReferencesResult {
   compiledPrompt: string;
+  /** 扁平的全能参考数组，沿用历史字段。按推入顺序排（primary → extras → 被 @ 的 refs） */
   compiledReferences: Array<MediaAssetSource | ProviderAssetInput>;
+  /**
+   * 按 kind 拆分的引用 URL 数组。供 Koma 即梦渠道作为 metadata.image_urls /
+   * video_urls / audio_urls 单独透传给上游，让网关分别落到 image_file_N /
+   * video_file_N / audio_file_N 字段。
+   * 仅识别 string / ProviderAssetInput.value 形态的远程 URL，非字符串源跳过。
+   */
+  compiledByKind: {
+    image: string[];
+    video: string[];
+    audio: string[];
+  };
   unresolvedMentions: string[];
 }
 
@@ -69,23 +94,23 @@ interface OrderedVisualReference {
 /**
  * 提示词引用编译。把 prompt 里的 @ref_xxx 替换为：
  *   - image-index 策略：按 kind 分组 @Image N / @Video N / @Audio N（video / audio 上限 3，超出回退到 name）
+ *   - koma-jimeng-file 策略：按 kind 分组 @image_file_N / @video_file_N / @audio_file_N，
+ *     与 Koma 即梦上游 multipart 字段（image_file_N / video_file_N / audio_file_N）一一对应。
  *   - readable-name 策略：替换为 item.name
  *
  * 智能裁剪：只把 prompt 里实际 @ 到的 reference 推进编号桶 + compiledReferences；
  * 未 @ 的 references 不上传也不占用编号槽。primary + extraReferences 是显式槽位
- * （由调用方塞入），永远参与。这避免了"上游 4 张图，prompt 只 @ 了第 4 张，结果被
- * 编译成 @Image 4 + 同时把另外 3 张无关图也上传"的浪费场景。
+ * （由调用方塞入），永远参与。
  *
- * compiledReferences 是「全能参考」扁平数组：image / video / audio 走同一个引用通道，
- * 按推入顺序排列（primary → extra → 被 @ 到的声明顺序）；上游会按需上传到图床并塞进
- * additionalReferences / referenceImages 等同一组字段，body 不区分类型。
- * 调用方仅靠 prompt 文本里的 @Image N / @Video N / @Audio N 让模型自行对位。
+ * compiledReferences 是「全能参考」扁平数组（沿用历史字段）；compiledByKind 是按 kind
+ * 拆分的 URL 数组，供 Koma 即梦渠道直接拆到 metadata 上不同字段，让网关分别落到
+ * image_file_N / video_file_N / audio_file_N。
  */
 export function compilePromptReferences(params: {
   prompt: string;
   references: PromptCompilationReferenceItem[];
   extraReferences?: Array<MediaAssetSource | ProviderAssetInput>;
-  replacementStrategy: 'image-index' | 'readable-name';
+  replacementStrategy: 'image-index' | 'readable-name' | 'koma-jimeng-file';
   primaryReferenceId?: string;
   ensurePrimaryReference?: boolean;
 }): CompilePromptReferencesResult {
@@ -184,6 +209,13 @@ export function compilePromptReferences(params: {
         // 该 kind 超出上限 / 没占到编号 → 回退到 readable name
       }
 
+      if (replacementStrategy === 'koma-jimeng-file') {
+        const index = indexByKind[kind].get(sourceKey);
+        if (index != null) {
+          return { ...parsed, replacement: `@${KOMA_JIMENG_KIND_LABEL[kind]}_${index}` };
+        }
+      }
+
       return { ...parsed, replacement: item.name };
     }
 
@@ -206,9 +238,40 @@ export function compilePromptReferences(params: {
     .filter(item => item.key !== primarySourceKey)
     .map(item => item.source);
 
+  // 按 kind 提取 URL 字符串供 Koma 即梦协议 metadata 透传。primary 同样剔除（外层另塞）。
+  // 来源类型：string（直接 URL）/ ProviderAssetInput.transport=remote-url（取 value）；
+  // 其它形态（data-url / koma-local / StoredMediaAsset）跳过 —— Koma 即梦上游网关只下载 http(s)。
+  const extractRemoteUrl = (src: MediaAssetSource | ProviderAssetInput): string | null => {
+    if (typeof src === 'string') {
+      return src.startsWith('http://') || src.startsWith('https://') ? src : null;
+    }
+    if (src && typeof src === 'object' && 'transport' in src && 'value' in src) {
+      const value = String(src.value || '');
+      if (src.transport === 'remote-url' && (value.startsWith('http://') || value.startsWith('https://'))) {
+        return value;
+      }
+      return null;
+    }
+    const anyRef = src as unknown as Record<string, unknown> | undefined;
+    const remoteUrl = typeof anyRef?.remoteUrl === 'string' ? anyRef.remoteUrl : '';
+    return remoteUrl.startsWith('http') ? remoteUrl : null;
+  };
+  const compiledByKind = { image: [] as string[], video: [] as string[], audio: [] as string[] };
+  // 按各 kind 的 indexByKind 编号顺序填充 URL：(key → index) 反向排序 → URL 数组
+  (Object.keys(indexByKind) as PromptCompilationReferenceKind[]).forEach(kind => {
+    const entries = Array.from(indexByKind[kind].entries()).sort((a, b) => a[1] - b[1]);
+    for (const [key] of entries) {
+      if (key === primarySourceKey) continue;
+      const ref = orderedVisualRefs.find(item => item.key === key);
+      const url = ref ? extractRemoteUrl(ref.source) : null;
+      if (url) compiledByKind[kind].push(url);
+    }
+  });
+
   return {
     compiledPrompt,
     compiledReferences,
+    compiledByKind,
     unresolvedMentions,
   };
 }

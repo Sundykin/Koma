@@ -4,7 +4,7 @@
  *
  * 当前内置渠道收敛为 2 个，都默认指向 https://komaapi.com：
  *   - grok2api-imagine-itv  → Koma官方 Grok（图生视频）
- *   - koma-suihe-itv        → Koma 官方 - 即梦（穗禾 Seedance）
+ *   - koma-suihe-itv        → Koma 官方 - 即梦（Koma 即梦 Seedance）
  *
  * 之前注册过的 runway / kling / pika / sora2 / seedance / vidu /
  * comfyui-animatediff / custom 已下线；用户旧渠道仍存于 SQLite，
@@ -43,9 +43,10 @@ function registerBuiltinProviders() {
     {
       type: 'koma-suihe-itv',
       kind: 'itv',
-      name: 'Koma 官方 - 即梦',
-      description: 'Koma 官方激活通道下的即梦视频生成（seedance-2.0-r / -f）。'
-        + '协议为 OpenAI 标准视频 API JSON，由 komaapi.com 网关转换为穗禾上游 multipart。',
+      name: 'Koma 即梦',
+      description: 'Koma 官方激活通道下的即梦视频生成（seedance-2.0 / seedance-2.0-fast）。'
+        + '客户端发 OpenAI 标准视频 API JSON + Koma 即梦协议占位符（@image_file_N / '
+        + '@video_file_N / @audio_file_N），由 komaapi.com 网关转成上游 multipart。',
       factory: (config) => new SuiheITVProvider(config as ITVConfig),
       contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
       capabilities: ['itv'],

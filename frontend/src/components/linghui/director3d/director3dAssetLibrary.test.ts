@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DIRECTOR3D_OPEN_MODEL_CATALOG,
+  getDirector3DProceduralModelEntries,
+} from './director3dOpenModelCatalog';
+import {
   DIRECTOR3D_CHARACTER_PRESETS,
   DIRECTOR3D_PROP_CATEGORY_LABELS,
   DIRECTOR3D_PROP_LIBRARY,
@@ -104,5 +108,34 @@ describe('C-5A 内置资产库', () => {
     const students = scene.actors.find(a => a.type === 'formation');
     expect(students).toBeDefined();
     expect(students?.posePreset).toBe('sit');
+  });
+
+  it('开源模型目录记录来源 / 许可证 / 用途，且 id 唯一', () => {
+    expect(DIRECTOR3D_OPEN_MODEL_CATALOG.length).toBeGreaterThanOrEqual(5);
+    const ids = new Set<string>();
+    for (const entry of DIRECTOR3D_OPEN_MODEL_CATALOG) {
+      expect(entry.id).toBeTruthy();
+      expect(ids.has(entry.id)).toBe(false);
+      ids.add(entry.id);
+      expect(entry.sourceUrl).toMatch(/^https?:\/\//);
+      expect(entry.licenseUrl).toMatch(/^https?:\/\//);
+      expect(entry.license).toBeTruthy();
+      expect(entry.usage.length).toBeGreaterThan(10);
+      expect(entry.rigNotes.length).toBeGreaterThan(10);
+    }
+    expect(DIRECTOR3D_OPEN_MODEL_CATALOG.some(entry => entry.license === 'CC0-1.0')).toBe(true);
+    expect(DIRECTOR3D_OPEN_MODEL_CATALOG.some(entry => entry.license === 'per-asset-license')).toBe(true);
+  });
+
+  it('可程序化导入的开源来源都有 actor 默认值', () => {
+    const proceduralEntries = getDirector3DProceduralModelEntries();
+    expect(proceduralEntries.length).toBeGreaterThanOrEqual(2);
+    for (const entry of proceduralEntries) {
+      expect(entry.importStatus).toBe('procedural-ready');
+      expect(entry.actorDefaults).toBeDefined();
+      expect(entry.actorDefaults?.label).toBeTruthy();
+      expect(entry.actorDefaults?.scale).toBeGreaterThan(0);
+      expect(entry.actorDefaults?.posePreset).toBeTruthy();
+    }
   });
 });

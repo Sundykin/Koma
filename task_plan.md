@@ -618,3 +618,43 @@
 | Error | Attempt | Resolution |
 |------|---------|------------|
 | 新增手写对白测试首次失败，`叶赎 台词` 被清洗掉 | 1 | `sanitizeNarrativeDialogueLeakage()` 误把含“自称天道”的显式台词当旁白泄漏删除；已让 `台词：` 标记优先保留，并把旁白泄漏匹配限制为片段开头 |
+
+## Session: 2026-05-12 Director3D Model Refinement And Open Model Catalog
+
+### Goal
+- 精修 3D 导演工作台中的主角 / 群演 / 方阵程序化模型，让主角有面部、正背面、手脚、关节等可读细节，其他人物也能看出朝向。
+- 查找开源模型画法与骨骼画法，把许可证清晰的来源导入导演工作台资产入口，避免直接打包不明授权或过大资产。
+- 优化导出 prompt，让下游图片 / 视频模型知道程序化人物包含面部朝向、正背标记、骨骼姿态和群演排布。
+
+### Phases
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Research & Diagnosis | complete | 确认当前 Director3D 是程序化 mesh；检索 Kenney / MakeHuman / Poly Haven / Khronos glTF / Three.js SkeletonHelper 来源与许可 |
+| 2. Procedural Model Refinement | complete | 精修主角、群演、方阵模型的面部/正背/服装/关节/手脚细节 |
+| 3. Open Model Catalog Integration | complete | 增加开源模型来源目录并接入左侧资产 rail |
+| 4. Prompt & Tests | complete | 更新导演 prompt 编译与资产库测试，运行目标测试 / TypeScript / diff check |
+
+### Error Log
+| Error | Attempt | Resolution |
+|------|---------|------------|
+| 按旧总结路径读取 `frontend/src/components/linghui/director3d/Director3DNodeEditor.tsx` 失败 | 1 | 实际文件在 `frontend/src/components/linghui/editors/components/Director3DNodeEditor.tsx`，已重新定位 |
+
+## Session: 2026-05-12 Director3D Procedural Detail Pass
+
+### Goal
+- 隐藏 3D 导演工作台左侧“外部模型库/模型”入口，不再展示开源来源库。
+- 不引入额外外部资源，继续用 procedural mesh 细化人物、动物、道具模型。
+- 动物要补足物种特征，道具要从单纯占位变成可读的具体物件。
+
+### Phases
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Diagnosis | complete | 确认生物和道具当前主要是基础几何，模型库入口来自上一轮新增 rail tab |
+| 2. Hide External Catalog | complete | UI 隐藏“模型”入口，保留底层目录文件和测试 |
+| 3. Creature Detail Pass | complete | 细化四足、飞禽、神龙/凤凰等 procedural mesh 特征 |
+| 4. Prop Detail Pass | complete | 根据 actor label/promptHint 细化桌椅车树门窗等道具几何 |
+| 5. Validation | complete | 运行目标测试 / TypeScript / build / diff check |
+
+### Error Log
+| Error | Attempt | Resolution |
+|------|---------|------------|

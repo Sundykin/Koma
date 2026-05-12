@@ -968,8 +968,9 @@ export function compileDirector3DPromptFragment(scene: LinghuiDirector3DScene): 
       const rigHint = actor.rig
         ? describeRigForPrompt(resolveActorRig(actor.rig, actor.posePreset))
         : '';
+      const detailHint = 'refined humanoid blocking model with visible face direction, eyes, nose bridge, mouth line, ears, chest front marker, back spine stripe, joint balls, hands with thumbs, and forward-pointing shoes';
       const suffix = rigHint ? `, ${rigHint}` : '';
-      return `  - ${actor.label} at (${pos}), facing ${facing}deg, pose ${pose}${suffix}`;
+      return `  - ${actor.label} at (${pos}), facing ${facing}deg, pose ${pose}, ${detailHint}${suffix}`;
     });
     lines.push('Hero actor blocking:');
     lines.push(...actorLines);
@@ -986,7 +987,7 @@ export function compileDirector3DPromptFragment(scene: LinghuiDirector3DScene): 
     const facingSummary = Array.from(facingTally.entries())
       .map(([deg, count]) => `${count} facing ${deg}deg`)
       .join(', ');
-    lines.push(`Background extras: ${count} non-hero placeholders, ${facingSummary}. Render as ordinary background characters, no individual identity.`);
+    lines.push(`Background extras: ${count} non-hero placeholders with small face/chest/back direction markers, ${facingSummary}. Render as ordinary background characters, no individual identity.`);
   }
 
   if (formations.length > 0) {
@@ -998,7 +999,7 @@ export function compileDirector3DPromptFragment(scene: LinghuiDirector3DScene): 
       const facingDeg = Math.round((actor.rotationY * 180) / Math.PI);
       const memberFacing = cfg.memberFacing;
       const total = cfg.rows * cfg.cols;
-      return `  - ${actor.label}: ${cfg.rows} rows × ${cfg.cols} cols (${total} extras in formation), spacing ${cfg.spacing.toFixed(1)}m, centered at (${pos}), formation facing ${facingDeg}deg, members facing ${memberFacing}`;
+      return `  - ${actor.label}: ${cfg.rows} rows × ${cfg.cols} cols (${total} extras in formation), spacing ${cfg.spacing.toFixed(1)}m, centered at (${pos}), formation facing ${facingDeg}deg, members facing ${memberFacing}, each member has simplified face/chest/back orientation marks`;
     }).filter((value): value is string => value !== null);
     if (formationLines.length > 0) {
       lines.push('Ranked formations / crowd squads (treat each formation as a single ordered group, do not render as scattered crowd):');
@@ -1826,4 +1827,3 @@ export function interpolateSceneAt(
     background: sceneSegmentLeft?.background ?? scene.background,
   };
 }
-
