@@ -1,17 +1,17 @@
 /**
- * Koma 官方 - 即梦（穗禾上游）ITV Provider
+ * Koma 官方 - 即梦（Koma 即梦上游）ITV Provider
  *
  * 协议对齐 new-api 网关 (relay/channel/task/suihe/adaptor.go)：
  *   - 客户端发 **OpenAI 标准视频 API** JSON（prompt / model / seconds / size / images / metadata）
- *   - 网关把 OpenAI 标准字段转成穗禾上游 multipart（first_frame、ratio、video_resolution 等）
- *   - 客户端**不需要**发 multipart / 不要构造穗禾 raw 字段
+ *   - 网关把 OpenAI 标准字段转成Koma 即梦上游 multipart（first_frame、ratio、video_resolution 等）
+ *   - 客户端**不需要**发 multipart / 不要构造Koma 即梦 raw 字段
  *
  * 上游路径（OpenAI 视频 API 标准，与 sora2 一致）：
  *   POST /v1/videos              创建任务
  *   GET  /v1/videos/{id}         查询任务（响应 OpenAIVideo：id / status / progress / metadata.url）
  *
  * 字段约定：
- *   - 时长字段使用 OpenAI 标准的 `seconds`（字符串），new-api 内部会换算为穗禾 duration（int）。
+ *   - 时长字段使用 OpenAI 标准的 `seconds`（字符串），new-api 内部会换算为Koma 即梦 duration（int）。
  *   - 结果 URL 从响应的 metadata.url / metadata.result_urls[0] 读取（OpenAIVideo 把上游的
  *     result_urls 透传到了 metadata，不在顶层）。
  *
@@ -19,7 +19,7 @@
  *   - seedance-2.0       duration 4-15 s
  *   - seedance-2.0-fast  duration 4-15 s
  *
- * 当前阶段穗禾上游强制锁 480p，所以 size 始终送 480p 档位（按 aspectRatio 选 854x480 / 480x854）。
+ * 当前阶段Koma 即梦上游强制锁 480p，所以 size 始终送 480p 档位（按 aspectRatio 选 854x480 / 480x854）。
  *
  * 注意：本 provider 走 komaapi.com 网关，独立类型避免与 grok2api 混用字段格式。
  */
@@ -41,7 +41,7 @@ import {
   type ITVResult,
 } from './types';
 
-// 与 Grok2API 对齐的最大参考图数量；穗禾上游对全能引用模式无明确硬上限，
+// 与 Grok2API 对齐的最大参考图数量；Koma 即梦上游对全能引用模式无明确硬上限，
 // 这里取 7 张（Grok 限制）作为安全档位，避免 prompt 编译阶段引用过多被截断不一致。
 const SUIHE_MAX_REFERENCE_IMAGES = 7;
 
@@ -84,7 +84,7 @@ function joinUrl(base: string, path: string): string {
   return `${base.replace(/\/+$/, '')}${path.startsWith('/') ? path : `/${path}`}`;
 }
 
-// 穗禾上游接受的比例白名单（来自 400 错误响应 supported 字段）
+// Koma 即梦上游接受的比例白名单（来自 400 错误响应 supported 字段）
 const SUIHE_SUPPORTED_RATIOS = new Set([
   '1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '21:9',
 ]);
@@ -103,7 +103,7 @@ function normalizeSuiheRatio(aspectRatio?: string): string {
  * 选 size：必须 gcd 后落到 SUIHE_SUPPORTED_RATIOS 白名单内的尺寸。
  *
  * 关键：new-api 网关会用 gcd 简化 size 推 ratio，比如 480x854 → gcd(480,854)=2 → "240:427"
- * 不在穗禾白名单里 → 上游 400。所以必须送标准 OpenAI Sora 尺寸（720x1280 / 1280x720 / 1024x1024）
+ * 不在Koma 即梦白名单里 → 上游 400。所以必须送标准 OpenAI Sora 尺寸（720x1280 / 1280x720 / 1024x1024）
  * 这些 gcd 化后正好命中标准比例。
  *
  * video_resolution 由网关侧 suiheLockedResolution 强制锁 480p，客户端送的 size 仅用于推 ratio，
@@ -143,11 +143,10 @@ export class SuiheITVProvider implements ITVProvider {
   };
 
   constructor(config: ITVConfig) {
-    // 与 Grok2ApiImagineITVProvider 对称：强制 grok-image-index prompt 协议。
-    // 否则 MediaGenerationService.generateVideo 走的 compileVideoRequestPromptReferences 会用
-    // 'readable-name' 替换策略（@char_001 → 角色名），而 grok 风格的上游模型期望 @Image N 占位符。
-    // 这就是"提示词编译未生效"的根因。
-    this.config = { ...config, promptProtocol: config.promptProtocol ?? 'grok-image-index' };
+    // 默认走 Koma 即梦协议：prompt 编译占位符为 @image_file_N / @video_file_N / @audio_file_N，
+    // 网关按 metadata.image_urls / video_urls / audio_urls 分发到上游 multipart 各类字段。
+    // 老配置如显式设了 grok-image-index 仍然兼容（图片走 @Image N 路径，视频 / 音频不上传）。
+    this.config = { ...config, promptProtocol: config.promptProtocol ?? 'koma-jimeng' };
   }
 
   private getBaseUrl(): string {
@@ -198,8 +197,8 @@ export class SuiheITVProvider implements ITVProvider {
   }
 
   async start(request: ITVRequest): Promise<ProviderStartResult<ITVResult>> {
-    if (!this.validate()) throw new Error('Suihe API Key 或模型未配置');
-    assertSupportedVideoCapabilities(request, '即梦', [
+    if (!this.validate()) throw new Error('Koma 即梦 API Key 或模型未配置');
+    assertSupportedVideoCapabilities(request, 'Koma 即梦', [
       'video.text-to-video',
       'video.image-to-video',
       'video.start-end-to-video',
@@ -209,7 +208,7 @@ export class SuiheITVProvider implements ITVProvider {
     const options = request.options as ITVOptions | undefined;
     const model = this.getModelName();
     const duration = clampDuration(model, options?.duration ?? this.config.defaultDuration, 5);
-    // 必须先归一到穗禾白名单比例，再用它选 size —— 避免 size→ratio 落到 240:427 等非白名单值
+    // 必须先归一到 Koma 即梦白名单比例，再用它选 size —— 避免 size→ratio 落到 240:427 等非白名单值
     const ratio = normalizeSuiheRatio(options?.aspectRatio);
     const size = pickSize(ratio);
 
@@ -221,16 +220,21 @@ export class SuiheITVProvider implements ITVProvider {
       size,
     };
 
-    // 关键：必须把 prompt 编译产物里的所有引用图（角色/场景/道具图）一起送出去，
-    // 否则上游模型只能"看到"prompt 文本里的 @Image N 占位符，但找不到实际图片。
-    // 与 Grok2API ITV 处理对齐（参考 Grok2ApiImagineITVProvider:307-340）：
-    //
-    //   - image-to-video      → [primaryImage, ...additionalReferences]   去重，images
-    //   - reference-to-video  → referenceImages                            去重，images（全能参考）
-    //   - start-end-to-video  → [startFrame]                               images，endFrame 走 metadata
-    //
-    // function_mode 按 capability 显式声明，告诉上游用哪条 multipart 字段路径
-    // （first_frame / omni_reference / first_last_frames）。
+    // 读 koma-jimeng 协议编译器拆好的按 kind 的 URL 列表（仅 koma-jimeng 协议下有值），
+    // 优先走分类透传：网关分发到 image_file_N / video_file_N / audio_file_N。
+    const komaAssets = (request.metadata?.komaJimengAssets ?? null) as
+      | { image_urls?: string[]; video_urls?: string[]; audio_urls?: string[] }
+      | null;
+    const hasKomaClassified = Boolean(
+      komaAssets
+      && ((komaAssets.image_urls?.length ?? 0)
+        + (komaAssets.video_urls?.length ?? 0)
+        + (komaAssets.audio_urls?.length ?? 0) > 0),
+    );
+
+    // 老路径（grok-image-index 协议或仅图场景）：所有引用图汇总到 images[]，
+    // function_mode 告诉网关走哪条 multipart 字段路径（first_frame / omni_reference /
+    // first_last_frames）。
     const seenUrls = new Set<string>();
     const imageUrls: string[] = [];
     const pushUrl = (value?: string) => {
@@ -247,25 +251,31 @@ export class SuiheITVProvider implements ITVProvider {
       functionMode = 'first_frame';
     } else if (request.capability === 'video.reference-to-video') {
       for (const ref of request.referenceImages || []) pushUrl(ref?.value);
-      if (imageUrls.length > 0) functionMode = 'omni_reference';
+      if (imageUrls.length > 0 || hasKomaClassified) functionMode = 'omni_reference';
     } else if (request.capability === 'video.start-end-to-video') {
-      // images 只放 startFrame；endFrame 走 metadata.end_frame_url
-      // （由 adaptor.go:279 透传到上游 first_last_frames 模式所需的 end_frame 字段）
       pushUrl(request.startFrame?.value);
       functionMode = 'first_last_frames';
     }
-    if (imageUrls.length > 0) body.images = imageUrls;
 
-    // metadata.ratio 在网关侧优先级高于 size 推断（参考 adaptor.go:254-256）—— 作为防御性兜底。
+    // metadata.ratio 在网关侧优先级高于 size 推断 —— 作为防御性兜底。
     // function_mode、end_frame_url 等扩展字段全部走 metadata 透传。
     const metadata: Record<string, unknown> = { ratio };
     if (functionMode) metadata.function_mode = functionMode;
     if (request.capability === 'video.start-end-to-video' && request.endFrame?.value) {
       metadata.end_frame_url = request.endFrame.value;
     }
+
+    if (hasKomaClassified) {
+      // Koma 即梦分类协议：URL 按 kind 拆 metadata，避免和 images[] 双写。
+      if (komaAssets?.image_urls?.length) metadata.image_urls = komaAssets.image_urls;
+      if (komaAssets?.video_urls?.length) metadata.video_urls = komaAssets.video_urls;
+      if (komaAssets?.audio_urls?.length) metadata.audio_urls = komaAssets.audio_urls;
+    } else if (imageUrls.length > 0) {
+      body.images = imageUrls;
+    }
     body.metadata = metadata;
 
-    logger.info('Suihe start request', {
+    logger.info('Koma 即梦 start request', {
       provider: this.config.provider,
       capability: request.capability,
       model,
@@ -313,7 +323,7 @@ export class SuiheITVProvider implements ITVProvider {
       return { state: 'failed', progress: 0, error: '查询返回非 JSON' };
     }
 
-    // 状态映射：兼容 OpenAI 标准（queued/in_progress/completed/failed）+ 穗禾枚举（pending/submitted/generating/post_processing/success/failed）
+    // 状态映射：兼容 OpenAI 标准（queued/in_progress/completed/failed）+ Koma 即梦枚举（pending/submitted/generating/post_processing/success/failed）
     const status = String(data.status || '').toLowerCase();
     let state: ProviderTaskSnapshot<ITVResult>['state'];
     if (status === 'success' || status === 'completed' || status === 'succeeded') state = 'succeeded';
@@ -321,7 +331,7 @@ export class SuiheITVProvider implements ITVProvider {
     else if (status === 'pending' || status === 'submitted' || status === 'queued') state = 'queued';
     else state = 'running';
 
-    // 进度：OpenAIVideo 顶层 progress 是 number；穗禾原生还可能给 progress_pct/progress_text
+    // 进度：OpenAIVideo 顶层 progress 是 number；Koma 即梦原生还可能给 progress_pct/progress_text
     const pctRaw = data.progress_pct ?? data.progress;
     const progress = typeof pctRaw === 'number'
       ? Math.max(0, Math.min(100, Math.round(pctRaw)))

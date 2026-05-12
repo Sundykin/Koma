@@ -1,7 +1,13 @@
 import type { MediaAssetSource, ProviderAssetInput } from '../../types';
 import type { AssetMentionType, MentionType, ParsedMention } from '../../editor/mentionTypes';
 
-export type PromptCompilationProtocol = 'grok-image-index';
+/**
+ * 提示词编译协议：
+ *   - 'grok-image-index'：通用 OpenAI 兼容协议，占位符按 kind 编号成 @Image N / @Video N / @Audio N
+ *   - 'koma-jimeng'    ：Koma 即梦渠道专用，占位符为 @image_file_N / @video_file_N / @audio_file_N，
+ *                       对应上游 multipart 的 image_file_N / video_file_N / audio_file_N 字段。
+ */
+export type PromptCompilationProtocol = 'grok-image-index' | 'koma-jimeng';
 
 export interface PromptCompilationAsset {
   type: AssetMentionType;
