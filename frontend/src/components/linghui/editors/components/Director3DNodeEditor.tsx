@@ -15,7 +15,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { App, Button, InputNumber, Popover, Slider, Tooltip } from 'antd';
 import { useNodes } from '@xyflow/react';
 import type { Node } from '@xyflow/react';
-import { ArrowRight, Box, Camera, Cylinder, Eye, Grid2x2, Image as ImageIcon, Layers, LayoutTemplate, Link2, Link2Off, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Plus, Square, Trash2, Users, Wand2, Zap } from 'lucide-react';
+import { ArrowRight, Box, Camera, Cylinder, Eye, Grid2x2, Image as ImageIcon, Layers, LayoutTemplate, Link2, Maximize2, Minimize2, Plus, Square, Trash2, Users, Wand2, Zap } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type {
   LinghuiDirector3DActor,
@@ -111,6 +111,7 @@ const PROP_ICON_BY_TYPE: Record<Director3DPropPreset['type'], LucideIcon> = {
 const CAMERA_PRESET_CATEGORY_ORDER: Director3DCameraPresetCategory[] = ['shot-size', 'angle', 'lens', 'classic'];
 
 const ASPECT_RATIOS = ['16:9', '21:9', '4:3', '1:1', '9:16'];
+type Director3DAssetTab = 'props' | 'characters' | 'creatures' | 'cameras' | 'templates';
 
 const RENDER_MODE_LABELS: Record<LinghuiDirector3DRenderMode, string> = {
   preview: '彩色',
@@ -148,11 +149,11 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
 
   const scene = useMemo(() => getScene(nodeData.properties), [nodeData.properties]);
   const [selection, setSelection] = useState<Selection>({ kind: null });
-  const [activeAssetTab, setActiveAssetTab] = useState<'props' | 'characters' | 'creatures' | 'cameras' | 'templates'>('characters');
+  const [activeAssetTab, setActiveAssetTab] = useState<Director3DAssetTab>('characters');
   // 左右 rail 用受控 open：hover 触发开，关闭只走 ① 点击工作台之外区域 ② Esc ③ 切到另一个 tab。
   // 之前 antd 默认 hover-leave 在用户 mouse 移到 body-mounted 子 popup（Select 下拉 / ColorPicker /
   // 派兵布阵 popover）上时会触发，从而提前关闭外层 rail；切受控避开这条路径。
-  const [openLeftRailTab, setOpenLeftRailTab] = useState<'props' | 'characters' | 'creatures' | 'cameras' | 'templates' | null>(null);
+  const [openLeftRailTab, setOpenLeftRailTab] = useState<Director3DAssetTab | null>(null);
   const [rightRailOpen, setRightRailOpen] = useState(false);
   // 默认彩色预览：保留物体颜色 + 含地面/天空 + 无描边 → 所见即所得
   const [renderModeForExport, setRenderModeForExport] = useState<LinghuiDirector3DRenderMode>('preview');
@@ -168,13 +169,18 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
   // capture 阶段 stopPropagation，避免 ReactFlow / 外层画布快捷键在用户编辑时被触发。
   const panelRootRef = useRef<HTMLDivElement | null>(null);
 
-  // 悬浮菜单内容 wrapper 用：阻断鼠标 / 指针 / 滚轮 / 上下文 / 点击事件向上冒泡，
-  // 让 popover 里拖动 slider / 滚动 / 点选项时画布不会跟着平移 / 缩放 / 误选节点，
-  // 也避免 React event 一路冒泡到 root，省一遍 RF 的 handler 链（性能优化）。
+  // 悬浮菜单内容 wrapper 用：阻断 React 合成事件冒泡到画布层（onClick → handleNodeClick /
+  // handlePaneClick 等），让 popover 里拖动 slider / 滚动 / 点选项时画布不会跟着平移 /
+  // 缩放 / 误选节点。
+  //
+  // 注意：**不能**调用 event.nativeEvent.stopPropagation()，否则原生 mouseup / pointerup
+  // 到不了 document，而 antd Slider / InputNumber 的拖拽是靠 document 级监听释放的，
+  // 一旦切断就表现为"松手后还跟随鼠标"。React 合成事件 stopPropagation 已经够挡住
+  // React Flow 的 React 处理链；RF 的 document 原生监听只关心 .react-flow 内的事件，
+  // 我们的 popover 在 body-portal，本就不会触发 RF 的画布交互。
   const popoverEventBlockers = useMemo(() => {
     const stop = (event: React.SyntheticEvent) => {
       event.stopPropagation();
-      event.nativeEvent.stopPropagation();
     };
     return {
       onMouseDown: stop,

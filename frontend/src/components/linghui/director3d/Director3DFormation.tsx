@@ -37,6 +37,13 @@ const MEMBER_GEOM = {
   hipWidth: 0.22,
 };
 
+const HASH = String.fromCharCode(35);
+const MEMBER_DETAIL_COLORS = {
+  face: `${HASH}15171c`,
+  chest: `${HASH}2d6cdf`,
+  back: `${HASH}6b7280`,
+};
+
 interface FormationMember {
   key: string;
   x: number;
@@ -96,6 +103,22 @@ export const Director3DFormation: React.FC<Director3DFormationProps> = ({
     return resolveDirector3DColor(actor.color, 'slategray');
   }, [actor.color, renderMode]);
 
+  const detailColors = useMemo(() => {
+    if (renderMode === 'silhouette') {
+      const silhouette = resolveDirector3DColor('var(--token-text-primary)', 'black');
+      return { face: silhouette, chest: silhouette, back: silhouette };
+    }
+    if (renderMode === 'lineart') {
+      const ink = resolveDirector3DColor('var(--token-text-primary)', 'black');
+      return { face: ink, chest: ink, back: ink };
+    }
+    return {
+      face: resolveDirector3DColor(MEMBER_DETAIL_COLORS.face, MEMBER_DETAIL_COLORS.face),
+      chest: resolveDirector3DColor(MEMBER_DETAIL_COLORS.chest, MEMBER_DETAIL_COLORS.chest),
+      back: resolveDirector3DColor(MEMBER_DETAIL_COLORS.back, MEMBER_DETAIL_COLORS.back),
+    };
+  }, [renderMode]);
+
   const haloColor = useMemo(
     () => resolveDirector3DColor(selected ? 'var(--token-text-primary)' : 'var(--token-text-muted)', selected ? 'white' : 'gray'),
     [selected],
@@ -117,6 +140,11 @@ export const Director3DFormation: React.FC<Director3DFormationProps> = ({
   ) : (
     <meshBasicMaterial color={color} transparent={memberOpacity < 1} opacity={memberOpacity} side={THREE.DoubleSide} />
   );
+  const renderDetailMaterial = (key: keyof typeof detailColors) => (useStandard ? (
+    <meshStandardMaterial color={detailColors[key]} roughness={0.68} metalness={0.06} transparent={memberOpacity < 1} opacity={memberOpacity} />
+  ) : (
+    <meshBasicMaterial color={detailColors[key]} transparent={memberOpacity < 1} opacity={memberOpacity} side={THREE.DoubleSide} />
+  ));
 
   const legTop = MEMBER_GEOM.legLength;
   const torsoCenterY = legTop + MEMBER_GEOM.torsoHeight / 2;
@@ -155,9 +183,25 @@ export const Director3DFormation: React.FC<Director3DFormationProps> = ({
             <cylinderGeometry args={[MEMBER_GEOM.torsoTop, MEMBER_GEOM.torsoBot, MEMBER_GEOM.torsoHeight, 12]} />
             {bodyMaterial}
           </mesh>
+          <mesh position={[0, torsoCenterY + 0.035, MEMBER_GEOM.torsoTop * 0.96]}>
+            <boxGeometry args={[MEMBER_GEOM.torsoTop * 0.72, 0.11, 0.01]} />
+            {renderDetailMaterial('chest')}
+          </mesh>
+          <mesh position={[0, torsoCenterY, -MEMBER_GEOM.torsoTop * 0.98]}>
+            <boxGeometry args={[0.034, MEMBER_GEOM.torsoHeight * 0.56, 0.01]} />
+            {renderDetailMaterial('back')}
+          </mesh>
           {/* 头 */}
           <mesh position={[0, headCenterY, 0]}>
             <sphereGeometry args={[MEMBER_GEOM.headRadius, 14, 10]} />
+            {headMaterial}
+          </mesh>
+          <mesh position={[0, headCenterY + MEMBER_GEOM.headRadius * 0.08, MEMBER_GEOM.headRadius * 0.92]}>
+            <boxGeometry args={[MEMBER_GEOM.headRadius * 0.58, MEMBER_GEOM.headRadius * 0.1, MEMBER_GEOM.headRadius * 0.06]} />
+            {renderDetailMaterial('face')}
+          </mesh>
+          <mesh position={[0, headCenterY - MEMBER_GEOM.headRadius * 0.16, MEMBER_GEOM.headRadius * 0.96]} rotation={[Math.PI / 2, 0, 0]}>
+            <coneGeometry args={[MEMBER_GEOM.headRadius * 0.1, MEMBER_GEOM.headRadius * 0.1, 8]} />
             {headMaterial}
           </mesh>
           {/* 腿×2 */}
