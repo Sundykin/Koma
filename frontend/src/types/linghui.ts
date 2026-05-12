@@ -170,6 +170,26 @@ export interface LinghuiPanoramaNodeProperties extends LinghuiImageNodePropertie
    * @ref_{nodeId}__item_N 引用任意一张。
    */
   detailCrops?: LinghuiImageAssetItem[];
+  /**
+   * 通过球面重投影抽取出的"伪 3D 透视视角"。每条记录一个虚拟相机角度，
+   * source 是落盘后的 koma-local URL（PNG）。executor 把这些作为 result.items 输出，
+   * 让下游图片 / 视频节点用 @ref_{nodeId}__item_N 拿到同一场景的不同角度，做场景一致性。
+   * 详见 panorama/panoramaPerspectiveExtractor.ts。
+   */
+  perspectiveViews?: LinghuiPanoramaPerspectiveView[];
+}
+
+export interface LinghuiPanoramaPerspectiveView {
+  id: string;
+  label: string;
+  yaw: number;
+  pitch: number;
+  fovDeg: number;
+  /** 落盘后的 koma-local URL（PNG） */
+  source: string;
+  /** 输出图宽高（PNG 尺寸） */
+  width?: number;
+  height?: number;
 }
 
 export interface LinghuiMultiAngleConfig {
@@ -219,11 +239,33 @@ export type LinghuiDirector3DActorType =
   | 'mannequin'
   | 'mannequin-lite'
   | 'formation'
+  | 'creature'
   | 'prop-box'
   | 'prop-cylinder'
   | 'prop-plane'
   | 'prop-camera'
   | 'prop-arrow';
+
+/**
+ * 动物 / 玄幻生物子类型（actor.type='creature' 时使用）。
+ * 详见 director3d/director3dCreature.ts。
+ */
+export type LinghuiDirector3DCreatureSpecies =
+  | 'lion' | 'wolf' | 'tiger' | 'bear' | 'horse' | 'eagle'
+  | 'dragon' | 'phoenix' | 'qilin' | 'fox' | 'deer' | 'crane';
+
+export type LinghuiDirector3DCreatureAction =
+  | 'idle' | 'walk' | 'run' | 'pounce' | 'fly' | 'roar';
+
+export interface LinghuiDirector3DCreatureRig {
+  spine: [number, number, number];
+  neck: [number, number, number];
+  frontLeftLeg: [number, number, number];
+  frontRightLeg: [number, number, number];
+  rearLeftLeg: [number, number, number];
+  rearRightLeg: [number, number, number];
+  tail: [number, number, number];
+}
 
 /**
  * 方阵元数据（actor.type === 'formation' 时使用）。
@@ -251,7 +293,7 @@ export type LinghuiDirector3DActorPose =
   | 'wave'
   | 'point';
 export type LinghuiDirector3DBackgroundMode = 'none' | 'color' | 'image-plane' | 'panorama';
-export type LinghuiDirector3DRenderMode = 'lineart' | 'silhouette' | 'depth' | 'composition';
+export type LinghuiDirector3DRenderMode = 'preview' | 'lineart' | 'silhouette' | 'depth' | 'composition';
 
 export interface LinghuiDirector3DActor {
   id: string;
@@ -275,6 +317,12 @@ export interface LinghuiDirector3DActor {
   rig?: LinghuiDirector3DRig;
   /** 方阵元数据，仅 type='formation' 时存在 */
   formation?: LinghuiDirector3DFormationConfig;
+  /** 生物子类型（仅 type='creature' 时存在） */
+  species?: LinghuiDirector3DCreatureSpecies;
+  /** 生物当前动作（仅 type='creature' 时使用，离散切换） */
+  creatureAction?: LinghuiDirector3DCreatureAction;
+  /** 生物骨架姿态（仅 type='creature' 时使用，关节级 LERP 动画） */
+  creatureRig?: LinghuiDirector3DCreatureRig;
   /**
    * 参考图（koma-local URL 数组）。从全局资产库加入场景时一次性 snapshot 复制过来；
    * director3d executor 把所有 actor 的参考图聚合后写入 result.items，
@@ -381,17 +429,45 @@ export interface LinghuiDirector3DKeyframeActor {
   color?: string;
   /** 方阵参数（仅 type='formation' 时有效）；rows/cols/memberFacing 离散切换，spacing 线性 */
   formation?: LinghuiDirector3DFormationConfig;
+  /** 生物动作（仅 type='creature'）；离散切换 */
+  creatureAction?: LinghuiDirector3DCreatureAction;
+  /** 生物骨架；关节级 LERP 动画 */
+  creatureRig?: LinghuiDirector3DCreatureRig;
 }
+
+/**
+ * 关键帧"作用域"：
+ *  - 'scene'（默认 / 旧数据兼容）：整场快照，同时插值 camera + 所有 actors
+ *  - 'camera'：仅记录相机参数，actor 字段忽略，时间轴专属 camera 轨
+ *  - `actor:${actorId}`：仅记录该 actor 的快照，camera 忽略
+ *
+ * 插值时同一 actor 只从 scope='scene' 或 scope='actor:{id}' 的关键帧里取值，
+ * 相机只从 scope='scene' 或 scope='camera' 的关键帧里取值。
+ */
+export type LinghuiDirector3DKeyframeScope = 'scene' | 'camera' | `actor:${string}`;
 
 export interface LinghuiDirector3DKeyframe {
   id: string;
   /** 关键帧时间（秒） */
   time: number;
   label?: string;
+  /**
+   * 作用域；缺省视为 'scene'（兼容旧数据）。新版自动加帧只生成 'camera' / 'actor:xxx' 范围。
+   */
+  scope?: LinghuiDirector3DKeyframeScope;
   /** 该时刻所有 actor 的状态快照（按 actor.id 索引）；未列出的 actor 表示不存在 / 不渲染 */
   actors: LinghuiDirector3DKeyframeActor[];
   /** 该时刻相机参数（完整复用 LinghuiDirector3DCamera） */
   camera: LinghuiDirector3DCamera;
+  /**
+   * 相机的"轨道"参数（绕 target 的 yaw 累计弧度 + pitch + distance）。
+   *
+   * 为什么单独存：camera.position 是 [x,y,z]，绕 360° 后 position 与起点相同，
+   * 仅看 position 无法区分"没动"与"转了一圈"。orbit 段记录用户实际累计的 yaw
+   * （不取模），插值时优先用 yaw/pitch/distance 线性 lerp 重算 position，
+   * 这样用户拍下"720° 环绕"关键帧后，回放能真实地转两圈而不是直接停在起点。
+   */
+  cameraOrbit?: { yaw: number; pitch: number; distance: number };
   /** 背景（不插值，按 segment 起点取） */
   background?: LinghuiDirector3DBackground;
 }

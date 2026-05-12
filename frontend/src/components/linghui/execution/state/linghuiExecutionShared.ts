@@ -217,7 +217,15 @@ function resultMatchesSlotDataType(result: LinghuiNodeResult, dataType?: string)
   if (primary?.kind === dataType) {
     return true;
   }
-  return getLinghuiResultItems(result).some(item => item.kind === dataType);
+  // image 槽位也接受"带首帧的视频"：3D 导演时间轴动画 / 视频节点的输出
+  // 都能通过 posterSource 作为图片参考被下游消费，否则就只能丢弃
+  if (dataType === 'image' && primary?.kind === 'video' && primary.posterSource) {
+    return true;
+  }
+  return getLinghuiResultItems(result).some(item => (
+    item.kind === dataType
+    || (dataType === 'image' && item.kind === 'video' && item.posterSource)
+  ));
 }
 
 function resolveInputResults(
@@ -427,9 +435,45 @@ export function collectReferenceSources(results: LinghuiNodeResult[]): string[] 
     if (primary?.kind === 'image') {
       pushSource(primary.source);
     }
+    // 上游视频也算图片参考：用其首帧 posterSource 作为下游图片节点的参考图，
+    // 否则 3D 导演台 / 视频节点的输出在 image 槽位被无效化（减产）
+    if (primary?.kind === 'video' && primary.posterSource) {
+      pushSource(primary.posterSource);
+    }
 
     for (const item of getLinghuiResultItems(result)) {
       if (item.kind === 'image') {
+        pushSource(item.source);
+      } else if (item.kind === 'video' && item.posterSource) {
+        pushSource(item.posterSource);
+      }
+    }
+  }
+
+  return sources;
+}
+
+/**
+ * 收集上游结果里的真实视频源（.mp4 / .mov URL），用于下游 video 节点做 video-to-video。
+ * 与 collectVideoPosterSources（取首帧静态图）正交：前者用于 video provider 的 video reference，
+ * 后者用于 image-to-video provider 的首帧驱动。
+ */
+export function collectVideoSources(results: LinghuiNodeResult[]): string[] {
+  const sources: string[] = [];
+  const dedupe = new Set<string>();
+  const pushSource = (candidate?: string) => {
+    if (!candidate || dedupe.has(candidate)) return;
+    dedupe.add(candidate);
+    sources.push(candidate);
+  };
+
+  for (const result of results) {
+    const primary = getLinghuiResultPrimaryMedia(result);
+    if (primary?.kind === 'video') {
+      pushSource(primary.source);
+    }
+    for (const item of getLinghuiResultItems(result)) {
+      if (item.kind === 'video') {
         pushSource(item.source);
       }
     }

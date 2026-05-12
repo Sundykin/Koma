@@ -68,7 +68,10 @@ export interface ResourceProcessResult {
 
 // 视频合成选项
 export interface ComposeVideoOptions {
-  framePattern: string;    // 帧文件模式，如 '/tmp/frame_%05d.png'
+  /** 帧序列所在目录（绝对路径） */
+  frameDir: string;
+  /** 帧文件名占位（不含目录），例如 'frame_%05d.png' */
+  framePattern: string;
   fps: number;
   width: number;
   height: number;
@@ -438,7 +441,10 @@ class FFmpegManager {
   }
 
   /**
-   * 合成视频（图片序列 + 音频 -> 视频文件）
+   * 合成视频（图片序列 + 音频 -> 视频文件）。
+   *
+   * IPC 不支持 structuredClone Function，必须剥离 onProgress 后再传过桥。
+   * 进度回调暂时丢弃；端到端进度由调用方在帧渲染阶段自行追踪即可。
    */
   async composeVideo(options: ComposeVideoOptions): Promise<string> {
     const api = getFFmpegAPI();
@@ -446,7 +452,9 @@ class FFmpegManager {
       throw new Error('FFmpeg 不可用');
     }
 
-    return await api.composeVideo(options);
+    const { onProgress: _onProgress, ...rest } = options;
+    void _onProgress;
+    return await api.composeVideo(rest);
   }
 
   /**

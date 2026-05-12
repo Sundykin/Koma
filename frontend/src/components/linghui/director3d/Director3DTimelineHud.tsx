@@ -15,8 +15,9 @@
  * 沉浸态隐藏；时间轴为空时 HUD 仍显示（提示用户加第一帧）。
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { InputNumber, Select, Tooltip } from 'antd';
-import { Film, Pause, Play, Plus, RotateCcw, Trash2 } from 'lucide-react';
+import { InputNumber, Modal, Select, Tooltip } from 'antd';
+import { Film, MonitorPlay, Pause, Play, Plus, RotateCcw, Trash2 } from 'lucide-react';
+import { toFileSystemDisplayUrl } from '../../../services/fileSystemPort';
 import type {
   LinghuiDirector3DEasing,
   LinghuiDirector3DKeyframe,
@@ -34,12 +35,28 @@ export interface Director3DTimelineExportState {
   total: number;
 }
 
+/**
+ * 时间线图层：每个图层对应一组独立关键帧轨道。
+ *  - 'camera'：镜头层（scope='camera' 或 'scene'）
+ *  - { kind: 'actor'; actorId; label }：某个 actor 的层（scope='actor:{id}' 或 'scene' 含此 actor）
+ *
+ * 时间线 UI 只显示当前图层的关键帧，新增 / 删除 / 拖动也只影响当前图层。
+ */
+export type Director3DTimelineLayer =
+  | { kind: 'camera'; label: string }
+  | { kind: 'actor'; actorId: string; label: string };
+
 interface Director3DTimelineHudProps {
   timeline: LinghuiDirector3DTimeline;
   currentTime: number;
   playing: boolean;
   selectedKeyframeId: string | null;
   exportState: Director3DTimelineExportState;
+  /** 当前激活图层（决定时间线显示哪些关键帧 + 增删针对哪条轨） */
+  activeLayer: Director3DTimelineLayer;
+  /** 已导出的视频 koma-local URL（若有），用于"预览"按钮的 mp4 来源 */
+  exportedVideoUrl?: string;
+  exportedVideoPosterUrl?: string;
   onPlayToggle: () => void;
   onSeek: (time: number) => void;
   onAddKeyframe: () => void;
@@ -54,7 +71,7 @@ interface Director3DTimelineHudProps {
   onCancelExport: () => void;
 }
 
-const TRACK_HEIGHT = 32;
+const TRACK_HEIGHT = 24;
 
 function formatTime(t: number): string {
   return `${t.toFixed(2)}s`;
@@ -66,6 +83,9 @@ export const Director3DTimelineHud: React.FC<Director3DTimelineHudProps> = ({
   playing,
   selectedKeyframeId,
   exportState,
+  activeLayer,
+  exportedVideoUrl,
+  exportedVideoPosterUrl,
   onPlayToggle,
   onSeek,
   onAddKeyframe,
@@ -82,8 +102,30 @@ export const Director3DTimelineHud: React.FC<Director3DTimelineHudProps> = ({
   const trackRef = useRef<HTMLDivElement | null>(null);
   const [draggingKeyframeId, setDraggingKeyframeId] = useState<string | null>(null);
   const [scrubbing, setScrubbing] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const previewVideoSrc = exportedVideoUrl ? toFileSystemDisplayUrl(exportedVideoUrl) || exportedVideoUrl : '';
+  const previewPosterSrc = exportedVideoPosterUrl ? toFileSystemDisplayUrl(exportedVideoPosterUrl) || exportedVideoPosterUrl : undefined;
 
   const duration = Math.max(0.5, timeline.duration);
+
+  // 当前图层可见的关键帧（**按实例 id 严格过滤**）：
+  //   - camera 层：scope='camera' 实心 / scope='scene' 虚化（同含 camera 数据）
+  //   - actor:X 层：仅 scope='actor:X'（按实例 id 唯一）。
+  //     scene 帧虽然含此 actor 数据，但同时也含其他所有 actor 数据，UI 不展示，
+  //     避免"切了图层看起来一模一样"的按类型过滤错觉。数据上仍参与 fallback 插值。
+  const visibleKeyframes = React.useMemo<Array<{ kf: LinghuiDirector3DKeyframe; isGlobal: boolean }>>(() => {
+    const acc: Array<{ kf: LinghuiDirector3DKeyframe; isGlobal: boolean }> = [];
+    for (const kf of timeline.keyframes) {
+      const scope = kf.scope ?? 'scene';
+      if (activeLayer.kind === 'camera') {
+        if (scope === 'camera') acc.push({ kf, isGlobal: false });
+        else if (scope === 'scene') acc.push({ kf, isGlobal: true });
+      } else if (scope === `actor:${activeLayer.actorId}`) {
+        acc.push({ kf, isGlobal: false });
+      }
+    }
+    return acc;
+  }, [activeLayer, timeline.keyframes]);
 
   const timeToPercent = useCallback((t: number): number => {
     return Math.min(100, Math.max(0, (t / duration) * 100));
@@ -166,7 +208,7 @@ export const Director3DTimelineHud: React.FC<Director3DTimelineHudProps> = ({
           {formatTime(currentTime)} / {formatTime(duration)}
         </span>
 
-        <Tooltip title="在当前时间点加关键帧（拍下场景快照）">
+        <Tooltip title={`在当前时间点为「${activeLayer.label}」加一帧`}>
           <button
             type="button"
             className="linghuiDirector3DTimelineButton isAccent"
@@ -177,7 +219,7 @@ export const Director3DTimelineHud: React.FC<Director3DTimelineHudProps> = ({
           </button>
         </Tooltip>
 
-        <Tooltip title="删除选中关键帧">
+        <Tooltip title="删除选中关键帧（仅当前图层）">
           <button
             type="button"
             className="linghuiDirector3DTimelineButton"
@@ -187,6 +229,11 @@ export const Director3DTimelineHud: React.FC<Director3DTimelineHudProps> = ({
             <Trash2 size={14} />
           </button>
         </Tooltip>
+
+        {/* 当前图层 chip：展示在编辑哪条轨；用户切换选中即切换图层 */}
+        <span className="linghuiDirector3DTimelineLayerChip" title="当前图层；选中视口里的物体可切换到对应轨">
+          {activeLayer.kind === 'camera' ? '镜头层' : `物体：${activeLayer.label}`}
+        </span>
 
         <span className="linghuiDirector3DTimelineSeparator" />
 
@@ -218,17 +265,20 @@ export const Director3DTimelineHud: React.FC<Director3DTimelineHudProps> = ({
           />
         </Tooltip>
 
-        <Tooltip title="补间缓动">
-          <Select
+        <Tooltip title="补间缓动算法">
+          <Select<LinghuiDirector3DEasing>
             size="small"
-            value={timeline.easing}
-            onChange={(value: LinghuiDirector3DEasing) => onEasingChange(value)}
+            // 确保选中态准确：popup 容器放到 body，避免被父级 HUD 的 transform / overflow 截断；
+            // value 显式 fallback 'ease-in-out'（旧 timeline 缺 easing 字段时不至于 select 空）
+            value={timeline.easing ?? 'ease-in-out'}
+            onChange={(value) => onEasingChange(value as LinghuiDirector3DEasing)}
             style={{ width: 96 }}
+            getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
             options={[
-              { value: 'linear', label: 'Linear' },
-              { value: 'ease-in', label: 'Ease In' },
-              { value: 'ease-out', label: 'Ease Out' },
-              { value: 'ease-in-out', label: 'Smooth' },
+              { value: 'linear', label: '线性' },
+              { value: 'ease-in', label: '缓入' },
+              { value: 'ease-out', label: '缓出' },
+              { value: 'ease-in-out', label: '平滑' },
             ]}
           />
         </Tooltip>
@@ -273,7 +323,46 @@ export const Director3DTimelineHud: React.FC<Director3DTimelineHudProps> = ({
             </button>
           </Tooltip>
         )}
+
+        {/* 预览已导出的视频（不依赖工作台时间轴，直接播放 mp4） */}
+        {previewVideoSrc ? (
+          <Tooltip title="播放已导出的 mp4 文件，确认动画是否符合预期">
+            <button
+              type="button"
+              className="linghuiDirector3DTimelineButton"
+              onClick={() => setPreviewOpen(true)}
+            >
+              <MonitorPlay size={14} />
+              <span>预览</span>
+            </button>
+          </Tooltip>
+        ) : null}
       </div>
+
+      {/* 已导出视频预览 Modal */}
+      <Modal
+        open={previewOpen}
+        onCancel={() => setPreviewOpen(false)}
+        footer={null}
+        title="时间轴动画预览"
+        width={720}
+        destroyOnClose
+        zIndex={2000}
+      >
+        {previewVideoSrc ? (
+          <video
+            src={previewVideoSrc}
+            poster={previewPosterSrc}
+            controls
+            autoPlay
+            style={{ width: '100%', maxHeight: '70vh', background: '#000', borderRadius: 8 }}
+          />
+        ) : (
+          <div style={{ padding: 32, textAlign: 'center', color: 'var(--token-text-muted)' }}>
+            暂无可预览的视频
+          </div>
+        )}
+      </Modal>
 
       <div
         ref={trackRef}
@@ -294,14 +383,14 @@ export const Director3DTimelineHud: React.FC<Director3DTimelineHudProps> = ({
           ))}
         </div>
 
-        {/* 关键帧标记 */}
-        {timeline.keyframes.map(kf => (
+        {/* 关键帧标记。isGlobal=true 表示这是 scene 帧（在多个图层都会出现，虚化展示） */}
+        {visibleKeyframes.map(({ kf, isGlobal }) => (
           <div
             key={kf.id}
-            className={`linghuiDirector3DTimelineKeyframe ${kf.id === selectedKeyframeId ? 'isSelected' : ''} ${draggingKeyframeId === kf.id ? 'isDragging' : ''}`}
+            className={`linghuiDirector3DTimelineKeyframe ${kf.id === selectedKeyframeId ? 'isSelected' : ''} ${draggingKeyframeId === kf.id ? 'isDragging' : ''} ${isGlobal ? 'isGlobalScope' : ''}`}
             style={{ left: `${timeToPercent(kf.time)}%` }}
             onPointerDown={event => handleKeyframePointerDown(event, kf)}
-            title={kf.label ?? `t=${kf.time.toFixed(2)}s`}
+            title={`${kf.label ?? `t=${kf.time.toFixed(2)}s`}${isGlobal ? ' · 全局帧' : ''}`}
           />
         ))}
 
@@ -312,11 +401,6 @@ export const Director3DTimelineHud: React.FC<Director3DTimelineHudProps> = ({
         />
       </div>
 
-      {timeline.keyframes.length === 0 ? (
-        <div className="linghuiDirector3DTimelineHint">
-          调整场景后点 <Plus size={11} style={{ verticalAlign: '-2px' }} /> 关键帧记录这一帧；至少 2 帧才能播放
-        </div>
-      ) : null}
     </div>
   );
 };

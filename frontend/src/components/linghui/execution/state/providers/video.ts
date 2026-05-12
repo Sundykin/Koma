@@ -140,6 +140,8 @@ async function executeVideoProviderAttempt(
             references: (params.promptReferences ?? []).map(item => ({
               id: item.id,
               name: item.name,
+              // 透传 kind 让 @Image / @Video / @Audio 各自命名空间编号
+              kind: item.kind === 'image' || item.kind === 'video' || item.kind === 'audio' ? item.kind : undefined,
               textValue: item.textValue,
               source: item.source,
             })),

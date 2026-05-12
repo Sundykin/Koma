@@ -83,12 +83,25 @@ function appendVideoReference(
 ) {
   const primary = getLinghuiResultPrimaryMedia(result);
   const primaryVideo = isLinghuiVideoMediaItem(primary) ? primary : null;
-  const props = sourceNodeData.linghuiType === 'linghui/video'
+  const videoProps = sourceNodeData.linghuiType === 'linghui/video'
     ? sourceNodeData.properties as unknown as LinghuiVideoNodeProperties
     : null;
-  const source = String(primaryVideo?.source ?? props?.source ?? '').trim();
-  const posterSource = String(primaryVideo?.posterSource ?? props?.posterSource ?? '').trim();
-  const key = posterSource || source;
+  // 3D 导演台：用户在工作台导出时间轴视频后 properties 有 timelineVideoUrl，
+  // 即便节点还没在 workflow 里 run 完，下游也应该能在"参考视频"面板看到它
+  const director3dProps = sourceNodeData.linghuiType === 'linghui/director3d'
+    ? sourceNodeData.properties as Record<string, unknown> | undefined
+    : null;
+  const director3dVideoSource = director3dProps?.outputMode === 'video'
+    ? String(director3dProps?.timelineVideoUrl ?? '').trim()
+    : '';
+  const director3dVideoPoster = director3dProps?.outputMode === 'video'
+    ? String(director3dProps?.timelineVideoPosterUrl ?? '').trim()
+    : '';
+
+  const source = String(primaryVideo?.source ?? videoProps?.source ?? director3dVideoSource ?? '').trim();
+  const posterSource = String(primaryVideo?.posterSource ?? videoProps?.posterSource ?? director3dVideoPoster ?? '').trim();
+  const key = source || posterSource;
+  if (!key) return;
 
   pushUnique(bucket, dedupe, key, {
     source,

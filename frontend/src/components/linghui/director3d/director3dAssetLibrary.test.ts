@@ -84,6 +84,20 @@ describe('C-5A 内置资产库', () => {
     expect(scene.actors.some(a => a.type === 'formation')).toBe(true);
   });
 
+  it('玄幻场景模板存在且至少 5 个，含生物 actor', () => {
+    const mysticIds = ['tpl-sword-duel', 'tpl-altar', 'tpl-dragon-confront', 'tpl-phoenix-rebirth', 'tpl-cloud-summit', 'tpl-mythical-battlefield'];
+    for (const id of mysticIds) {
+      const tpl = DIRECTOR3D_SCENE_TEMPLATES.find(t => t.id === id);
+      expect(tpl).toBeDefined();
+    }
+    // 神龙降世模板含 dragon 生物
+    const dragonTpl = DIRECTOR3D_SCENE_TEMPLATES.find(t => t.id === 'tpl-dragon-confront')!.build();
+    expect(dragonTpl.actors.some(a => a.type === 'creature' && a.species === 'dragon')).toBe(true);
+    // 凤凰涅槃含 phoenix
+    const phoenixTpl = DIRECTOR3D_SCENE_TEMPLATES.find(t => t.id === 'tpl-phoenix-rebirth')!.build();
+    expect(phoenixTpl.actors.some(a => a.type === 'creature' && a.species === 'phoenix')).toBe(true);
+  });
+
   it('教室模板用 formation 装学生（坐姿）', () => {
     const classroom = DIRECTOR3D_SCENE_TEMPLATES.find(t => t.id === 'tpl-classroom')!;
     const scene = classroom.build();

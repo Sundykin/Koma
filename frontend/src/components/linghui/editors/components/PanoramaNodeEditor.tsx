@@ -30,7 +30,15 @@ import { PanoramaSeamDiagnostics } from '../../panorama/PanoramaSeamDiagnostics'
 import { panoramaSplitDirections, type PanoramaDetailDirectionCount } from '../../panorama/panoramaDetailCrop';
 import { useLinghuiNodeMutation } from '../../nodes/state/LinghuiNodeRunsContext';
 import { resolveLinghuiImageCollection } from '../state/linghuiImageCollections';
-import type { LinghuiImageAssetItem } from '../../../../types/linghui';
+import type { LinghuiImageAssetItem, LinghuiPanoramaPerspectiveView } from '../../../../types/linghui';
+import {
+  extractPerspectiveView,
+  PANORAMA_PERSPECTIVE_EIGHT_DIRECTIONS,
+  PANORAMA_PERSPECTIVE_SIX_FACES,
+} from '../../panorama/panoramaPerspectiveExtractor';
+import { persistMediaAsset } from '../../../../services/mediaPersistenceService';
+import { toFileSystemDisplayUrl } from '../../../../services/fileSystemPort';
+import { nanoid } from 'nanoid';
 
 export type PanoramaNodeEditorProps = ImageNodeEditorProps;
 
@@ -133,6 +141,91 @@ export const PanoramaNodeEditor: React.FC<PanoramaNodeEditorProps> = (props) => 
     }));
   }, [nodeId, updateNodeData]);
 
+  // ───── 伪 3D 视角抽取 ─────
+  const perspectiveViews = useMemo<LinghuiPanoramaPerspectiveView[]>(() => {
+    const raw = (nodeData.properties as { perspectiveViews?: unknown } | undefined)?.perspectiveViews;
+    return Array.isArray(raw) ? (raw as LinghuiPanoramaPerspectiveView[]) : [];
+  }, [nodeData.properties]);
+
+  const [extracting, setExtracting] = useState<'six' | 'eight' | null>(null);
+
+  const handleExtractPreset = useCallback(async (preset: 'six' | 'eight') => {
+    if (!seamPreviewUrl) {
+      message.warning('请先生成或导入一张全景图');
+      return;
+    }
+    const config = preset === 'six' ? PANORAMA_PERSPECTIVE_SIX_FACES : PANORAMA_PERSPECTIVE_EIGHT_DIRECTIONS;
+    setExtracting(preset);
+    try {
+      // 球面采样需要正常 URL（http 或 file:// koma-local 转换后），先把 koma-local 转成 displayUrl
+      const displaySrc = toFileSystemDisplayUrl(seamPreviewUrl) || seamPreviewUrl;
+      const outputSize = preset === 'six' ? 1024 : 768;
+      const newViews: LinghuiPanoramaPerspectiveView[] = [];
+      for (let i = 0; i < config.length; i++) {
+        const angle = config[i];
+        const extracted = await extractPerspectiveView(displaySrc, {
+          yaw: angle.yaw,
+          pitch: angle.pitch,
+          fovDeg: angle.fovDeg,
+          width: outputSize,
+          height: outputSize,
+          projectionMode: currentProjection,
+        });
+        // 落盘成 koma-local URL（下游 grok / 视频 provider 才能读）
+        const persisted = await persistMediaAsset({
+          projectId: 'linghui',
+          kind: 'image',
+          source: extracted.dataUrl,
+          provider: 'panorama-perspective',
+          metadata: {
+            origin: 'panorama-perspective',
+            sourceNodeId: nodeId,
+            yaw: angle.yaw,
+            pitch: angle.pitch,
+            fovDeg: angle.fovDeg,
+            label: angle.label,
+          },
+        });
+        const finalSource = persisted.localPath
+          ? toFileSystemDisplayUrl(persisted.localPath) ?? persisted.localPath
+          : extracted.dataUrl;
+        newViews.push({
+          id: `view-${nanoid(8)}`,
+          label: angle.label,
+          yaw: angle.yaw,
+          pitch: angle.pitch,
+          fovDeg: angle.fovDeg,
+          source: finalSource,
+          width: extracted.width,
+          height: extracted.height,
+        });
+      }
+      updateNodeData(nodeId, prev => ({
+        ...prev,
+        properties: {
+          ...prev.properties,
+          // 覆盖（而不是 append）：用户一键 6/8 视角是"换一套环绕参考"语义
+          perspectiveViews: newViews,
+        },
+      }));
+      message.success(`已抽取 ${newViews.length} 个视角，下游可用 item N 引用`);
+    } catch (error: unknown) {
+      message.error(error instanceof Error ? error.message : '抽取视角失败');
+    } finally {
+      setExtracting(null);
+    }
+  }, [currentProjection, message, nodeId, seamPreviewUrl, updateNodeData]);
+
+  const handleClearPerspectives = useCallback(() => {
+    updateNodeData(nodeId, prev => ({
+      ...prev,
+      properties: {
+        ...prev.properties,
+        perspectiveViews: [],
+      },
+    }));
+  }, [nodeId, updateNodeData]);
+
   return (
     <>
       <ImageNodeEditor
@@ -206,6 +299,52 @@ export const PanoramaNodeEditor: React.FC<PanoramaNodeEditorProps> = (props) => 
             <figure key={item.id} className="linghuiPanoramaDirectionCell">
               <img src={item.source} alt={item.label ?? ''} />
               <figcaption>{item.label}</figcaption>
+            </figure>
+          ))}
+        </div>
+      ) : null}
+
+      {seamPreviewUrl ? (
+        <div className="linghuiPanoramaDirectionToolbar">
+          <span className="linghuiPanoramaDirectionToolbarLabel">
+            <Compass size={14} />
+            伪 3D 视角
+          </span>
+          <Button
+            size="small"
+            loading={extracting === 'six'}
+            disabled={extracting !== null}
+            onClick={() => { void handleExtractPreset('six'); }}
+            title="抽取前/后/左/右/上/下 6 张方形透视图（cube faces，fov 90°）"
+          >
+            一键 6 视角
+          </Button>
+          <Button
+            size="small"
+            loading={extracting === 'eight'}
+            disabled={extracting !== null}
+            onClick={() => { void handleExtractPreset('eight'); }}
+            title="水平 8 等分（每 45° 一张，fov 60°），用于做环绕镜头参考"
+          >
+            一键 8 等分
+          </Button>
+          {perspectiveViews.length > 0 ? (
+            <Button size="small" type="text" danger onClick={handleClearPerspectives}>
+              清空视角 ({perspectiveViews.length})
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {perspectiveViews.length > 0 ? (
+        <div className="linghuiPanoramaDirectionStrip">
+          {perspectiveViews.map(view => (
+            <figure key={view.id} className="linghuiPanoramaDirectionCell">
+              <img
+                src={toFileSystemDisplayUrl(view.source) || view.source}
+                alt={view.label}
+              />
+              <figcaption>{view.label}</figcaption>
             </figure>
           ))}
         </div>

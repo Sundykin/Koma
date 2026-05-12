@@ -99,6 +99,11 @@ export interface LinghuiNodeInteractionApi {
   openNodeContextMenu: (nodeId: string, clientX: number, clientY: number) => void;
   openImageToolPanel: (nodeId: string, tool: LinghuiImageToolKey) => void;
   openVideoToolPanel: (nodeId: string, tool: LinghuiVideoToolKey) => void;
+  /**
+   * 显式打开节点编辑器面板。供需要把"展开节点"绑定到节点内部按钮的场景（如 Director3D
+   * 节点上的「打开工作台」按钮）使用 —— 整张卡片不再 click 即展开。
+   */
+  openNodeEditor: (nodeId: string) => void;
 }
 
 const noopHandlers: LinghuiNodeInteractionHandlers = {
@@ -110,6 +115,7 @@ const noopHandlers: LinghuiNodeInteractionHandlers = {
 
 const noopInteractionApi: LinghuiNodeInteractionApi = {
   bindNodeSurface: () => noopHandlers,
+  openNodeEditor: () => undefined,
   openNodeContextMenu: () => undefined,
   openImageToolPanel: () => undefined,
   openVideoToolPanel: () => undefined,
@@ -199,15 +205,6 @@ export interface LinghuiNodeEditorApi {
   gridSplitUpscaleFactor: 2 | 4;
   onSetGridSplitUpscaleFactor?: (factor: 2 | 4) => void;
   onRevertGridSplit?: () => void;
-  /**
-   * 3D 导演 split-view 绑定（key = director3d nodeId，value = 下游被绑预览的节点 id）
-   * 跨会话持久化在 workspace.directorPreviewBindings 字段
-   */
-  directorPreviewBindings?: Record<string, string>;
-  /** 设置 / 解绑 director3d 节点的预览源；previewNodeId 为 null/undefined 时表示解绑 */
-  setDirectorPreviewBinding?: (directorNodeId: string, previewNodeId: string | null) => void;
-  /** 串联跑 director3d + 预览节点（实时模式用，先让 director3d 重新落盘 lineart） */
-  onRunDirectorWithPreview?: (directorNodeId: string, previewNodeId: string) => Promise<void> | void;
 }
 
 const noopNodeEditorApi: LinghuiNodeEditorApi = {
