@@ -330,14 +330,18 @@ function createVideoRequest<TAsset extends VideoRequestAsset>(
     startFrame?: TAsset;
     endFrame?: TAsset;
     durationSpec?: VideoDurationSpec;
+    /** 透传扩展元数据（如 koma-jimeng 协议的 komaJimengAssets），不带也不报错 */
+    metadata?: Record<string, unknown>;
   },
 ): ITVRequest<TAsset> {
   const options = normalizeVideoRequestOptions(params.options, params.durationSpec);
+  const metadata = params.metadata;
   if (capability === 'video.text-to-video') {
     return {
       capability,
       prompt: params.prompt,
       options,
+      ...(metadata ? { metadata } : {}),
     };
   }
 
@@ -351,6 +355,7 @@ function createVideoRequest<TAsset extends VideoRequestAsset>(
       primaryImage: params.primaryImage,
       additionalReferences: params.additionalReferences || [],
       options,
+      ...(metadata ? { metadata } : {}),
     };
   }
 
@@ -363,6 +368,7 @@ function createVideoRequest<TAsset extends VideoRequestAsset>(
       prompt: params.prompt,
       referenceImages: params.referenceImages,
       options,
+      ...(metadata ? { metadata } : {}),
     };
   }
 
@@ -375,6 +381,7 @@ function createVideoRequest<TAsset extends VideoRequestAsset>(
     startFrame: params.startFrame,
     endFrame: params.endFrame,
     options,
+    ...(metadata ? { metadata } : {}),
   };
 }
 
@@ -716,6 +723,7 @@ export async function mapVideoRequestToProviderRequest(params: {
       capability: request.capability,
       prompt: request.prompt,
       options: request.options,
+      ...(request.metadata ? { metadata: request.metadata } : {}),
     };
   }
 
@@ -765,6 +773,7 @@ export async function mapVideoRequestToProviderRequest(params: {
       primaryImage,
       additionalReferences,
       options: request.options,
+      metadata: request.metadata,
     }) as ITVRequest<ProviderAssetInput>;
   }
 
@@ -799,6 +808,7 @@ export async function mapVideoRequestToProviderRequest(params: {
       prompt: request.prompt,
       referenceImages,
       options: request.options,
+      metadata: request.metadata,
     }) as ITVRequest<ProviderAssetInput>;
   }
 
@@ -845,6 +855,7 @@ export async function mapVideoRequestToProviderRequest(params: {
       startFrame,
       endFrame,
       options: request.options,
+      metadata: request.metadata,
     }) as ITVRequest<ProviderAssetInput>;
   }
 
@@ -852,5 +863,6 @@ export async function mapVideoRequestToProviderRequest(params: {
     capability: request.capability,
     prompt: request.prompt,
     options: request.options,
+    ...(request.metadata ? { metadata: request.metadata } : {}),
   } as ITVRequest<ProviderAssetInput>;
 }

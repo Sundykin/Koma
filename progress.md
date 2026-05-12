@@ -1382,3 +1382,29 @@
   - `npx tsc --noEmit --project tsconfig.json`（root）：passed。
   - `npm run build`（frontend）：passed，只有既有 chunk size / dynamic import chunking warnings。
   - `git diff --check`：passed。
+
+### Follow-up: Shape Readability Pass
+- **Status:** complete
+- Actions taken:
+  - 继续按用户反馈处理“动物不像 / 道具形状不对”：不引入外部资源，只把开源 procedural/low-poly 的骨架和参数化体块思路转成现有 Three.js 组件。
+  - 四足动物补 `WhiskerSet`、分叉鹿角/麒麟角、猫科/犬科胡须、狮尾毛球、肉掌/蹄的分支结构，避免所有动物只是同一套身体换颜色。
+  - 飞禽翼面由整块板进一步拆成根部翼骨 + 多根渐变飞羽，凤凰/仙鹤/鹰的羽片数量和颜色更容易区分。
+  - 道具进一步拆体块：桌椅横撑、床垫/被面/床头条、柜门面板、车身/车窗/轮毂、箱体边框、自行车轮/车架/前叉/把手、门窗框、屏幕边框和圆桶木板/金属箍。
+  - `compileDirector3DPromptFragment()` 增强动物和道具的结构描述，帮助图片/视频模型理解这些不是纯色占位块。
+- Validation:
+  - `npm run test -- --run src/components/linghui/director3d/director3dAssetLibrary.test.ts src/components/linghui/director3d/director3dRig.test.ts src/components/linghui/director3d/director3dCreature.test.ts src/components/linghui/director3d/director3dBattalion.test.ts`：4 files / 49 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json`（frontend）：passed。
+  - `npx tsc --noEmit --project tsconfig.json`（root）：passed。
+  - `npm run build`（frontend）：passed，只有既有 Vite dynamic import / chunk size warnings。
+  - `git diff --check`：passed。
+
+### Follow-up: Export Geometry Parity
+- **Status:** complete
+- Actions taken:
+  - 定位到 `Director3DViewport` 的离屏 `CaptureRenderer` 仍然对道具使用旧 `BoxGeometry/CylinderGeometry/Plane` 占位，导致视口细化后导出线稿/首帧参考仍会退回粗模。
+  - 在 `director3dExportGeometry.ts` 增加 `buildExportPropGroup()`，按 label 复刻桌椅床柜、汽车、自行车、树石、门窗屏幕、聚光灯/相机等结构化几何。
+  - `CaptureRenderer` 对 `prop-*` 统一走 `buildExportPropGroup()`，让视口、单帧导出和时间轴导出使用同一套结构道具。
+  - `buildExportCreatureGroup()` 四足动物导出同步胸腔/胯部 capsule、前伸头颈、足部/蹄/尾部结构；飞禽导出增加左右翼和飞羽。
+  - 新增 `director3dExportGeometry.test.ts`，覆盖汽车、自行车、窗和四足动物导出不再退化为单盒子/单圆柱。
+- Validation:
+  - `npm run test -- --run src/components/linghui/director3d/director3dExportGeometry.test.ts src/components/linghui/director3d/director3dAssetLibrary.test.ts src/components/linghui/director3d/director3dRig.test.ts src/components/linghui/director3d/director3dCreature.test.ts src/components/linghui/director3d/director3dBattalion.test.ts src/components/linghui/director3d/director3dTimeline.test.ts`：6 files / 70 tests passed。

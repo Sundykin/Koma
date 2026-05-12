@@ -952,7 +952,7 @@ export function compileDirector3DPromptFragment(scene: LinghuiDirector3DScene): 
       const spec = findCreatureSpecies(actor.species);
       const action = actor.creatureAction ?? 'idle';
       // 把 species hint + 动作翻译成英文，让下游 AI 看到具体生物 + 姿态
-      return `  - ${actor.label} (${spec.promptHint}) at (${pos}), facing ${facing}deg, ${action} pose`;
+      return `  - ${actor.label} (${spec.promptHint}) at (${pos}), facing ${facing}deg, ${action} pose, procedural animal blocking with aligned feet-legs-torso-neck-head skeleton, readable eyes, muzzle/beak, ears/horns/antlers, tail, claws/hooves and species-specific markings`;
     });
     lines.push('Creatures / mythical beasts on scene:');
     lines.push(...creatureLines);
@@ -1009,10 +1009,10 @@ export function compileDirector3DPromptFragment(scene: LinghuiDirector3DScene): 
 
   if (props.length > 0) {
     const propTypeLabels: Record<string, string> = {
-      'prop-box': 'box / table prop',
-      'prop-cylinder': 'cylindrical prop (barrel / pillar)',
-      'prop-plane': 'flat panel (wall / screen)',
-      'prop-camera': 'secondary camera marker',
+      'prop-box': 'structured box-derived prop with separated material parts (furniture / vehicle / crate / rock)',
+      'prop-cylinder': 'structured cylindrical prop with visible rings, spokes, legs, trunk or stand details',
+      'prop-plane': 'framed flat prop (door / window / screen) with mullions, panels or bezels',
+      'prop-camera': 'secondary camera / spotlight marker with lens, body, stand and direction cue',
       'prop-arrow': 'directional cue (motion or gaze)',
     };
     const propLines = props.map((actor) => {

@@ -147,6 +147,96 @@ function SpotSet({ count, bodyWidth, bodyHeight, bodyLength, color, useStandard 
   );
 }
 
+function WhiskerSet({ headSize, y, z, color, useStandard }: {
+  headSize: number;
+  y: number;
+  z: number;
+  color: string;
+  useStandard: boolean;
+}) {
+  return (
+    <>
+      {([-1, 1] as const).flatMap(sign => ([-1, 1] as const).map((row) => (
+        <mesh
+          key={`whisker-${sign}-${row}`}
+          position={[sign * headSize * 0.42, y + row * headSize * 0.04, z]}
+          rotation={[Math.PI / 2, 0, sign * 0.92]}
+        >
+          <cylinderGeometry args={[headSize * 0.012, headSize * 0.012, headSize * 0.64, 6]} />
+          {bodyMaterial(color, useStandard, 0.55, 0.04)}
+        </mesh>
+      )))}
+    </>
+  );
+}
+
+function AntlerBranch({ side, headSize, neckLength, useStandard }: {
+  side: -1 | 1;
+  headSize: number;
+  neckLength: number;
+  useStandard: boolean;
+}) {
+  const hornColor = detailColor(DETAIL.gold, useStandard ? 'preview' : 'lineart');
+  return (
+    <group position={[side * headSize * 0.35, neckLength * 0.68, neckLength * 0.78]} rotation={[-0.38, 0, side * 0.22]}>
+      <mesh rotation={[0.12, 0, side * 0.2]}>
+        <cylinderGeometry args={[headSize * 0.035, headSize * 0.065, headSize * 1.22, 6]} />
+        {bodyMaterial(hornColor, useStandard, 0.48, 0.2)}
+      </mesh>
+      {[0.34, 0.62].map((offset, i) => (
+        <mesh
+          key={`branch-${i}`}
+          position={[side * headSize * (0.08 + i * 0.04), headSize * offset, 0]}
+          rotation={[0.46, 0, side * (0.68 + i * 0.18)]}
+        >
+          <cylinderGeometry args={[headSize * 0.018, headSize * 0.032, headSize * 0.42, 6]} />
+          {bodyMaterial(hornColor, useStandard, 0.48, 0.2)}
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+function QuadrupedFoot({ species, legRadius, footZ, clawColor, useStandard, color }: {
+  species: CreatureSpeciesSpec;
+  legRadius: number;
+  footZ: number;
+  clawColor: string;
+  useStandard: boolean;
+  color: string;
+}) {
+  if (species.kind === 'horse' || species.kind === 'deer' || species.kind === 'qilin') {
+    return (
+      <>
+        <mesh position={[0, -legRadius * 0.14, 0]}>
+          <cylinderGeometry args={[legRadius * 0.9, legRadius * 1.06, legRadius * 1.4, 8]} />
+          {bodyMaterial(color, useStandard, 0.7, 0.05)}
+        </mesh>
+        <mesh position={[0, -legRadius * 1.0, footZ + legRadius * 0.5]} scale={[1.05, 0.42, 1.3]}>
+          <boxGeometry args={[legRadius * 1.85, legRadius * 0.74, legRadius * 1.5]} />
+          {bodyMaterial(detailColor(DETAIL.dark, useStandard ? 'preview' : 'lineart'), useStandard, 0.48, 0.12)}
+        </mesh>
+      </>
+    );
+  }
+
+  const toeOffsets = species.kind === 'bear' ? [-0.7, 0, 0.7] : [-0.48, 0.48];
+  return (
+    <>
+      <mesh position={[0, 0, footZ]} scale={[1.35, species.kind === 'bear' ? 0.55 : 0.45, species.kind === 'bear' ? 2.05 : 1.8]}>
+        <sphereGeometry args={[legRadius * (species.kind === 'bear' ? 1.45 : 1.05), 10, 8]} />
+        {bodyMaterial(color, useStandard, 0.75, 0.05)}
+      </mesh>
+      {toeOffsets.map((toe) => (
+        <mesh key={`toe-${toe}`} position={[toe * legRadius, -legRadius * 0.12, footZ + legRadius * 1.16]} rotation={[Math.PI / 2, 0, toe * 0.18]}>
+          <coneGeometry args={[legRadius * (species.kind === 'bear' ? 0.64 : 0.46), legRadius * 1.15, 8]} />
+          {bodyMaterial(clawColor, useStandard, 0.42, 0.12)}
+        </mesh>
+      ))}
+    </>
+  );
+}
+
 function QuadrupedBody({ species, rig, color, useStandard }: {
   species: CreatureSpeciesSpec;
   rig: CreatureRig;
@@ -164,9 +254,9 @@ function QuadrupedBody({ species, rig, color, useStandard }: {
   const frontZ = bodyLength * 0.36;
   const rearZ = -bodyLength * 0.34;
   const sideX = bodyWidth * 0.42;
-  const neckLength = species.bodyHeight * (species.kind === 'horse' || species.kind === 'deer' || species.kind === 'qilin' ? 0.34 : 0.22);
-  const headSize = species.bodyHeight * (species.kind === 'bear' ? 0.18 : 0.16);
-  const muzzleLength = headSize * (species.kind === 'horse' || species.kind === 'deer' ? 1.25 : species.kind === 'wolf' || species.kind === 'fox' ? 1.05 : 0.82);
+  const neckLength = species.bodyHeight * (species.kind === 'horse' || species.kind === 'deer' || species.kind === 'qilin' ? 0.38 : species.kind === 'bear' ? 0.18 : 0.24);
+  const headSize = species.bodyHeight * (species.kind === 'bear' ? 0.2 : species.kind === 'horse' ? 0.17 : 0.16);
+  const muzzleLength = headSize * (species.kind === 'horse' || species.kind === 'deer' ? 1.35 : species.kind === 'wolf' || species.kind === 'fox' ? 1.22 : species.kind === 'bear' ? 0.75 : 0.88);
   const tailLength = species.bodyLength * (species.kind === 'horse' ? 0.48 : species.kind === 'fox' ? 0.62 : 0.38);
   const tailRadius = Math.max(0.025, bodyWidth * 0.08);
   const detailInk = detailColor(DETAIL.dark, useStandard ? 'preview' : 'lineart');
@@ -174,6 +264,7 @@ function QuadrupedBody({ species, rig, color, useStandard }: {
   const clawColor = detailColor(DETAIL.claw, useStandard ? 'preview' : 'lineart');
   const maneColor = species.kind === 'horse' ? '#4a3020' : species.kind === 'qilin' ? '#c84525' : '#7a4a23';
   const footZ = species.kind === 'bear' ? 0.12 : 0.08;
+  const isAntlered = species.kind === 'deer' || species.kind === 'qilin';
 
   return (
     <group>
@@ -228,6 +319,15 @@ function QuadrupedBody({ species, rig, color, useStandard }: {
             <boxGeometry args={[headSize * 0.9, headSize * 0.55, muzzleLength]} />
             {bodyMaterial(color, useStandard, 0.66, 0.04)}
           </mesh>
+          {(species.kind === 'lion' || species.kind === 'tiger' || species.kind === 'wolf' || species.kind === 'fox') ? (
+            <WhiskerSet
+              headSize={headSize}
+              y={neckLength * 0.04}
+              z={neckLength * 1.28 + muzzleLength * 0.36}
+              color={detailInk}
+              useStandard={useStandard}
+            />
+          ) : null}
           <CreatureEyePair
             y={neckLength * 0.28}
             z={neckLength * 1.14}
@@ -249,7 +349,12 @@ function QuadrupedBody({ species, rig, color, useStandard }: {
             color={color}
             floppy={species.kind === 'bear' || species.kind === 'horse'}
           />
-          {species.hasHorns && (
+          {isAntlered ? (
+            <>
+              <AntlerBranch side={1} headSize={headSize} neckLength={neckLength} useStandard={useStandard} />
+              <AntlerBranch side={-1} headSize={headSize} neckLength={neckLength} useStandard={useStandard} />
+            </>
+          ) : species.hasHorns ? (
             <>
               <mesh position={[headSize * 0.35, neckLength * 0.7, neckLength * 0.78]} rotation={[-0.35, 0, 0.35]}>
                 <cylinderGeometry args={[headSize * 0.045, headSize * 0.075, headSize * 1.15, 6]} />
@@ -260,7 +365,7 @@ function QuadrupedBody({ species, rig, color, useStandard }: {
                 {bodyMaterial('#d4b878', useStandard, 0.5, 0.2)}
               </mesh>
             </>
-          )}
+          ) : null}
         </group>
 
         {/* 尾巴 */}
@@ -269,6 +374,12 @@ function QuadrupedBody({ species, rig, color, useStandard }: {
             <cylinderGeometry args={[tailRadius * 0.4, tailRadius, tailLength, 8]} />
             {bodyMaterial(color, useStandard, 0.7, 0.05)}
           </mesh>
+          {species.kind === 'lion' ? (
+            <mesh position={[0, tailRadius * 0.1, -tailLength * 0.98]} rotation={[Math.PI / 2, 0, 0]}>
+              <sphereGeometry args={[tailRadius * 2.3, 10, 8]} />
+              {bodyMaterial(maneColor, useStandard, 0.86, 0.02)}
+            </mesh>
+          ) : null}
           {(species.kind === 'fox' ? [0, 1, 2] : [0]).map((_, i) => (
             <mesh
               key={`tail-tip-${i}`}
@@ -294,14 +405,9 @@ function QuadrupedBody({ species, rig, color, useStandard }: {
             <capsuleGeometry args={[legRadius, legLen, 4, 8]} />
             {bodyMaterial(color, useStandard, 0.75, 0.05)}
           </mesh>
-          <mesh position={[0, -legLen, footZ]} scale={[1.35, 0.45, 1.8]}>
-            <sphereGeometry args={[legRadius * (species.kind === 'bear' ? 1.45 : 1.05), 10, 8]} />
-            {bodyMaterial(color, useStandard, 0.75, 0.05)}
-          </mesh>
-          <mesh position={[0, -legLen - legRadius * 0.12, footZ + legRadius * 0.9]} rotation={[Math.PI / 2, 0, 0]}>
-            <coneGeometry args={[legRadius * (species.kind === 'bear' ? 0.9 : 0.62), legRadius * 1.35, 8]} />
-            {bodyMaterial(clawColor, useStandard, 0.42, 0.12)}
-          </mesh>
+          <group position={[0, -legLen, 0]}>
+            <QuadrupedFoot species={species} legRadius={legRadius} footZ={footZ} clawColor={clawColor} useStandard={useStandard} color={color} />
+          </group>
         </group>
       ))}
     </group>
@@ -327,6 +433,8 @@ function AvianBody({ species, rig, color, useStandard }: {
   const eyeColor = detailColor(DETAIL.dark, useStandard ? 'preview' : 'lineart');
   const accentColor = species.kind === 'phoenix' ? detailColor(DETAIL.fire, 'preview') : detailColor(DETAIL.light, 'preview');
   const legColor = detailColor('#d8a020', 'preview');
+  const primaryFeatherColor = species.kind === 'phoenix' ? accentColor : color;
+  const flightFeatherCount = species.kind === 'phoenix' ? 7 : species.kind === 'crane' ? 6 : 5;
 
   return (
     <group>
@@ -372,36 +480,42 @@ function AvianBody({ species, rig, color, useStandard }: {
 
         <group position={[0, bodyHeight * 0.08, bodyLength * 0.02]}>
           <group rotation={rig.frontLeftLeg}>
-            <mesh position={[wingSpan * 0.28, 0, -wingChord * 0.08]} rotation={[Math.PI / 2, 0, -0.1]}>
-              <boxGeometry args={[wingSpan * 0.56, wingChord, 0.035]} />
+            <mesh position={[wingSpan * 0.18, 0, -wingChord * 0.02]} rotation={[Math.PI / 2, 0, -0.16]}>
+              <boxGeometry args={[wingSpan * 0.36, wingChord * 0.3, 0.035]} />
               {bodyMaterial(color, useStandard, 0.6, 0.05)}
             </mesh>
-            {Array.from({ length: 5 }).map((_, i) => (
-              <mesh
-                key={`left-feather-${i}`}
-                position={[wingSpan * (0.08 + i * 0.08), -wingChord * 0.38, 0]}
-                rotation={[Math.PI / 2, 0, -0.12]}
-              >
-                <coneGeometry args={[wingChord * 0.1, wingChord * 0.42, 7]} />
-                {bodyMaterial(species.kind === 'phoenix' ? accentColor : color, useStandard, 0.68, 0.04)}
-              </mesh>
-            ))}
+            {Array.from({ length: flightFeatherCount }).map((_, i) => {
+              const t = i / Math.max(1, flightFeatherCount - 1);
+              return (
+                <mesh
+                  key={`left-feather-${i}`}
+                  position={[wingSpan * (0.18 + t * 0.34), -wingChord * (0.1 + t * 0.36), -wingChord * (0.03 + t * 0.06)]}
+                  rotation={[Math.PI / 2, 0, -0.3 + t * 0.18]}
+                >
+                  <coneGeometry args={[wingChord * (0.11 - t * 0.025), wingChord * (0.5 + t * 0.18), 7]} />
+                  {bodyMaterial(primaryFeatherColor, useStandard, 0.68, 0.04)}
+                </mesh>
+              );
+            })}
           </group>
           <group rotation={rig.frontRightLeg}>
-            <mesh position={[-wingSpan * 0.28, 0, -wingChord * 0.08]} rotation={[Math.PI / 2, 0, 0.1]}>
-              <boxGeometry args={[wingSpan * 0.56, wingChord, 0.035]} />
+            <mesh position={[-wingSpan * 0.18, 0, -wingChord * 0.02]} rotation={[Math.PI / 2, 0, 0.16]}>
+              <boxGeometry args={[wingSpan * 0.36, wingChord * 0.3, 0.035]} />
               {bodyMaterial(color, useStandard, 0.6, 0.05)}
             </mesh>
-            {Array.from({ length: 5 }).map((_, i) => (
-              <mesh
-                key={`right-feather-${i}`}
-                position={[-wingSpan * (0.08 + i * 0.08), -wingChord * 0.38, 0]}
-                rotation={[Math.PI / 2, 0, 0.12]}
-              >
-                <coneGeometry args={[wingChord * 0.1, wingChord * 0.42, 7]} />
-                {bodyMaterial(species.kind === 'phoenix' ? accentColor : color, useStandard, 0.68, 0.04)}
-              </mesh>
-            ))}
+            {Array.from({ length: flightFeatherCount }).map((_, i) => {
+              const t = i / Math.max(1, flightFeatherCount - 1);
+              return (
+                <mesh
+                  key={`right-feather-${i}`}
+                  position={[-wingSpan * (0.18 + t * 0.34), -wingChord * (0.1 + t * 0.36), -wingChord * (0.03 + t * 0.06)]}
+                  rotation={[Math.PI / 2, 0, 0.3 - t * 0.18]}
+                >
+                  <coneGeometry args={[wingChord * (0.11 - t * 0.025), wingChord * (0.5 + t * 0.18), 7]} />
+                  {bodyMaterial(primaryFeatherColor, useStandard, 0.68, 0.04)}
+                </mesh>
+              );
+            })}
           </group>
         </group>
 
