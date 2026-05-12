@@ -71,8 +71,13 @@ interface OrderedVisualReference {
  *   - image-index 策略：按 kind 分组 @Image N / @Video N / @Audio N（video / audio 上限 3，超出回退到 name）
  *   - readable-name 策略：替换为 item.name
  *
+ * 智能裁剪：只把 prompt 里实际 @ 到的 reference 推进编号桶 + compiledReferences；
+ * 未 @ 的 references 不上传也不占用编号槽。primary + extraReferences 是显式槽位
+ * （由调用方塞入），永远参与。这避免了"上游 4 张图，prompt 只 @ 了第 4 张，结果被
+ * 编译成 @Image 4 + 同时把另外 3 张无关图也上传"的浪费场景。
+ *
  * compiledReferences 是「全能参考」扁平数组：image / video / audio 走同一个引用通道，
- * 按推入顺序排列（primary → extra → 声明顺序）；上游会按需上传到图床并塞进
+ * 按推入顺序排列（primary → extra → 被 @ 到的声明顺序）；上游会按需上传到图床并塞进
  * additionalReferences / referenceImages 等同一组字段，body 不区分类型。
  * 调用方仅靠 prompt 文本里的 @Image N / @Video N / @Audio N 让模型自行对位。
  */
@@ -97,6 +102,14 @@ export function compilePromptReferences(params: {
   const refMap = new Map(references.map(item => [item.id, item]));
   const unresolvedMentions: string[] = [];
   let compiledPrompt = prompt;
+
+  // 只 @-mentioned 的 references 才参与编号 + 入数组。否则上游一连 4 张图、用户只 @ 了一张，
+  // 也会被串成 @Image 1..4，让被 @ 的那张拿到 @Image 4。
+  // primary + extras 是显式槽位（外层调用方塞的），永远在；其它走"按需"。
+  const mentionedRefIds = new Set<string>();
+  for (const parsed of parsedRefs) {
+    if (refMap.has(parsed.id)) mentionedRefIds.add(parsed.id);
+  }
 
   const primaryReference = primaryReferenceId ? refMap.get(primaryReferenceId) : undefined;
   const primarySourceKey = primaryReference?.source ? buildRefKey(primaryReference.source) : null;
@@ -142,8 +155,11 @@ export function compilePromptReferences(params: {
     pushRefByKind('image', ref);
   }
 
-  // 优先级 3：所有声明的 references（按声明顺序）
+  // 优先级 3：仅 prompt 里 @ 到的 references（按声明顺序）。
+  // 未 @ 的不进编号桶、也不进 compiledReferences —— 智能裁剪，避免一张被引用的图被
+  // 串到 @Image 4，也避免无关上游资源占用 provider 的引用槽位。
   for (const item of references) {
+    if (!mentionedRefIds.has(item.id)) continue;
     if (item.source) {
       pushRefByKind(item.kind ?? 'image', item.source);
     }
