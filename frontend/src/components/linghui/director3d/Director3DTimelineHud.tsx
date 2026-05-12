@@ -15,7 +15,7 @@
  * 沉浸态隐藏；时间轴为空时 HUD 仍显示（提示用户加第一帧）。
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { InputNumber, Modal, Select, Tooltip } from 'antd';
+import { InputNumber, Modal, Tooltip } from 'antd';
 import { Film, MonitorPlay, Pause, Play, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import { toFileSystemDisplayUrl } from '../../../services/fileSystemPort';
 import type {
@@ -275,41 +275,46 @@ export const Director3DTimelineHud: React.FC<Director3DTimelineHudProps> = ({
           />
         </Tooltip>
 
-        {/* getPopupContainer 改成 trigger.parentElement：editor 本身已经 portal 到 body，
-           Select dropdown 默认还会 portal 到 body，形成「body-portal A 包 body-portal B」
-           的双重 portal，React 19 在合成事件跨 portal 冒泡时 option onClick 不能
-           可靠 commit。挂到 parentElement 让 dropdown 留在 director3d portal 内部，
-           事件路径就只走一层 portal，select 正常生效。 */}
-        <Select<LinghuiDirector3DEasing>
-          size="small"
-          title="补间缓动算法"
-          value={timeline.easing ?? 'ease-in-out'}
-          onChange={(value) => onEasingChange(value as LinghuiDirector3DEasing)}
-          style={{ width: 96 }}
-          getPopupContainer={triggerNode => triggerNode.parentElement ?? triggerNode.ownerDocument.body}
-          popupClassName="nopan nowheel nodrag linghuiDirector3DSelectDropdown"
-          options={[
-            { value: 'linear', label: '线性' },
-            { value: 'ease-in', label: '缓入' },
-            { value: 'ease-out', label: '缓出' },
-            { value: 'ease-in-out', label: '平滑' },
-          ]}
-        />
+        {/* 缓动 + 分辨率：antd Select 在双 portal（editor 自己 portal 到 body +
+           dropdown 也 portal 到 body）下 onClick commit 不稳，改成内联 button group。 */}
+        <div className="linghuiDirector3DTimelineButtonGroup isEasing" title="补间缓动算法">
+          {([
+            { value: 'linear' as const, label: '线性' },
+            { value: 'ease-in' as const, label: '缓入' },
+            { value: 'ease-out' as const, label: '缓出' },
+            { value: 'ease-in-out' as const, label: '平滑' },
+          ]).map(option => {
+            const active = (timeline.easing ?? 'ease-in-out') === option.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                className={`linghuiDirector3DTimelineButton ${active ? 'isActive' : ''}`}
+                onClick={() => onEasingChange(option.value)}
+                title={option.label}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
 
-        <Select<LinghuiDirector3DExportResolution>
-          size="small"
-          title="视频导出分辨率（按 aspectRatio 计算宽）"
-          value={resolveDirector3DExportResolution(timeline.exportResolution)}
-          onChange={(value) => onExportResolutionChange(value)}
-          style={{ width: 96 }}
-          getPopupContainer={triggerNode => triggerNode.parentElement ?? triggerNode.ownerDocument.body}
-          popupClassName="nopan nowheel nodrag linghuiDirector3DSelectDropdown"
-          options={DIRECTOR3D_EXPORT_RESOLUTION_OPTIONS.map(option => ({
-            value: option.value,
-            label: option.label,
-            title: option.hint,
-          }))}
-        />
+        <div className="linghuiDirector3DTimelineButtonGroup isResolution" title="视频导出分辨率（按 aspectRatio 计算宽）">
+          {DIRECTOR3D_EXPORT_RESOLUTION_OPTIONS.map(option => {
+            const active = resolveDirector3DExportResolution(timeline.exportResolution) === option.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                className={`linghuiDirector3DTimelineButton ${active ? 'isActive' : ''}`}
+                onClick={() => onExportResolutionChange(option.value)}
+                title={option.hint}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
 
         <span className="linghuiDirector3DTimelineSeparator" />
 

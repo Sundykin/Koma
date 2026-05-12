@@ -1245,6 +1245,35 @@
   flex-shrink: 0;
 }
 
+/* 内联按钮组：缓动 / 导出分辨率 ——
+   antd Select 在 director3d 双 portal 下 commit 不稳，改用内联 button toggle。
+   按功能用底色区分：缓动=info，分辨率=accent。 */
+.linghuiDirector3DTimelineButtonGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  flex-shrink: 0;
+
+  .linghuiDirector3DTimelineButton {
+    height: 20px;
+    padding: 0 6px;
+    font-size: 10px;
+    line-height: 1;
+  }
+
+  &.isEasing {
+    background: color-mix(in srgb, var(--token-status-info) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--token-status-info) 28%, transparent);
+  }
+
+  &.isResolution {
+    background: color-mix(in srgb, var(--token-accent-base) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--token-accent-base) 28%, transparent);
+  }
+}
+
 .linghuiDirector3DTimelineLayerChip {
   padding: 0 8px;
   height: 22px;
