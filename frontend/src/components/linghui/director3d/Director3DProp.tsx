@@ -110,6 +110,12 @@ export const Director3DProp: React.FC<Director3DPropProps> = ({ actor, selected,
       {detailMaterial('wood', 0.72, 0.04)}
     </mesh>
   );
+  const woodSlat = (key: string, x: number, y: number, z: number, width: number, vertical = false) => (
+    <mesh key={key} position={[x, y, z + 0.012]}>
+      <boxGeometry args={vertical ? [0.035, width, 0.018] : [width, 0.035, 0.018]} />
+      {detailMaterial('dark', 0.74, 0.04)}
+    </mesh>
+  );
 
   return (
     <group
@@ -126,6 +132,7 @@ export const Director3DProp: React.FC<Director3DPropProps> = ({ actor, selected,
                 <boxGeometry args={[1.35, 0.12, 0.72]} />
                 {detailMaterial('wood', 0.72, 0.04)}
               </mesh>
+              {[-0.42, 0, 0.42].map((x, i) => woodSlat(`table-slat-${i}`, x, 0.785, 0.36, 0.32))}
               {[-1, 1].flatMap(x => [-1, 1].map(z => boxLeg(`table-leg-${x}-${z}`, x * 0.55, z * 0.25, 0.68, 0.035)))}
             </group>
           ) : kind === 'chair' ? (
@@ -138,6 +145,7 @@ export const Director3DProp: React.FC<Director3DPropProps> = ({ actor, selected,
                 <boxGeometry args={[0.62, 0.62, 0.08]} />
                 {detailMaterial('wood', 0.72, 0.04)}
               </mesh>
+              {[-0.18, 0, 0.18].map((x, i) => woodSlat(`chair-back-slat-${i}`, x, 0.82, -0.18, 0.46, true))}
               {[-1, 1].flatMap(x => [-1, 1].map(z => boxLeg(`chair-leg-${x}-${z}`, x * 0.22, z * 0.2, 0.42, 0.026)))}
             </group>
           ) : kind === 'bed' ? (
@@ -149,6 +157,10 @@ export const Director3DProp: React.FC<Director3DPropProps> = ({ actor, selected,
               <mesh position={[0, 0.52, 0.02]}>
                 <boxGeometry args={[1.42, 0.12, 0.78]} />
                 {detailMaterial('glass', 0.95, 0.02)}
+              </mesh>
+              <mesh position={[0, 0.64, -0.38]}>
+                <boxGeometry args={[1.48, 0.54, 0.08]} />
+                {detailMaterial('wood', 0.78, 0.03)}
               </mesh>
               <mesh position={[0, 0.63, 0.28]}>
                 <boxGeometry args={[0.48, 0.12, 0.25]} />
@@ -171,6 +183,12 @@ export const Director3DProp: React.FC<Director3DPropProps> = ({ actor, selected,
                   {detailMaterial('metal', 0.45, 0.25)}
                 </mesh>
               ))}
+              {[0.32, 0.68, 1.04].map((y, i) => (
+                <mesh key={`cabinet-shelf-${i}`} position={[0, y, 0.29]}>
+                  <boxGeometry args={[0.7, 0.025, 0.03]} />
+                  {detailMaterial('dark', 0.7, 0.04)}
+                </mesh>
+              ))}
             </group>
           ) : kind === 'car' ? (
             <group>
@@ -182,12 +200,22 @@ export const Director3DProp: React.FC<Director3DPropProps> = ({ actor, selected,
                 <boxGeometry args={[0.72, 0.28, 0.54]} />
                 {detailMaterial('glass', 0.42, 0.08)}
               </mesh>
+              <mesh position={[0, 0.52, 0.38]}>
+                <boxGeometry args={[1.26, 0.12, 0.05]} />
+                {detailMaterial('metal', 0.45, 0.2)}
+              </mesh>
               {[-1, 1].flatMap(x => [-1, 1].map(z => (
                 <mesh key={`wheel-${x}-${z}`} position={[x * 0.52, 0.18, z * 0.28]} rotation={[Math.PI / 2, 0, 0]}>
                   <cylinderGeometry args={[0.15, 0.15, 0.08, 18]} />
                   {detailMaterial('tire', 0.72, 0.08)}
                 </mesh>
               )))}
+              {[-1, 1].map(sign => (
+                <mesh key={`hub-${sign}`} position={[sign * 0.52, 0.18, 0.325]} rotation={[Math.PI / 2, 0, 0]}>
+                  <cylinderGeometry args={[0.07, 0.07, 0.09, 16]} />
+                  {detailMaterial('metal', 0.38, 0.28)}
+                </mesh>
+              ))}
               <mesh position={[0, 0.39, 0.38]}>
                 <boxGeometry args={[0.62, 0.08, 0.035]} />
                 {detailMaterial('light', 0.35, 0.2)}
@@ -210,6 +238,7 @@ export const Director3DProp: React.FC<Director3DPropProps> = ({ actor, selected,
                 <boxGeometry args={[0.9, 0.8, 0.6]} />
                 {detailMaterial('wood', 0.78, 0.03)}
               </mesh>
+              {[-0.24, 0, 0.24].map((x, i) => woodSlat(`crate-board-${i}`, x, 0.4, 0.322, 0.68, true))}
               <mesh position={[0, 0.4, 0.31]}>
                 <boxGeometry args={[0.82, 0.08, 0.025]} />
                 {detailMaterial('dark', 0.74, 0.04)}
@@ -246,6 +275,12 @@ export const Director3DProp: React.FC<Director3DPropProps> = ({ actor, selected,
                   {detailMaterial('leaf', 0.86, 0.02)}
                 </mesh>
               ))}
+              {[-0.08, 0.08].map((x, i) => (
+                <mesh key={`tree-branch-${i}`} position={[x, 1.05, 0.08]} rotation={[0.8, 0, x > 0 ? -0.55 : 0.55]}>
+                  <cylinderGeometry args={[0.025, 0.04, 0.46, 8]} />
+                  {detailMaterial('bark', 0.82, 0.03)}
+                </mesh>
+              ))}
             </group>
           ) : kind === 'bush' ? (
             <group>
@@ -272,9 +307,17 @@ export const Director3DProp: React.FC<Director3DPropProps> = ({ actor, selected,
                 <cylinderGeometry args={[0.018, 0.018, 0.78, 8]} />
                 {detailMaterial('metal', 0.42, 0.28)}
               </mesh>
+              <mesh position={[0.2, 0.28, 0]} rotation={[0, 0, 0.2]}>
+                <cylinderGeometry args={[0.014, 0.014, 0.42, 8]} />
+                {detailMaterial('metal', 0.42, 0.28)}
+              </mesh>
               <mesh position={[0.12, 0.32, 0]}>
                 <boxGeometry args={[0.25, 0.045, 0.12]} />
                 {detailMaterial('dark', 0.6, 0.08)}
+              </mesh>
+              <mesh position={[0.45, 0.42, 0]} rotation={[0, 0, 0.18]}>
+                <boxGeometry args={[0.22, 0.025, 0.06]} />
+                {detailMaterial('dark', 0.55, 0.08)}
               </mesh>
             </group>
           ) : kind === 'mic' ? (
@@ -324,6 +367,10 @@ export const Director3DProp: React.FC<Director3DPropProps> = ({ actor, selected,
                 <>
                   <mesh position={[0, 0.2, 0]}>
                     <torusGeometry args={[0.36, 0.025, 8, 24]} />
+                    {detailMaterial('metal', 0.45, 0.22)}
+                  </mesh>
+                  <mesh position={[0, 0.45, 0]}>
+                    <torusGeometry args={[0.355, 0.018, 8, 24]} />
                     {detailMaterial('metal', 0.45, 0.22)}
                   </mesh>
                   <mesh position={[0, 0.7, 0]}>

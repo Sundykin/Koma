@@ -1424,6 +1424,16 @@
 
   .ant-popover-inner-content {
     padding: 0;
+    /* 关键：antd 默认会给 inner-content 一些 overflow 处理，导致外层也出现一条滚动条；
+       我们自己 RailPopoverInner 控制高度 + 单一内层滚动，这里彻底让 antd 不再滚。 */
+    overflow: visible;
+    max-height: none;
+  }
+
+  /* antd v6 Popover 的 inner 也可能挂 max-height/overflow，统一覆盖 */
+  .ant-popover-inner {
+    overflow: visible;
+    max-height: none;
   }
 
   .ant-popover-arrow {
@@ -1437,10 +1447,11 @@
     max-height: min(70vh, 560px);
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    overflow: hidden; /* 自己 clip，不当滚动源 */
   }
 
   .linghuiDirector3DRailPopoverTitle {
+    flex-shrink: 0;
     padding: 8px 12px;
     font-size: 12px;
     font-weight: 700;
@@ -1450,7 +1461,9 @@
 
   .linghuiDirector3DAssetGrid {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
+    overflow-x: hidden;
     padding: 8px;
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -1458,9 +1471,70 @@
     align-content: start;
   }
 
+  /* 角色 / 道具属性面板：唯一的纵向滚动源；不允许横向滚动 */
   .linghuiDirector3DInspectorBody {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
     padding: 8px 10px;
   }
+}
+
+/* 骨骼微调：每个 SliderRow 必须 flex 布局，否则 Slider 的 flex:1 不生效 →
+   Slider 占用 intrinsic 宽（150-300px）+ 左侧 label + 右侧 value → 整行横向溢出。 */
+.linghuiDirector3DRigGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.linghuiDirector3DRigJoint {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--token-bg-elevated) 50%, transparent);
+  border: 1px solid color-mix(in srgb, var(--token-text-primary) 6%, transparent);
+  width: 100%;
+  min-width: 0;
+}
+
+.linghuiDirector3DRigJointHeader {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--token-text-primary);
+}
+
+.linghuiDirector3DRigSliderRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+
+  .ant-slider {
+    flex: 1;
+    min-width: 0; /* 允许 Slider 在 flex 容器里收缩 */
+  }
+}
+
+.linghuiDirector3DRigSliderLabel {
+  flex-shrink: 0;
+  min-width: 40px;
+  font-size: 11px;
+  color: var(--token-text-secondary);
+}
+
+.linghuiDirector3DRigSliderValue {
+  flex-shrink: 0;
+  min-width: 36px;
+  text-align: right;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--token-text-primary);
 }
 
 /* 紧凑节点上的「打开工作台」按钮：唯一会展开 Director3DNodeEditor 的入口；

@@ -1361,4 +1361,24 @@
   - 查找开源 procedural animal / low-poly / bird geometry 思路，决定以骨架体块重排为主，而不是继续贴局部细节。
 
 ### Phase 2: Creature Structural Rework
-- **Status:** in_progress
+- **Status:** complete
+- Actions taken:
+  - 四足动物按脚底→腿→肩胯→胸腔/胯部→颈→头重新排布，躯干改为胸腔和胯部两段 capsule，头部从胸前水平前伸。
+  - 飞禽改为泪滴状身体、收窄尾部、长颈/头/喙、横向翼面和贴地双腿。
+  - 神龙补齐前后四爪，龙头从身体轴前端伸出，身体仍保持分段蛇形结构。
+
+### Phase 3: Prop Structural Rework
+- **Status:** complete
+- Actions taken:
+  - 在 `Director3DProp` 增加木条、轮毂、车头金属条、柜体层板、床头板、树枝、自行车车把/横杆、圆桶中部金属箍等细节。
+  - 这些改动继续使用 procedural mesh，不引入贴图或外部资源。
+
+### Phase 4: Validation
+- **Status:** complete
+- Validation:
+  - `npm run test -- --run src/components/linghui/director3d/director3dAssetLibrary.test.ts src/components/linghui/director3d/director3dRig.test.ts src/components/linghui/director3d/director3dCreature.test.ts src/components/linghui/director3d/director3dBattalion.test.ts`：4 files / 49 tests passed。
+  - `npm run test -- --run src/components/linghui/director3d/director3dCreature.test.ts src/components/linghui/director3d/director3dAssetLibrary.test.ts`：2 files / 25 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json`（frontend）：passed。
+  - `npx tsc --noEmit --project tsconfig.json`（root）：passed。
+  - `npm run build`（frontend）：passed，只有既有 chunk size / dynamic import chunking warnings。
+  - `git diff --check`：passed。

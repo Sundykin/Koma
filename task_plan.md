@@ -670,9 +670,9 @@
 | Phase | Status | Description |
 |------|--------|-------------|
 | 1. Reference Review | complete | 查找 procedural animal / low-poly / bird geometry 思路，确认以骨架体块重排为主 |
-| 2. Creature Structural Rework | in_progress | 重排四足、飞禽、龙形的腿/身体/颈/头/尾/翼层级和比例 |
-| 3. Prop Structural Rework | pending | 重画主要道具体块、材料分区和边缘细节 |
-| 4. Validation | pending | 运行目标测试 / TypeScript / build / diff check |
+| 2. Creature Structural Rework | complete | 重排四足、飞禽、龙形的腿/身体/颈/头/尾/翼层级和比例 |
+| 3. Prop Structural Rework | complete | 重画主要道具体块、材料分区和边缘细节 |
+| 4. Validation | complete | 运行目标测试 / TypeScript / build / diff check |
 
 ### Error Log
 | Error | Attempt | Resolution |
