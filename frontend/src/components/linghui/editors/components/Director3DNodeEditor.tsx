@@ -15,7 +15,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { App, Button, InputNumber, Popover, Slider, Tooltip } from 'antd';
 import { useNodes } from '@xyflow/react';
 import type { Node } from '@xyflow/react';
-import { ArrowRight, Box, Camera, Cylinder, Eye, Grid2x2, Image as ImageIcon, Layers, LayoutTemplate, Link2, Link2Off, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Plus, Square, Trash2, Users, Wand2, Zap } from 'lucide-react';
+import { ArrowRight, Box, Camera, Cylinder, Eye, Grid2x2, Image as ImageIcon, Layers, LayoutTemplate, Link2, Maximize2, Minimize2, Plus, Square, Trash2, Users, Wand2, Zap } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type {
   LinghuiDirector3DActor,
@@ -24,6 +24,7 @@ import type {
   LinghuiDirector3DCreatureAction,
   LinghuiDirector3DCreatureSpecies,
   LinghuiDirector3DEasing,
+  LinghuiDirector3DExportResolution,
   LinghuiDirector3DKeyframe,
   LinghuiDirector3DNodeProperties,
   LinghuiDirector3DRenderMode,
@@ -39,6 +40,9 @@ import {
   DIRECTOR3D_PROP_CATEGORY_LABELS,
   DIRECTOR3D_PROP_LIBRARY,
   DIRECTOR3D_SCENE_TEMPLATES,
+  DIRECTOR3D_EXPORT_RESOLUTION_OPTIONS,
+  resolveDirector3DExportDimensions,
+  resolveDirector3DExportResolution,
   type Director3DBattalionOptions,
   type Director3DCameraPreset,
   type Director3DCameraPresetCategory,
@@ -107,6 +111,7 @@ const PROP_ICON_BY_TYPE: Record<Director3DPropPreset['type'], LucideIcon> = {
 const CAMERA_PRESET_CATEGORY_ORDER: Director3DCameraPresetCategory[] = ['shot-size', 'angle', 'lens', 'classic'];
 
 const ASPECT_RATIOS = ['16:9', '21:9', '4:3', '1:1', '9:16'];
+type Director3DAssetTab = 'props' | 'characters' | 'creatures' | 'cameras' | 'templates';
 
 const RENDER_MODE_LABELS: Record<LinghuiDirector3DRenderMode, string> = {
   preview: '彩色',
@@ -144,11 +149,11 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
 
   const scene = useMemo(() => getScene(nodeData.properties), [nodeData.properties]);
   const [selection, setSelection] = useState<Selection>({ kind: null });
-  const [activeAssetTab, setActiveAssetTab] = useState<'props' | 'characters' | 'creatures' | 'cameras' | 'templates'>('characters');
+  const [activeAssetTab, setActiveAssetTab] = useState<Director3DAssetTab>('characters');
   // 左右 rail 用受控 open：hover 触发开，关闭只走 ① 点击工作台之外区域 ② Esc ③ 切到另一个 tab。
   // 之前 antd 默认 hover-leave 在用户 mouse 移到 body-mounted 子 popup（Select 下拉 / ColorPicker /
   // 派兵布阵 popover）上时会触发，从而提前关闭外层 rail；切受控避开这条路径。
-  const [openLeftRailTab, setOpenLeftRailTab] = useState<'props' | 'characters' | 'creatures' | 'cameras' | 'templates' | null>(null);
+  const [openLeftRailTab, setOpenLeftRailTab] = useState<Director3DAssetTab | null>(null);
   const [rightRailOpen, setRightRailOpen] = useState(false);
   // 默认彩色预览：保留物体颜色 + 含地面/天空 + 无描边 → 所见即所得
   const [renderModeForExport, setRenderModeForExport] = useState<LinghuiDirector3DRenderMode>('preview');
@@ -164,25 +169,16 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
   // capture 阶段 stopPropagation，避免 ReactFlow / 外层画布快捷键在用户编辑时被触发。
   const panelRootRef = useRef<HTMLDivElement | null>(null);
 
-  // 悬浮菜单内容 wrapper 用：阻断鼠标 / 指针 / 滚轮 / 上下文 / 点击事件向上冒泡，
-  // 让 popover 里拖动 slider / 滚动 / 点选项时画布不会跟着平移 / 缩放 / 误选节点，
-  // 也避免 React event 一路冒泡到 root，省一遍 RF 的 handler 链（性能优化）。
-  const popoverEventBlockers = useMemo(() => {
-    const stop = (event: React.SyntheticEvent) => {
-      event.stopPropagation();
-      event.nativeEvent.stopPropagation();
-    };
-    return {
-      onMouseDown: stop,
-      onMouseUp: stop,
-      onClick: stop,
-      onContextMenu: stop,
-      onPointerDown: stop,
-      onPointerUp: stop,
-      onWheel: stop,
-      onTouchStart: stop,
-    };
-  }, []);
+  // 历史的 popoverEventBlockers 已彻底删除：
+  //  - antd Slider / InputNumber / ColorPicker / Select 内部都靠 document 原生监听
+  //    （mouseup / pointerup / pointermove）来释放拖拽 / 切换焦点 / commit 选择。
+  //    任何形式的 stopPropagation（React 合成或 nativeEvent）都会在事件冒泡链上
+  //    某一节点拦截，让 document 收不到信号 → 拖拽不释放、选项点不中、滑块跟手。
+  //  - popover 稳定性由 controlled `open` state + 文档级外部点击检测实现，不再
+  //    依赖内部事件阻断。
+  //  - React Flow 的画布交互只在 `.react-flow` DOM 子树内监听，popover 走 body-portal
+  //    本就不在 RF 命中范围，不会误触发 pan / zoom / 节点选择。
+  // 所有 popover content / panel root / 全屏容器都让事件自然冒泡。
 
   const updateScene = useCallback((updater: (prev: LinghuiDirector3DScene) => LinghuiDirector3DScene) => {
     updateNodeData(nodeId, prev => ({
@@ -643,6 +639,10 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
     updateTimeline(prev => ({ ...prev, easing }));
   }, [updateTimeline]);
 
+  const handleExportResolutionChange = useCallback((resolution: LinghuiDirector3DExportResolution) => {
+    updateTimeline(prev => ({ ...prev, exportResolution: resolution }));
+  }, [updateTimeline]);
+
   const handleResetTimeline = useCallback(() => {
     updateScene(prev => ({ ...prev, timeline: createDefaultDirector3DTimeline() }));
     setSelectedKeyframeId(null);
@@ -686,11 +686,9 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
       return;
     }
 
-    // 计算输出尺寸：按当前镜头 aspectRatio 推 1024 宽
-    const aspectParts = scene.camera.aspectRatio.split(':');
-    const ratio = aspectParts.length === 2 ? Number(aspectParts[0]) / Number(aspectParts[1]) : 16 / 9;
-    const width = 1024;
-    const height = Math.round(width / ratio);
+    // 用户在 HUD 设置的导出分辨率档位 → (width, height)，按 aspectRatio 计算宽
+    const exportResolution = resolveDirector3DExportResolution(timeline.exportResolution);
+    const { width, height } = resolveDirector3DExportDimensions(exportResolution, scene.camera.aspectRatio);
 
     setPlaying(false);
     const abort = new AbortController();
@@ -965,13 +963,17 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
       event.stopPropagation();
     };
 
-    root.addEventListener('keydown', onKeyDown, true);
-    root.addEventListener('keyup', blockBubble, true);
-    root.addEventListener('keypress', blockBubble, true);
+    // bubble 阶段（capture=false）：先让 target / 子组件（antd Select / InputNumber /
+    // ColorPicker 内部 keydown handler）处理完事件，再 stopPropagation 阻止冒泡到
+    // ReactFlow / 画布。capture 阶段无条件 stopPropagation 会让 antd 内部状态错乱，
+    // 表现为下拉打开后选项点不中、Number 上下箭头键失灵。
+    root.addEventListener('keydown', onKeyDown, false);
+    root.addEventListener('keyup', blockBubble, false);
+    root.addEventListener('keypress', blockBubble, false);
     return () => {
-      root.removeEventListener('keydown', onKeyDown, true);
-      root.removeEventListener('keyup', blockBubble, true);
-      root.removeEventListener('keypress', blockBubble, true);
+      root.removeEventListener('keydown', onKeyDown, false);
+      root.removeEventListener('keyup', blockBubble, false);
+      root.removeEventListener('keypress', blockBubble, false);
     };
   }, [renderModeKeys]);
 
@@ -999,7 +1001,6 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
     <div
       ref={panelRootRef}
       className={panelClassName}
-      onMouseDown={event => event.stopPropagation()}
       tabIndex={-1}
     >
       <div className="linghuiDirector3DLayout">
@@ -1078,7 +1079,7 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
                 }
               }}
               content={(
-                <div className="linghuiDirector3DRailPopoverInner" {...popoverEventBlockers}>
+                <div className="linghuiDirector3DRailPopoverInner">
                   <div className="linghuiDirector3DRailPopoverTitle">{tab.label}</div>
                   <div className="linghuiDirector3DAssetGrid">
             {activeAssetTab === 'characters' && (
@@ -1147,7 +1148,7 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
                 overlayClassName="linghuiDirector3DBattalionPopover"
                 getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
                 content={(
-                  <div className="linghuiDirector3DBattalionPanel" {...popoverEventBlockers}>
+                  <div className="linghuiDirector3DBattalionPanel">
                     <div className="linghuiDirector3DBattalionTitle">派兵布阵</div>
                     <div className="linghuiDirector3DBattalionHint">一键铺 M 行 × N 列的低级假人，用于群戏排布或受阅式构图。</div>
                     <div className="linghuiDirector3DBattalionRow">
@@ -1485,7 +1486,7 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
               if (open) setRightRailOpen(true);
             }}
             content={(
-              <div className="linghuiDirector3DRailPopoverInner" {...popoverEventBlockers}>
+              <div className="linghuiDirector3DRailPopoverInner">
                 <div className="linghuiDirector3DRailPopoverTitle">
                   {selection.kind === 'actor' && selectedActor ? (selectedActor.label || '属性') : '属性'}
                 </div>
@@ -1742,7 +1743,7 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
                     overlayClassName="linghuiDirector3DBattalionPopover"
                     getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
                     content={(
-                      <div className="linghuiDirector3DBattalionPanel" {...popoverEventBlockers}>
+                      <div className="linghuiDirector3DBattalionPanel">
                         <div className="linghuiDirector3DBattalionTitle">保存到全局库</div>
                         <div className="linghuiDirector3DBattalionHint">
                           可选附带 1-3 张参考图，下游图片节点会拿到当作真实视觉指引。
@@ -1864,6 +1865,7 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
               onDurationChange={handleDurationChange}
               onFpsChange={handleFpsChange}
               onEasingChange={handleEasingChange}
+              onExportResolutionChange={handleExportResolutionChange}
               onResetTimeline={handleResetTimeline}
               onExportVideo={() => { void handleExportTimelineVideo(); }}
               onCancelExport={handleCancelTimelineExport}

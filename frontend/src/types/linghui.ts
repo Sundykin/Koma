@@ -474,6 +474,12 @@ export interface LinghuiDirector3DKeyframe {
 
 export type LinghuiDirector3DEasing = 'linear' | 'ease-in-out' | 'ease-in' | 'ease-out';
 
+/**
+ * 视频导出分辨率档位。数字代表垂直像素数；宽度按当前 scene.camera.aspectRatio 计算
+ * （e.g. 720p + 16:9 → 1280×720；1080p + 21:9 → 2520×1080）。
+ */
+export type LinghuiDirector3DExportResolution = '480p' | '720p' | '1080p' | '1440p' | '2160p';
+
 export interface LinghuiDirector3DTimeline {
   version: 1;
   /** 关键帧列表，必须按 time 升序；UI 写入前会自动 sort */
@@ -484,6 +490,8 @@ export interface LinghuiDirector3DTimeline {
   fps: number;
   /** 补间缓动 */
   easing: LinghuiDirector3DEasing;
+  /** 时间轴导出分辨率档位，默认 720p；未设置时按 720p 处理 */
+  exportResolution?: LinghuiDirector3DExportResolution;
 }
 
 /**

@@ -6,7 +6,7 @@ export const KOMAAPI_ACTIVATION_CHANNEL_IDS = {
   llm: 'komaapi-default-llm',
   tti: 'komaapi-default-tti',
   itv: 'komaapi-default-itv',
-  // 即梦视频（穗禾上游 seedance）：与 grok 视频共用 OpenAI /v1/videos 协议，
+  // 即梦视频（Koma 即梦上游 seedance）：与 grok 视频共用 OpenAI /v1/videos 协议，
   // 通过 model 字段在 new-api 端分流到不同上游渠道。
   itvJimeng: 'komaapi-default-itv-jimeng',
   // Koma 官方 TTS（qwen-tts 模型，OpenAI 兼容 /v1/audio/speech）

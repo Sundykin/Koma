@@ -35,63 +35,228 @@ function bodyMaterial(color: string, useStandard: boolean, roughness = 0.7, meta
   );
 }
 
+const HASH = String.fromCharCode(35);
+const DETAIL = {
+  dark: `${HASH}17181d`,
+  light: `${HASH}f7f1df`,
+  stripe: `${HASH}211713`,
+  claw: `${HASH}efe2c6`,
+  gold: `${HASH}d4b878`,
+  fire: `${HASH}ffb238`,
+  red: `${HASH}c63224`,
+};
+
+function detailColor(value: string, renderMode: 'preview' | 'lineart' | 'silhouette', fallback = value): string {
+  if (renderMode === 'silhouette') return resolveDirector3DColor('var(--token-text-primary)', 'black');
+  if (renderMode === 'lineart') return resolveDirector3DColor('var(--token-text-primary)', 'black');
+  return resolveDirector3DColor(value, fallback);
+}
+
+function CreatureEyePair({ y, z, spacing, size, useStandard, color }: {
+  y: number;
+  z: number;
+  spacing: number;
+  size: number;
+  useStandard: boolean;
+  color: string;
+}) {
+  return (
+    <>
+      {([-1, 1] as const).map(sign => (
+        <mesh key={`eye-${sign}`} position={[sign * spacing, y, z]}>
+          <sphereGeometry args={[size, 10, 8]} />
+          {bodyMaterial(color, useStandard, 0.35, 0.05)}
+        </mesh>
+      ))}
+    </>
+  );
+}
+
+function CreatureEarPair({ y, z, spacing, size, useStandard, color, floppy = false }: {
+  y: number;
+  z: number;
+  spacing: number;
+  size: number;
+  useStandard: boolean;
+  color: string;
+  floppy?: boolean;
+}) {
+  return (
+    <>
+      {([-1, 1] as const).map(sign => (
+        <mesh
+          key={`ear-${sign}`}
+          position={[sign * spacing, y, z]}
+          rotation={[floppy ? 0.25 : -0.18, 0, sign * (floppy ? 0.62 : 0.32)]}
+        >
+          <coneGeometry args={[size * 0.5, size, 8]} />
+          {bodyMaterial(color, useStandard, 0.7, 0.05)}
+        </mesh>
+      ))}
+    </>
+  );
+}
+
+function StripeSet({ count, bodyWidth, bodyHeight, bodyLength, color, useStandard }: {
+  count: number;
+  bodyWidth: number;
+  bodyHeight: number;
+  bodyLength: number;
+  color: string;
+  useStandard: boolean;
+}) {
+  return (
+    <>
+      {Array.from({ length: count }).map((_, i) => {
+        const t = count === 1 ? 0.5 : i / (count - 1);
+        const z = -bodyLength * 0.26 + t * bodyLength * 0.52;
+        const lean = i % 2 === 0 ? 0.24 : -0.24;
+        return (
+          <mesh key={`stripe-${i}`} position={[0, bodyHeight * 0.12, z]} rotation={[0, 0, lean]}>
+            <boxGeometry args={[bodyWidth * 1.08, bodyHeight * 0.08, bodyLength * 0.028]} />
+            {bodyMaterial(color, useStandard, 0.8, 0.02)}
+          </mesh>
+        );
+      })}
+    </>
+  );
+}
+
+function SpotSet({ count, bodyWidth, bodyHeight, bodyLength, color, useStandard }: {
+  count: number;
+  bodyWidth: number;
+  bodyHeight: number;
+  bodyLength: number;
+  color: string;
+  useStandard: boolean;
+}) {
+  return (
+    <>
+      {Array.from({ length: count }).map((_, i) => {
+        const side = i % 2 === 0 ? 1 : -1;
+        const row = Math.floor(i / 2);
+        const z = -bodyLength * 0.24 + row * bodyLength * 0.12;
+        return (
+          <mesh key={`spot-${i}`} position={[side * bodyWidth * 0.51, bodyHeight * (0.08 + (row % 2) * 0.12), z]} scale={[1, 0.68, 0.24]}>
+            <sphereGeometry args={[bodyHeight * 0.07, 10, 8]} />
+            {bodyMaterial(color, useStandard, 0.75, 0.02)}
+          </mesh>
+        );
+      })}
+    </>
+  );
+}
+
 function QuadrupedBody({ species, rig, color, useStandard }: {
   species: CreatureSpeciesSpec;
   rig: CreatureRig;
   color: string;
   useStandard: boolean;
 }) {
-  const bodyY = species.bodyHeight * 0.62;
-  const legLen = species.bodyHeight * 0.55;
-  const legRadius = species.bodyLength * 0.05;
-  const bodyWidth = species.bodyLength * 0.28;
-  const bodyHeight = species.bodyHeight * 0.4;
-  const tailLength = species.bodyLength * 0.45;
-  const tailRadius = species.bodyLength * 0.04;
-  const headSize = species.bodyHeight * 0.2;
-  const neckLength = species.bodyHeight * 0.35;
-
-  // 四足布点：身体长边沿 +Z，前在 +Z，后在 -Z
-  const frontZ = species.bodyLength * 0.32;
-  const rearZ = -species.bodyLength * 0.32;
-  const sideX = bodyWidth * 0.5;
+  const legLen = species.bodyHeight * (species.kind === 'bear' ? 0.36 : species.kind === 'horse' || species.kind === 'deer' || species.kind === 'qilin' ? 0.58 : 0.46);
+  const shoulderY = legLen;
+  const bodyLength = species.bodyLength * (species.kind === 'bear' ? 0.72 : 0.78);
+  const bodyWidth = species.bodyLength * (species.kind === 'bear' ? 0.34 : species.kind === 'horse' ? 0.22 : 0.26);
+  const bodyHeight = species.bodyHeight * (species.kind === 'bear' ? 0.36 : 0.3);
+  const chestY = shoulderY + bodyHeight * 0.18;
+  const hipY = shoulderY - bodyHeight * 0.03;
+  const legRadius = bodyWidth * (species.kind === 'bear' ? 0.17 : 0.12);
+  const frontZ = bodyLength * 0.36;
+  const rearZ = -bodyLength * 0.34;
+  const sideX = bodyWidth * 0.42;
+  const neckLength = species.bodyHeight * (species.kind === 'horse' || species.kind === 'deer' || species.kind === 'qilin' ? 0.34 : 0.22);
+  const headSize = species.bodyHeight * (species.kind === 'bear' ? 0.18 : 0.16);
+  const muzzleLength = headSize * (species.kind === 'horse' || species.kind === 'deer' ? 1.25 : species.kind === 'wolf' || species.kind === 'fox' ? 1.05 : 0.82);
+  const tailLength = species.bodyLength * (species.kind === 'horse' ? 0.48 : species.kind === 'fox' ? 0.62 : 0.38);
+  const tailRadius = Math.max(0.025, bodyWidth * 0.08);
+  const detailInk = detailColor(DETAIL.dark, useStandard ? 'preview' : 'lineart');
+  const stripeColor = detailColor(DETAIL.stripe, useStandard ? 'preview' : 'lineart');
+  const clawColor = detailColor(DETAIL.claw, useStandard ? 'preview' : 'lineart');
+  const maneColor = species.kind === 'horse' ? '#4a3020' : species.kind === 'qilin' ? '#c84525' : '#7a4a23';
+  const footZ = species.kind === 'bear' ? 0.12 : 0.08;
 
   return (
     <group>
-      {/* 躯干（带 spine 旋转） */}
-      <group position={[0, bodyY, 0]} rotation={rig.spine}>
-        <mesh>
-          <boxGeometry args={[bodyWidth, bodyHeight, species.bodyLength * 0.7]} />
-          {bodyMaterial(color, useStandard, 0.7, 0.05)}
+      <group position={[0, shoulderY, 0]} rotation={rig.spine}>
+        {/* 躯干由胸腔和胯部两段叠成，避免一块盒子看起来像积木 */}
+        <mesh position={[0, bodyHeight * 0.08, bodyLength * 0.1]} rotation={[Math.PI / 2, 0, 0]}>
+          <capsuleGeometry args={[bodyWidth * 0.46, bodyLength * 0.5, 5, 12]} />
+          {bodyMaterial(color, useStandard, 0.78, 0.04)}
+        </mesh>
+        <mesh position={[0, -bodyHeight * 0.02, -bodyLength * 0.23]} rotation={[Math.PI / 2, 0, 0]}>
+          <capsuleGeometry args={[bodyWidth * (species.kind === 'bear' ? 0.58 : 0.42), bodyLength * 0.35, 5, 12]} />
+          {bodyMaterial(color, useStandard, 0.78, 0.04)}
         </mesh>
 
-        {/* 鬣毛（lion / qilin / horse） */}
+        {species.kind === 'tiger' ? (
+          <StripeSet count={8} bodyWidth={bodyWidth * 0.95} bodyHeight={bodyHeight} bodyLength={bodyLength} color={stripeColor} useStandard={useStandard} />
+        ) : null}
+        {species.kind === 'deer' ? (
+          <SpotSet count={10} bodyWidth={bodyWidth * 0.9} bodyHeight={bodyHeight} bodyLength={bodyLength} color={detailColor(DETAIL.light, 'preview')} useStandard={useStandard} />
+        ) : null}
+        {species.kind === 'qilin' ? (
+          <StripeSet count={6} bodyWidth={bodyWidth * 0.85} bodyHeight={bodyHeight} bodyLength={bodyLength} color={detailColor(DETAIL.gold, 'preview')} useStandard={useStandard} />
+        ) : null}
+
+        {/* 鬣毛沿颈背向前，不再漂在身体上方 */}
         {species.hasMane && (
-          <mesh position={[0, bodyHeight * 0.4, frontZ * 0.6]}>
-            <sphereGeometry args={[bodyWidth * 0.7, 16, 12]} />
-            {bodyMaterial(species.kind === 'horse' ? '#4a3020' : '#8a5a30', useStandard, 0.9, 0)}
-          </mesh>
+          <group position={[0, bodyHeight * 0.34, frontZ - bodyLength * 0.08]}>
+            {Array.from({ length: species.kind === 'horse' ? 7 : 10 }).map((_, i) => (
+              <mesh
+                key={`mane-lock-${i}`}
+                position={[0, -i * bodyHeight * 0.035, -i * bodyLength * 0.035]}
+                rotation={[0.95, 0, (i % 2 === 0 ? 1 : -1) * 0.08]}
+              >
+                <coneGeometry args={[bodyWidth * 0.08, bodyHeight * 0.24, 7]} />
+                {bodyMaterial(maneColor, useStandard, 0.9, 0)}
+              </mesh>
+            ))}
+          </group>
         )}
 
-        {/* 颈 + 头 */}
-        <group position={[0, bodyHeight * 0.4, frontZ * 0.55]} rotation={rig.neck}>
-          <mesh position={[0, neckLength * 0.5, neckLength * 0.4]} rotation={[Math.PI / 6, 0, 0]}>
-            <cylinderGeometry args={[headSize * 0.5, headSize * 0.7, neckLength, 10]} />
+        {/* 颈 + 头：从胸前水平前伸，避免头飞到身体上方 */}
+        <group position={[0, bodyHeight * 0.2, frontZ]} rotation={rig.neck}>
+          <mesh position={[0, neckLength * 0.12, neckLength * 0.45]} rotation={[Math.PI / 2.25, 0, 0]}>
+            <capsuleGeometry args={[headSize * 0.35, neckLength * 0.65, 4, 10]} />
             {bodyMaterial(color, useStandard, 0.7, 0.05)}
           </mesh>
-          <mesh position={[0, neckLength * 0.85, neckLength * 0.75]}>
-            <boxGeometry args={[headSize, headSize, headSize * 1.4]} />
+          <mesh position={[0, neckLength * 0.18, neckLength * 0.88]} scale={[1, 0.82, 1.08]}>
+            <sphereGeometry args={[headSize * 0.78, 16, 12]} />
             {bodyMaterial(color, useStandard, 0.6, 0.05)}
           </mesh>
-          {/* 犄角 / 鹿角（qilin / deer / dragon） */}
+          <mesh position={[0, neckLength * 0.05, neckLength * 1.25]} scale={[0.85, 0.55, 1]}>
+            <boxGeometry args={[headSize * 0.9, headSize * 0.55, muzzleLength]} />
+            {bodyMaterial(color, useStandard, 0.66, 0.04)}
+          </mesh>
+          <CreatureEyePair
+            y={neckLength * 0.28}
+            z={neckLength * 1.14}
+            spacing={headSize * 0.28}
+            size={headSize * 0.065}
+            useStandard={useStandard}
+            color={detailInk}
+          />
+          <mesh position={[0, neckLength * 0.03, neckLength * 1.25 + muzzleLength * 0.52]} scale={[1, 0.6, 0.3]}>
+            <sphereGeometry args={[headSize * 0.14, 10, 8]} />
+            {bodyMaterial(detailInk, useStandard, 0.55, 0.04)}
+          </mesh>
+          <CreatureEarPair
+            y={neckLength * 0.58}
+            z={neckLength * 0.8}
+            spacing={headSize * 0.43}
+            size={headSize * (species.kind === 'bear' ? 0.34 : species.kind === 'horse' ? 0.46 : 0.62)}
+            useStandard={useStandard}
+            color={color}
+            floppy={species.kind === 'bear' || species.kind === 'horse'}
+          />
           {species.hasHorns && (
             <>
-              <mesh position={[headSize * 0.4, neckLength + headSize * 0.5, neckLength * 0.6]} rotation={[0, 0, 0.4]}>
-                <cylinderGeometry args={[0.02, 0.05, headSize * 1.5, 6]} />
+              <mesh position={[headSize * 0.35, neckLength * 0.7, neckLength * 0.78]} rotation={[-0.35, 0, 0.35]}>
+                <cylinderGeometry args={[headSize * 0.045, headSize * 0.075, headSize * 1.15, 6]} />
                 {bodyMaterial('#d4b878', useStandard, 0.5, 0.2)}
               </mesh>
-              <mesh position={[-headSize * 0.4, neckLength + headSize * 0.5, neckLength * 0.6]} rotation={[0, 0, -0.4]}>
-                <cylinderGeometry args={[0.02, 0.05, headSize * 1.5, 6]} />
+              <mesh position={[-headSize * 0.35, neckLength * 0.7, neckLength * 0.78]} rotation={[-0.35, 0, -0.35]}>
+                <cylinderGeometry args={[headSize * 0.045, headSize * 0.075, headSize * 1.15, 6]} />
                 {bodyMaterial('#d4b878', useStandard, 0.5, 0.2)}
               </mesh>
             </>
@@ -99,25 +264,43 @@ function QuadrupedBody({ species, rig, color, useStandard }: {
         </group>
 
         {/* 尾巴 */}
-        <group position={[0, 0, -species.bodyLength * 0.34]} rotation={rig.tail}>
-          <mesh position={[0, 0, -tailLength * 0.5]} rotation={[Math.PI / 2, 0, 0]}>
+        <group position={[0, bodyHeight * 0.08, -bodyLength * 0.46]} rotation={rig.tail}>
+          <mesh position={[0, 0, -tailLength * 0.42]} rotation={[Math.PI / 2, 0, 0]}>
             <cylinderGeometry args={[tailRadius * 0.4, tailRadius, tailLength, 8]} />
             {bodyMaterial(color, useStandard, 0.7, 0.05)}
           </mesh>
+          {(species.kind === 'fox' ? [0, 1, 2] : [0]).map((_, i) => (
+            <mesh
+              key={`tail-tip-${i}`}
+              position={[(i - 1) * tailRadius * 1.8, tailRadius * (species.kind === 'fox' ? 0.7 : 0.15), -tailLength * 0.95]}
+              rotation={[Math.PI / 2, 0, (i - 1) * 0.25]}
+            >
+              <coneGeometry args={[tailRadius * (species.kind === 'fox' ? 1.8 : 0.9), tailLength * 0.28, 10]} />
+              {bodyMaterial(species.kind === 'fox' ? detailColor(DETAIL.light, 'preview') : color, useStandard, 0.75, 0.03)}
+            </mesh>
+          ))}
         </group>
       </group>
 
       {/* 4 条腿（不跟 spine 转，挂在 root） */}
       {([
-        { rig: rig.frontLeftLeg, pos: [sideX, bodyY * 0.78, frontZ] },
-        { rig: rig.frontRightLeg, pos: [-sideX, bodyY * 0.78, frontZ] },
-        { rig: rig.rearLeftLeg, pos: [sideX, bodyY * 0.78, rearZ] },
-        { rig: rig.rearRightLeg, pos: [-sideX, bodyY * 0.78, rearZ] },
+        { rig: rig.frontLeftLeg, pos: [sideX, chestY, frontZ] },
+        { rig: rig.frontRightLeg, pos: [-sideX, chestY, frontZ] },
+        { rig: rig.rearLeftLeg, pos: [sideX, hipY, rearZ] },
+        { rig: rig.rearRightLeg, pos: [-sideX, hipY, rearZ] },
       ] as const).map((leg, idx) => (
         <group key={idx} position={leg.pos as [number, number, number]} rotation={leg.rig}>
           <mesh position={[0, -legLen * 0.5, 0]}>
-            <cylinderGeometry args={[legRadius * 0.7, legRadius, legLen, 8]} />
+            <capsuleGeometry args={[legRadius, legLen, 4, 8]} />
             {bodyMaterial(color, useStandard, 0.75, 0.05)}
+          </mesh>
+          <mesh position={[0, -legLen, footZ]} scale={[1.35, 0.45, 1.8]}>
+            <sphereGeometry args={[legRadius * (species.kind === 'bear' ? 1.45 : 1.05), 10, 8]} />
+            {bodyMaterial(color, useStandard, 0.75, 0.05)}
+          </mesh>
+          <mesh position={[0, -legLen - legRadius * 0.12, footZ + legRadius * 0.9]} rotation={[Math.PI / 2, 0, 0]}>
+            <coneGeometry args={[legRadius * (species.kind === 'bear' ? 0.9 : 0.62), legRadius * 1.35, 8]} />
+            {bodyMaterial(clawColor, useStandard, 0.42, 0.12)}
           </mesh>
         </group>
       ))}
@@ -131,74 +314,123 @@ function AvianBody({ species, rig, color, useStandard }: {
   color: string;
   useStandard: boolean;
 }) {
-  const bodyY = species.bodyHeight * 0.45;
-  const legLen = species.bodyHeight * 0.4;
-  const bodyHeight = species.bodyHeight * 0.45;
-  const wingSpan = species.bodyLength * 1.8;
-  const wingChord = species.bodyLength * 0.32;
-  const beakLen = species.bodyHeight * 0.12;
-  const tailLen = species.bodyLength * 0.7;
+  const legLen = species.bodyHeight * 0.34;
+  const bodyY = legLen + species.bodyHeight * 0.2;
+  const bodyHeight = species.bodyHeight * 0.42;
+  const bodyLength = species.bodyLength * (species.kind === 'crane' ? 0.52 : 0.68);
+  const wingSpan = species.bodyLength * (species.kind === 'crane' ? 1.45 : 1.95);
+  const wingChord = species.bodyLength * 0.34;
+  const neckLen = species.bodyHeight * (species.kind === 'crane' ? 0.48 : 0.24);
+  const headRadius = species.bodyHeight * 0.12;
+  const beakLen = species.bodyHeight * (species.kind === 'crane' ? 0.18 : 0.14);
+  const tailLen = species.bodyLength * (species.kind === 'phoenix' ? 1.05 : 0.52);
+  const eyeColor = detailColor(DETAIL.dark, useStandard ? 'preview' : 'lineart');
+  const accentColor = species.kind === 'phoenix' ? detailColor(DETAIL.fire, 'preview') : detailColor(DETAIL.light, 'preview');
+  const legColor = detailColor('#d8a020', 'preview');
 
   return (
     <group>
-      {/* 躯干 */}
       <group position={[0, bodyY, 0]} rotation={rig.spine}>
-        <mesh rotation={[Math.PI / 2, 0, 0]}>
-          <cylinderGeometry args={[bodyHeight * 0.4, bodyHeight * 0.3, species.bodyLength * 0.7, 12]} />
+        {/* 泪滴状身体：前胸更圆，尾部收窄 */}
+        <mesh position={[0, 0, 0]} scale={[0.82, 1.08, 1.28]}>
+          <sphereGeometry args={[bodyHeight * 0.42, 18, 12]} />
           {bodyMaterial(color, useStandard, 0.7, 0.05)}
         </mesh>
+        <mesh position={[0, -bodyHeight * 0.04, -bodyLength * 0.38]} rotation={[Math.PI / 2, 0, 0]}>
+          <coneGeometry args={[bodyHeight * 0.28, bodyLength * 0.58, 10]} />
+          {bodyMaterial(color, useStandard, 0.74, 0.04)}
+        </mesh>
 
-        {/* 颈 + 头 */}
-        <group position={[0, bodyHeight * 0.35, species.bodyLength * 0.25]} rotation={rig.neck}>
-          <mesh rotation={[Math.PI / 2.4, 0, 0]}>
-            <cylinderGeometry args={[bodyHeight * 0.18, bodyHeight * 0.25, bodyHeight * 0.5, 10]} />
+        <group position={[0, bodyHeight * 0.18, bodyLength * 0.26]} rotation={rig.neck}>
+          <mesh position={[0, neckLen * 0.36, neckLen * 0.22]} rotation={[0.45, 0, 0]}>
+            <capsuleGeometry args={[bodyHeight * (species.kind === 'crane' ? 0.08 : 0.12), neckLen, 4, 10]} />
             {bodyMaterial(color, useStandard, 0.7, 0.05)}
           </mesh>
-          <mesh position={[0, bodyHeight * 0.4, bodyHeight * 0.2]}>
-            <sphereGeometry args={[bodyHeight * 0.2, 16, 12]} />
+          <mesh position={[0, neckLen * 0.82, neckLen * 0.42]}>
+            <sphereGeometry args={[headRadius, 16, 12]} />
             {bodyMaterial(color, useStandard, 0.6, 0.05)}
           </mesh>
-          {/* 喙 */}
-          <mesh position={[0, bodyHeight * 0.35, bodyHeight * 0.32]} rotation={[Math.PI / 2, 0, 0]}>
-            <coneGeometry args={[bodyHeight * 0.08, beakLen, 6]} />
-            {bodyMaterial('#d8a020', useStandard, 0.4, 0.1)}
+          <CreatureEyePair
+            y={neckLen * 0.86}
+            z={neckLen * 0.54}
+            spacing={headRadius * 0.45}
+            size={headRadius * 0.18}
+            useStandard={useStandard}
+            color={eyeColor}
+          />
+          {species.kind === 'crane' ? (
+            <mesh position={[0, neckLen * 1.0, neckLen * 0.35]}>
+              <sphereGeometry args={[headRadius * 0.36, 10, 8]} />
+              {bodyMaterial(detailColor(DETAIL.red, 'preview'), useStandard, 0.45, 0.05)}
+            </mesh>
+          ) : null}
+          <mesh position={[0, neckLen * 0.8, neckLen * 0.42 + headRadius + beakLen * 0.45]} rotation={[Math.PI / 2, 0, 0]}>
+            <coneGeometry args={[headRadius * 0.46, beakLen, 7]} />
+            {bodyMaterial(legColor, useStandard, 0.4, 0.1)}
           </mesh>
         </group>
 
-        {/* 翅膀（frontLeft/Right 当翼根用） */}
-        <group position={[0, bodyHeight * 0.15, 0]}>
-          <group position={[0, 0, 0]} rotation={rig.frontLeftLeg}>
-            <mesh position={[wingSpan * 0.25, 0, 0]} rotation={[Math.PI / 2, 0, 0]}>
-              <boxGeometry args={[wingSpan * 0.5, wingChord, 0.04]} />
+        <group position={[0, bodyHeight * 0.08, bodyLength * 0.02]}>
+          <group rotation={rig.frontLeftLeg}>
+            <mesh position={[wingSpan * 0.28, 0, -wingChord * 0.08]} rotation={[Math.PI / 2, 0, -0.1]}>
+              <boxGeometry args={[wingSpan * 0.56, wingChord, 0.035]} />
               {bodyMaterial(color, useStandard, 0.6, 0.05)}
             </mesh>
+            {Array.from({ length: 5 }).map((_, i) => (
+              <mesh
+                key={`left-feather-${i}`}
+                position={[wingSpan * (0.08 + i * 0.08), -wingChord * 0.38, 0]}
+                rotation={[Math.PI / 2, 0, -0.12]}
+              >
+                <coneGeometry args={[wingChord * 0.1, wingChord * 0.42, 7]} />
+                {bodyMaterial(species.kind === 'phoenix' ? accentColor : color, useStandard, 0.68, 0.04)}
+              </mesh>
+            ))}
           </group>
-          <group position={[0, 0, 0]} rotation={rig.frontRightLeg}>
-            <mesh position={[-wingSpan * 0.25, 0, 0]} rotation={[Math.PI / 2, 0, 0]}>
-              <boxGeometry args={[wingSpan * 0.5, wingChord, 0.04]} />
+          <group rotation={rig.frontRightLeg}>
+            <mesh position={[-wingSpan * 0.28, 0, -wingChord * 0.08]} rotation={[Math.PI / 2, 0, 0.1]}>
+              <boxGeometry args={[wingSpan * 0.56, wingChord, 0.035]} />
               {bodyMaterial(color, useStandard, 0.6, 0.05)}
             </mesh>
+            {Array.from({ length: 5 }).map((_, i) => (
+              <mesh
+                key={`right-feather-${i}`}
+                position={[-wingSpan * (0.08 + i * 0.08), -wingChord * 0.38, 0]}
+                rotation={[Math.PI / 2, 0, 0.12]}
+              >
+                <coneGeometry args={[wingChord * 0.1, wingChord * 0.42, 7]} />
+                {bodyMaterial(species.kind === 'phoenix' ? accentColor : color, useStandard, 0.68, 0.04)}
+              </mesh>
+            ))}
           </group>
         </group>
 
-        {/* 长尾羽 */}
-        <group position={[0, 0, -species.bodyLength * 0.35]} rotation={rig.tail}>
-          <mesh position={[0, 0, -tailLen * 0.5]} rotation={[Math.PI / 2, 0, 0]}>
-            <coneGeometry args={[bodyHeight * 0.25, tailLen, 8]} />
-            {bodyMaterial(color, useStandard, 0.6, 0.05)}
-          </mesh>
+        <group position={[0, -bodyHeight * 0.03, -bodyLength * 0.54]} rotation={rig.tail}>
+          {Array.from({ length: species.kind === 'phoenix' ? 5 : 3 }).map((_, i) => {
+            const center = (i - (species.kind === 'phoenix' ? 2 : 1)) * bodyHeight * 0.11;
+            return (
+              <mesh key={`tail-feather-${i}`} position={[center, -bodyHeight * 0.05, -tailLen * 0.42]} rotation={[Math.PI / 2, 0, center * 0.22]}>
+                <coneGeometry args={[bodyHeight * 0.08, tailLen * (species.kind === 'phoenix' ? 0.9 : 0.48), 7]} />
+                {bodyMaterial(species.kind === 'phoenix' ? accentColor : color, useStandard, 0.65, 0.04)}
+              </mesh>
+            );
+          })}
         </group>
       </group>
 
       {/* 2 条立腿（用 rearLeft/Right） */}
       {([
-        { rig: rig.rearLeftLeg, pos: [bodyHeight * 0.2, bodyY * 0.7, 0] },
-        { rig: rig.rearRightLeg, pos: [-bodyHeight * 0.2, bodyY * 0.7, 0] },
+        { rig: rig.rearLeftLeg, pos: [bodyHeight * 0.18, legLen, 0] },
+        { rig: rig.rearRightLeg, pos: [-bodyHeight * 0.18, legLen, 0] },
       ] as const).map((leg, idx) => (
         <group key={idx} position={leg.pos as [number, number, number]} rotation={leg.rig}>
           <mesh position={[0, -legLen * 0.5, 0]}>
-            <cylinderGeometry args={[bodyHeight * 0.06, bodyHeight * 0.08, legLen, 8]} />
-            {bodyMaterial('#d8a020', useStandard, 0.6, 0.05)}
+            <capsuleGeometry args={[bodyHeight * 0.055, legLen, 4, 8]} />
+            {bodyMaterial(legColor, useStandard, 0.6, 0.05)}
+          </mesh>
+          <mesh position={[0, -legLen, bodyHeight * 0.1]} rotation={[Math.PI / 2, 0, 0]}>
+            <coneGeometry args={[bodyHeight * 0.045, bodyHeight * 0.12, 7]} />
+            {bodyMaterial(detailColor(DETAIL.claw, 'preview'), useStandard, 0.42, 0.12)}
           </mesh>
         </group>
       ))}
@@ -213,12 +445,15 @@ function DragonBody({ species, rig, color, useStandard }: {
   useStandard: boolean;
 }) {
   // 龙：长躯干分 5 段（蛇形弯曲），4 爪，2 翅，长尾，犄角，胡须
-  const bodyY = species.bodyHeight * 0.6;
+  const bodyY = species.bodyHeight * 0.72;
   const segmentCount = 5;
   const segmentLen = species.bodyLength / segmentCount;
   const bodyRadius = species.bodyHeight * 0.18;
-  const legLen = species.bodyHeight * 0.4;
+  const legLen = species.bodyHeight * 0.42;
   const wingSpan = species.bodyLength * 0.8;
+  const scaleColor = detailColor(DETAIL.gold, 'preview');
+  const eyeColor = detailColor(DETAIL.dark, useStandard ? 'preview' : 'lineart');
+  const whiskerColor = detailColor(DETAIL.light, 'preview');
 
   return (
     <group>
@@ -228,31 +463,51 @@ function DragonBody({ species, rig, color, useStandard }: {
           const offset = (i - (segmentCount - 1) / 2) * segmentLen;
           const wave = Math.sin(i * 0.6) * 0.06;
           return (
-            <mesh key={i} position={[wave, 0, offset]} rotation={[Math.PI / 2, 0, 0]}>
-              <cylinderGeometry args={[bodyRadius * (1 - Math.abs(offset) / species.bodyLength * 0.6), bodyRadius, segmentLen * 1.05, 10]} />
-              {bodyMaterial(color, useStandard, 0.5, 0.2)}
-            </mesh>
+            <React.Fragment key={`dragon-segment-${i}`}>
+              <mesh position={[wave, 0, offset]} rotation={[Math.PI / 2, 0, 0]}>
+                <cylinderGeometry args={[bodyRadius * (1 - Math.abs(offset) / species.bodyLength * 0.6), bodyRadius, segmentLen * 1.05, 10]} />
+                {bodyMaterial(color, useStandard, 0.5, 0.2)}
+              </mesh>
+              <mesh position={[wave, bodyRadius * 0.68, offset]} rotation={[Math.PI / 2, 0, 0]}>
+                <coneGeometry args={[bodyRadius * 0.32, bodyRadius * 0.38, 6]} />
+                {bodyMaterial(scaleColor, useStandard, 0.48, 0.18)}
+              </mesh>
+            </React.Fragment>
           );
         })}
 
         {/* 龙头 + 颈 */}
-        <group position={[0, bodyRadius * 0.6, species.bodyLength * 0.5]} rotation={rig.neck}>
-          <mesh rotation={[Math.PI / 2.5, 0, 0]}>
-            <cylinderGeometry args={[bodyRadius * 0.7, bodyRadius, bodyRadius * 1.5, 10]} />
+        <group position={[0, bodyRadius * 0.1, species.bodyLength * 0.48]} rotation={rig.neck}>
+          <mesh position={[0, bodyRadius * 0.18, bodyRadius * 0.65]} rotation={[Math.PI / 2.35, 0, 0]}>
+            <capsuleGeometry args={[bodyRadius * 0.48, bodyRadius * 1.25, 4, 10]} />
             {bodyMaterial(color, useStandard, 0.5, 0.2)}
           </mesh>
-          <mesh position={[0, bodyRadius * 0.6, bodyRadius]}>
-            <boxGeometry args={[bodyRadius * 1.2, bodyRadius, bodyRadius * 1.5]} />
+          <mesh position={[0, bodyRadius * 0.28, bodyRadius * 1.35]} scale={[1.2, 0.72, 1.45]}>
+            <sphereGeometry args={[bodyRadius * 0.78, 16, 12]} />
             {bodyMaterial(color, useStandard, 0.5, 0.2)}
           </mesh>
+          <CreatureEyePair
+            y={bodyRadius * 0.42}
+            z={bodyRadius * 1.94}
+            spacing={bodyRadius * 0.34}
+            size={bodyRadius * 0.09}
+            useStandard={useStandard}
+            color={eyeColor}
+          />
+          {([-1, 1] as const).map(sign => (
+            <mesh key={`whisker-${sign}`} position={[sign * bodyRadius * 0.55, bodyRadius * 0.18, bodyRadius * 2.08]} rotation={[Math.PI / 2, 0, sign * 0.6]}>
+              <cylinderGeometry args={[bodyRadius * 0.025, bodyRadius * 0.025, bodyRadius * 1.45, 6]} />
+              {bodyMaterial(whiskerColor, useStandard, 0.55, 0.05)}
+            </mesh>
+          ))}
           {/* 龙角 */}
           {species.hasHorns && (
             <>
-              <mesh position={[bodyRadius * 0.5, bodyRadius * 1.0, bodyRadius * 0.4]} rotation={[-0.3, 0, 0.3]}>
+              <mesh position={[bodyRadius * 0.5, bodyRadius * 0.9, bodyRadius * 1.0]} rotation={[-0.3, 0, 0.3]}>
                 <coneGeometry args={[0.05, bodyRadius * 1.2, 6]} />
                 {bodyMaterial('#d4b878', useStandard, 0.4, 0.3)}
               </mesh>
-              <mesh position={[-bodyRadius * 0.5, bodyRadius * 1.0, bodyRadius * 0.4]} rotation={[-0.3, 0, -0.3]}>
+              <mesh position={[-bodyRadius * 0.5, bodyRadius * 0.9, bodyRadius * 1.0]} rotation={[-0.3, 0, -0.3]}>
                 <coneGeometry args={[0.05, bodyRadius * 1.2, 6]} />
                 {bodyMaterial('#d4b878', useStandard, 0.4, 0.3)}
               </mesh>
@@ -268,12 +523,24 @@ function DragonBody({ species, rig, color, useStandard }: {
                 <boxGeometry args={[wingSpan * 0.5, species.bodyLength * 0.35, 0.04]} />
                 {bodyMaterial(color, useStandard, 0.5, 0.2)}
               </mesh>
+              {Array.from({ length: 4 }).map((_, i) => (
+                <mesh key={`dragon-wing-left-${i}`} position={[wingSpan * (0.08 + i * 0.09), -species.bodyLength * 0.08, 0]} rotation={[Math.PI / 2, 0, -0.12]}>
+                  <coneGeometry args={[bodyRadius * 0.18, species.bodyLength * 0.22, 6]} />
+                  {bodyMaterial(scaleColor, useStandard, 0.5, 0.18)}
+                </mesh>
+              ))}
             </group>
             <group position={[0, bodyRadius * 0.5, 0]} rotation={rig.frontRightLeg}>
               <mesh position={[-wingSpan * 0.25, 0, 0]} rotation={[Math.PI / 2, 0, 0]}>
                 <boxGeometry args={[wingSpan * 0.5, species.bodyLength * 0.35, 0.04]} />
                 {bodyMaterial(color, useStandard, 0.5, 0.2)}
               </mesh>
+              {Array.from({ length: 4 }).map((_, i) => (
+                <mesh key={`dragon-wing-right-${i}`} position={[-wingSpan * (0.08 + i * 0.09), -species.bodyLength * 0.08, 0]} rotation={[Math.PI / 2, 0, 0.12]}>
+                  <coneGeometry args={[bodyRadius * 0.18, species.bodyLength * 0.22, 6]} />
+                  {bodyMaterial(scaleColor, useStandard, 0.5, 0.18)}
+                </mesh>
+              ))}
             </group>
           </>
         )}
@@ -289,14 +556,22 @@ function DragonBody({ species, rig, color, useStandard }: {
 
       {/* 4 爪（独立于 spine） */}
       {([
-        { rig: rig.rearLeftLeg, pos: [bodyRadius * 1.2, bodyY * 0.7, -species.bodyLength * 0.15] },
-        { rig: rig.rearRightLeg, pos: [-bodyRadius * 1.2, bodyY * 0.7, -species.bodyLength * 0.15] },
+        { rig: rig.frontLeftLeg, pos: [bodyRadius * 1.1, bodyY - bodyRadius * 0.2, species.bodyLength * 0.24] },
+        { rig: rig.frontRightLeg, pos: [-bodyRadius * 1.1, bodyY - bodyRadius * 0.2, species.bodyLength * 0.24] },
+        { rig: rig.rearLeftLeg, pos: [bodyRadius * 1.15, bodyY - bodyRadius * 0.12, -species.bodyLength * 0.2] },
+        { rig: rig.rearRightLeg, pos: [-bodyRadius * 1.15, bodyY - bodyRadius * 0.12, -species.bodyLength * 0.2] },
       ] as const).map((leg, idx) => (
         <group key={idx} position={leg.pos as [number, number, number]} rotation={leg.rig}>
           <mesh position={[0, -legLen * 0.5, 0]}>
             <cylinderGeometry args={[bodyRadius * 0.3, bodyRadius * 0.4, legLen, 8]} />
             {bodyMaterial(color, useStandard, 0.6, 0.1)}
           </mesh>
+          {([-1, 0, 1] as const).map(toe => (
+            <mesh key={`dragon-claw-${toe}`} position={[toe * bodyRadius * 0.18, -legLen - bodyRadius * 0.06, bodyRadius * 0.35]} rotation={[Math.PI / 2, 0, toe * 0.18]}>
+              <coneGeometry args={[bodyRadius * 0.08, bodyRadius * 0.28, 6]} />
+              {bodyMaterial(detailColor(DETAIL.claw, 'preview'), useStandard, 0.42, 0.18)}
+            </mesh>
+          ))}
         </group>
       ))}
     </group>

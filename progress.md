@@ -1275,3 +1275,110 @@
   - `npx tsc --noEmit --project tsconfig.json`（frontend）：passed。
   - `npx tsc --noEmit --project tsconfig.json`（root）：passed。
   - `git diff --check`：passed。
+
+## Session: 2026-05-12 Director3D Model Refinement And Open Model Catalog
+
+### Phase 1: Research & Diagnosis
+- **Status:** complete
+- Actions taken:
+  - 确认 Director3D 工作台实际编辑器路径是 `frontend/src/components/linghui/editors/components/Director3DNodeEditor.tsx`。
+  - 复查主角、群演、方阵当前 mesh：均为程序化几何，没有 GLTF loader / SkinnedMesh 导入链路。
+  - 检索开源模型 / 骨骼画法来源，决定先做许可证安全的来源目录接入，避免直接打包不明授权资产。
+
+### Phase 2: Procedural Model Refinement
+- **Status:** complete
+- Actions taken:
+  - `Director3DMannequin` 增加眼睛、眉线、嘴、耳、鼻梁、胸前标、背脊线、肩带、腰带、关节球、手掌拇指、鞋尖等细节。
+  - `Director3DLiteMannequin` 增加轻量脸部标记、胸前标、背脊线和鞋。
+  - `Director3DFormation` 为每个方阵成员增加脸部、胸前、背面方向标记。
+
+### Phase 3: Open Model Catalog Integration
+- **Status:** complete
+- Actions taken:
+  - 新增 `director3dOpenModelCatalog.ts`，记录 Kenney / MakeHuman / Poly Haven / Khronos glTF / Three.js SkeletonHelper 的来源、许可证、用途和骨骼说明。
+  - Director3D 左侧 rail 新增“模型”入口；可程序化使用的来源可以直接创建 refined mannequin，参考来源只显示目录说明，不自动下载。
+
+### Phase 4: Prompt & Tests
+- **Status:** complete
+- Actions taken:
+  - `compileDirector3DPromptFragment()` 增加 refined humanoid / direction markers / joint balls / face direction 等描述。
+  - 资产库测试增加开源模型目录完整性与程序化可导入来源断言。
+- Validation:
+  - `npm run test -- --run src/components/linghui/director3d/director3dAssetLibrary.test.ts src/components/linghui/director3d/director3dRig.test.ts src/components/linghui/director3d/director3dCreature.test.ts`：3 files / 40 tests passed。
+  - `npm run test -- --run src/components/linghui/director3d/director3dAssetLibrary.test.ts`：1 file / 11 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json`（frontend）：passed。
+  - `npx tsc --noEmit --project tsconfig.json`（root）：passed。
+  - `npm run build`（frontend）：passed，只有既有 chunk size / dynamic import chunking warnings。
+  - `git diff --check`：passed。
+  - Vite dev server `http://127.0.0.1:5174/` 返回 200；Chrome DevTools MCP 页会话异常关闭，未能完成截图验证。
+
+## Session: 2026-05-12 Director3D Procedural Detail Pass
+
+### Phase 1: Diagnosis
+- **Status:** complete
+- Actions taken:
+  - 用户要求隐藏外部模型库，继续精修人物 / 动物 / 道具，且不额外引入资源。
+  - 确认模型库入口在 `Director3DNodeEditor.tsx` 的左侧 rail tab。
+  - 确认生物和道具均可通过渲染组件补小几何实现细节，不需要变更持久化 schema。
+
+### Phase 2: Hide External Catalog
+- **Status:** complete
+- Actions taken:
+  - 从 `Director3DNodeEditor.tsx` 左侧 rail 移除“模型”入口和相关点击处理。
+  - 保留 `director3dOpenModelCatalog.ts` 和测试，不展示给用户。
+
+### Phase 3: Creature Detail Pass
+- **Status:** complete
+- Actions taken:
+  - 四足动物增加眼睛、鼻口、耳朵、爪子、鬃毛束、尾端。
+  - 老虎增加条纹，鹿增加斑点，灵狐增加多尾尾端，麒麟增加金色鳞片感条纹。
+  - 飞禽增加眼睛、喙、翼羽、尾羽、爪；仙鹤增加红冠，凤凰增加金色火焰尾羽。
+  - 神龙增加龙鳞背刺、眼睛、胡须、翼羽、爪尖。
+
+### Phase 4: Prop Detail Pass
+- **Status:** complete
+- Actions taken:
+  - `Director3DProp` 根据 label 识别桌、椅、凳、床、柜、汽车、自行车、树、灌木、岩石、门、窗、屏幕、聚光灯、麦克风、基座、方箱、圆桶等语义并渲染不同几何细节。
+  - 主角模型补充衣领/服装分层，让人物正面更清楚。
+  - 删除上一轮隐藏外部模型入口后不再使用的 OpenModel 样式。
+
+### Phase 5: Validation
+- **Status:** complete
+- Validation:
+  - `npm run test -- --run src/components/linghui/director3d/director3dAssetLibrary.test.ts src/components/linghui/director3d/director3dRig.test.ts src/components/linghui/director3d/director3dCreature.test.ts src/components/linghui/director3d/director3dBattalion.test.ts`：4 files / 49 tests passed。
+  - `npm run test -- --run src/components/linghui/director3d/director3dCreature.test.ts src/components/linghui/director3d/director3dAssetLibrary.test.ts`：2 files / 25 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json`（frontend）：passed。
+  - `npx tsc --noEmit --project tsconfig.json`（root）：passed。
+  - `npm run build`（frontend）：passed，只有既有 chunk size / dynamic import chunking warnings。
+  - `git diff --check`：passed。
+
+## Session: 2026-05-12 Director3D Structural Model Rework
+
+### Phase 1: Reference Review
+- **Status:** complete
+- Actions taken:
+  - 用户指出动物不像、头身体错位、道具形状和纯色表现差。
+  - 查找开源 procedural animal / low-poly / bird geometry 思路，决定以骨架体块重排为主，而不是继续贴局部细节。
+
+### Phase 2: Creature Structural Rework
+- **Status:** complete
+- Actions taken:
+  - 四足动物按脚底→腿→肩胯→胸腔/胯部→颈→头重新排布，躯干改为胸腔和胯部两段 capsule，头部从胸前水平前伸。
+  - 飞禽改为泪滴状身体、收窄尾部、长颈/头/喙、横向翼面和贴地双腿。
+  - 神龙补齐前后四爪，龙头从身体轴前端伸出，身体仍保持分段蛇形结构。
+
+### Phase 3: Prop Structural Rework
+- **Status:** complete
+- Actions taken:
+  - 在 `Director3DProp` 增加木条、轮毂、车头金属条、柜体层板、床头板、树枝、自行车车把/横杆、圆桶中部金属箍等细节。
+  - 这些改动继续使用 procedural mesh，不引入贴图或外部资源。
+
+### Phase 4: Validation
+- **Status:** complete
+- Validation:
+  - `npm run test -- --run src/components/linghui/director3d/director3dAssetLibrary.test.ts src/components/linghui/director3d/director3dRig.test.ts src/components/linghui/director3d/director3dCreature.test.ts src/components/linghui/director3d/director3dBattalion.test.ts`：4 files / 49 tests passed。
+  - `npm run test -- --run src/components/linghui/director3d/director3dCreature.test.ts src/components/linghui/director3d/director3dAssetLibrary.test.ts`：2 files / 25 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json`（frontend）：passed。
+  - `npx tsc --noEmit --project tsconfig.json`（root）：passed。
+  - `npm run build`（frontend）：passed，只有既有 chunk size / dynamic import chunking warnings。
+  - `git diff --check`：passed。

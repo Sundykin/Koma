@@ -77,8 +77,9 @@ export async function exportDirector3DTimelineVideo(params: ExportTimelineVideoP
 
   const fps = Math.max(6, Math.min(60, Math.round(params.fps)));
   const duration = Math.max(0.5, params.duration);
-  const width = Math.max(256, Math.min(2560, Math.round(params.width)));
-  const height = params.height ? Math.max(256, Math.min(2560, Math.round(params.height))) : Math.round((width * 9) / 16);
+  // 上限提到 3840 给 4K 留余地；底线维持 256（再低 ffmpeg / 编码器报错率高）
+  const width = Math.max(256, Math.min(3840, Math.round(params.width)));
+  const height = params.height ? Math.max(256, Math.min(3840, Math.round(params.height))) : Math.round((width * 9) / 16);
   const totalFrames = Math.max(2, Math.ceil(duration * fps));
   const format = params.format ?? 'mp4';
 

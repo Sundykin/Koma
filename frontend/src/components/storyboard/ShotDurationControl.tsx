@@ -2,7 +2,7 @@
  * 分镜时长控件 —— 与"批量按钮"视觉对齐的 text-button 风格。
  *
  * 两种工作模式（按 durationSpec.kind 自动切换）：
- *  - enum  : 点击展开 Dropdown 菜单选数值（穗禾即梦等枚举档位 provider）
+ *  - enum  : 点击展开 Dropdown 菜单选数值（Koma 即梦即梦等枚举档位 provider）
  *  - range : 点击进入"行内编辑"（数字 → InputNumber → blur/Enter 退出）
  *  - 未提供 spec：兜底用 ALLOWED_VIDEO_DURATIONS 当 range
  *

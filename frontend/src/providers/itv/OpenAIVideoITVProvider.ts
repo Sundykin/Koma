@@ -1,7 +1,7 @@
 /**
  * OpenAI 标准异步视频生成 Provider
  *
- * 协议参考 OpenAI Sora 视频 API（与 Koma 官方穗禾走的同一套契约）：
+ * 协议参考 OpenAI Sora 视频 API（与 Koma 官方Koma 即梦走的同一套契约）：
  *   - 创建任务：POST {baseUrl}/v1/videos
  *       Body: { model, prompt, seconds, size?, image?, images?, metadata? }
  *       响应：{ id, status, model, created_at, ... }

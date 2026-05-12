@@ -15,14 +15,19 @@
  * 沉浸态隐藏；时间轴为空时 HUD 仍显示（提示用户加第一帧）。
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { InputNumber, Modal, Select, Tooltip } from 'antd';
+import { InputNumber, Modal, Tooltip } from 'antd';
 import { Film, MonitorPlay, Pause, Play, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import { toFileSystemDisplayUrl } from '../../../services/fileSystemPort';
 import type {
   LinghuiDirector3DEasing,
+  LinghuiDirector3DExportResolution,
   LinghuiDirector3DKeyframe,
   LinghuiDirector3DTimeline,
 } from '../../../types/linghui';
+import {
+  DIRECTOR3D_EXPORT_RESOLUTION_OPTIONS,
+  resolveDirector3DExportResolution,
+} from './director3dScene';
 
 export interface Director3DTimelineExportState {
   /** 导出中标记 */
@@ -66,6 +71,7 @@ interface Director3DTimelineHudProps {
   onDurationChange: (duration: number) => void;
   onFpsChange: (fps: number) => void;
   onEasingChange: (easing: LinghuiDirector3DEasing) => void;
+  onExportResolutionChange: (resolution: LinghuiDirector3DExportResolution) => void;
   onResetTimeline: () => void;
   onExportVideo: () => void;
   onCancelExport: () => void;
@@ -95,6 +101,7 @@ export const Director3DTimelineHud: React.FC<Director3DTimelineHudProps> = ({
   onDurationChange,
   onFpsChange,
   onEasingChange,
+  onExportResolutionChange,
   onResetTimeline,
   onExportVideo,
   onCancelExport,
@@ -181,7 +188,10 @@ export const Director3DTimelineHud: React.FC<Director3DTimelineHudProps> = ({
   }, [onSeek, onSelectKeyframe]);
 
   return (
-    <div className="linghuiDirector3DTimelineHud nopan nowheel" onMouseDown={event => event.stopPropagation()}>
+    // nopan / nowheel 已经告诉 RF 不要拖拽 / 滚轮缩放；额外的 React onMouseDown
+    // stopPropagation 会破坏 antd Select / InputNumber 的内部状态机（dropdown
+    // option 选中失败、Number 上下箭头失灵），移除。
+    <div className="linghuiDirector3DTimelineHud nopan nowheel">
       <div className="linghuiDirector3DTimelineControls">
         <Tooltip title={playing ? '暂停 (Space)' : '播放 (Space)'}>
           <button
@@ -265,23 +275,46 @@ export const Director3DTimelineHud: React.FC<Director3DTimelineHudProps> = ({
           />
         </Tooltip>
 
-        <Tooltip title="补间缓动算法">
-          <Select<LinghuiDirector3DEasing>
-            size="small"
-            // 确保选中态准确：popup 容器放到 body，避免被父级 HUD 的 transform / overflow 截断；
-            // value 显式 fallback 'ease-in-out'（旧 timeline 缺 easing 字段时不至于 select 空）
-            value={timeline.easing ?? 'ease-in-out'}
-            onChange={(value) => onEasingChange(value as LinghuiDirector3DEasing)}
-            style={{ width: 96 }}
-            getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
-            options={[
-              { value: 'linear', label: '线性' },
-              { value: 'ease-in', label: '缓入' },
-              { value: 'ease-out', label: '缓出' },
-              { value: 'ease-in-out', label: '平滑' },
-            ]}
-          />
-        </Tooltip>
+        {/* 缓动 + 分辨率：antd Select 在双 portal（editor 自己 portal 到 body +
+           dropdown 也 portal 到 body）下 onClick commit 不稳，改成内联 button group。 */}
+        <div className="linghuiDirector3DTimelineButtonGroup isEasing" title="补间缓动算法">
+          {([
+            { value: 'linear' as const, label: '线性' },
+            { value: 'ease-in' as const, label: '缓入' },
+            { value: 'ease-out' as const, label: '缓出' },
+            { value: 'ease-in-out' as const, label: '平滑' },
+          ]).map(option => {
+            const active = (timeline.easing ?? 'ease-in-out') === option.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                className={`linghuiDirector3DTimelineButton ${active ? 'isActive' : ''}`}
+                onClick={() => onEasingChange(option.value)}
+                title={option.label}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="linghuiDirector3DTimelineButtonGroup isResolution" title="视频导出分辨率（按 aspectRatio 计算宽）">
+          {DIRECTOR3D_EXPORT_RESOLUTION_OPTIONS.map(option => {
+            const active = resolveDirector3DExportResolution(timeline.exportResolution) === option.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                className={`linghuiDirector3DTimelineButton ${active ? 'isActive' : ''}`}
+                onClick={() => onExportResolutionChange(option.value)}
+                title={option.hint}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
 
         <span className="linghuiDirector3DTimelineSeparator" />
 

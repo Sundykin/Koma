@@ -91,6 +91,12 @@ export interface ITVRequest<TAsset = ProviderAssetInput, TOptions = Record<strin
   startFrame?: TAsset;
   endFrame?: TAsset;
   options?: TOptions;
+  /**
+   * Provider 之间通用的扩展元数据。compileVideoRequestPromptReferences 在 promptProtocol
+   * = 'koma-jimeng' 时会写入 metadata.komaJimengAssets = { image_urls, video_urls, audio_urls }，
+   * Provider 自行读取并塞到上游请求体的对应字段。
+   */
+  metadata?: Record<string, unknown>;
 }
 
 export interface TTSRequest<TOptions = Record<string, unknown>> {

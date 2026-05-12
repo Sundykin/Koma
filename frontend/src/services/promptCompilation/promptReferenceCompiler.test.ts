@@ -94,6 +94,28 @@ describe('compilePromptReferences 多类型编译协议', () => {
       expect(result.compiledPrompt).toBe('@Image 1');
     });
 
+    it('koma-jimeng-file 策略：占位符为 @image_file_N / @video_file_N / @audio_file_N', () => {
+      const result = compilePromptReferences({
+        prompt: '@ref_a 站在 @ref_b 前 @ref_v_1 @ref_au_1',
+        references: [
+          { id: 'a', name: '主角', kind: 'image', source: 'https://x/a.png' },
+          { id: 'b', name: '场景', kind: 'image', source: 'https://x/b.jpg' },
+          { id: 'v_1', name: '运镜', kind: 'video', source: 'https://x/v1.mp4' },
+          { id: 'au_1', name: '台词', kind: 'audio', source: 'https://x/au1.mp3' },
+        ],
+        replacementStrategy: 'koma-jimeng-file',
+      });
+      expect(result.compiledPrompt).toBe(
+        '@image_file_1 站在 @image_file_2 前 @video_file_1 @audio_file_1',
+      );
+      // compiledByKind 按 kind 分列，直接给 Koma 即梦 metadata.image_urls 等用
+      expect(result.compiledByKind).toEqual({
+        image: ['https://x/a.png', 'https://x/b.jpg'],
+        video: ['https://x/v1.mp4'],
+        audio: ['https://x/au1.mp3'],
+      });
+    });
+
     it('readable-name 策略下：不按 kind 编号，直接替换为 name', () => {
       const result = compilePromptReferences({
         prompt: '@ref_a @ref_v',
@@ -117,6 +139,40 @@ describe('compilePromptReferences 多类型编译协议', () => {
         primaryReferenceId: 'v_primary',
       });
       expect(result.compiledPrompt).toBe('@Video 1 然后 @Video 2');
+    });
+
+    it('智能裁剪：未被 @ 的 references 不进编号桶 / 不入 compiledReferences', () => {
+      const result = compilePromptReferences({
+        prompt: '主角说：参考 @ref_d 的角度',
+        references: [
+          { id: 'a', name: '场景 A', kind: 'image', source: 'https://x/a.png' },
+          { id: 'b', name: '场景 B', kind: 'image', source: 'https://x/b.png' },
+          { id: 'c', name: '场景 C', kind: 'image', source: 'https://x/c.png' },
+          { id: 'd', name: '目标角度', kind: 'image', source: 'https://x/d.png' },
+        ],
+        replacementStrategy: 'image-index',
+      });
+      // 被 @ 的 d 编号为 @Image 1，其它 3 张未 @ 的不参与编号 / 不上传
+      expect(result.compiledPrompt).toBe('主角说：参考 @Image 1 的角度');
+      expect(result.compiledReferences).toEqual(['https://x/d.png']);
+    });
+
+    it('智能裁剪：primary 永远在；extras 永远在；未 @ 的 references 跳过', () => {
+      const result = compilePromptReferences({
+        prompt: '在 @ref_scene 里站着',
+        references: [
+          { id: 'primary', name: '主角脸', kind: 'image', source: 'https://x/face.png' },
+          { id: 'scene', name: '场景', kind: 'image', source: 'https://x/scene.png' },
+          { id: 'unused', name: '没用到', kind: 'image', source: 'https://x/unused.png' },
+        ],
+        primaryReferenceId: 'primary',
+        extraReferences: ['https://x/extra.png'],
+        replacementStrategy: 'image-index',
+      });
+      // primary 占 @Image 1，extra 占 @Image 2，被 @ 的 scene 占 @Image 3；unused 不进
+      expect(result.compiledPrompt).toBe('在 @Image 3 里站着');
+      // primary 被外层单独消费（filter 掉），所以 compiledReferences 不含 primary
+      expect(result.compiledReferences).toEqual(['https://x/extra.png', 'https://x/scene.png']);
     });
 
     it('未声明的 @ref_unknown 列入 unresolvedMentions', () => {

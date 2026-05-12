@@ -36,6 +36,14 @@ const LITE_PROPS = {
   legLength: 0.75,
 };
 
+const HASH = String.fromCharCode(35);
+const LITE_DETAIL_COLORS = {
+  face: `${HASH}15171c`,
+  chest: `${HASH}2d6cdf`,
+  back: `${HASH}6b7280`,
+  shoe: `${HASH}111318`,
+};
+
 export const Director3DLiteMannequin: React.FC<Director3DLiteMannequinProps> = ({
   actor,
   selected,
@@ -47,6 +55,23 @@ export const Director3DLiteMannequin: React.FC<Director3DLiteMannequinProps> = (
     if (renderMode === 'lineart') return resolveDirector3DColor('var(--token-bg-elevated)', 'white');
     return resolveDirector3DColor(actor.color, 'slategray');
   }, [actor.color, renderMode]);
+
+  const detailColors = useMemo(() => {
+    if (renderMode === 'silhouette') {
+      const silhouette = resolveDirector3DColor('var(--token-text-primary)', 'black');
+      return { face: silhouette, chest: silhouette, back: silhouette, shoe: silhouette };
+    }
+    if (renderMode === 'lineart') {
+      const ink = resolveDirector3DColor('var(--token-text-primary)', 'black');
+      return { face: ink, chest: ink, back: ink, shoe: ink };
+    }
+    return {
+      face: resolveDirector3DColor(LITE_DETAIL_COLORS.face, LITE_DETAIL_COLORS.face),
+      chest: resolveDirector3DColor(LITE_DETAIL_COLORS.chest, LITE_DETAIL_COLORS.chest),
+      back: resolveDirector3DColor(LITE_DETAIL_COLORS.back, LITE_DETAIL_COLORS.back),
+      shoe: resolveDirector3DColor(LITE_DETAIL_COLORS.shoe, LITE_DETAIL_COLORS.shoe),
+    };
+  }, [renderMode]);
 
   const haloColor = useMemo(
     () => resolveDirector3DColor(selected ? 'var(--token-text-primary)' : 'var(--token-text-muted)', selected ? 'white' : 'gray'),
@@ -66,6 +91,11 @@ export const Director3DLiteMannequin: React.FC<Director3DLiteMannequinProps> = (
   ) : (
     <meshBasicMaterial color={color} transparent={opacity < 1} opacity={opacity} side={THREE.DoubleSide} />
   );
+  const renderDetailMaterial = (key: keyof typeof detailColors) => (useStandard ? (
+    <meshStandardMaterial color={detailColors[key]} roughness={0.68} metalness={0.08} transparent={opacity < 1} opacity={opacity} />
+  ) : (
+    <meshBasicMaterial color={detailColors[key]} transparent={opacity < 1} opacity={opacity} side={THREE.DoubleSide} />
+  ));
 
   // 关键 Y 坐标（actor.position 是脚底）：
   //   legTop = legLength = 0.75
@@ -97,10 +127,26 @@ export const Director3DLiteMannequin: React.FC<Director3DLiteMannequinProps> = (
         <cylinderGeometry args={[LITE_PROPS.torsoTop, LITE_PROPS.torsoBot, LITE_PROPS.torsoHeight, 14]} />
         {bodyMaterial}
       </mesh>
+      <mesh position={[0, torsoCenter + 0.04, LITE_PROPS.torsoTop * 0.96]}>
+        <boxGeometry args={[LITE_PROPS.shoulderWidth * 0.36, 0.14, 0.012]} />
+        {renderDetailMaterial('chest')}
+      </mesh>
+      <mesh position={[0, torsoCenter, -LITE_PROPS.torsoTop * 0.98]}>
+        <boxGeometry args={[0.04, LITE_PROPS.torsoHeight * 0.64, 0.012]} />
+        {renderDetailMaterial('back')}
+      </mesh>
 
       {/* 头 */}
       <mesh position={[0, headCenter, 0]}>
         <sphereGeometry args={[LITE_PROPS.headRadius, 16, 12]} />
+        {headMaterial}
+      </mesh>
+      <mesh position={[0, headCenter + LITE_PROPS.headRadius * 0.08, LITE_PROPS.headRadius * 0.92]}>
+        <boxGeometry args={[LITE_PROPS.headRadius * 0.72, LITE_PROPS.headRadius * 0.12, LITE_PROPS.headRadius * 0.07]} />
+        {renderDetailMaterial('face')}
+      </mesh>
+      <mesh position={[0, headCenter - LITE_PROPS.headRadius * 0.18, LITE_PROPS.headRadius * 0.98]} rotation={[Math.PI / 2, 0, 0]}>
+        <coneGeometry args={[LITE_PROPS.headRadius * 0.12, LITE_PROPS.headRadius * 0.12, 10]} />
         {headMaterial}
       </mesh>
 
@@ -117,13 +163,16 @@ export const Director3DLiteMannequin: React.FC<Director3DLiteMannequinProps> = (
 
       {/* 腿×2：从髋到脚底 */}
       {([-1, 1] as const).map((sign) => (
-        <mesh
-          key={`leg-${sign}`}
-          position={[sign * hipX, LITE_PROPS.legLength / 2, 0]}
-        >
-          <cylinderGeometry args={[LITE_PROPS.legRadius, LITE_PROPS.legRadius, LITE_PROPS.legLength, 10]} />
-          {bodyMaterial}
-        </mesh>
+        <group key={`leg-${sign}`} position={[sign * hipX, 0, 0]}>
+          <mesh position={[0, LITE_PROPS.legLength / 2, 0]}>
+            <cylinderGeometry args={[LITE_PROPS.legRadius, LITE_PROPS.legRadius, LITE_PROPS.legLength, 10]} />
+            {bodyMaterial}
+          </mesh>
+          <mesh position={[0, 0.03, 0.08]}>
+            <boxGeometry args={[0.11, 0.055, 0.18]} />
+            {renderDetailMaterial('shoe')}
+          </mesh>
+        </group>
       ))}
 
       {/* 选中光环 */}

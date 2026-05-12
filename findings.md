@@ -363,3 +363,28 @@
 - 修复后，用户看见的提示词会作为唯一来源；发送前仍会把合法 mention 编译为 provider 协议 `@Image N`，所以 `@storyboard_anchor -> @Image 1` 是预期的协议转换，不是内容被改写。
 - 图片生成也存在同类隐式兜底：`shotImageWorkflow()` 在 `imagePrompt` 为空时会套 `tti_shot_image` 默认模板。为保证“输入框即发送源”，空图片提示词现在也会被拒绝。
 - 批量图片/视频生成如果紧跟编辑触发，也需要使用当前内存 `shotsRef` 快照并等待保存队列 flush；否则批量链路仍可能从旧 DB 或旧闭包取 prompt。
+
+## 2026-05-12 Director3D Model Refinement And Open Model Catalog
+
+- 当前 3D 导演工作台不走 GLTF / SkinnedMesh 资产链路，人物主要由 `Director3DMannequin.tsx`、`Director3DLiteMannequin.tsx`、`Director3DFormation.tsx` 的 procedural mesh 组成，骨骼是 group 层级和 `director3dRig.ts` 的欧拉旋转。
+- 主角模型已有头、鼻尖、躯干、四肢和脚，但缺少眼睛、嘴、耳朵、胸前/背部方向标、关节可视化、手指/拇指等细节，正背面区分弱。
+- 群演和方阵更简化，尤其方阵成员只有锥形躯干、头、腿；成员朝向主要靠整体旋转，单体正面不明显。
+- 开源来源策略：不能把“所有网上开源模型”无差别打包进项目；应先接入带来源 URL / license / 用途说明的目录，再对许可证明确、体积可控、风格合适的模型做后续 GLB 导入。
+- 适合进入目录的来源：
+  - Kenney Blocky Characters：Kenney 官方资产，CC0，适合低多边角色模型参考/后续导入。
+  - MakeHuman generated exports：官方授权说明中导出的角色模型可作为 CC0 / 公有领域方向使用，适合人体比例与面部/服装参考。
+  - Poly Haven Models：官方标注 CC0，适合场景道具和环境模型来源。
+  - Khronos glTF Sample Assets：适合作为 glTF / rig / animation 格式参考，但每个样例模型有独立 license，不能统一按一个许可证处理。
+  - Three.js SkeletonHelper：适合作为骨骼可视化画法参考，骨骼线段用 helper 思路表现，不是模型资产来源。
+
+## 2026-05-12 Director3D Procedural Detail Pass
+
+- 用户确认不用额外引入资源，要求外部模型库先隐藏，继续细化 procedural 的动物、道具、人物。
+- 当前 `Director3DCreatureMesh.tsx` 的四足动物通用模型可用，但物种差异主要靠比例/颜色/鬃毛/角，缺少老虎条纹、狼/狐耳、熊厚掌、马鬃尾、鹿斑、麒麟鳞片、鸟类羽片/爪、凤凰尾羽、龙鳞/胡须/爪等辨识细节。
+- 当前 `Director3DProp.tsx` 根据 actor.type 只画 box/cylinder/plane/camera/arrow，具体“桌/椅/床/柜/车/树/岩石/麦克风”等语义只存在 label/promptHint 中，视口里还不够像具体物件。
+- 最稳妥方案：不扩展 actor schema，直接在渲染组件里根据 `actor.label` 的中文/英文语义或 type 分支决定附加小几何；这样旧场景兼容，导出和拖拽逻辑不用变。
+- 继续根据用户反馈复盘：上一轮细节仍是“贴上去”的，四足动物腿根 Y 坐标可能导致脚穿地/身头漂移，根因是没有按“脚底→腿→肩胯→躯干→颈→头”的骨架链重算；需要把四足、飞禽、龙形分别重排骨架层级。
+- 参考开源思路：
+  - `threejs-procedural-animal` 是 MIT 的 procedural animal 实验，核心思想是 rigged animal mesh / bone-ready，而不是随便堆几何。
+  - Three Low Poly 项目强调 parametric modeling / prefabricated low-poly objects，适合用参数化体块重画道具。
+  - Three.js Blocks 的 BirdGeometry 用“body + left wing + right wing”的最小结构读出鸟形，可作为飞禽低模结构参考。
