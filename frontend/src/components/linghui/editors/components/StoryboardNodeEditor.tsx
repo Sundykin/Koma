@@ -424,7 +424,7 @@ export const StoryboardNodeEditor: React.FC<StoryboardNodeEditorProps> = ({
         width={1040}
         title={`${nodeData.label} · 沉浸式故事板视图`}
         className="linghuiScriptImmersiveModal"
-        destroyOnClose={false}
+        destroyOnHidden={false}
       >
         {renderShotView(true)}
       </Modal>

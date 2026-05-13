@@ -574,8 +574,19 @@
     font-size: 11px;
     color: var(--token-text-muted);
     font-weight: 700;
-    width: 12px;
+    min-width: 12px;
     text-align: center;
+    white-space: nowrap;
+  }
+
+  &GroupHint {
+    padding: 6px 8px;
+    border-radius: 6px;
+    border: 1px solid color-mix(in srgb, var(--token-accent-base) 28%, transparent);
+    background: color-mix(in srgb, var(--token-accent-base) 10%, transparent);
+    color: var(--token-text-secondary);
+    font-size: 11px;
+    line-height: 1.45;
   }
 
   &PoseGrid,

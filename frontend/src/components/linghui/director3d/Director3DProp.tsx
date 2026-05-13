@@ -39,17 +39,20 @@ function propKind(label: string): string {
   if (text.includes('凳') || text.includes('stool')) return 'stool';
   if (text.includes('床') || text.includes('bed')) return 'bed';
   if (text.includes('柜') || text.includes('cabinet') || text.includes('wardrobe')) return 'cabinet';
-  if (text.includes('汽车') || text.includes('car')) return 'car';
+  if (text.includes('汽车') || text.includes('车厢') || text.includes('car')) return 'car';
   if (text.includes('自行车') || text.includes('bike') || text.includes('bicycle')) return 'bike';
   if (text.includes('树') || text.includes('tree')) return 'tree';
   if (text.includes('灌木') || text.includes('bush')) return 'bush';
-  if (text.includes('岩石') || text.includes('rock')) return 'rock';
+  if (text.includes('岩石') || text.includes('山巅岩') || text.includes('rock')) return 'rock';
+  if (text.includes('石柱') || text.includes('柱') || text.includes('pillar') || text.includes('column')) return 'pillar';
+  if (text.includes('香烛') || text.includes('蜡烛') || text.includes('candle')) return 'candle';
   if (text.includes('门') || text.includes('door')) return 'door';
   if (text.includes('窗') || text.includes('window')) return 'window';
+  if (text.includes('墙') || text.includes('wall')) return 'wall';
   if (text.includes('屏幕') || text.includes('screen') || text.includes('display')) return 'screen';
   if (text.includes('聚光灯') || text.includes('light') || text.includes('spotlight')) return 'light';
   if (text.includes('麦克风') || text.includes('mic') || text.includes('microphone')) return 'mic';
-  if (text.includes('基座') || text.includes('pedestal')) return 'pedestal';
+  if (text.includes('基座') || text.includes('圆台') || text.includes('云台') || text.includes('pedestal')) return 'pedestal';
   if (text.includes('方箱') || text.includes('crate')) return 'crate';
   if (text.includes('圆柱') || text.includes('barrel')) return 'barrel';
   return 'generic';
@@ -260,6 +263,22 @@ export const Director3DProp: React.FC<Director3DPropProps> = ({ actor, selected,
                   {detailMaterial('metal', 0.38, 0.28)}
                 </mesh>
               )))}
+              {[-1, 1].flatMap(x => [-1, 1].flatMap(z => [0, 1, 2].map(i => (
+                <mesh
+                  key={`wheel-spoke-${x}-${z}-${i}`}
+                  position={[x * 0.772, 0.2, z * 0.28]}
+                  rotation={[0, 0, i * Math.PI / 3]}
+                >
+                  <boxGeometry args={[0.012, 0.19, 0.012]} />
+                  {detailMaterial('metal', 0.38, 0.26)}
+                </mesh>
+              ))))}
+              {[-1, 1].map(sign => (
+                <mesh key={`car-door-line-${sign}`} position={[sign * 0.32, 0.45, 0.382]}>
+                  <boxGeometry args={[0.018, 0.22, 0.018]} />
+                  {detailMaterial('dark', 0.5, 0.08)}
+                </mesh>
+              ))}
               <mesh position={[0, 0.39, 0.38]}>
                 <boxGeometry args={[0.62, 0.08, 0.035]} />
                 {detailMaterial('light', 0.35, 0.2)}
@@ -279,6 +298,16 @@ export const Director3DProp: React.FC<Director3DPropProps> = ({ actor, selected,
                 <dodecahedronGeometry args={[0.35, 0]} />
                 {detailMaterial('metal', 0.95, 0.02)}
               </mesh>
+              {[0, 1, 2].map(i => (
+                <mesh
+                  key={`rock-crack-${i}`}
+                  position={[-0.2 + i * 0.18, 0.65 - i * 0.08, 0.43]}
+                  rotation={[0, 0, -0.55 + i * 0.28]}
+                >
+                  <boxGeometry args={[0.22, 0.018, 0.018]} />
+                  {detailMaterial('dark', 0.8, 0.02)}
+                </mesh>
+              ))}
             </group>
           ) : kind === 'crate' ? (
             <group>
@@ -323,6 +352,12 @@ export const Director3DProp: React.FC<Director3DPropProps> = ({ actor, selected,
                 <cylinderGeometry args={[0.12, 0.18, 1.35, 12]} />
                 {detailMaterial('bark', 0.82, 0.03)}
               </mesh>
+              {Array.from({ length: 5 }).map((_, i) => (
+                <mesh key={`tree-bark-ridge-${i}`} position={[0, 0.42 + i * 0.18, 0.145]} rotation={[0.08, 0, (i % 2 === 0 ? 1 : -1) * 0.12]}>
+                  <boxGeometry args={[0.028, 0.16, 0.018]} />
+                  {detailMaterial('dark', 0.86, 0.02)}
+                </mesh>
+              ))}
               {[0, 1, 2].map((i) => (
                 <mesh key={`tree-crown-${i}`} position={[(i - 1) * 0.18, 1.42 + (i % 2) * 0.12, (i % 2) * 0.1]} scale={[1, 0.82, 1]}>
                   <sphereGeometry args={[0.45 - i * 0.03, 16, 12]} />
@@ -353,6 +388,12 @@ export const Director3DProp: React.FC<Director3DPropProps> = ({ actor, selected,
                   {detailMaterial('tire', 0.75, 0.08)}
                 </mesh>
               ))}
+              {[-1, 1].flatMap(sign => [0, 1, 2, 3].map(i => (
+                <mesh key={`bike-spoke-${sign}-${i}`} position={[sign * 0.42, 0, 0]} rotation={[0, 0, i * Math.PI / 4]}>
+                  <boxGeometry args={[0.01, 0.39, 0.01]} />
+                  {detailMaterial('metal', 0.38, 0.24)}
+                </mesh>
+              )))}
               {[-1, 1].map(sign => (
                 <mesh key={`bike-hub-${sign}`} position={[sign * 0.42, 0, 0]} rotation={[Math.PI / 2, 0, 0]}>
                   <cylinderGeometry args={[0.045, 0.045, 0.035, 12]} />
@@ -401,9 +442,51 @@ export const Director3DProp: React.FC<Director3DPropProps> = ({ actor, selected,
                 <sphereGeometry args={[0.12, 16, 10]} />
                 {detailMaterial('dark', 0.52, 0.12)}
               </mesh>
+              {[0, 1, 2].map(i => (
+                <mesh key={`mic-grille-${i}`} position={[0, 0.91 + i * 0.035, 0]} rotation={[Math.PI / 2, 0, 0]}>
+                  <torusGeometry args={[0.104 - i * 0.01, 0.004, 6, 18]} />
+                  {detailMaterial('metal', 0.4, 0.22)}
+                </mesh>
+              ))}
               <mesh position={[0, 0.08, 0]}>
                 <cylinderGeometry args={[0.22, 0.22, 0.04, 18]} />
                 {detailMaterial('metal', 0.48, 0.2)}
+              </mesh>
+            </group>
+          ) : kind === 'pillar' ? (
+            <group>
+              <mesh position={[0, 0.5, 0]}>
+                <cylinderGeometry args={[0.18, 0.2, 1, 18]} />
+                {detailMaterial('stone', 0.86, 0.05)}
+              </mesh>
+              {[0.08, 0.5, 0.92].map((y, i) => (
+                <mesh key={`pillar-ring-${i}`} position={[0, y, 0]} rotation={[Math.PI / 2, 0, 0]}>
+                  <torusGeometry args={[0.2, i === 1 ? 0.012 : 0.024, 8, 24]} />
+                  {detailMaterial('metal', 0.62, 0.12)}
+                </mesh>
+              ))}
+              <mesh position={[0, 1.04, 0]}>
+                <cylinderGeometry args={[0.26, 0.22, 0.12, 18]} />
+                {detailMaterial('stone', 0.86, 0.05)}
+              </mesh>
+            </group>
+          ) : kind === 'candle' ? (
+            <group>
+              <mesh position={[0, 0.28, 0]}>
+                <cylinderGeometry args={[0.07, 0.08, 0.56, 16]} />
+                {detailMaterial('light', 0.72, 0.05)}
+              </mesh>
+              <mesh position={[0, 0.6, 0]} rotation={[0, 0, Math.PI]}>
+                <coneGeometry args={[0.09, 0.22, 14]} />
+                {detailMaterial('light', 0.32, 0.02)}
+              </mesh>
+              <mesh position={[0, 0.62, 0]}>
+                <sphereGeometry args={[0.045, 12, 8]} />
+                {detailMaterial('light', 0.28, 0.02)}
+              </mesh>
+              <mesh position={[0, 0.02, 0]}>
+                <cylinderGeometry args={[0.16, 0.16, 0.04, 18]} />
+                {detailMaterial('metal', 0.44, 0.2)}
               </mesh>
             </group>
           ) : kind === 'stool' ? (
@@ -516,6 +599,21 @@ export const Director3DProp: React.FC<Director3DPropProps> = ({ actor, selected,
                 <mesh key={`window-highlight-${i}`} position={[x, 1.24, 0.105]} rotation={[0, 0, -0.28]}>
                   <boxGeometry args={[0.035, 0.46, 0.018]} />
                   {detailMaterial('light', 0.4, 0.02)}
+                </mesh>
+              ))}
+            </>
+          ) : kind === 'wall' ? (
+            <>
+              {Array.from({ length: 5 }).map((_, i) => (
+                <mesh key={`wall-course-${i}`} position={[0, 0.28 + i * 0.36, 0.065]}>
+                  <boxGeometry args={[1.52, 0.028, 0.03]} />
+                  {detailMaterial('dark', 0.8, 0.02)}
+                </mesh>
+              ))}
+              {[-0.48, 0, 0.48].map((x, i) => (
+                <mesh key={`wall-joint-${i}`} position={[x, 1, 0.07]}>
+                  <boxGeometry args={[0.028, 1.58, 0.026]} />
+                  {detailMaterial('dark', 0.8, 0.02)}
                 </mesh>
               ))}
             </>

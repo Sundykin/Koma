@@ -1,5 +1,101 @@
 # Progress Log
 
+## Session: 2026-05-13 Director3D Unified Render Pipeline
+
+### Phases 1-4: Diagnosis and Fix
+- **Status:** complete
+- Actions taken:
+  - 确认画布模型由 r3f JSX 组件渲染，而导出截图/时间轴视频由 `CaptureRenderer` 在离屏 `WebGLRenderer` 中重建 vanilla three.js 几何。
+  - 在 `director3dExportGeometry.ts` 中新增统一入口 `buildDirector3DActorGroup()`，覆盖 `mannequin`、`mannequin-lite`、`formation`、`creature` 和全部 prop 类型。
+  - 将主角脸部/胸牌/背脊线/关节、lite 群演和 formation 成员细节补进共享构建器，减少导出低保真复刻。
+  - 首次尝试将 `Director3DViewport` 的画布 actor 渲染改为 `<primitive>` 挂载共享 `THREE.Group`，但用户反馈无法选中假人且预览样式变化。
+  - 已恢复画布 actor 渲染为原 JSX 组件（`Director3DMannequin` / `Director3DLiteMannequin` / `Director3DFormation` / `Director3DCreature` / `Director3DProp`），保留原选择事件和分件材质样式。
+  - `CaptureRenderer` 删除本地重复分支，导出路径继续直接调用 `buildDirector3DActorGroup()`。
+  - 选择/拖拽/高度/旋转控件仍由 `ActorDragLayer` 独立绘制，不进入共享 builder。
+  - 新增 `director3dExportGeometry.test.ts` 回归测试，约束统一 actor builder 覆盖全部 actor 类型。
+
+### Phase 5: Validation
+- **Status:** complete
+- Validation:
+  - `npm run test -- --run src/components/linghui/director3d/director3dExportGeometry.test.ts src/components/linghui/director3d/director3dRig.test.ts src/components/linghui/director3d/director3dAssetLibrary.test.ts src/components/linghui/director3d/director3dCreature.test.ts src/components/linghui/director3d/director3dBattalion.test.ts src/components/linghui/director3d/director3dTimeline.test.ts`：6 files / 74 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json`（frontend）：passed。
+  - `npx tsc --noEmit --project tsconfig.json`（root）：passed。
+  - `git diff --check`：passed。
+  - Electron CDP `http://127.0.0.1:9333/json/version` 在线；通过 page websocket 读取当前 Electron 页面标题 `Koma - 漫剧创作工具`。当前停在项目列表，未进入 3D 工作台，只作为端口/页面级烟测记录。
+
+### Follow-up: Restore Canvas Interaction and Style
+- **Status:** complete
+- Actions taken:
+  - 根据用户反馈，撤回画布 `<primitive>` 渲染方案。
+  - 画布恢复使用原 JSX 组件，以保留 R3F 事件命中、选中光环、分件材质和原预览样式。
+  - 导出视频/截图仍使用共享 builder，不再影响画布交互。
+- Validation:
+  - `npm run test -- --run src/components/linghui/director3d/director3dExportGeometry.test.ts src/components/linghui/director3d/director3dRig.test.ts src/components/linghui/director3d/director3dAssetLibrary.test.ts src/components/linghui/director3d/director3dCreature.test.ts src/components/linghui/director3d/director3dBattalion.test.ts src/components/linghui/director3d/director3dTimeline.test.ts`：6 files / 74 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json`（frontend）：passed。
+  - `npx tsc --noEmit --project tsconfig.json`（root）：passed。
+  - `git diff --check`：passed。
+  - Electron CDP 9333 页面级检查：页面在线，无 React 错误；当前停在项目列表，未进入 Director3D 视口。
+
+## Session: 2026-05-12 Director3D Procedural Model Refinement
+
+### Phase 1: Current State Recovery
+- **Status:** complete
+- Actions taken:
+  - 使用 `pi-planning-with-files` 技能继续复杂任务记录。
+  - 确认当前分支为 `feat/panel-restore2`，起步工作树干净。
+  - 读取 `electron/main.ts`，确认开发模式 remote debugging 端口为 `KOMA_ELECTRON_REMOTE_DEBUGGING_PORT` 或默认 `9333`；后续可视化验证不打开普通浏览器 URL。
+  - 复查现有 Director3D 生物、道具、导出几何和编辑器入口，确认外部模型库未直接展示。
+  - 发现视口/导出 `propKind()` 标签识别不一致，以及四足/龙四肢与躯干动作脱节的继续优化点。
+
+### Phase 2: Model Refinement
+- **Status:** complete
+- Actions taken:
+  - 同步视口与导出道具识别标签。
+  - 增加动物肩/胯连接、物种特征和更清晰脚爪。
+  - 增加道具分件细节和材质纹理暗示。
+  - 同步导出几何，补测试防止退回单一占位体。
+
+### Phases 3-4: Export Parity and Validation
+- **Status:** complete
+- Actions taken:
+  - `Director3DProp` 与 `director3dExportGeometry` 的 `propKind()` 同步识别车厢、山巅岩、石柱、香烛、墙板、圆台/云台。
+  - 四足动物增加肩/胯连接球和分段腿，狐狸尾巴改为更可读的多尾扇形。
+  - 飞禽增加侧向脚爪；龙增加口鼻块、双排龙须、分枝角和爪肩连接。
+  - 道具增加车轮辐条/门线、岩石裂纹、树皮纹、车轮/自行车辐条、麦克风网罩、石柱环、香烛火焰、墙板砖缝。
+  - 离屏导出几何同步上述结构，并新增回归测试覆盖常用模板道具、四足动物、龙和飞禽的复杂度。
+- Validation:
+  - `npm run test -- --run src/components/linghui/director3d/director3dExportGeometry.test.ts src/components/linghui/director3d/director3dAssetLibrary.test.ts src/components/linghui/director3d/director3dRig.test.ts src/components/linghui/director3d/director3dCreature.test.ts src/components/linghui/director3d/director3dBattalion.test.ts src/components/linghui/director3d/director3dTimeline.test.ts`：6 files / 72 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json`（frontend）：passed。
+  - `npx tsc --noEmit --project tsconfig.json`（root）：passed。
+  - `npm run build`（frontend）：passed；仅保留既有 Vite dynamic import/chunk size warnings。
+  - `git diff --check`：passed。
+- Notes:
+  - `curl http://127.0.0.1:9333/json/version` 连接失败，说明当前 Electron app 未运行；按用户要求未打开普通浏览器 URL。
+
+### Follow-up: Electron Debug Port Rule
+- **Status:** complete
+- Actions taken:
+  - 将“不要用普通浏览器打开前端做 UI 验证，必须连接 Electron 自定义调试端口”的项目规约写入 `AGENTS.md`。
+  - 在 `CLAUDE.md` 增加指向 `AGENTS.md` 的同类规约入口。
+  - 确认当前 Electron DevTools Protocol 在线：`http://127.0.0.1:9333/json/version` 返回 `KomaStudio/1.0.0 Electron/39.4.0`。
+  - 通过 `http://127.0.0.1:9333/json/list` 找到 Electron 页面 target：`Koma - 漫剧创作工具`。
+  - 使用 CDP 读取当前 Electron 页面 DOM，确认页面已从临时 ErrorBoundary 状态恢复，当前不是普通浏览器烟测。
+
+### Follow-up: Director3D Slider Popover React Loop
+- **Status:** complete
+- Actions taken:
+  - 根据 renderer 日志定位 `Maximum update depth exceeded` 到 `Director3DNodeEditor` 右侧属性 Popover 中的 AntD `SliderTooltip` portal。
+  - 为 Director3D inspector 内的朝向、骨骼微调、缩放、FOV 滑块统一关闭 Slider 默认 tooltip：`tooltip={{ open: false }}`。
+  - FOV 滑块改为和骨骼滑块一致的行内数值显示，保留角度反馈但不再创建嵌套 Tooltip portal。
+  - 顺手把本轮触达的 AntD 6 弃用 Modal/Drawer props 改为当前 API：`destroyOnHidden`、`mask={{ closable }}`、Drawer `size`。
+  - 通过 Electron CDP `http://127.0.0.1:9333` 打开已有 3D 导演节点，打开右侧属性 Popover 并拖动 FOV 滑块；验证 `.ant-slider-tooltip` 数量为 0，且没有 `Maximum update depth` / `Cannot read properties of null` / `popoverEventBlockers`。
+  - CDP 滑块验证临时改动了本地测试工作区 FOV；已用 SQLite 将 `linghui_workspace_nodes` 中 `9dade4f772c2/-khezgWLgi` 的 `scene.camera.fov` 恢复为 35。
+- Validation:
+  - `npx tsc --noEmit --project tsconfig.json`（frontend）：passed。
+  - `npx tsc --noEmit --project tsconfig.json`（root）：passed。
+  - `npm run test -- --run src/components/linghui/director3d/director3dExportGeometry.test.ts src/components/linghui/director3d/director3dAssetLibrary.test.ts src/components/linghui/director3d/director3dRig.test.ts src/components/linghui/director3d/director3dCreature.test.ts src/components/linghui/director3d/director3dBattalion.test.ts src/components/linghui/director3d/director3dTimeline.test.ts src/components/linghui/editors/tests/ImageNodeEditor.test.tsx`：7 files / 75 tests passed。
+  - `git diff --check`：passed。
+
 ## Session: 2026-05-10 Storyboard Image Mode
 
 ### Phases 1-5: Implementation
@@ -1408,3 +1504,25 @@
   - 新增 `director3dExportGeometry.test.ts`，覆盖汽车、自行车、窗和四足动物导出不再退化为单盒子/单圆柱。
 - Validation:
   - `npm run test -- --run src/components/linghui/director3d/director3dExportGeometry.test.ts src/components/linghui/director3d/director3dAssetLibrary.test.ts src/components/linghui/director3d/director3dRig.test.ts src/components/linghui/director3d/director3dCreature.test.ts src/components/linghui/director3d/director3dBattalion.test.ts src/components/linghui/director3d/director3dTimeline.test.ts`：6 files / 70 tests passed。
+
+### Follow-up: Director3D Entity Combinations + Direct Transform
+- **Status:** complete
+- Actions taken:
+  - 使用 `pi-planning-with-files` 继续记录本轮复杂交互改动。
+  - 读取现有 `LinghuiDirector3DActor`、`director3dRig`、`director3dScene`、`Director3DViewport`、`Director3DNodeEditor`，确认当前拖拽只处理 X/Z，Y 高度保留但无显式视口操控。
+  - 确认最小设计：actor 继续用世界绝对坐标，新增轻量 group 元数据；编辑器更新时按 group 做位置/朝向联动。
+
+  - 给 actor schema 增加 `groupId/groupRole/groupLabel`，组合仍保存世界绝对坐标。
+  - 新增 `createDirector3DRidingHorse()`，一键生成 horse mount + mannequin rider，骑手使用新增 `ride` rig。
+  - 修正 `sit` rig 的髋/膝方向，让坐姿不再反向折腿；新增 `ride` 扩展姿势，双腿外展跨坐。
+  - `Director3DNodeEditor` 的 actor 更新改成组合感知：平移联动整组，旋转优先围绕坐骑中心，时间轴启用时给同组成员各自写关键帧。
+  - `Director3DViewport` 增加选中 actor 的直接操控手柄：拖本体移动 X/Z，拖竖向白色球调高度 Y，拖地面旋转环调 rotationY。
+  - 属性面板增加 `高度 Y (m)` slider，并把位置字段标成 `X / 高度Y / Z`。
+  - Electron CDP `127.0.0.1:9333` 验证：工作台可打开，人物弹层中已出现“人骑马”。未点击新增组合，避免改脏当前用户工作区。
+- Validation:
+  - `npm run test -- --run src/components/linghui/director3d/director3dRig.test.ts src/components/linghui/director3d/director3dAssetLibrary.test.ts src/components/linghui/director3d/director3dExportGeometry.test.ts src/components/linghui/director3d/director3dCreature.test.ts src/components/linghui/director3d/director3dBattalion.test.ts src/components/linghui/director3d/director3dTimeline.test.ts`：6 files / 73 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json`（frontend）：passed。
+  - `npx tsc --noEmit --project tsconfig.json`（root）：passed。
+  - `git diff --check`：passed。
+- Errors:
+  - CDP 验证脚本曾因 Runtime.evaluate 字符串换行拼接触发 SyntaxError；已换成无换行表达式重新读取 DOM，确认非应用异常。

@@ -33,20 +33,20 @@ describe('director3dRig 骨骼绑定', () => {
   });
 
   describe('DIRECTOR3D_RIG_PRESET_OPTIONS', () => {
-    it('暴露 12 个动作（基础 6 + 扩展 6）', () => {
-      expect(DIRECTOR3D_RIG_PRESET_OPTIONS).toHaveLength(12);
+    it('暴露 13 个动作（基础 6 + 扩展 7）', () => {
+      expect(DIRECTOR3D_RIG_PRESET_OPTIONS).toHaveLength(13);
     });
 
-    it('基础 6 个有 posePreset 字段，扩展 6 个没有', () => {
+    it('基础 6 个有 posePreset 字段，扩展 7 个没有', () => {
       const withPose = DIRECTOR3D_RIG_PRESET_OPTIONS.filter(o => o.posePreset);
       const withoutPose = DIRECTOR3D_RIG_PRESET_OPTIONS.filter(o => !o.posePreset);
       expect(withPose).toHaveLength(6);
-      expect(withoutPose).toHaveLength(6);
+      expect(withoutPose).toHaveLength(7);
     });
 
-    it('扩展动作 aim / punch / crouch / cheer / prone / turnBack 都在', () => {
+    it('扩展动作 aim / punch / crouch / cheer / prone / turnBack / ride 都在', () => {
       const keys = DIRECTOR3D_RIG_PRESET_OPTIONS.map(o => o.key);
-      for (const expected of ['aim', 'punch', 'crouch', 'cheer', 'prone', 'turnBack']) {
+      for (const expected of ['aim', 'punch', 'crouch', 'cheer', 'prone', 'turnBack', 'ride']) {
         expect(keys).toContain(expected);
       }
     });

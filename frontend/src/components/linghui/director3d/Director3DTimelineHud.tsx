@@ -379,7 +379,7 @@ export const Director3DTimelineHud: React.FC<Director3DTimelineHudProps> = ({
         footer={null}
         title="时间轴动画预览"
         width={720}
-        destroyOnClose
+        destroyOnHidden
         zIndex={2000}
       >
         {previewVideoSrc ? (

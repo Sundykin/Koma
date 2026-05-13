@@ -285,6 +285,14 @@ export interface LinghuiDirector3DFormationConfig {
    */
   memberFacing: 'forward' | 'away' | 'inward' | 'outward';
 }
+
+export type LinghuiDirector3DActorGroupRole =
+  | 'rider'
+  | 'mount'
+  | 'passenger'
+  | 'carrier'
+  | 'linked';
+
 export type LinghuiDirector3DActorPose =
   | 'idle'
   | 'walk'
@@ -308,6 +316,15 @@ export interface LinghuiDirector3DActor {
   /** 颜色（参考图区分用），CSS 颜色串 */
   color: string;
   posePreset: LinghuiDirector3DActorPose;
+  /**
+   * 轻量实体组合标识。组合成员仍保存世界绝对坐标，编辑器层根据 groupId
+   * 做移动 / 旋转联动，避免 nested transform 破坏导出、关键帧和老场景。
+   */
+  groupId?: string;
+  /** 组合内角色，例如 rider / mount；用于 UI 与 prompt 描述。 */
+  groupRole?: LinghuiDirector3DActorGroupRole;
+  /** 组合显示名，例如“人骑马”。 */
+  groupLabel?: string;
   /**
    * 骨骼姿态（rig）。仅 type='mannequin' 时有意义。
    * 每个关节存局部欧拉角（XYZ，弧度）。详见 director3d/director3dRig.ts。

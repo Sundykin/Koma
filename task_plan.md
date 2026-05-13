@@ -1,5 +1,75 @@
 # Task Plan
 
+## Session: 2026-05-13 Director3D Unified Render Pipeline
+
+### Goal
+- 修复 3D 导演工作台“画布中的模型”和“导出视频/截图渲染的模型”不一致的问题。
+- 让画布预览和离屏导出使用同一个程序化模型构建入口，避免后续人物、动物、道具细节只改到一边。
+
+### Scope
+- `frontend/src/components/linghui/director3d/Director3DViewport.tsx`
+- `frontend/src/components/linghui/director3d/director3dExportGeometry.ts`
+- `frontend/src/components/linghui/director3d/director3dExportGeometry.test.ts`
+
+### Phases
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Root Cause | complete | 确认画布使用 r3f JSX 组件，导出视频使用 vanilla three.js 复刻构建器，属于双管线重复实现 |
+| 2. Shared Builder | complete | 增加 `buildDirector3DActorGroup()` 统一 actor 几何入口，覆盖主角、群演、方阵、生物和道具 |
+| 3. Viewport Integration | complete | 画布恢复原 JSX 组件以保留选中和样式；导出调用共享 actor builder |
+| 4. Regression Coverage | complete | 补测试约束统一入口覆盖全部 actor 类型 |
+| 5. Validation | complete | 跑 Director3D 目标测试、前端/root TypeScript、diff check 和 Electron CDP 端口烟测 |
+
+### Acceptance Criteria
+- 画布保持原 JSX actor 组件，选中和预览样式不回退。
+- 时间轴视频逐帧导出、截图导出使用共享 actor builder，不再在 `CaptureRenderer` 内写多套分支。
+- 后续新增模型细节只需要落到共享 builder，不需要再同步 JSX 和导出两处。
+- 选择/拖拽/高度/旋转控制仍由工作台交互层负责，不进入导出画面。
+
+### Error Log
+| Error | Attempt | Resolution |
+|------|---------|------------|
+| Chrome DevTools MCP 当前页状态无效 | 1 | 未打开普通浏览器；改用 Electron `127.0.0.1:9333` CDP websocket 直接读取当前页面状态 |
+| 画布切到 `<primitive>` 后无法选中假人且样式变化 | 1 | 恢复画布 JSX 组件渲染；仅导出路径使用共享 builder |
+
+## Session: 2026-05-12 Director3D Procedural Model Refinement
+
+### Goal
+- 继续细化 3D 导演工作台的程序化人物、动物和道具模型。
+- 不引入外部模型文件或下载资源，只参考开源模型/骨骼画法思路后在本地程序化重画。
+- 外部模型库入口保持隐藏；工作台内优先展示内置程序化资产。
+- 修复动物头、躯干、四肢错位感，以及纯色道具不易识别的问题。
+- 后续可视化验证必须连接 Electron 自定义调试端口，不打开普通浏览器地址。
+
+### Scope
+- `frontend/src/components/linghui/director3d/Director3DCreatureMesh.tsx`
+- `frontend/src/components/linghui/director3d/Director3DProp.tsx`
+- `frontend/src/components/linghui/director3d/director3dExportGeometry.ts`
+- `frontend/src/components/linghui/director3d/director3dScene.ts`
+- `frontend/src/components/linghui/director3d/director3dExportGeometry.test.ts`
+
+### Phases
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Current State Recovery | complete | 确认工作树、Electron 调试端口和现有 3D 模型增强状态 |
+| 2. Model Refinement | complete | 补动物骨架连接、物种特征、道具分件和纹理暗示 |
+| 3. Export Parity | complete | 同步离屏导出几何，避免视口与导出线稿不一致 |
+| 4. Validation | complete | 跑 director3d 目标测试、TypeScript/build 和 diff check |
+| 5. React Loop Fix | complete | 修复 Director3D 属性 Popover 内 AntD Slider tooltip 递归 Portal 导致的 Maximum update depth |
+
+### Acceptance Criteria
+- 四足动物的腿、肩/胯、头颈与躯干连接更清楚，不再像部件漂浮。
+- 飞禽有可读的翅膀、喙、尾羽和脚爪；龙有龙头、角、须、脊刺、翼和爪的可读轮廓。
+- 道具通过结构和细节可识别，不依赖纯色块表达。
+- 模板道具标签（如车厢、山巅岩、圆台/云台、石柱、香烛）在视口和导出里识别一致。
+- 不新增外部模型资源，外部模型库不出现在工作台 UI。
+
+### Error Log
+| Error | Attempt | Resolution |
+|------|---------|------------|
+| Electron DevTools 端口 `9333` 无法连接 | 1 | 当前 Electron app 未运行；未打开普通浏览器 URL，保留为需启动 Electron 后再用 remote debugging 端口验证 |
+| `Maximum update depth exceeded` in `Director3DNodeEditor` | 1 | 禁用属性 Popover 内 Slider 默认 Tooltip portal，并改用行内数值显示；通过 Electron CDP 9333 实测拖动 FOV 滑块无复现 |
+
 ## Session: 2026-05-10 Storyboard Image Mode
 
 ### Goal
@@ -693,3 +763,42 @@
 | 2. Prop Export Parity | complete | 增加结构化道具导出构建器，线稿/时间轴导出复用车、门窗、家具、自行车等细节体块 |
 | 3. Creature Export Parity | complete | 四足动物导出同步胸腔/胯部/头颈/足部，鸟类导出增加左右翼和飞羽 |
 | 4. Regression Tests | complete | 新增导出几何测试，防止导出链路退回单盒子/单圆柱占位 |
+
+## Session: 2026-05-13 Director3D Entity Combinations + Direct Transform
+
+### Goal
+- 支持 3D 导演工作台中的实体组合，例如“人骑马”，并保持组合移动/旋转时人物与坐骑连贯。
+- 修正人物预设姿势中坐姿/骑乘姿势的错误表现。
+- 点击高亮人物或组合成员后，在视口内直接拖动调整位置、旋转和高度。
+- 明确坐标轴：X/Z 为地面平面，Y 为高度，给属性面板补高度控制，避免用户以为缺少竖直轴。
+
+### Scope
+- `frontend/src/types/linghui.ts`
+- `frontend/src/components/linghui/director3d/director3dRig.ts`
+- `frontend/src/components/linghui/director3d/director3dScene.ts`
+- `frontend/src/components/linghui/director3d/Director3DViewport.tsx`
+- `frontend/src/components/linghui/editors/components/Director3DNodeEditor.tsx`
+- `frontend/src/components/linghui/page/styles/_director3d.scss`
+- Director3D 相关测试
+
+### Phases
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Current State Recovery | complete | 读取现有 Director3D 类型、rig、场景创建、视口拖拽和编辑器更新链路 |
+| 2. Combination Schema | complete | 增加轻量 group 元数据，避免引入嵌套 transform 破坏导出/时间轴 |
+| 3. Riding Combo + Pose | complete | 增加人骑马组合入口，补骑乘 rig，修正坐姿 |
+| 4. Direct Manipulation | complete | 视口增加高度手柄和旋转手柄，选中后可直接拖动 |
+| 5. Validation | complete | 跑 Director3D 目标测试、TypeScript、diff check，并用 Electron CDP 9333 验证 |
+
+### Acceptance Criteria
+- 左侧资产入口可一键添加“人骑马”组合，生成 rider + horse 两个实体。
+- 移动或旋转组合任一成员时，另一个成员按组合整体联动，不漂移。
+- 骑乘人物姿态可读，腿部打开并弯曲，不再像普通坐姿插进坐骑。
+- 选中人物/坐骑后，拖物体本体移动 X/Z，拖高度手柄改变 Y，高度数值在属性面板可直接调。
+- 选中后可在视口拖旋转手柄调整 rotationY。
+- 不使用普通浏览器验证；如需 UI 验证，只连接 Electron `127.0.0.1:9333`。
+
+### Error Log
+| Error | Attempt | Resolution |
+|------|---------|------------|
+| CDP Runtime.evaluate 脚本字符串拼接出现 SyntaxError | 1 | 改用无换行表达式重新读取 Electron DOM；确认是验证脚本错误，不是应用异常 |

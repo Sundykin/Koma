@@ -493,7 +493,7 @@ export const ScriptNodeEditor: React.FC<ScriptNodeEditorProps> = ({
         width={1040}
         title={`${nodeData.label} · 沉浸式脚本视图`}
         className="linghuiScriptImmersiveModal"
-        destroyOnClose={false}
+        destroyOnHidden={false}
       >
         {renderShotView(true)}
       </Modal>

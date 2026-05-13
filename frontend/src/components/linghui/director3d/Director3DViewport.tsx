@@ -19,10 +19,10 @@ import type {
 } from '../../../types/linghui';
 import { Director3DMannequin } from './Director3DMannequin';
 import { Director3DLiteMannequin } from './Director3DLiteMannequin';
-import { Director3DFormation, deriveFormationMembers } from './Director3DFormation';
+import { Director3DFormation } from './Director3DFormation';
 import { Director3DCreature } from './Director3DCreatureMesh';
 import { Director3DProp } from './Director3DProp';
-import { buildExportCreatureGroup, buildExportMannequinGroup, buildExportPropGroup } from './director3dExportGeometry';
+import { buildDirector3DActorGroup, type ExportGeometryContext } from './director3dExportGeometry';
 import { resolvePanoramaViewerMode } from '../panorama/panoramaProjection';
 import { safeFetch } from '../../../utils/safeFetch';
 import { resolveDirector3DColor } from './director3dColors';
@@ -59,6 +59,7 @@ interface Director3DViewportProps {
   selectedActorId?: string | null;
   onActorClick?: (actorId: string) => void;
   onActorMove?: (actorId: string, position: [number, number, number]) => void;
+  onActorRotate?: (actorId: string, rotationY: number) => void;
   onCanvasClick?: () => void;
   onCameraChange?: (
     camera: LinghuiDirector3DScene['camera'],
@@ -135,7 +136,34 @@ function disposeSceneGraph(root: THREE.Object3D): void {
     }
   });
 }
+
+function createDirector3DMaterialContext(
+  renderMode: LinghuiDirector3DRenderMode,
+  actorColor?: string,
+): ExportGeometryContext {
+  const drawEdges = renderMode === 'lineart' || renderMode === 'composition';
+  const wireMat = drawEdges ? new THREE.LineBasicMaterial({ color: 0x000000 }) : UNUSED_WIRE_MATERIAL;
+  let fillMat: THREE.Material;
+  if (renderMode === 'silhouette') {
+    fillMat = new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.DoubleSide });
+  } else if (renderMode === 'depth') {
+    fillMat = new THREE.MeshDepthMaterial({ side: THREE.DoubleSide });
+  } else {
+    const colorStr = resolveDirector3DColor(actorColor || '', '#ffffff');
+    fillMat = renderMode === 'preview'
+      ? new THREE.MeshStandardMaterial({
+        color: new THREE.Color(colorStr),
+        roughness: 0.7,
+        metalness: 0.05,
+        side: THREE.DoubleSide,
+      })
+      : new THREE.MeshBasicMaterial({ color: new THREE.Color(colorStr), side: THREE.DoubleSide });
+  }
+  return { drawEdges, wireMat, fillMat };
+}
+
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
+const UNUSED_WIRE_MATERIAL = new THREE.LineBasicMaterial({ color: 0x000000 });
 
 interface OrbitCameraState {
   yaw: number;
@@ -156,6 +184,13 @@ function samePosition(a: [number, number, number], b: [number, number, number]) 
   return Math.abs(a[0] - b[0]) < 0.0001
     && Math.abs(a[1] - b[1]) < 0.0001
     && Math.abs(a[2] - b[2]) < 0.0001;
+}
+
+function normalizeAngleRadians(value: number): number {
+  let next = value;
+  while (next > Math.PI) next -= Math.PI * 2;
+  while (next < -Math.PI) next += Math.PI * 2;
+  return next;
 }
 
 function resolveOrbitCameraState(camera: LinghuiDirector3DScene['camera']): OrbitCameraState {
@@ -540,139 +575,8 @@ const CaptureRenderer: React.FC<CaptureRendererProps> = ({ scene, texture, camer
     dirLight.position.set(3, 6, 4);
     offscreenScene.add(dirLight);
 
-    // 按风格构造主体 mesh 材质：
-    //  - preview：MeshStandardMaterial + actor.color，受光照，无描边 → 与画布完全一致
-    //  - lineart / composition：保留 actor.color（彩色实色填充）+ 黑色描边
-    //  - silhouette：纯黑填充，不画边
-    //  - depth：MeshDepthMaterial（远=白 近=黑，便于下游 ControlNet 直接用）
-    const wireMat = new THREE.LineBasicMaterial({ color: 0x000000 });
-    const drawEdges = exportMode === 'lineart' || exportMode === 'composition';
-    const makeFillMat = (actorColor?: string): THREE.Material => {
-      if (exportMode === 'silhouette') return new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.DoubleSide });
-      if (exportMode === 'depth') return new THREE.MeshDepthMaterial({ side: THREE.DoubleSide });
-      const colorStr = resolveDirector3DColor(actorColor || '', '#ffffff');
-      if (exportMode === 'preview') {
-        return new THREE.MeshStandardMaterial({
-          color: new THREE.Color(colorStr),
-          roughness: 0.7,
-          metalness: 0.05,
-          side: THREE.DoubleSide,
-        });
-      }
-      // lineart / composition：纯色 + 描边
-      return new THREE.MeshBasicMaterial({ color: new THREE.Color(colorStr), side: THREE.DoubleSide });
-    };
-    // 每个 actor 的 fillMat 通过闭包变量传给 addLineartMesh，避免改函数签名
-    let currentActorFillMat: THREE.Material = makeFillMat();
-    const addLineartMesh = (
-      group: THREE.Group,
-      geometry: THREE.BufferGeometry,
-      offset: [number, number, number] = [0, 0, 0],
-    ) => {
-      const mesh = new THREE.Mesh(geometry, currentActorFillMat);
-      mesh.position.set(offset[0], offset[1], offset[2]);
-      group.add(mesh);
-      if (drawEdges) {
-        const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geometry), wireMat);
-        edges.position.copy(mesh.position);
-        group.add(edges);
-      }
-    };
-
     for (const actor of effectiveScene.actors) {
-      currentActorFillMat = makeFillMat(actor.color);
-
-      // 主角假人 / 生物：跟 viewport 的 Director3DMannequin / Director3DCreatureMesh
-      // 保持同一份关节层级 + rig 旋转，避免导出后动作丢失（所见即所得）
-      if (actor.type === 'mannequin') {
-        const exportGroup = buildExportMannequinGroup(actor, {
-          drawEdges,
-          wireMat,
-          fillMat: currentActorFillMat,
-        });
-        offscreenScene.add(exportGroup);
-        continue;
-      }
-      if (actor.type === 'creature') {
-        const exportGroup = buildExportCreatureGroup(actor, {
-          drawEdges,
-          wireMat,
-          fillMat: currentActorFillMat,
-        });
-        offscreenScene.add(exportGroup);
-        continue;
-      }
-      if (
-        actor.type === 'prop-box'
-        || actor.type === 'prop-cylinder'
-        || actor.type === 'prop-plane'
-        || actor.type === 'prop-camera'
-        || actor.type === 'prop-arrow'
-      ) {
-        const exportGroup = buildExportPropGroup(actor, {
-          drawEdges,
-          wireMat,
-          fillMat: currentActorFillMat,
-        });
-        offscreenScene.add(exportGroup);
-        continue;
-      }
-
-      const group = new THREE.Group();
-      group.position.fromArray(actor.position);
-      group.rotation.y = actor.rotationY;
-      group.scale.setScalar(actor.scale);
-
-      if (actor.type === 'mannequin-lite') {
-        // 低级群演单兵：头 + 锥形躯干 + 两臂 + 两腿（与 Director3DLiteMannequin 几何一致）
-        const torsoTop = 0.18;
-        const torsoBot = 0.13;
-        const torsoHeight = 0.55;
-        const armRadius = 0.045;
-        const armLength = 0.5;
-        const legRadius = 0.07;
-        const legLength = 0.75;
-        const headRadius = 0.11;
-        const torsoCenter = legLength + torsoHeight / 2;
-        const shoulderY = legLength + torsoHeight - 0.06;
-        const headCenter = shoulderY + headRadius + 0.04;
-        const shoulderX = 0.18 + armRadius * 0.6;
-        const hipX = 0.13 - legRadius * 0.2;
-        addLineartMesh(group, new THREE.CylinderGeometry(torsoTop, torsoBot, torsoHeight, 14), [0, torsoCenter, 0]);
-        addLineartMesh(group, new THREE.SphereGeometry(headRadius, 16, 12), [0, headCenter, 0]);
-        [-1, 1].forEach((sign) => {
-          addLineartMesh(group, new THREE.CylinderGeometry(armRadius, armRadius, armLength, 10), [sign * shoulderX, shoulderY - armLength / 2, 0]);
-        });
-        [-1, 1].forEach((sign) => {
-          addLineartMesh(group, new THREE.CylinderGeometry(legRadius, legRadius, legLength, 10), [sign * hipX, legLength / 2, 0]);
-        });
-      } else if (actor.type === 'formation' && actor.formation) {
-        // 方阵线稿：每个成员画"头 + 锥形躯干 + 两腿"，无手臂保持低多边
-        const torsoTop = 0.16;
-        const torsoBot = 0.12;
-        const torsoHeight = 0.50;
-        const legRadius = 0.065;
-        const legLength = 0.70;
-        const headRadius = 0.10;
-        const torsoCenter = legLength + torsoHeight / 2;
-        const shoulderY = legLength + torsoHeight - 0.05;
-        const headCenter = shoulderY + headRadius + 0.03;
-        const hipX = 0.11 - legRadius * 0.2;
-        const members = deriveFormationMembers(actor.formation);
-        for (const member of members) {
-          const memberGroup = new THREE.Group();
-          memberGroup.position.set(member.x, 0, member.z);
-          memberGroup.rotation.y = member.rotationY;
-          addLineartMesh(memberGroup, new THREE.CylinderGeometry(torsoTop, torsoBot, torsoHeight, 12), [0, torsoCenter, 0]);
-          addLineartMesh(memberGroup, new THREE.SphereGeometry(headRadius, 14, 10), [0, headCenter, 0]);
-          [-1, 1].forEach((sign) => {
-            addLineartMesh(memberGroup, new THREE.CylinderGeometry(legRadius, legRadius, legLength, 10), [sign * hipX, legLength / 2, 0]);
-          });
-          group.add(memberGroup);
-        }
-      }
-
-      offscreenScene.add(group);
+      offscreenScene.add(buildDirector3DActorGroup(actor, createDirector3DMaterialContext(exportMode, actor.color)));
     }
 
     // preview 模式：与画布完全同步的地面 + 天空 + 云朵（确定性位置不抖动）
@@ -805,16 +709,25 @@ interface ActorDragLayerProps {
   renderMode: 'preview' | 'lineart' | 'silhouette';
   onActorPress?: (actorId: string) => void;
   onActorMove?: (actorId: string, position: [number, number, number]) => void;
+  onActorRotate?: (actorId: string, rotationY: number) => void;
   onActorDragStart?: () => void;
   onActorDragEnd?: () => void;
 }
 
+type ActorDragMode = 'move' | 'height' | 'rotate';
+
 interface ActorDragSession {
   id: string;
+  mode: ActorDragMode;
   pointerId: number;
   planeY: number;
   offset: THREE.Vector3;
   lastPosition: [number, number, number] | null;
+  startClientY: number;
+  startY: number;
+  startRotationY: number;
+  startAngle: number;
+  lastRotationY: number | null;
 }
 
 const ActorDragLayer: React.FC<ActorDragLayerProps> = ({
@@ -823,6 +736,7 @@ const ActorDragLayer: React.FC<ActorDragLayerProps> = ({
   renderMode,
   onActorPress,
   onActorMove,
+  onActorRotate,
   onActorDragStart,
   onActorDragEnd,
 }) => {
@@ -833,6 +747,65 @@ const ActorDragLayer: React.FC<ActorDragLayerProps> = ({
   const dragHitRef = useRef(new THREE.Vector3());
   const dragSessionRef = useRef<ActorDragSession | null>(null);
   const [dragPreview, setDragPreview] = useState<{ id: string; position: [number, number, number] } | null>(null);
+  const [rotationPreview, setRotationPreview] = useState<{ id: string; rotationY: number } | null>(null);
+
+  const applyPreviewToActor = useCallback((actor: LinghuiDirector3DActor): LinghuiDirector3DActor => {
+    const movingActor = dragPreview ? actors.find(item => item.id === dragPreview.id) : null;
+    if (dragPreview && movingActor) {
+      if (actor.id === dragPreview.id) {
+        return { ...actor, position: dragPreview.position };
+      }
+      if (movingActor.groupId && actor.groupId === movingActor.groupId) {
+        const dx = dragPreview.position[0] - movingActor.position[0];
+        const dy = dragPreview.position[1] - movingActor.position[1];
+        const dz = dragPreview.position[2] - movingActor.position[2];
+        return {
+          ...actor,
+          position: [
+            Number((actor.position[0] + dx).toFixed(4)),
+            Number((actor.position[1] + dy).toFixed(4)),
+            Number((actor.position[2] + dz).toFixed(4)),
+          ],
+        };
+      }
+    }
+
+    const rotatingActor = rotationPreview ? actors.find(item => item.id === rotationPreview.id) : null;
+    if (rotationPreview && rotatingActor) {
+      const delta = normalizeAngleRadians(rotationPreview.rotationY - rotatingActor.rotationY);
+      if (actor.id === rotationPreview.id && !rotatingActor.groupId) {
+        return { ...actor, rotationY: rotationPreview.rotationY };
+      }
+      if (rotatingActor.groupId && actor.groupId === rotatingActor.groupId) {
+        const members = actors.filter(item => item.groupId === rotatingActor.groupId);
+        const mountPivot = members.find(item => item.groupRole === 'mount')?.position;
+        const averagePivot: [number, number, number] = [
+          members.reduce((sum, item) => sum + item.position[0], 0) / Math.max(1, members.length),
+          members.reduce((sum, item) => sum + item.position[1], 0) / Math.max(1, members.length),
+          members.reduce((sum, item) => sum + item.position[2], 0) / Math.max(1, members.length),
+        ];
+        const pivot = mountPivot ?? averagePivot;
+        const dx = actor.position[0] - pivot[0];
+        const dz = actor.position[2] - pivot[2];
+        const cos = Math.cos(delta);
+        const sin = Math.sin(delta);
+        return {
+          ...actor,
+          position: [
+            Number((pivot[0] + dx * cos - dz * sin).toFixed(4)),
+            actor.position[1],
+            Number((pivot[2] + dx * sin + dz * cos).toFixed(4)),
+          ],
+          rotationY: normalizeAngleRadians(actor.rotationY + delta),
+        };
+      }
+      if (actor.id === rotationPreview.id) {
+        return { ...actor, rotationY: rotationPreview.rotationY };
+      }
+    }
+
+    return actor;
+  }, [actors, dragPreview, rotationPreview]);
 
   const getPlaneHit = useCallback((clientX: number, clientY: number, planeY: number): THREE.Vector3 | null => {
     const rect = gl.domElement.getBoundingClientRect();
@@ -856,11 +829,13 @@ const ActorDragLayer: React.FC<ActorDragLayerProps> = ({
     if (typeof pointerId === 'number' && session.pointerId !== pointerId) return;
 
     dragSessionRef.current = null;
-    if (session.lastPosition) {
+    if ((session.mode === 'move' || session.mode === 'height') && session.lastPosition) {
       onActorMove?.(session.id, session.lastPosition);
+    } else if (session.mode === 'rotate' && typeof session.lastRotationY === 'number') {
+      onActorRotate?.(session.id, session.lastRotationY);
     }
     onActorDragEnd?.();
-  }, [onActorDragEnd, onActorMove]);
+  }, [onActorDragEnd, onActorMove, onActorRotate]);
 
   useEffect(() => {
     const handlePointerMove = (event: PointerEvent) => {
@@ -868,17 +843,44 @@ const ActorDragLayer: React.FC<ActorDragLayerProps> = ({
       if (!session || session.pointerId !== event.pointerId) return;
 
       event.preventDefault();
-      const hit = getPlaneHit(event.clientX, event.clientY, session.planeY);
-      if (!hit) return;
+      if (session.mode === 'move') {
+        const hit = getPlaneHit(event.clientX, event.clientY, session.planeY);
+        if (!hit) return;
 
-      hit.add(session.offset);
-      const position: [number, number, number] = [
-        Number(hit.x.toFixed(4)),
-        session.planeY,
-        Number(hit.z.toFixed(4)),
-      ];
-      session.lastPosition = position;
-      setDragPreview({ id: session.id, position });
+        hit.add(session.offset);
+        const position: [number, number, number] = [
+          Number(hit.x.toFixed(4)),
+          session.planeY,
+          Number(hit.z.toFixed(4)),
+        ];
+        session.lastPosition = position;
+        setDragPreview({ id: session.id, position });
+        return;
+      }
+
+      if (session.mode === 'height') {
+        const nextY = Math.max(-1, Math.min(8, session.startY - (event.clientY - session.startClientY) * 0.01));
+        const actor = actors.find(item => item.id === session.id);
+        if (!actor) return;
+        const position: [number, number, number] = [
+          actor.position[0],
+          Number(nextY.toFixed(4)),
+          actor.position[2],
+        ];
+        session.lastPosition = position;
+        setDragPreview({ id: session.id, position });
+        return;
+      }
+
+      const actor = actors.find(item => item.id === session.id);
+      if (!actor) return;
+      const hit = getPlaneHit(event.clientX, event.clientY, actor.position[1]);
+      if (!hit) return;
+      const angle = Math.atan2(hit.x - actor.position[0], hit.z - actor.position[2]);
+      const rotationY = session.startRotationY + (angle - session.startAngle);
+      const rounded = Number(rotationY.toFixed(4));
+      session.lastRotationY = rounded;
+      setRotationPreview({ id: session.id, rotationY: rounded });
     };
 
     const handlePointerUp = (event: PointerEvent) => {
@@ -899,7 +901,7 @@ const ActorDragLayer: React.FC<ActorDragLayerProps> = ({
       window.removeEventListener('pointercancel', handlePointerUp);
       window.removeEventListener('blur', handleBlur);
     };
-  }, [endDrag, getPlaneHit]);
+  }, [actors, endDrag, getPlaneHit]);
 
   useEffect(() => {
     if (!dragPreview || dragSessionRef.current?.id === dragPreview.id) return;
@@ -909,7 +911,15 @@ const ActorDragLayer: React.FC<ActorDragLayerProps> = ({
     }
   }, [actors, dragPreview]);
 
-  const handleActorPointerDown = useCallback((actor: LinghuiDirector3DActor, event: ThreeEvent<PointerEvent>) => {
+  useEffect(() => {
+    if (!rotationPreview || dragSessionRef.current?.id === rotationPreview.id) return;
+    const actor = actors.find(item => item.id === rotationPreview.id);
+    if (actor && Math.abs(actor.rotationY - rotationPreview.rotationY) < 0.0001) {
+      setRotationPreview(null);
+    }
+  }, [actors, rotationPreview]);
+
+  const startDrag = useCallback((actor: LinghuiDirector3DActor, event: ThreeEvent<PointerEvent>, mode: ActorDragMode) => {
     event.stopPropagation();
     event.nativeEvent.stopPropagation();
 
@@ -920,21 +930,37 @@ const ActorDragLayer: React.FC<ActorDragLayerProps> = ({
 
     dragSessionRef.current = {
       id: actor.id,
+      mode,
       pointerId: nativeEvent.pointerId,
       planeY,
       offset: hit ? actorPosition.sub(hit) : new THREE.Vector3(),
       lastPosition: null,
+      startClientY: nativeEvent.clientY,
+      startY: actor.position[1],
+      startRotationY: actor.rotationY,
+      startAngle: hit ? Math.atan2(hit.x - actor.position[0], hit.z - actor.position[2]) : actor.rotationY,
+      lastRotationY: null,
     };
     onActorPress?.(actor.id);
     onActorDragStart?.();
   }, [getPlaneHit, onActorDragStart, onActorPress]);
 
+  const handleActorPointerDown = useCallback((actor: LinghuiDirector3DActor, event: ThreeEvent<PointerEvent>) => {
+    startDrag(actor, event, 'move');
+  }, [startDrag]);
+
+  const handleHeightPointerDown = useCallback((actor: LinghuiDirector3DActor, event: ThreeEvent<PointerEvent>) => {
+    startDrag(actor, event, 'height');
+  }, [startDrag]);
+
+  const handleRotatePointerDown = useCallback((actor: LinghuiDirector3DActor, event: ThreeEvent<PointerEvent>) => {
+    startDrag(actor, event, 'rotate');
+  }, [startDrag]);
+
   return (
     <>
       {actors.map((actor) => {
-        const renderActor = dragPreview?.id === actor.id
-          ? { ...actor, position: dragPreview.position }
-          : actor;
+        const renderActor = applyPreviewToActor(actor);
         const shared = {
           actor: renderActor,
           selected: actor.id === selectedActorId,
@@ -953,8 +979,43 @@ const ActorDragLayer: React.FC<ActorDragLayerProps> = ({
         if (actor.type === 'creature') {
           return <Director3DCreature key={actor.id} {...shared} />;
         }
-        return <Director3DProp key={actor.id} {...shared} />;
+        return (
+          <Director3DProp key={actor.id} {...shared} />
+        );
       })}
+      {selectedActorId ? (() => {
+        const selected = actors.find(actor => actor.id === selectedActorId);
+        if (!selected) return null;
+        const previewSelected = applyPreviewToActor(selected);
+        const position = previewSelected.position;
+        const rotationY = previewSelected.rotationY;
+        const radius = selected.type === 'creature'
+          ? Math.max(0.75, selected.scale * 0.75)
+          : Math.max(0.45, selected.scale * 0.45);
+        return (
+          <group position={position}>
+            <mesh position={[0, 1.95 * selected.scale, 0]} onPointerDown={(event) => handleHeightPointerDown(selected, event)}>
+              <sphereGeometry args={[0.085, 16, 12]} />
+              <meshBasicMaterial color="#ffffff" transparent opacity={0.95} />
+            </mesh>
+            <mesh position={[0, 0.98 * selected.scale, 0]}>
+              <cylinderGeometry args={[0.012, 0.012, 1.9 * selected.scale, 8]} />
+              <meshBasicMaterial color="#ffffff" transparent opacity={0.62} />
+            </mesh>
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.04, 0]} onPointerDown={(event) => handleRotatePointerDown(selected, event)}>
+              <ringGeometry args={[radius, radius + 0.035, 48]} />
+              <meshBasicMaterial color="#ffffff" transparent opacity={0.78} />
+            </mesh>
+            <mesh
+              position={[Math.sin(rotationY) * (radius + 0.12), 0.08, Math.cos(rotationY) * (radius + 0.12)]}
+              onPointerDown={(event) => handleRotatePointerDown(selected, event)}
+            >
+              <sphereGeometry args={[0.07, 16, 12]} />
+              <meshBasicMaterial color="#ffffff" transparent opacity={0.95} />
+            </mesh>
+          </group>
+        );
+      })() : null}
     </>
   );
 };
@@ -966,6 +1027,7 @@ export const Director3DViewport = forwardRef<Director3DViewportHandle, Director3
       selectedActorId,
       onActorClick,
       onActorMove,
+      onActorRotate,
       onCanvasClick,
       onCameraChange,
       renderMode = 'preview',
@@ -1163,6 +1225,7 @@ export const Director3DViewport = forwardRef<Director3DViewportHandle, Director3
             renderMode={renderMode}
             onActorPress={handleActorPress}
             onActorMove={onActorMove}
+            onActorRotate={onActorRotate}
             onActorDragStart={handleActorDragStart}
             onActorDragEnd={handleActorDragEnd}
           />
