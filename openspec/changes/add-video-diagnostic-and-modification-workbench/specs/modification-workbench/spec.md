@@ -30,43 +30,48 @@
 - **WHEN** 用户拖拽改变顺序违反规范
 - **THEN** 黄色警告 + 强制二次确认
 
-### Requirement: 7 种修改 pipeline
-系统 SHALL 提供 7 种修改 pipeline，均使用可商用模型。
+### Requirement: 修改 pipeline 全部通过 koma-cloud 调用 new-api
+系统 SHALL 把所有修改 pipeline 委托给 `electron/service/koma-cloud/` 各 client，**客户端不本地执行任何 AI 推理**。具体模型选型由 new-api 服务端决定。
 
-#### Scenario: 换脸 Lite
-- **WHEN** 用户选 face_swap + 中景以上
-- **THEN** 使用可商用替代品（SimSwap / Roop-Unleashed fork）+ GFPGAN
-- **AND** 单部 45 分钟 ≤ 48 小时
+#### Scenario: 换脸（Lite / Pro 通过 qualityTier 区分）
+- **WHEN** 用户选 face_swap
+- **THEN** 调 `FaceSwapClient.submit({ shotIds, referenceFaceUrl, qualityTier })`
+- **AND** `qualityTier='lite'` 用于中景以上，**单部 45 分钟交付 SLA ≤ 48 小时**
+- **AND** `qualityTier='pro'` 用于含特写镜头，**14-21 天交付，特写一次过审 90-94%**
+- **AND** 客户端不感知具体使用 Wan-Animate / DeepFaceLab / 商业权重等细节
 
-#### Scenario: 换脸 Pro
-- **WHEN** 用户选 face_swap + 含特写镜头
-- **THEN** DeepFaceLab SAEHD 512/768 + LivePortrait + GFPGAN ensemble
-- **AND** 14-21 天交付
-- **AND** 特写一次过审 90-94%
-
-#### Scenario: 横竖屏
+#### Scenario: 横竖屏（客户端本地为主）
 - **WHEN** 用户选 aspect_ratio
-- **THEN** 8 个平台版本一进多出
-- **AND** 1 集 24 分钟 → 8 平台 ≤ 8 分钟
+- **THEN** 主体跟踪走 `VideoGenClient.submit({ mode: 'subject-tracking', ... })` 获取跟踪框
+- **AND** 实际裁切 / 字幕重排 / loudnorm 全部本地 ffmpeg 执行
+- **AND** 8 个平台版本一进多出，**1 集 24 分钟 → 8 平台 ≤ 8 分钟**（本地耗时为主）
 
 #### Scenario: 多语言
-- **WHEN** 用户选 language_dub + 嘴型 + 字幕 + 屏显
-- **THEN** 完整链 pipeline
-- **AND** 单集 45 分钟 → 单语种 ≤ 25 分钟（不含译审）
+- **WHEN** 用户选 language_dub
+- **THEN** 完整链：
+  - 字幕翻译走 `llmQueryService.query({ taskProfile: 'translate' })`
+  - 配音走 `TtsClient.synthesize({ text, voice, lang })`
+  - 嘴部对齐走 `LipsyncClient.submit({ videoUrl, audioUrl })`
+  - 屏显字幕替换走本地 PaddleOCR 检测 + new-api `/v1/koma/video-gen` inpaint 模式 + 本地 Pillow 重绘
+  - 混音 + 字幕烧录全部本地 ffmpeg
+- **AND** 单集 45 分钟 → 单语种 ≤ 25 分钟（端到端含 new-api 处理，不含译审）
 
 #### Scenario: 体型替换
 - **WHEN** 用户选 body_reshape
-- **THEN** 仅静态 / 半身镜头
-- **AND** UI 拒绝快速运动镜头（光流 > 12 px/frame）
+- **THEN** 调 `BodyReshapeClient.submit({ shotIds, targetParams })`
+- **AND** UI 在提交前根据光流 > 12 px/frame 的镜头自动从范围内剔除
+- **AND** 不允许提交快速运动镜头
 
 #### Scenario: 服装替换
 - **WHEN** 用户选 wardrobe
-- **THEN** IDM-VTON + SAM2 + Wan-Animate 传播
-- **AND** 颜色 95% 容忍度，款式 60%
+- **THEN** 调 `WardrobeClient.submit({ shotIds, referenceOutfitUrl, mode })`
+- **AND** `mode ∈ { 'recolor', 'replace' }` 决定后端 pipeline
+- **AND** 颜色 95% 容忍度，款式 60%（由 new-api 服务端模型决定）
 
 #### Scenario: 风格化重生成
 - **WHEN** 用户选 stylization
-- **THEN** UI 文案标"概念演示"（信息提示）
+- **THEN** 调 `VideoGenClient.submit({ mode: 'stylization', prompt, ... })`
+- **AND** UI 文案标"概念演示"（信息提示）
 - **AND** `conceptOnly: true`，单次输出 ≤ 5 分钟
 
 ### Requirement: 物料版本树

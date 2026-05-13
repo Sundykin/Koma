@@ -10,6 +10,8 @@ import { taskRunner } from '../service/tasks/TaskRunner';
 import { registerMediaPollHandlers } from '../service/tasks/handlers/mediaPoll';
 import { registerLLMCompleteHandler } from '../service/tasks/handlers/llmComplete';
 import { registerAnalysisHandlers } from '../service/tasks/handlers/analysisRunner';
+import { registerVideoDiagnosisHandler } from '../service/tasks/handlers/videoDiagnosis';
+import { registerRecreationModifyHandler } from '../service/tasks/handlers/recreationModify';
 import { registerBuiltinLLMProviders } from '../service/chat/providers';
 import { initUpdaterService } from '../service/updater';
 import { runVersionMigrationIfNeeded } from '../service/updater/versionMigration';
@@ -26,17 +28,22 @@ function preload(): void {
   registerMediaPollHandlers();
   registerLLMCompleteHandler();
   registerAnalysisHandlers();
+  registerVideoDiagnosisHandler();
+  registerRecreationModifyHandler();
 
   void initServices()
-    .then(() => {
+    .then(async () => {
       try {
         const reconciled = taskService.reconcileOnBoot();
         const gc = taskService.runGc();
         // 把 reconcile 后状态为 pending 的可恢复任务重新入 main-side 队列
         taskRunner.resumeFromBoot();
+        // R4 二创：reconcile 卡死在 running 的视频诊断状态
+        const { services } = await import('../service');
+        const recReconciled = services.recreationVideos.reconcileOnBoot();
         logger.info(
           '[preload] tasks reconcile/gc:',
-          { reconciled, ...gc }
+          { reconciled, recReconciled, ...gc }
         );
       } catch (err) {
         logger.error('[preload] tasks reconcile/gc failed:', err);

@@ -78,3 +78,14 @@ export function getUpdaterCacheDir(): string {
 export function getMarketplaceCacheDir(): string {
   return path.join(getBusinessRoot(), 'marketplace-cache');
 }
+
+/** R4 二创：导入视频的本地存储目录（{businessRoot}/recreation/videos） */
+export function getRecreationVideosDir(): string {
+  return path.join(getBusinessRoot(), 'recreation', 'videos');
+}
+
+/** R4 二创：修改单产物存储目录（{businessRoot}/recreation/derived） */
+export function getRecreationDerivedDir(): string {
+  return path.join(getBusinessRoot(), 'recreation', 'derived');
+}
+

@@ -148,8 +148,12 @@ function taskToRecord(task: Task): TaskRecord {
 }
 
 function recordToTask(record: TaskRecord): Task | null {
-  if (!record.scope.startsWith(SCOPE_PREFIX)) return null;
-  const projectId = record.scope.slice(SCOPE_PREFIX.length);
+  // 项目级任务 scope 形如 'project:<id>'；非项目任务（如二创 'recreation:<videoId>'）
+  // projectId 留空字符串。Task.projectId 字段在非项目 task 里没语义，
+  // 主要供项目专属过滤用，进度/状态字段仍正常生效。
+  const projectId = record.scope.startsWith(SCOPE_PREFIX)
+    ? record.scope.slice(SCOPE_PREFIX.length)
+    : '';
   const payload = (record.payload || {}) as Partial<Task>;
   return {
     ...payload,
@@ -376,7 +380,16 @@ class TaskManagerClass {
       ) {
         merged.completedAt = now;
       }
-      await upsertTaskRecord(taskToRecord(merged));
+      // 关键：保留原 record 的 scope（项目任务 'project:xxx' / 二创 'recreation:xxx'），
+      // 不要让 taskToRecord 用 task.projectId 重算覆盖。
+      const nextRecord: TaskRecord = {
+        ...taskToRecord(merged),
+        scope: record.scope,
+        type: record.type,
+        targetKind: record.targetKind,
+        targetId: record.targetId,
+      };
+      await upsertTaskRecord(nextRecord);
     } catch (err) {
       logger.error('Failed to persist task via IPC fallback', err);
     }

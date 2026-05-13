@@ -10,7 +10,9 @@
 - **THEN** `window.electronAPI` 暴露：
   - `videoAnalysis.{run, incrementalRun, getReport, cancel, onProgress, crossProjectSearch}`
   - `modification.{createPlan, executePlan, onItemProgress, rollback, getVersionTree}`
+  - `komaCloud.{login, logout, getUsage, estimatePlan, onUsageChanged, onOfflineStateChanged}`
   - `enterprise.{loadLicense, getHardwareFingerprint}`（仅防盗版，非合规审计）
+- **AND** `videoAnalysis` controller 内部走现有 `llmQueryService` + `AgentGraph` + `koma-cloud` 各 client，**不暴露独立的 cloud 调用 IPC**（避免渲染进程直接对 new-api 发请求）
 
 #### Scenario: 广播事件
 - **WHEN** 解析 / 修改 进度变化
@@ -21,7 +23,7 @@ ee-core Lifecycle `electronAppReady` SHALL 按严格顺序初始化。
 
 #### Scenario: 顺序
 - **WHEN** Electron app ready
-- **THEN** 按：storage → taskService → mediaPipeline → analysis services → modification services → license 校验 → marketplace + updater
+- **THEN** 按：storage → taskService → mediaPipeline → komaCloud (AuthService + UsageService + OfflineGuard) → llmProviderRegistry 注册 `koma-cloud` provider → analysis services → modification services → license 校验 → marketplace + updater
 - **AND** 任一失败抛错
 
 ### Requirement: License + 硬件指纹（仅防盗版）
@@ -46,31 +48,44 @@ ee-core Lifecycle `electronAppReady` SHALL 按严格顺序初始化。
 
 ## MODIFIED Requirements
 
-### Requirement: TaskService 公开 GPU dispatcher API
-现有 TaskService SHALL 保留外部契约不变，内部新增 GPU dispatcher。
+### Requirement: TaskService 公开 cloud dispatcher API
+现有 TaskService SHALL 保留外部契约不变，内部新增 cloud 调度（**无 GPU dispatcher**，客户端无 GPU 任务）。
 
 #### Scenario: 向后兼容
 - **WHEN** 现有代码调 `taskService.upsert(record)`
 - **THEN** 行为不变 + 自动按 kind 路由
 
 #### Scenario: 新 kind 自动路由
-- **WHEN** task 声明 `kind: 'gpu'`
-- **THEN** 路由 GpuTaskQueue
-- **AND** `kind: 'heavy'` 路由 child_process worker pool
+- **WHEN** task 声明 `kind: 'cloud'`
+- **THEN** 由 koma-cloud / JobPoller 统一管理生命周期
+- **AND** `kind: 'heavy'` 路由 child_process worker pool（仅 ffmpeg / 上传等 CPU 任务）
 - **AND** 默认 `kind: 'light'` 主进程不变
+- **AND** **不接受 `kind: 'gpu'`**（客户端无 GPU）
 
-### Requirement: LLM provider 扩展支持 video input
-现有 LLM provider 抽象 SHALL 扩展支持视频输入字段。
+### Requirement: 复用 llmProviderRegistry 接入 new-api
+现有 `electron/service/chat/providers/llmProviderRegistry` SHALL **保持接口不变**，新增内置 provider `koma-cloud` 指向 new-api，**不暴露其他 provider type 给客户**。
 
-#### Scenario: 兼容旧 provider
-- **WHEN** 旧 provider 不支持视频
-- **THEN** 抽象层自动 fallback 忽略 videoInput
-- **AND** 不抛错
+#### Scenario: 注册 koma-cloud provider
+- **WHEN** 主进程 `electronAppReady`
+- **THEN** 通过 `llmProviderRegistry.register({type: 'koma-cloud', factory})` 注册
+- **AND** factory 返回 LangChain `ChatOpenAI` 实例，`baseUrl = config.komaCloud.baseUrl + '/v1'`
+- **AND** `apiKey` 由 `koma-cloud/AuthService` 动态注入（每次 createChatModel 调用时取最新 access token）
 
-#### Scenario: 视频理解 provider
-- **WHEN** provider 声明 `supportsVideoInput: true`
-- **THEN** 可处理 `request.videoInput.{url|base64}`
-- **AND** 返回结构化输出
+#### Scenario: 视频帧透传
+- **WHEN** 视频分析调用 LLM
+- **THEN** 视频帧通过 LangChain 标准 `HumanMessage.content = [{type: 'image_url', image_url: ...}]` parts 传入
+- **AND** 不新增 `videoInput` / `supportsVideoInput` 字段
+
+#### Scenario: 复用 LLMQueryService 不另起 service
+- **WHEN** 12 维度分析需要 LLM / VLM 推理
+- **THEN** 走现有 `llmQueryService.query(request)`，`config.modelProvider = 'koma-cloud'`
+- **AND** 复用现有 `taskProfiles` / `budget` / `strategy` / `observability` 子系统
+- **AND** 不在 `electron/service/analysis/` 重复造 LLM 调用层
+
+#### Scenario: 非 LLM 能力不走 llmProviderRegistry
+- **WHEN** 调用 TTS / Lipsync / FaceSwap / VideoGen / Wardrobe / BodyReshape / Upscale
+- **THEN** 走 `electron/service/koma-cloud/` 各 client，**不走** llmProviderRegistry
+- **AND** rationale: 这些是非 OpenAI 协议的自定义 endpoint，强行套 BaseChatModel 会扭曲抽象
 
 ## 已删除 Requirements（相比 R4 早期版本）
 

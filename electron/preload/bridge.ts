@@ -71,6 +71,19 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'controller/project/saveShotMeta', 'controller/project/loadShotMeta',
   'controller/project/listShotMetas',
   'controller/project/saveAnalysis', 'controller/project/loadAnalysis',
+  // R4 二创：独立视频库（不挂 project 下）
+  'controller/recreationVideos/import',
+  'controller/recreationVideos/list',
+  'controller/recreationVideos/listDerived',
+  'controller/recreationVideos/get',
+  'controller/recreationVideos/delete',
+  'controller/recreationVideos/saveDiagnosis',
+  'controller/recreationVideos/loadDiagnosis',
+  'controller/recreationVideos/setDiagnosisStatus',
+  'controller/recreationModify/runAspectRatio',
+  'controller/recreationModify/runLanguageDubMux',
+  'controller/recreationModify/prepareFrameByFrame',
+  'controller/recreationModify/runFrameByFrameCompose',
   'controller/project/saveProjectTimeline', 'controller/project/loadProjectTimeline',
   'controller/project/saveEpisodeTimeline', 'controller/project/loadEpisodeTimeline',
   'controller/project/bindOwnerRefMedia',
@@ -582,5 +595,31 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on('marketplace:plugin-installed', callback);
       return () => ipcRenderer.removeListener('marketplace:plugin-installed', callback);
     },
+  },
+  // R4 二创：独立视频导入库
+  recreationVideos: {
+    import: (srcPath: string, filename?: string) =>
+      invokeMain('controller/recreationVideos/import', { srcPath, filename }),
+    list: () => invokeMain('controller/recreationVideos/list', {}),
+    listDerived: (parentId: string) =>
+      invokeMain('controller/recreationVideos/listDerived', { parentId }),
+    get: (id: string) => invokeMain('controller/recreationVideos/get', { id }),
+    delete: (id: string) => invokeMain('controller/recreationVideos/delete', { id }),
+    saveDiagnosis: (id: string, diagnosis: any) =>
+      invokeMain('controller/recreationVideos/saveDiagnosis', { id, diagnosis }),
+    loadDiagnosis: (id: string) =>
+      invokeMain('controller/recreationVideos/loadDiagnosis', { id }),
+    setDiagnosisStatus: (id: string, status: 'none' | 'running' | 'completed' | 'failed') =>
+      invokeMain('controller/recreationVideos/setDiagnosisStatus', { id, status }),
+  },
+  recreationModify: {
+    runAspectRatio: (args: any) =>
+      invokeMain('controller/recreationModify/runAspectRatio', args),
+    runLanguageDubMux: (args: any) =>
+      invokeMain('controller/recreationModify/runLanguageDubMux', args),
+    prepareFrameByFrame: (args: any) =>
+      invokeMain('controller/recreationModify/prepareFrameByFrame', args),
+    runFrameByFrameCompose: (args: any) =>
+      invokeMain('controller/recreationModify/runFrameByFrameCompose', args),
   },
 });

@@ -20,18 +20,24 @@
 - **WHEN** 已有报告 + 用户后续追加新维度
 - **THEN** 系统复用已有 ffmpeg cache + shot table，仅跑新维度
 
-### Requirement: 可商用模型许可
-所有用于解析的模型 SHALL 为可商用许可（Apache / MIT / 自训），不使用 InsightFace 商业授权权重。
+### Requirement: 12 维度全部通过 koma-cloud 调用 new-api
+系统 SHALL 把所有需 AI 推理的维度委托给 `electron/service/koma-cloud/` + `llmProviderRegistry["koma-cloud"]`。客户端**不持有任何模型选型决策**，具体上游模型由 new-api 服务端决定。
 
-#### Scenario: 人物识别 embedding
-- **WHEN** 系统执行人物聚类
-- **THEN** 使用 AuraFace 或 buffalo_l Apache fork 等可商用 ArcFace 替代
-- **AND** **不**使用 InsightFace 商业 ArcFace 权重
+#### Scenario: 客户端调用路径
+- **WHEN** 任一维度执行
+- **THEN** 走 `LLMQueryService.query({ modelProvider: 'koma-cloud', modelName: <虚拟模型名> })`
+- **AND** 虚拟模型名由 Koma 维护（如 `koma-vlm-scene` / `koma-asr` / `koma-ocr`）
+- **AND** 客户端不感知具体上游模型
 
-#### Scenario: 服装识别
-- **WHEN** 系统执行服装识别
-- **THEN** 使用 RT-DETR-L（Apache）+ OpenCLIP（Apache）
-- **AND** **不**使用 YOLOv8（AGPL）
+#### Scenario: 服务端 license 黑名单
+- **WHEN** new-api 接入上游
+- **THEN** 服务端禁止使用：F5-TTS / IndexTTS 2 / Spark-TTS / SimSwap / Wav2Lip / InSwapper-128 商业权重 / InsightFace ArcFace 商用权重 / YOLOv8（AGPL）等非商用许可的模型权重
+- **AND** 此约束在 new-api change 范围，本 change 仅记录
+
+#### Scenario: 客户端本地维度
+- **WHEN** 维度 1（元数据）/ 8（光照）/ 11（风险）/ 12（可行性）执行
+- **THEN** 客户端本地完成，**不调用** new-api
+- **AND** 维度 1 走 ffprobe，维度 8 走 OpenCV 启发式，维度 11/12 走规则引擎
 
 ### Requirement: 报告独立产品定价
 系统 SHALL 支持诊断报告作为独立 SaaS 产品销售。

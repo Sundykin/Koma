@@ -2,7 +2,7 @@
  * SQLite 数据库 Schema 定义
  */
 
-export const CURRENT_SCHEMA_VERSION = 9;
+export const CURRENT_SCHEMA_VERSION = 11;
 
 export const CREATE_TABLES_SQL = `
 -- 项目表
@@ -556,6 +556,36 @@ CREATE TABLE IF NOT EXISTS linghui_workspace_history_records (
   snapshot_path TEXT,
   metadata_json TEXT
 );
+
+-- R4 二创：独立的视频导入库（不挂在 project 下）
+CREATE TABLE IF NOT EXISTS recreation_videos (
+  id TEXT PRIMARY KEY,
+  filename TEXT NOT NULL,
+  file_path TEXT NOT NULL,
+  duration_ms INTEGER,
+  width INTEGER,
+  height INTEGER,
+  fps REAL,
+  size_bytes INTEGER,
+  codec TEXT,
+  sha256 TEXT,
+  diagnosis_status TEXT NOT NULL DEFAULT 'none',
+  metadata_json TEXT,
+  -- 派生：当本行是修改单产物时，指向源视频 id；nullable
+  parent_id TEXT,
+  -- 派生：所属修改单 planId（前端 zustand 生成的 plan-xxx 字符串）
+  derived_from_plan_id TEXT,
+  -- 派生：用哪种 ModificationKind 跑出来的（face_swap/wardrobe/aspect_ratio/...）
+  derived_kind TEXT,
+  -- 派生：跑这条产物的 task id；nullable
+  source_task_id TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_recreation_videos_created ON recreation_videos(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_recreation_videos_sha ON recreation_videos(sha256);
+CREATE INDEX IF NOT EXISTS idx_recreation_videos_parent ON recreation_videos(parent_id);
 
 -- Schema 版本管理
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -1132,6 +1162,46 @@ CREATE INDEX IF NOT EXISTS idx_linghui_global_assets_favorite ON linghui_global_
     description: 'Linghui global assets: 参考图（character 的真实参考图 / prop 的样式图），JSON 数组存 koma-local URLs',
     sql: `
 ALTER TABLE linghui_global_assets ADD COLUMN reference_images_json TEXT;
+`,
+  },
+  10: {
+    description: 'R4 二创：独立的视频导入库（不挂在 project 下）',
+    sql: `
+CREATE TABLE IF NOT EXISTS recreation_videos (
+  id TEXT PRIMARY KEY,
+  /* 用户原始文件名（含扩展名） */
+  filename TEXT NOT NULL,
+  /* 完整本地路径（绝对路径，UI 用 koma-local:// 加载） */
+  file_path TEXT NOT NULL,
+  /* ffprobe 提取的元数据 */
+  duration_ms INTEGER,
+  width INTEGER,
+  height INTEGER,
+  fps REAL,
+  size_bytes INTEGER,
+  codec TEXT,
+  /* 文件内容 sha256（用于去重） */
+  sha256 TEXT,
+  /* 诊断状态：none | running | completed | failed */
+  diagnosis_status TEXT NOT NULL DEFAULT 'none',
+  /* metadata_json 存诊断报告 + 其他 extras */
+  metadata_json TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_recreation_videos_created ON recreation_videos(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_recreation_videos_sha ON recreation_videos(sha256);
+`,
+  },
+  11: {
+    description: 'R4 二创：recreation_videos 加派生字段（修改单产物挂源视频下）',
+    sql: `
+ALTER TABLE recreation_videos ADD COLUMN parent_id TEXT;
+ALTER TABLE recreation_videos ADD COLUMN derived_from_plan_id TEXT;
+ALTER TABLE recreation_videos ADD COLUMN derived_kind TEXT;
+ALTER TABLE recreation_videos ADD COLUMN source_task_id TEXT;
+CREATE INDEX IF NOT EXISTS idx_recreation_videos_parent ON recreation_videos(parent_id);
 `,
   },
 };

@@ -28,7 +28,13 @@ export interface MediaInfo {
 export interface ExtractFramesOptions {
   input: string;
   outputDir: string;
-  fps?: number;         // 每秒抽取帧数，默认 1
+  /** 每秒抽取帧数；与 frameCount 二选一，优先级低于 frameCount */
+  fps?: number;
+  /**
+   * 想抽出的固定帧数。给定后由主进程 ffprobe 真实时长 + 等距 select 滤镜抽帧；
+   * 不再受前端 durationMs 是否可信影响，绝对产 N 张（少于 N 也由 ffmpeg 自然决定）
+   */
+  frameCount?: number;
   startTime?: number;   // 开始时间（秒）
   endTime?: number;     // 结束时间（秒）
   width?: number;       // 输出宽度
@@ -382,8 +388,18 @@ export class FFmpegService {
       fps = den ? num / den : num;
     }
 
+    // duration fallback：很多 mp4 容器（特别是流式录制的）format.duration 为空，
+    // 这时退回到 video stream.duration；再不行试 audio stream.duration。
+    let durationSec = parseFloat(format?.duration || '0');
+    if (!durationSec || !Number.isFinite(durationSec)) {
+      durationSec = parseFloat(videoStream?.duration || '0');
+    }
+    if (!durationSec || !Number.isFinite(durationSec)) {
+      durationSec = parseFloat(audioStream?.duration || '0');
+    }
+
     return {
-      duration: parseFloat(format?.duration || '0') * 1000,
+      duration: durationSec * 1000,
       width: videoStream?.width,
       height: videoStream?.height,
       fps,
@@ -400,6 +416,12 @@ export class FFmpegService {
 
   /**
    * 实际抽帧
+   *
+   * 两种模式（frameCount 优先于 fps）：
+   *   - frameCount=N：主进程 ffprobe 拿真实时长 → 等距 N 个时间点 → 多次 `-ss + -frames:v 1`
+   *     绝对产出 ≤N 张；不依赖前端传入的 durationMs（之前因前端 duration=null 走 1/15 fps
+   *     兜底导致只产 2 张的根因）
+   *   - fps 模式：fps 滤镜，前端兜底逻辑（保留兼容）
    */
   private async doExtractFrames(options: ExtractFramesOptions): Promise<string[]> {
     if (!this.ffmpegPath) {
@@ -411,36 +433,75 @@ export class FFmpegService {
       input,
       outputDir,
       fps = 1,
+      frameCount,
       startTime,
       endTime,
       width,
-      quality = 5
+      quality = 5,
     } = options;
 
-    console.log('[FFmpegService] extractFrames start', { input, outputDir, fps, startTime, endTime, width });
-
-    // 确保输出目录存在
+    console.log('[FFmpegService] extractFrames start', { input, outputDir, fps, frameCount, startTime, endTime, width });
     await fs.promises.mkdir(outputDir, { recursive: true });
 
+    // —— frameCount 模式 —— 多次 `-ss + -frames:v 1`，每次一张
+    if (frameCount && frameCount > 0) {
+      let probeDurSec: number | undefined;
+      try {
+        const info = await this.doGetMediaInfo(input);
+        probeDurSec = info.duration > 0 ? info.duration / 1000 : undefined;
+      } catch (err) {
+        console.warn('[FFmpegService] frameCount mode: ffprobe failed, fallback to fps', err);
+      }
+      if (!probeDurSec || probeDurSec < 0.5) {
+        // ffprobe 也拿不到；退到 fps 模式让 ffmpeg 自己扫到底
+        console.warn('[FFmpegService] frameCount mode: no usable duration, fallback');
+      } else {
+        // 起 / 止避开首尾 1%（首尾 1% 可能是 black frame / fade-in），中间均分 N 点
+        const t0 = probeDurSec * 0.01;
+        const tEnd = probeDurSec * 0.99;
+        const span = tEnd - t0;
+        const points = Array.from({ length: frameCount }, (_, i) =>
+          frameCount === 1 ? probeDurSec / 2 : t0 + (span * i) / (frameCount - 1),
+        );
+        const produced: string[] = [];
+        for (let i = 0; i < points.length; i++) {
+          const t = points[i];
+          const outFile = path.join(outputDir, `frame_${String(i + 1).padStart(6, '0')}.jpg`);
+          const args: string[] = ['-ss', String(t.toFixed(3)), '-i', input, '-frames:v', '1'];
+          if (width) args.push('-vf', `scale=${width}:-1`);
+          args.push('-q:v', String(quality), '-f', 'image2', outFile);
+          try {
+            await this.runFFmpeg(args);
+            // 验证文件真的写出来了（ffmpeg seek 到不存在的时间点也可能返回 0）
+            const stat = await fs.promises.stat(outFile).catch(() => null);
+            if (stat && stat.size > 0) {
+              produced.push(outFile);
+            }
+          } catch (err) {
+            console.warn(`[FFmpegService] frameCount mode: frame ${i} @${t.toFixed(2)}s failed`, err);
+          }
+        }
+        console.log('[FFmpegService] extractFrames done (frameCount mode)', {
+          input, outputDir, requested: frameCount, produced: produced.length, durSec: probeDurSec,
+        });
+        return produced;
+      }
+    }
+
+    // —— fps 模式（旧路径）——
     const args: string[] = [];
-
-    // 输入选项
-    if (startTime !== undefined) {
-      args.push('-ss', startTime.toString());
-    }
+    if (startTime !== undefined) args.push('-ss', startTime.toString());
     args.push('-i', input);
-    if (endTime !== undefined) {
-      args.push('-t', (endTime - (startTime || 0)).toString());
-    }
+    if (endTime !== undefined) args.push('-t', (endTime - (startTime || 0)).toString());
 
-    // 视频过滤器
     const filters: string[] = [`fps=${fps}`];
-    if (width) {
-      filters.push(`scale=${width}:-1`);
-    }
+    if (width) filters.push(`scale=${width}:-1`);
     args.push('-vf', filters.join(','));
-
-    // 输出选项
+    // 关键修复：vsync=vfr 防 ffmpeg 丢帧；如果调用方给了 frameCount 同时也加上限保护
+    args.push('-vsync', 'vfr');
+    if (frameCount && frameCount > 0) {
+      args.push('-frames:v', String(frameCount));
+    }
     args.push('-q:v', quality.toString());
     args.push('-f', 'image2');
     args.push(path.join(outputDir, 'frame_%06d.jpg'));
@@ -452,15 +513,12 @@ export class FFmpegService {
       throw err;
     }
 
-    // 返回生成的帧文件列表
     const files = await fs.promises.readdir(outputDir);
     const frameFiles = files
-      .filter(f => f.startsWith('frame_') && f.endsWith('.jpg'))
+      .filter((f) => f.startsWith('frame_') && f.endsWith('.jpg'))
       .sort()
-      .map(f => path.join(outputDir, f));
-
-    console.log('[FFmpegService] extractFrames done', { input, outputDir, count: frameFiles.length, first: frameFiles[0] });
-
+      .map((f) => path.join(outputDir, f));
+    console.log('[FFmpegService] extractFrames done (fps mode)', { input, outputDir, count: frameFiles.length, first: frameFiles[0] });
     return frameFiles;
   }
 

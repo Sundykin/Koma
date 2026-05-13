@@ -1129,6 +1129,7 @@ export class ProjectService {
     }, row);
   }
 
+
   private normalizeTimelinePayload(timeline: any): TimelineData {
     const candidate = timeline && typeof timeline === 'object' ? timeline : { tracks: [] };
     return prepareTimelineForStorage(candidate as any);

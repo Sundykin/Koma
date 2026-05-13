@@ -1,1 +1,1 @@
-export { RecreationPage } from './RecreationPage';
+export { RecreationWorkbenchShell as RecreationPage } from './RecreationWorkbenchShell';

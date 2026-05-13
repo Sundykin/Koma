@@ -7,39 +7,64 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
+│ Koma 客户端（Electron）— 零 GPU 依赖                              │
+│                                                                  │
 │ Renderer（React）                                                │
-│ ┌────────────────────────┐ ┌────────────────────────────────┐  │
-│ │ <DiagnosticReportShell>│ │ <ModificationCartView>        │  │
-│ │  - 12 维度浏览        │ │  - 购物车 + 嵌套条件          │  │
-│ │  - 跨剧检索           │ │  - DAG 依赖编排               │  │
-│ │  - 报告导出           │ │  - 任务进度反馈               │  │
-│ └────────────────────────┘ └────────────────────────────────┘  │
-│ ┌────────────────────────┐ ┌────────────────────────────────┐  │
-│ │ <AssetVault>          │ │ <RenderQueue>                  │  │
-│ │  - 物料版本树         │ │  - 任务列表 + 中间预览        │  │
-│ └────────────────────────┘ └────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
-              │
-┌─────────────▼──────────────────────────────────────────────────┐
+│ ┌─────────────────────┐ ┌──────────────────┐ ┌──────────────┐  │
+│ │ <DiagnosticReport>  │ │ <ModificationCart>│ │ <CloudUsage>│  │
+│ │ <AssetVault>        │ │ <RenderQueue>     │ │ <OfflineBar>│  │
+│ └─────────────────────┘ └──────────────────┘ └──────────────┘  │
+│                              │                                   │
 │ Main（Electron）                                                 │
-│  AnalysisOrchestrator → 12 维度 Service                         │
-│         │                                                        │
-│         ├─► TaskService（worker pool + GpuTaskQueue）           │
-│         │     ↓                                                  │
-│         │   Python Sidecar / ONNX GPU Workers                   │
-│         │   (PySceneDetect / WhisperX / Demucs / SAM2 /         │
-│         │    VideoMAE / PaddleOCR / AuraFace / SCRFD / RT-DETR /│
-│         │    CLIP / CLAP / DeepFaceLab / IDM-VTON / Wan-Animate)│
-│         │                                                        │
-│         ▼                                                        │
-│  ModificationOrchestrator → DAG → 7 个 stage executor           │
-│         │                                                        │
-│         ▼                                                        │
-│  Storage (SQLite + 写串行化 + Postgres CDC + 向量库)            │
+│  AnalysisOrchestrator        ModificationOrchestrator           │
+│   (12 维度 agent DAG)         (DAG → stage executor)            │
+│         │                            │                           │
+│         ▼                            ▼                           │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │ koma-cloud（统一云调用层）                                │   │
+│  │  ├─ AuthService (license→token)                          │   │
+│  │  ├─ llmProviderRegistry["koma-cloud"]（LLM/VLM 走这条）    │   │
+│  │  ├─ TtsClient / LipsyncClient / FaceSwapClient           │   │
+│  │  │   VideoGenClient / WardrobeClient / BodyReshapeClient │   │
+│  │  │   UpscaleClient                                       │   │
+│  │  ├─ JobPoller (统一异步轮询)                              │   │
+│  │  ├─ UsageService (套餐余额 + quota 预检)                  │   │
+│  │  └─ OfflineGuard (网络降级)                              │   │
+│  └────────────────────────┬─────────────────────────────────┘   │
+│                            │                                     │
+│  TaskService (worker pool) │  FFmpeg (本地预处理 / 代理 / 上传)   │
+│  Storage (SQLite + 写串行 + sqlite-vss)                          │
+└────────────────────────────┼─────────────────────────────────────┘
+                             │
+                             │  HTTPS / WebSocket
+                             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ new-api 网关（Koma 自建后端，独立 change）                         │
+│  /v1/chat/completions   (LLM / VLM 同步)                         │
+│  /v1/koma/tts           (TTS 同步)                               │
+│  /v1/koma/lipsync       (异步 job)                              │
+│  /v1/koma/face-swap     (异步 job)                              │
+│  /v1/koma/video-gen     (异步 job)                              │
+│  /v1/koma/wardrobe      (异步 job)                              │
+│  /v1/koma/body-reshape  (异步 job)                              │
+│  /v1/koma/upscale       (异步 job)                              │
+│  /v1/koma/jobs/{id}     (轮询 + WebSocket 推送)                  │
+│  /v1/koma/usage         (套餐余额)                               │
+│  /v1/koma/estimate      (quota 预检)                             │
+│  /v1/auth/exchange      (license→token)                          │
+│                                                                  │
+│  上游路由 / failover / 成本核算 / quota 控制                       │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 **注意：原 R4 设计中的 ComplianceLayer 完全删除。** 不再有 C2PA / KYC / 审计哈希链 / 销毁 worker 等模块。
+
+**架构核心原则**：
+1. **客户端零算力**：无 onnxruntime / Python sidecar / 本地模型 / GPU 任务。所有 AI 通过 new-api 网关
+2. **LLM/VLM 复用现有抽象**：注册内置 provider `koma-cloud` 到 `llmProviderRegistry`，沿用 `LLMQueryService` / `AgentGraph` / `taskProfiles` / `budget` / `observability`
+3. **非 LLM 能力一对一 endpoint**：TTS / Lipsync / FaceSwap 等各自一个 client，统一通过 `JobPoller` 管理异步状态
+4. **套餐内消化计费**：客户付 Koma 订阅费，token / GPU 时长由 Koma 内部承担，需 quota + 限速防滥用
+5. **必须联网**：所有 AI 能力依赖 new-api；离线时报告浏览 / 本地剪辑 / 项目管理保持可用
 
 ## 2. DiagnosticReport Schema
 
@@ -69,45 +94,63 @@ interface DiagnosticReport {
 
 **注意：删除原 R4 设计中的 `signature: { algo: 'ed25519'; key; sig }` 字段** —— 报告完整性签名属于合规用途，本版本不强制做。如未来客户需要可由 release-signing 模块按需补。
 
-## 3. 12 维度技术栈（均可商用）
+## 3. 12 维度技术栈（客户端 / new-api 职责划分）
 
-| 维度 | 模型 | 4090 性能 | A100 性能 | 许可 |
-|---|---|---|---|---|
-| 人物检测 | InsightFace SCRFD-10G | 3 min | 2 min | 代码 MIT（仅检测可用，识别 embedding 需替换） |
-| 人物识别 embedding | **AuraFace 或 buffalo_l Apache fork**（替换 InsightFace 商业权重） | + ~10% 时长 | + ~10% | Apache / CC-BY |
-| 跨镜头聚类 | HDBSCAN | < 30s | < 30s | BSD |
-| 场景 | OpenCLIP ViT-L + SAM2.1 + Qwen3-VL-Plus | 2 min | 1.5 min | Apache / MIT |
-| 镜头 | TransNetV2 + 自训分类器 + 光流 | 6 min | 4.5 min | MIT |
-| 台词 | WhisperX + pyannote 3.1 | 1 min | 50s | MIT |
-| 服装 | RT-DETR-L（替代 YOLOv8 AGPL）+ OpenCLIP + DeepSORT | 1 min | 45s | Apache |
-| 动作 | VideoMAE V2 distilled (MMAction2) | 1.8 min | 1.3 min | Apache |
-| 光照 | OpenCV 启发式 + 自研 CNN | 30s | 30s | — |
-| OCR | PaddleOCR PP-OCRv5 | 1.1 min | 50s | Apache |
-| 音乐 | Demucs htdemucs + LibROSA + CLAP-LAION | 3 min | 2 min | MIT |
-| 风险 + 可行性 | 组合规则 | < 10s | < 10s | — |
-
-**总耗时（45 min 1080p）**：
-- H100 ×1：6 min
-- A100 ×1：8 min（含 AuraFace ~10% 时长）
-- 4090 ×1：11 min
-- Mac M3 Max（云端 fallback）：35-45 min
-
-## 4. Modification Pipeline 选型（均可商用）
-
-| 修改类型 | 主选 | 备选 | 许可 |
+| 维度 | 客户端职责（本 change 范围） | new-api 端点 | 备注 |
 |---|---|---|---|
-| 换脸（中景） | SimSwap / Roop-Unleashed fork | InSwapper（注意 non-commercial 权重） | Apache / MIT 替代 |
-| 换脸（特写） | DeepFaceLab SAEHD 512/768 | CanonSwap fork | 开源 |
-| 表情迁移 | LivePortrait | FasterLivePortrait | Apache |
-| 后处理 | GFPGAN v1.4 / CodeFormer | — | Apache |
-| 体型替换 | Wan2.2-Animate 14B Character Replacement + IPAdapter | OmniHuman | Apache |
-| 服装替换 | IDM-VTON + SAM2 + Wan-Animate 传播 | OutfitAnyone | Apache |
-| 横竖屏 | MediaPipe 主体跟踪 + reframe + 字幕重排 + loudnorm | — | Apache |
-| 多语言 dub | ElevenLabs / Deepdub / 火山 / 阿里 | — | BYOL |
-| 嘴型对齐 | Sync.so / HeyGen API | wav2lip ONNX 兜底 | BYOL / MIT |
-| 视频理解 | 阿里百炼 / 火山 / Gemini / Doubao | — | BYOL |
-| 屏显 inpaint | PaddleOCR + IOPaint LaMa | — | Apache |
-| 风格化重生成 | AnimateDiff + LoRA | Wan2.2-Animate | Apache |
+| 1. 元数据 | **ffprobe 本地** | — | 纯本地 |
+| 2. 人物 | ffmpeg 抽帧 + 上传 + 聚类结果落 sqlite-vss | `/v1/chat/completions`（VLM 人脸描述）+ 后端隐式人脸检测/embedding | 后端集成 InsightFace SCRFD + AuraFace（Koma 服务端选） |
+| 3. 场景 | 切片上传 + 调用编排 | `/v1/chat/completions`（VLM 场景分类） | 虚拟模型 `koma-vlm-scene` |
+| 4. 镜头 | 整片上传 + 结果聚合 | `/v1/chat/completions`（VLM 景别 + 运镜） | 虚拟模型 `koma-vlm-shot` |
+| 5. 台词 | ffmpeg 抽音轨 + 上传 | `/v1/chat/completions`（ASR + 说话人聚类） | 虚拟模型 `koma-asr` |
+| 6. 服装 | 抽帧上传 + 结果聚合 | `/v1/chat/completions`（检测 + 描述） | 虚拟模型 `koma-vlm-wardrobe` |
+| 7. 动作 | 切片上传 | `/v1/chat/completions`（动作分类） | 虚拟模型 `koma-vlm-action` |
+| 8. 光照 | **OpenCV 启发式本地** | 可选 `/v1/chat/completions` 复核 | 大部分本地完成 |
+| 9. OCR | 抽帧上传 | `/v1/chat/completions`（OCR + 校对） | 虚拟模型 `koma-ocr` |
+| 10. 音乐 | ffmpeg 音轨分离上传 | `/v1/chat/completions`（CLAP 情绪打标） | 虚拟模型 `koma-audio-tag` |
+| 11. 风险 | **维度组合本地** | — | 纯本地规则 |
+| 12. 可行性 | **维度组合本地** | — | 纯本地规则 |
+
+**说明**：
+- 客户端不感知具体模型，所有调用走 `LLMQueryService.query({ modelProvider: 'koma-cloud', modelName: 'koma-vlm-scene' })`
+- 虚拟模型名由 Koma 维护 + 服务端解析，未来切换上游对客户端透明
+- 维度 8 / 11 / 12 走本地是因为：算法简单且不依赖大模型，落地客户端节省调用成本 + 网络延迟
+
+**端到端耗时（45 min 1080p 剧集）**：
+| 阶段 | 耗时 |
+|---|---|
+| 本地预处理（切片 / 抽帧 / 抽音 / 代理转码） | 3-5 min（与客户端 CPU 相关） |
+| 上传到 new-api（1080p 代理 ~1.2 GB，100 Mbps 上行） | 2-3 min |
+| new-api 内部并发处理 12 维度 | 6-10 min（与服务端并发度相关） |
+| 结果下载 + 本地维度 8/11/12 + 写 SQLite | 1-2 min |
+| **总计** | **12-20 min**（取决于客户端机器 + 网络 + 服务端负载） |
+
+## 4. Modification Pipeline（客户端 / new-api 职责划分）
+
+> 客户端**不持有任何模型选型决策**。具体上游模型由 new-api 服务端决定并可随时热切。客户端仅按能力调对应 endpoint，由服务端通过 `qualityTier` / `mode` 等参数路由到具体 pipeline。
+
+| 修改类型 | 客户端调用 | new-api 端点 | 服务端可选实现（参考） |
+|---|---|---|---|
+| 换脸 Lite | `FaceSwapClient.submit({ qualityTier: 'lite' })` | `/v1/koma/face-swap` | Wan 2.2-Animate Character Replacement + AuraFace + GFPGAN |
+| 换脸 Pro | `FaceSwapClient.submit({ qualityTier: 'pro' })` | 同上 | DeepFaceLab 客户自训权重 + LivePortrait + GFPGAN |
+| 体型替换 | `BodyReshapeClient.submit({ ... })` | `/v1/koma/body-reshape` | Wan 2.2-Animate 14B + IP-Adapter |
+| 服装替换 | `WardrobeClient.submit({ mode })` | `/v1/koma/wardrobe` | IDM-VTON + SAM2 + Wan-Animate 传播 |
+| 横竖屏 | 主跟踪走 VideoGenClient，裁切**本地 ffmpeg** | `/v1/koma/video-gen` (subject-tracking) + 本地 | MediaPipe / SAM2 主体跟踪 |
+| TTS 配音 | `TtsClient.synthesize({ ... })` | `/v1/koma/tts` | CosyVoice 2 / OpenVoice V2 / ElevenLabs |
+| 嘴型对齐 | `LipsyncClient.submit({ ... })` | `/v1/koma/lipsync` | LatentSync 1.6 / MuseTalk / Sync.so |
+| 视频生成 | `VideoGenClient.submit({ mode })` | `/v1/koma/video-gen` | Wan 2.2-Animate / AnimateDiff / Runway |
+| 4K 超分 | `UpscaleClient.submit({ ... })` | `/v1/koma/upscale` | Real-ESRGAN / RIFE / Topaz |
+| 屏显 inpaint | VideoGenClient(mode='inpaint') + 本地 ffmpeg | `/v1/koma/video-gen` | PaddleOCR + IOPaint LaMa |
+| 风格化重生成 | `VideoGenClient.submit({ mode: 'stylization' })` | `/v1/koma/video-gen` | AnimateDiff + LoRA |
+| 字幕翻译 / 时长压缩重要性打分 | `llmQueryService.query()` 走 koma-cloud | `/v1/chat/completions` | LLM (虚拟模型 `koma-llm-translate` / `koma-llm-rank`) |
+
+**计费模式（Koma 套餐内消化）**：
+- 客户付 Koma 订阅费（按席位 / 项目 / 集数）
+- 客户端不暴露 token / cost 数字（前端仅显示"剩余 X 次换脸 / Y 集分析"等套餐配额）
+- new-api 侧记账 + 限流 + 上游成本核算
+- 超额行为：UI 提示"升级套餐 / 缩减范围 / 透支"，由 new-api 返回的 `willExceedQuota` 标记触发
+
+**服务端 license 黑名单（new-api 侧的硬约束）**：上游集成时禁止：F5-TTS / IndexTTS 2 / Spark-TTS / SimSwap / Wav2Lip / InSwapper-128 商业权重 / InsightFace ArcFace 商业权重 / YOLOv8（AGPL）。客户端不感知这一层。
 
 ## 5. 选菜式修改 ModificationPlan
 
@@ -132,7 +175,7 @@ type ModificationItem =
 interface BaseItem {
   itemId: string;
   scope: { shotIds?: string[]; sceneIds?: string[]; allShots?: true };
-  estCostCents: number;       // BYOL API 累计估算
+  estQuotaUnits: number;      // 套餐配额累计估算（new-api /v1/koma/estimate 返回）
   estDurationSec: number;
   feasibilityScore: Score;
   conceptOnly?: boolean;      // 风格化重生成必须 true
@@ -160,44 +203,51 @@ DAG 依赖：换脸 → 表情对齐 → 体型 → 服装 → 调色 → 横竖
 ### 6.5 风格化"概念演示"提示
 UI 文案标注（非强制水印）："此修改将完全重新生成画面，结果可能与原片差异较大"。客户决定是否接受。
 
-## 7. 媒体处理层（与原 R4 一致，保留）
+## 7. 媒体处理层（客户端，无 GPU）
 
-- TaskService 双层调度（内核 + child_process worker pool）
-- GpuTaskQueue（H100 / A100 / 4090 调度）
-- FFmpeg hwaccel 自动检测 + proxy media
+- TaskService 单层调度（worker pool + cloud kind）
+- FFmpeg hwaccel 自动检测 + proxy media（**仅本地预处理**）
 - SQLite 写串行化
-- 跨项目向量库
+- sqlite-vss 向量索引（embedding 来自 new-api）
 
-详见 `specs/media-pipeline-pro/spec.md`。
+详见 `specs/media-pipeline-pro/spec.md`。所有 GPU 算力在 new-api 后端，**不在本 change 范围**。
 
-## 8. 10-12 月路线图
+## 8. 8-10 月路线图
 
 | 阶段 | 时长 | 核心交付 |
 |---|---|---|
-| **M0** 基建月 | 15 天 | TaskService 双层 + GpuTaskQueue + hwaccel + proxy + 写串行化 |
-| **M1** 诊断报告 MVP | 4 月 | 12 维度解析 + Web/PDF 报告 + 跨剧检索 |
-| **M2** 选菜界面 + 首批修改 | 3 月 | 选菜 UI + 换脸 Lite + 横竖屏 |
-| **M3** 扩充菜式 | 4-5 月 | 多语言 → 服装 → 体型 → 换脸 Pro → 风格化 demo |
+| **M0** 基建月 | 15 天 | koma-cloud 客户端基础设施 + llmProviderRegistry 接入 + TaskService cloud kind + ffmpeg / proxy / 写串行化 |
+| **M1** 诊断报告 MVP | 3 月 | 12 维度解析编排 + 8 个云端维度接入 + 4 个本地维度 + 报告 UI |
+| **M2** 选菜界面 + 首批修改 | 2-3 月 | 选菜 UI + FaceSwapClient + 横竖屏（VideoGenClient + 本地 ffmpeg） |
+| **M3** 扩充菜式 | 3-4 月 | TtsClient + LipsyncClient + WardrobeClient + BodyReshapeClient + VideoGenClient(stylization) + UpscaleClient |
 
-**比 R4 早期版本（14-16 月）快 4-6 月**，原因：
-- M0 无前置法务流程（算法备案 / 保险洽谈 / 客户合同 / InsightFace 授权 全部删除）
-- M2 无 C2PA / KYC / 名单审核 / SPV 实施
-- M3 无销毁 worker / 审计哈希链 / 私有化合规模式
+**比 R4 早期版本（14-16 月）快 6-8 月**，原因：
+- 客户端无 GPU 任务 / 无 Python sidecar / 无本地模型集成（M0 缩减 50%）
+- 算法工程不在客户端 change 范围（迁移到 new-api 后端独立 change）
+- 无前置法务流程 / 无 C2PA / KYC / SPV
+- **客户端与服务端并行交付**，本 change 团队仅 8-10 人
 
 ## 9. 商业模式（参考，客户自定）
 
-- 诊断报告 SaaS：¥99-299/部
-- 修改服务按项目：换脸 Lite 80-150 万/部 / Pro 300-1100 万/部 / 体型/服装 30-200 万/集 / 多语言 8-20 万/集
-- 私有化部署：客户自购 GPU 集群（Koma 不强制销售硬件），软件 License 按团队规模收费
+- 诊断报告 SaaS：按集数 / 按时长 / 按月套餐多种方案
+- 修改服务：套餐内含一定额度的换脸 / 多语言 / 服装替换 quota，超额加购
+- 企业年订阅：不限片量 + 跨剧检索 + 专属 quota 优先级
+- **客户零硬件 / 算力 / 模型部署成本**（new-api 后端由 Koma 运营）
 
 ## 10. 与 Koma 现有架构的集成
 
 | 现有点 | 扩展方式 |
 |---|---|
-| TaskService | 并发 4 → 32 + GpuTaskQueue + Python sidecar |
-| ffmpeg.ts | hwaccel + proxy + progress |
-| SQLite | 写串行化 + 12 维度独立表 + 向量库 |
-| Provider 抽象（5 类）| + VideoAnalysisProvider + 7 类修改 provider，全 BYOL |
+| TaskService | 并发 4 → 32（**仅 CPU + 网络任务**，新 kind: `cloud`，无 GpuTaskQueue） |
+| ffmpeg.ts | hwaccel + proxy + progress（**仅本地预处理**） |
+| SQLite | 写串行化 + 12 维度独立表 + sqlite-vss 向量索引 |
+| **`chat/providers/llmProviderRegistry`** | **直接复用**：新增内置 provider `koma-cloud`，固定 baseUrl 指向 new-api |
+| **`chat/LLMQueryService`** | **直接复用**：所有 LLM / VLM 调用走 `query()` |
+| **`chat/AgentGraph + AgentOrchestrator + AgentWorker`** | **直接复用**：12 维度并行编排为多 agent DAG |
+| **`llm/config/taskProfiles`** | **扩展**：新增 `video-analysis-*` / `script-translate` / `shot-rank` 等 profile，仅决定虚拟模型名 + 超时 + 重试 |
+| **`llm/budget` / `llm/strategy` / `llm/observability`** | **直接复用**：长视频分块、trace 全部沿用；budget 改为查询 new-api `/v1/koma/usage` |
+| **`chat/mcp`** | **直接复用**：本地工具调用（ffprobe / 文件 IO）注册为 MCP tool |
+| **`electron/service/koma-cloud/`（新增）** | 鉴权 / 各能力 client / JobPoller / Usage / Offline |
 | 自动更新机制 | 复用 |
 | 插件市场 | 复用 |
 | sidebar 二创占位入口 | 改造为 `<RecreationWorkbenchShell>` 主入口 |
@@ -206,27 +256,55 @@ UI 文案标注（非强制水印）："此修改将完全重新生成画面，�
 
 ## 11. 团队规模
 
-20-25 人纯工程团队：
+**客户端团队（本 change 范围）：8-10 人**
+- 4 桌面端工程师（Electron + ee-core 集成 + koma-cloud client + UI）
+- 2 前端（诊断报告 + 修改工作台 + 物料看板）
+- 1 平台 / DevOps（打包 + 更新 + 监控）
+- 1 QC
+- 1 PM
 
-- 8 算法工程师（视频理解 + 换脸 + 体型 + 服装 + LoRA + 风格化）
-- 4 桌面端工程师（Electron + ee-core 扩展）
-- 3 平台 / DevOps
-- 3 算法 SRE / 数据工程
-- 4 QC（仅技术 QC，非合规 QC）
-- 2 PM
-- 销售 / 客户成功 / 法务 由客户公司自配（Koma 仅技术交付）
+**服务端团队（new-api 后端，独立 change）：12-15 人**
+- 6 算法工程师（VLM / TTS / Lip-Sync / 视频生成 / 换脸 / 服装 上游接入与调优）
+- 3 后端（new-api 网关 / 鉴权 / 计费 / 路由）
+- 2 SRE / GPU 集群运维
+- 1 数据工程
+- 1 PM
 
-## 12. 风险（仅技术风险，合规风险不在本范围）
+## 12. 风险（仅本 change 范围内的客户端风险）
 
 | 风险 | 缓解 |
 |---|---|
-| 12 维联合准确率天花板（理论 0.95^12 = 54%） | 工业目标 80-85%，每维度独立 QA 标注集回归 |
-| 阿里 / 火山 视频理解 API 价格战 | 全 BYOL 模式，价格由客户支付，Koma 不背 |
-| 团队核心算法 lead 被挖角 | 双工程师备份 + 模块文档化 |
-| Wan-Animate 工业一致性边界 | 提前公开覆盖率预期 + 必须人工补帧 |
-| Mac 性能不足 | 云端 fallback provider |
+| 12 维联合准确率天花板（理论 0.95^12 = 54%） | 工业目标 80-85%，由服务端模型组合保障，客户端只负责编排 |
+| 上行带宽瓶颈（1080p 母带 ~5GB） | 默认上传 H.264 代理（~1.2GB），仅高质量超分场景上传母带 |
+| 网络中断中断长任务 | JobPoller 断网续查 + jobId SQLite 持久化 |
+| Koma SaaS 总停机 | new-api 后端多机房 + 健康检查 + 用户友好降级（本地报告浏览可用） |
+| 客户敏感素材上行 | new-api 侧负责加密 / 隔离 / 销毁（服务端责任，客户端不涉及） |
+| 套餐用量预估偏差 | `/v1/koma/estimate` 任务前预检 + 透支策略提示 |
 
 **合规风险全部转嫁客户**。客户自负监管约谈 / 政策红线 / 舆论应对 / 黑产滥用。
+
+## 13. new-api 后端依赖（独立 change `add-koma-cloud-backend`）
+
+本 change 假设以下能力在 new-api 端已就绪：
+
+| 端点 | 能力 |
+|---|---|
+| `/v1/auth/exchange` | license → access/refresh token |
+| `/v1/chat/completions` | OpenAI 兼容 LLM / VLM（支持图像 content parts，未来视频 content parts） |
+| `/v1/koma/tts` | 同步 TTS |
+| `/v1/koma/lipsync` | 异步嘴型对齐 |
+| `/v1/koma/face-swap` | 异步换脸（qualityTier: lite/pro） |
+| `/v1/koma/video-gen` | 异步视频生成（mode: stylization / character-replace / inpaint / subject-tracking） |
+| `/v1/koma/wardrobe` | 异步服装替换 |
+| `/v1/koma/body-reshape` | 异步体型替换 |
+| `/v1/koma/upscale` | 异步 4K 超分 |
+| `/v1/koma/jobs/{id}` | 长任务轮询 + WebSocket 推送 |
+| `/v1/koma/jobs/{id}/cancel` | 长任务取消 |
+| `/v1/koma/usage` | 套餐余额 |
+| `/v1/koma/estimate` | quota 预检 |
+| `/v1/health` | 健康检查（OfflineGuard 使用） |
+
+new-api 内部上游路由 / 模型选型 / 成本核算 / 限流 / failover 等均为后端 change 责任，本 change 不约束。
 
 ## 13. 用户已知情的事项（来自 4 轮多 agent 讨论）
 

@@ -112,6 +112,35 @@ export function registerAnalysisFulfillers(): void {
     return { ok: true, shotsCount: result.shotsCount };
   });
 
+  // R4 二创：视频多模态诊断（VLM + LLM 极简版）
+  registerDelegate<
+    {
+      parentTaskId: string;
+      videoId: string;
+      channelKey: string;
+      models: { vlm?: string; llm?: string };
+    },
+    { ok: true; dimensionsOk: number; summary?: Record<string, string> }
+  >('video-diagnosis:run', async (args) => {
+    const { VideoDiagnosisService } = await import('./VideoDiagnosisService');
+    return VideoDiagnosisService.run(args);
+  });
+
+  // R4 二创：修改单单项执行（按 kind 派发到主进程 IPC）
+  registerDelegate<
+    {
+      parentTaskId: string;
+      videoId: string;
+      planId: string;
+      channelKey?: string;
+      item: { itemId: string; kind: string; params: Record<string, unknown> };
+    },
+    { ok: true; derivedVideoId: string; derivedKind: string }
+  >('recreation-modify:run', async (args) => {
+    const { RecreationModifyService } = await import('./RecreationModifyService');
+    return RecreationModifyService.run(args);
+  });
+
   registerDelegate<ScriptAnalysisInput, AnalysisResult>('analysis:script:run', async (args) => {
     const { BackgroundAnalysisService } = await import('./ScriptAnalysisService');
     const service = new BackgroundAnalysisService(args.projectId);

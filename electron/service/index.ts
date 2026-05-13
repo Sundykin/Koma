@@ -9,6 +9,8 @@ import { pluginService } from './plugin';
 import { chatService, ChatService } from './chat';
 import { linghuiService, LinghuiService } from './linghui';
 import { diagnosticsService, DiagnosticsService } from './diagnostics';
+import { recreationVideosService } from './recreationVideos';
+import { recreationModifyService } from './recreationModify';
 import { baseDB, settingsDB } from './storage';
 import { syncBuiltinStyleReferences } from './styleReferences';
 
@@ -19,6 +21,8 @@ export const services = {
   plugin: pluginService,
   chat: chatService,
   diagnostics: diagnosticsService,
+  recreationVideos: recreationVideosService,
+  recreationModify: recreationModifyService,
 };
 
 let initialized = false;
