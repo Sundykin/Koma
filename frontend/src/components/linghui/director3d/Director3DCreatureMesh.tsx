@@ -265,6 +265,12 @@ function QuadrupedBody({ species, rig, color, useStandard }: {
   const maneColor = species.kind === 'horse' ? '#4a3020' : species.kind === 'qilin' ? '#c84525' : '#7a4a23';
   const footZ = species.kind === 'bear' ? 0.12 : 0.08;
   const isAntlered = species.kind === 'deer' || species.kind === 'qilin';
+  const legAnchors = [
+    { rig: rig.frontLeftLeg, pos: [sideX, chestY, frontZ] as [number, number, number], shoulder: true },
+    { rig: rig.frontRightLeg, pos: [-sideX, chestY, frontZ] as [number, number, number], shoulder: true },
+    { rig: rig.rearLeftLeg, pos: [sideX, hipY, rearZ] as [number, number, number], shoulder: false },
+    { rig: rig.rearRightLeg, pos: [-sideX, hipY, rearZ] as [number, number, number], shoulder: false },
+  ];
 
   return (
     <group>
@@ -380,11 +386,11 @@ function QuadrupedBody({ species, rig, color, useStandard }: {
               {bodyMaterial(maneColor, useStandard, 0.86, 0.02)}
             </mesh>
           ) : null}
-          {(species.kind === 'fox' ? [0, 1, 2] : [0]).map((_, i) => (
+          {(species.kind === 'fox' ? [0, 1, 2, 3, 4] : [0]).map((_, i) => (
             <mesh
               key={`tail-tip-${i}`}
-              position={[(i - 1) * tailRadius * 1.8, tailRadius * (species.kind === 'fox' ? 0.7 : 0.15), -tailLength * 0.95]}
-              rotation={[Math.PI / 2, 0, (i - 1) * 0.25]}
+              position={[(i - (species.kind === 'fox' ? 2 : 0)) * tailRadius * 1.55, tailRadius * (species.kind === 'fox' ? 0.7 : 0.15), -tailLength * 0.95]}
+              rotation={[Math.PI / 2, 0, (i - (species.kind === 'fox' ? 2 : 0)) * 0.18]}
             >
               <coneGeometry args={[tailRadius * (species.kind === 'fox' ? 1.8 : 0.9), tailLength * 0.28, 10]} />
               {bodyMaterial(species.kind === 'fox' ? detailColor(DETAIL.light, 'preview') : color, useStandard, 0.75, 0.03)}
@@ -393,16 +399,31 @@ function QuadrupedBody({ species, rig, color, useStandard }: {
         </group>
       </group>
 
-      {/* 4 条腿（不跟 spine 转，挂在 root） */}
-      {([
-        { rig: rig.frontLeftLeg, pos: [sideX, chestY, frontZ] },
-        { rig: rig.frontRightLeg, pos: [-sideX, chestY, frontZ] },
-        { rig: rig.rearLeftLeg, pos: [sideX, hipY, rearZ] },
-        { rig: rig.rearRightLeg, pos: [-sideX, hipY, rearZ] },
-      ] as const).map((leg, idx) => (
+      {/* 肩/胯连接球挂在 root：腿贴地时也能和躯干读成同一套骨架 */}
+      {legAnchors.map((leg, idx) => (
+        <mesh
+          key={`leg-socket-${idx}`}
+          position={leg.pos}
+          scale={[1.2, leg.shoulder ? 0.82 : 0.72, 1.08]}
+        >
+          <sphereGeometry args={[legRadius * (species.kind === 'bear' ? 1.45 : 1.16), 12, 8]} />
+          {bodyMaterial(color, useStandard, 0.74, 0.05)}
+        </mesh>
+      ))}
+
+      {/* 4 条腿：分成上肢 / 膝关节 / 下肢，避免单根柱体动物感太弱 */}
+      {legAnchors.map((leg, idx) => (
         <group key={idx} position={leg.pos as [number, number, number]} rotation={leg.rig}>
-          <mesh position={[0, -legLen * 0.5, 0]}>
-            <capsuleGeometry args={[legRadius, legLen, 4, 8]} />
+          <mesh position={[0, -legLen * 0.27, 0]} rotation={[idx < 2 ? 0.06 : -0.08, 0, 0]}>
+            <capsuleGeometry args={[legRadius, legLen * 0.52, 4, 8]} />
+            {bodyMaterial(color, useStandard, 0.75, 0.05)}
+          </mesh>
+          <mesh position={[0, -legLen * 0.54, idx < 2 ? footZ * 0.16 : -footZ * 0.1]}>
+            <sphereGeometry args={[legRadius * 1.05, 10, 8]} />
+            {bodyMaterial(color, useStandard, 0.75, 0.05)}
+          </mesh>
+          <mesh position={[0, -legLen * 0.78, footZ * 0.12]} rotation={[idx < 2 ? -0.08 : 0.1, 0, 0]}>
+            <capsuleGeometry args={[legRadius * 0.82, legLen * 0.46, 4, 8]} />
             {bodyMaterial(color, useStandard, 0.75, 0.05)}
           </mesh>
           <group position={[0, -legLen, 0]}>
@@ -546,6 +567,16 @@ function AvianBody({ species, rig, color, useStandard }: {
             <coneGeometry args={[bodyHeight * 0.045, bodyHeight * 0.12, 7]} />
             {bodyMaterial(detailColor(DETAIL.claw, 'preview'), useStandard, 0.42, 0.12)}
           </mesh>
+          {([-1, 1] as const).map(toe => (
+            <mesh
+              key={`avian-side-toe-${toe}`}
+              position={[toe * bodyHeight * 0.055, -legLen - bodyHeight * 0.01, bodyHeight * 0.04]}
+              rotation={[Math.PI / 2, 0, toe * 0.54]}
+            >
+              <coneGeometry args={[bodyHeight * 0.028, bodyHeight * 0.11, 6]} />
+              {bodyMaterial(detailColor(DETAIL.claw, 'preview'), useStandard, 0.42, 0.12)}
+            </mesh>
+          ))}
         </group>
       ))}
     </group>
@@ -600,6 +631,10 @@ function DragonBody({ species, rig, color, useStandard }: {
             <sphereGeometry args={[bodyRadius * 0.78, 16, 12]} />
             {bodyMaterial(color, useStandard, 0.5, 0.2)}
           </mesh>
+          <mesh position={[0, bodyRadius * 0.14, bodyRadius * 2.02]} scale={[1.05, 0.52, 0.9]}>
+            <boxGeometry args={[bodyRadius * 0.82, bodyRadius * 0.38, bodyRadius * 0.72]} />
+            {bodyMaterial(color, useStandard, 0.55, 0.16)}
+          </mesh>
           <CreatureEyePair
             y={bodyRadius * 0.42}
             z={bodyRadius * 1.94}
@@ -608,12 +643,12 @@ function DragonBody({ species, rig, color, useStandard }: {
             useStandard={useStandard}
             color={eyeColor}
           />
-          {([-1, 1] as const).map(sign => (
-            <mesh key={`whisker-${sign}`} position={[sign * bodyRadius * 0.55, bodyRadius * 0.18, bodyRadius * 2.08]} rotation={[Math.PI / 2, 0, sign * 0.6]}>
+          {([-1, 1] as const).flatMap(sign => ([-1, 1] as const).map(row => (
+            <mesh key={`whisker-${sign}-${row}`} position={[sign * bodyRadius * 0.55, bodyRadius * (0.12 + row * 0.08), bodyRadius * 2.12]} rotation={[Math.PI / 2, 0, sign * (0.58 + row * 0.14)]}>
               <cylinderGeometry args={[bodyRadius * 0.025, bodyRadius * 0.025, bodyRadius * 1.45, 6]} />
               {bodyMaterial(whiskerColor, useStandard, 0.55, 0.05)}
             </mesh>
-          ))}
+          )))}
           {/* 龙角 */}
           {species.hasHorns && (
             <>
@@ -625,6 +660,16 @@ function DragonBody({ species, rig, color, useStandard }: {
                 <coneGeometry args={[0.05, bodyRadius * 1.2, 6]} />
                 {bodyMaterial('#d4b878', useStandard, 0.4, 0.3)}
               </mesh>
+              {([-1, 1] as const).flatMap(sign => ([0.34, 0.62] as const).map((height, i) => (
+                <mesh
+                  key={`dragon-antler-branch-${sign}-${i}`}
+                  position={[sign * bodyRadius * (0.54 + i * 0.04), bodyRadius * (0.82 + height), bodyRadius * 0.96]}
+                  rotation={[-0.08, 0, sign * (0.78 + i * 0.16)]}
+                >
+                  <coneGeometry args={[bodyRadius * 0.045, bodyRadius * 0.5, 6]} />
+                  {bodyMaterial('#d4b878', useStandard, 0.42, 0.24)}
+                </mesh>
+              )))}
             </>
           )}
         </group>
@@ -668,7 +713,7 @@ function DragonBody({ species, rig, color, useStandard }: {
         </group>
       </group>
 
-      {/* 4 爪（独立于 spine） */}
+      {/* 4 爪（独立于 spine，但加肩/胯连接球维持读形） */}
       {([
         { rig: rig.frontLeftLeg, pos: [bodyRadius * 1.1, bodyY - bodyRadius * 0.2, species.bodyLength * 0.24] },
         { rig: rig.frontRightLeg, pos: [-bodyRadius * 1.1, bodyY - bodyRadius * 0.2, species.bodyLength * 0.24] },
@@ -676,6 +721,10 @@ function DragonBody({ species, rig, color, useStandard }: {
         { rig: rig.rearRightLeg, pos: [-bodyRadius * 1.15, bodyY - bodyRadius * 0.12, -species.bodyLength * 0.2] },
       ] as const).map((leg, idx) => (
         <group key={idx} position={leg.pos as [number, number, number]} rotation={leg.rig}>
+          <mesh position={[0, bodyRadius * 0.1, 0]}>
+            <sphereGeometry args={[bodyRadius * 0.36, 10, 8]} />
+            {bodyMaterial(color, useStandard, 0.56, 0.12)}
+          </mesh>
           <mesh position={[0, -legLen * 0.5, 0]}>
             <cylinderGeometry args={[bodyRadius * 0.3, bodyRadius * 0.4, legLen, 8]} />
             {bodyMaterial(color, useStandard, 0.6, 0.1)}

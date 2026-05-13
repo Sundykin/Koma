@@ -1,15 +1,12 @@
 /**
- * 离屏导出（CaptureRenderer）用的 vanilla three.js 几何构建器。
+ * Director3D 共享程序化几何构建器。
  *
- * 为什么不复用 Director3DMannequin / Director3DCreatureMesh 组件？
- *   - 它们是 r3f JSX，必须挂在 Canvas 内才能渲染
- *   - CaptureRenderer 走的是离屏 WebGLRenderer，与主 Canvas 完全独立
- *
- * 这里直接对照那两个组件的层级结构 + rig 旋转，构造 THREE.Group，
- * 保证"所见即所得"——导出的关节姿势与 viewport 完全一致。
+ * 画布预览和离屏导出都必须从这里构造 actor 的 THREE.Group。不要再在
+ * r3f JSX 与 CaptureRenderer 里各自重画一套模型，否则动物 / 道具 /
+ * 姿势细节会再次出现“画布正确，导出视频不一致”的漂移。
  */
 import * as THREE from 'three';
-import type { LinghuiDirector3DActor } from '../../../types/linghui';
+import type { LinghuiDirector3DActor, LinghuiDirector3DFormationConfig } from '../../../types/linghui';
 import { resolveActorRig } from './director3dRig';
 import { findCreatureSpecies, resolveCreatureRig } from './director3dCreature';
 
@@ -32,6 +29,13 @@ export interface ExportGeometryContext {
   drawEdges: boolean;
   wireMat: THREE.Material;
   fillMat: THREE.Material;
+}
+
+interface FormationMember {
+  key: string;
+  x: number;
+  z: number;
+  rotationY: number;
 }
 
 function addMesh(
@@ -68,8 +72,11 @@ function propKind(label: string): string {
   if (text.includes('树') || text.includes('tree')) return 'tree';
   if (text.includes('灌木') || text.includes('bush')) return 'bush';
   if (text.includes('岩石') || text.includes('rock') || text.includes('山巅岩')) return 'rock';
+  if (text.includes('石柱') || text.includes('柱') || text.includes('pillar') || text.includes('column')) return 'pillar';
+  if (text.includes('香烛') || text.includes('蜡烛') || text.includes('candle')) return 'candle';
   if (text.includes('门') || text.includes('door')) return 'door';
   if (text.includes('窗') || text.includes('window')) return 'window';
+  if (text.includes('墙') || text.includes('wall')) return 'wall';
   if (text.includes('屏幕') || text.includes('screen') || text.includes('display')) return 'screen';
   if (text.includes('聚光灯') || text.includes('light') || text.includes('spotlight')) return 'light';
   if (text.includes('麦克风') || text.includes('mic') || text.includes('microphone')) return 'mic';
@@ -135,6 +142,29 @@ function addTorus(
   addMesh(parent, new THREE.TorusGeometry(radius, tube, 8, 24), ctx, position, rotation);
 }
 
+function deriveExportFormationMembers(config: LinghuiDirector3DFormationConfig): FormationMember[] {
+  const rows = Math.max(1, Math.min(12, Math.round(config.rows)));
+  const cols = Math.max(1, Math.min(12, Math.round(config.cols)));
+  const spacing = config.spacing > 0 ? config.spacing : 1;
+  const halfColSpan = ((cols - 1) * spacing) / 2;
+  const halfRowSpan = ((rows - 1) * spacing) / 2;
+  const members: FormationMember[] = [];
+
+  for (let r = 0; r < rows; r += 1) {
+    for (let c = 0; c < cols; c += 1) {
+      const x = c * spacing - halfColSpan;
+      const z = r * spacing - halfRowSpan;
+      let rotationY = 0;
+      if (config.memberFacing === 'forward') rotationY = 0;
+      else if (config.memberFacing === 'away') rotationY = Math.PI;
+      else if (config.memberFacing === 'inward') rotationY = Math.atan2(-x, -z);
+      else if (config.memberFacing === 'outward') rotationY = Math.atan2(x, z);
+      members.push({ key: `${r}-${c}`, x, z, rotationY });
+    }
+  }
+  return members;
+}
+
 /**
  * 主角假人导出几何。复刻 Director3DMannequin.tsx 的层级结构：
  *   root → 髋部锚点（双腿，挂在 root 不随 spine 倾斜）
@@ -165,12 +195,15 @@ export function buildExportMannequinGroup(
     const legRoot = new THREE.Group();
     legRoot.position.set(hx(sign), 0, 0);
     legRoot.rotation.set(hipRot[0], hipRot[1], hipRot[2]);
+    addMesh(legRoot, new THREE.SphereGeometry(P.legRadius * 1.05, 16, 10), ctx);
     addMesh(legRoot, new THREE.CylinderGeometry(P.legRadius, P.legRadius * 0.9, P.thighLength, 12), ctx, [0, -P.thighLength * 0.5, 0]);
     const shinRoot = new THREE.Group();
     shinRoot.position.set(0, -P.thighLength, 0);
     shinRoot.rotation.set(kneeRot[0], kneeRot[1], kneeRot[2]);
+    addMesh(shinRoot, new THREE.SphereGeometry(P.legRadius * 1.08, 16, 10), ctx);
     addMesh(shinRoot, new THREE.CylinderGeometry(P.legRadius * 0.9, P.legRadius * 0.75, P.shinLength, 12), ctx, [0, -P.shinLength * 0.5, 0]);
     addMesh(shinRoot, new THREE.BoxGeometry(0.12, 0.05, 0.22), ctx, [0, -P.shinLength - 0.025, 0.06]);
+    addMesh(shinRoot, new THREE.ConeGeometry(0.06, 0.08, 12), ctx, [0, -P.shinLength - 0.018, 0.18], [Math.PI / 2, 0, 0]);
     legRoot.add(shinRoot);
     hipAnchor.add(legRoot);
   });
@@ -183,14 +216,24 @@ export function buildExportMannequinGroup(
   const torsoCenter = new THREE.Group();
   torsoCenter.position.set(0, P.torsoHeight * 0.5, 0);
   addMesh(torsoCenter, new THREE.BoxGeometry(P.torsoWidth, P.torsoHeight, P.torsoDepth), ctx);
+  addMesh(torsoCenter, new THREE.BoxGeometry(P.torsoWidth * 0.48, 0.18, 0.012), ctx, [0, 0.12, P.torsoDepth * 0.51]);
+  addMesh(torsoCenter, new THREE.BoxGeometry(P.torsoWidth * 0.34, 0.035, 0.012), ctx, [-P.torsoWidth * 0.13, 0.245, P.torsoDepth * 0.535], [0, 0, -0.55]);
+  addMesh(torsoCenter, new THREE.BoxGeometry(P.torsoWidth * 0.34, 0.035, 0.012), ctx, [P.torsoWidth * 0.13, 0.245, P.torsoDepth * 0.535], [0, 0, 0.55]);
+  addMesh(torsoCenter, new THREE.BoxGeometry(P.torsoWidth * 0.94, 0.035, 0.014), ctx, [0, -0.17, P.torsoDepth * 0.53]);
+  addMesh(torsoCenter, new THREE.BoxGeometry(0.055, P.torsoHeight * 0.72, 0.014), ctx, [0, 0.02, -P.torsoDepth * 0.53]);
+  addMesh(torsoCenter, new THREE.BoxGeometry(P.shoulderWidth * 1.04, 0.055, P.torsoDepth * 1.12), ctx, [0, P.torsoHeight * 0.5 - 0.035, 0]);
 
   // neck + head
   const neckRoot = new THREE.Group();
   neckRoot.position.set(0, P.torsoHeight * 0.5 + 0.02, 0);
   neckRoot.rotation.set(rig.neck[0], rig.neck[1], rig.neck[2]);
   addMesh(neckRoot, new THREE.SphereGeometry(P.headRadius, 24, 18), ctx, [0, P.headRadius + 0.04, 0]);
-  // 鼻尖（指向）
-  addMesh(neckRoot, new THREE.SphereGeometry(P.headRadius * 0.18, 12, 8), ctx, [0, P.headRadius + 0.04, P.headRadius * 0.85]);
+  [-1, 1].forEach(sign => addSphere(neckRoot, ctx, [sign * P.headRadius * 0.42, P.headRadius + 0.07, P.headRadius * 0.88], P.headRadius * 0.11));
+  addMesh(neckRoot, new THREE.BoxGeometry(P.headRadius * 0.98, P.headRadius * 0.06, P.headRadius * 0.08), ctx, [0, P.headRadius + 0.105, P.headRadius * 0.9]);
+  addMesh(neckRoot, new THREE.ConeGeometry(P.headRadius * 0.16, P.headRadius * 0.14, 12), ctx, [0, P.headRadius + 0.025, P.headRadius * 0.98], [Math.PI / 2, 0, 0]);
+  addMesh(neckRoot, new THREE.BoxGeometry(P.headRadius * 0.56, P.headRadius * 0.045, P.headRadius * 0.05), ctx, [0, P.headRadius - 0.04, P.headRadius * 0.91]);
+  [-1, 1].forEach(sign => addSphere(neckRoot, ctx, [sign * P.headRadius * 0.98, P.headRadius + 0.035, 0], P.headRadius * 0.22, [0.55, 0.82, 0.22]));
+  addMesh(neckRoot, new THREE.BoxGeometry(P.headRadius * 0.82, P.headRadius * 0.18, P.headRadius * 0.08), ctx, [0, P.headRadius + 0.12, -P.headRadius * 0.82]);
   torsoCenter.add(neckRoot);
 
   // 双臂（shoulder → elbow → forearm + 手）
@@ -201,18 +244,101 @@ export function buildExportMannequinGroup(
     const shoulderRoot = new THREE.Group();
     shoulderRoot.position.set(sx(sign), P.torsoHeight * 0.5 - 0.04, 0);
     shoulderRoot.rotation.set(shoulderRot[0], shoulderRot[1], shoulderRot[2]);
+    addMesh(shoulderRoot, new THREE.SphereGeometry(P.armRadius * 1.18, 16, 10), ctx);
     addMesh(shoulderRoot, new THREE.CylinderGeometry(P.armRadius, P.armRadius * 0.9, P.upperArmLength, 12), ctx, [0, -P.upperArmLength * 0.5, 0]);
     const elbowRoot = new THREE.Group();
     elbowRoot.position.set(0, -P.upperArmLength, 0);
     elbowRoot.rotation.set(elbowRot[0], elbowRot[1], elbowRot[2]);
+    addMesh(elbowRoot, new THREE.SphereGeometry(P.armRadius * 1.05, 14, 10), ctx);
     addMesh(elbowRoot, new THREE.CylinderGeometry(P.armRadius * 0.9, P.armRadius * 0.75, P.forearmLength, 12), ctx, [0, -P.forearmLength * 0.5, 0]);
     addMesh(elbowRoot, new THREE.SphereGeometry(P.armRadius * 1.05, 12, 8), ctx, [0, -P.forearmLength - P.armRadius * 0.6, 0]);
+    addSphere(elbowRoot, ctx, [sign * P.armRadius * 0.7, -P.forearmLength - P.armRadius * 0.5, P.armRadius * 0.58], P.armRadius * 0.38);
     shoulderRoot.add(elbowRoot);
     torsoCenter.add(shoulderRoot);
   });
 
   spineRoot.add(torsoCenter);
   root.add(spineRoot);
+
+  return root;
+}
+
+export function buildExportLiteMannequinGroup(
+  actor: LinghuiDirector3DActor,
+  ctx: ExportGeometryContext,
+): THREE.Group {
+  const root = new THREE.Group();
+  root.position.fromArray(actor.position);
+  root.rotation.y = actor.rotationY;
+  root.scale.setScalar(actor.scale);
+
+  const headRadius = 0.11;
+  const shoulderWidth = 0.36;
+  const hipWidth = 0.26;
+  const torsoTop = 0.18;
+  const torsoBot = 0.13;
+  const torsoHeight = 0.55;
+  const armRadius = 0.045;
+  const armLength = 0.5;
+  const legRadius = 0.07;
+  const legLength = 0.75;
+  const torsoCenter = legLength + torsoHeight / 2;
+  const shoulderY = legLength + torsoHeight - 0.06;
+  const headCenter = shoulderY + headRadius + 0.04;
+  const shoulderX = shoulderWidth / 2 + armRadius * 0.6;
+  const hipX = hipWidth / 2 - legRadius * 0.2;
+
+  addCylinder(root, ctx, [0, torsoCenter, 0], torsoTop, torsoBot, torsoHeight, 14);
+  addBox(root, ctx, [0, torsoCenter + 0.04, torsoTop * 0.96], [shoulderWidth * 0.36, 0.14, 0.012]);
+  addBox(root, ctx, [0, torsoCenter, -torsoTop * 0.98], [0.04, torsoHeight * 0.64, 0.012]);
+  addSphere(root, ctx, [0, headCenter, 0], headRadius);
+  addBox(root, ctx, [0, headCenter + headRadius * 0.08, headRadius * 0.92], [headRadius * 0.72, headRadius * 0.12, headRadius * 0.07]);
+  addCone(root, ctx, [0, headCenter - headRadius * 0.18, headRadius * 0.98], headRadius * 0.12, headRadius * 0.12, 10, [Math.PI / 2, 0, 0]);
+  [-1, 1].forEach((sign) => {
+    addCylinder(root, ctx, [sign * shoulderX, shoulderY - armLength / 2, 0], armRadius, armRadius, armLength, 10);
+    addCylinder(root, ctx, [sign * hipX, legLength / 2, 0], legRadius, legRadius, legLength, 10);
+    addBox(root, ctx, [sign * hipX, 0.03, 0.08], [0.11, 0.055, 0.18]);
+  });
+
+  return root;
+}
+
+export function buildExportFormationGroup(
+  actor: LinghuiDirector3DActor,
+  ctx: ExportGeometryContext,
+): THREE.Group {
+  const root = new THREE.Group();
+  root.position.fromArray(actor.position);
+  root.rotation.y = actor.rotationY;
+  root.scale.setScalar(actor.scale);
+
+  const config = actor.formation ?? { rows: 1, cols: 1, spacing: 1, memberFacing: 'forward' as const };
+  const members = deriveExportFormationMembers(config);
+  const headRadius = 0.10;
+  const torsoTop = 0.16;
+  const torsoBot = 0.12;
+  const torsoHeight = 0.50;
+  const legRadius = 0.065;
+  const legLength = 0.70;
+  const hipWidth = 0.22;
+  const torsoCenterY = legLength + torsoHeight / 2;
+  const shoulderY = legLength + torsoHeight - 0.05;
+  const headCenterY = shoulderY + headRadius + 0.03;
+  const hipX = hipWidth / 2 - legRadius * 0.2;
+
+  members.forEach((member) => {
+    const memberGroup = new THREE.Group();
+    memberGroup.position.set(member.x, 0, member.z);
+    memberGroup.rotation.y = member.rotationY;
+    addCylinder(memberGroup, ctx, [0, torsoCenterY, 0], torsoTop, torsoBot, torsoHeight, 12);
+    addBox(memberGroup, ctx, [0, torsoCenterY + 0.035, torsoTop * 0.96], [torsoTop * 0.72, 0.11, 0.01]);
+    addBox(memberGroup, ctx, [0, torsoCenterY, -torsoTop * 0.98], [0.034, torsoHeight * 0.56, 0.01]);
+    addSphere(memberGroup, ctx, [0, headCenterY, 0], headRadius);
+    addBox(memberGroup, ctx, [0, headCenterY + headRadius * 0.08, headRadius * 0.92], [headRadius * 0.58, headRadius * 0.1, headRadius * 0.06]);
+    addCone(memberGroup, ctx, [0, headCenterY - headRadius * 0.16, headRadius * 0.96], headRadius * 0.1, headRadius * 0.1, 8, [Math.PI / 2, 0, 0]);
+    [-1, 1].forEach(sign => addCylinder(memberGroup, ctx, [sign * hipX, legLength / 2, 0], legRadius, legRadius, legLength, 10));
+    root.add(memberGroup);
+  });
 
   return root;
 }
@@ -248,6 +374,12 @@ export function buildExportCreatureGroup(
     const tailLength = species.bodyLength * (species.kind === 'horse' ? 0.48 : species.kind === 'fox' ? 0.62 : 0.38);
     const tailRadius = Math.max(0.025, bodyWidth * 0.08);
     const footZ = species.kind === 'bear' ? 0.12 : 0.08;
+    const legAnchors = [
+      { rot: rig.frontLeftLeg, pos: [sideX, shoulderY + bodyHeight * 0.18, frontZ] as [number, number, number] },
+      { rot: rig.frontRightLeg, pos: [-sideX, shoulderY + bodyHeight * 0.18, frontZ] as [number, number, number] },
+      { rot: rig.rearLeftLeg, pos: [sideX, shoulderY - bodyHeight * 0.03, rearZ] as [number, number, number] },
+      { rot: rig.rearRightLeg, pos: [-sideX, shoulderY - bodyHeight * 0.03, rearZ] as [number, number, number] },
+    ];
 
     const spineRoot = new THREE.Group();
     spineRoot.position.set(0, shoulderY, 0);
@@ -262,9 +394,13 @@ export function buildExportCreatureGroup(
     addSphere(neckRoot, ctx, [0, neckLength * 0.18, neckLength * 0.88], headSize * 0.78, [1, 0.82, 1.08]);
     addBox(neckRoot, ctx, [0, neckLength * 0.05, neckLength * 1.25], [headSize * 0.9, headSize * 0.55, muzzleLength]);
     addSphere(neckRoot, ctx, [0, neckLength * 0.03, neckLength * 1.25 + muzzleLength * 0.52], headSize * 0.14, [1, 0.6, 0.3]);
+    [-1, 1].forEach(sign => addSphere(neckRoot, ctx, [sign * headSize * 0.28, neckLength * 0.28, neckLength * 1.14], headSize * 0.065));
     if (species.hasHorns) {
       [-1, 1].forEach(sign => {
         addCylinder(neckRoot, ctx, [sign * headSize * 0.35, neckLength * 0.7, neckLength * 0.78], headSize * 0.045, headSize * 0.075, headSize * 1.15, 6, [-0.35, 0, sign * 0.35]);
+        if (species.kind === 'deer' || species.kind === 'qilin') {
+          [0.34, 0.62].forEach((offset, i) => addCylinder(neckRoot, ctx, [sign * headSize * (0.43 + i * 0.04), neckLength * 0.7 + headSize * offset, neckLength * 0.78], headSize * 0.018, headSize * 0.032, headSize * 0.42, 6, [0.46, 0, sign * (0.68 + i * 0.18)]));
+        }
       });
     }
     spineRoot.add(neckRoot);
@@ -274,28 +410,29 @@ export function buildExportCreatureGroup(
     tailRoot.rotation.set(rig.tail[0], rig.tail[1], rig.tail[2]);
     addCylinder(tailRoot, ctx, [0, 0, -tailLength * 0.42], tailRadius * 0.4, tailRadius, tailLength, 8, [Math.PI / 2, 0, 0]);
     if (species.kind === 'fox') {
-      [-1, 0, 1].forEach(i => addCone(tailRoot, ctx, [i * tailRadius * 1.8, tailRadius * 0.7, -tailLength * 0.95], tailRadius * 1.8, tailLength * 0.28, 10, [Math.PI / 2, 0, i * 0.25]));
+      [-2, -1, 0, 1, 2].forEach(i => addCone(tailRoot, ctx, [i * tailRadius * 1.55, tailRadius * 0.7, -tailLength * 0.95], tailRadius * 1.8, tailLength * 0.28, 10, [Math.PI / 2, 0, i * 0.18]));
     } else if (species.kind === 'lion') {
       addSphere(tailRoot, ctx, [0, tailRadius * 0.1, -tailLength * 0.98], tailRadius * 2.3);
     }
     spineRoot.add(tailRoot);
     root.add(spineRoot);
 
-    [
-      { rot: rig.frontLeftLeg, pos: [sideX, shoulderY + bodyHeight * 0.18, frontZ] as [number, number, number] },
-      { rot: rig.frontRightLeg, pos: [-sideX, shoulderY + bodyHeight * 0.18, frontZ] as [number, number, number] },
-      { rot: rig.rearLeftLeg, pos: [sideX, shoulderY - bodyHeight * 0.03, rearZ] as [number, number, number] },
-      { rot: rig.rearRightLeg, pos: [-sideX, shoulderY - bodyHeight * 0.03, rearZ] as [number, number, number] },
-    ].forEach((leg) => {
+    legAnchors.forEach((leg) => {
+      addSphere(root, ctx, leg.pos, legRadius * (species.kind === 'bear' ? 1.45 : 1.16), [1.2, 0.78, 1.08]);
       const legGroup = new THREE.Group();
       legGroup.position.set(leg.pos[0], leg.pos[1], leg.pos[2]);
       legGroup.rotation.set(leg.rot[0], leg.rot[1], leg.rot[2]);
-      addMesh(legGroup, new THREE.CapsuleGeometry(legRadius, legLen, 4, 8), ctx, [0, -legLen * 0.5, 0]);
+      addMesh(legGroup, new THREE.CapsuleGeometry(legRadius, legLen * 0.52, 4, 8), ctx, [0, -legLen * 0.27, 0]);
+      addSphere(legGroup, ctx, [0, -legLen * 0.54, footZ * 0.08], legRadius * 1.05);
+      addMesh(legGroup, new THREE.CapsuleGeometry(legRadius * 0.82, legLen * 0.46, 4, 8), ctx, [0, -legLen * 0.78, footZ * 0.12]);
       if (species.kind === 'horse' || species.kind === 'deer' || species.kind === 'qilin') {
         addCylinder(legGroup, ctx, [0, -legLen - legRadius * 0.14, 0], legRadius * 0.9, legRadius * 1.06, legRadius * 1.4, 8);
         addBox(legGroup, ctx, [0, -legLen - legRadius, footZ + legRadius * 0.5], [legRadius * 1.85, legRadius * 0.74, legRadius * 1.5]);
       } else {
         addSphere(legGroup, ctx, [0, -legLen, footZ], legRadius * (species.kind === 'bear' ? 1.45 : 1.05), [1.35, species.kind === 'bear' ? 0.55 : 0.45, species.kind === 'bear' ? 2.05 : 1.8]);
+        (species.kind === 'bear' ? [-0.7, 0, 0.7] : [-0.48, 0.48]).forEach(toe => {
+          addCone(legGroup, ctx, [toe * legRadius, -legLen - legRadius * 0.12, footZ + legRadius * 1.16], legRadius * (species.kind === 'bear' ? 0.64 : 0.46), legRadius * 1.15, 8, [Math.PI / 2, 0, toe * 0.18]);
+        });
       }
       root.add(legGroup);
     });
@@ -321,6 +458,7 @@ export function buildExportCreatureGroup(
       const cyl = new THREE.CylinderGeometry(tapered, r, segLen * 1.05, 10);
       cyl.rotateX(Math.PI / 2);
       addMesh(spineRoot, cyl, ctx, [0, 0, offset]);
+      addCone(spineRoot, ctx, [0, r * 0.68, offset], r * 0.32, r * 0.38, 6, [Math.PI / 2, 0, 0]);
     }
   } else {
     const bodyHeight = species.bodyHeight * 0.4;
@@ -345,6 +483,18 @@ export function buildExportCreatureGroup(
   neckRoot.rotation.set(rig.neck[0], rig.neck[1], rig.neck[2]);
   const headSize = species.bodyHeight * 0.2;
   addMesh(neckRoot, new THREE.SphereGeometry(headSize, 16, 12), ctx, [0, headSize + 0.04, 0]);
+  if (species.form === 'serpent-dragon') {
+    const r = species.bodyHeight * 0.18;
+    addBox(neckRoot, ctx, [0, headSize * 0.78, headSize * 0.95], [r * 0.82, r * 0.38, r * 0.72]);
+    [-1, 1].forEach(sign => {
+      addSphere(neckRoot, ctx, [sign * r * 0.34, headSize * 1.08, r * 0.86], r * 0.09);
+      [-1, 1].forEach(row => addCylinder(neckRoot, ctx, [sign * r * 0.55, headSize * (0.82 + row * 0.08), r * 1.08], r * 0.025, r * 0.025, r * 1.45, 6, [Math.PI / 2, 0, sign * (0.58 + row * 0.14)]));
+      addCone(neckRoot, ctx, [sign * r * 0.5, headSize * 1.6, r * 0.2], r * 0.15, r * 1.1, 6, [-0.3, 0, sign * 0.3]);
+      [0.34, 0.62].forEach((height, i) => addCone(neckRoot, ctx, [sign * r * (0.54 + i * 0.04), headSize * 1.55 + r * height, r * 0.2], r * 0.045, r * 0.5, 6, [-0.08, 0, sign * (0.78 + i * 0.16)]));
+    });
+  } else if (species.form === 'avian') {
+    addCone(neckRoot, ctx, [0, headSize + 0.04, headSize * 1.05], headSize * 0.46, species.bodyHeight * (species.kind === 'crane' ? 0.18 : 0.14), 7, [Math.PI / 2, 0, 0]);
+  }
   spineRoot.add(neckRoot);
 
   // 尾巴
@@ -377,6 +527,7 @@ export function buildExportCreatureGroup(
       legGroup.position.set(leg.pos[0], leg.pos[1], leg.pos[2]);
       legGroup.rotation.set(leg.rot[0], leg.rot[1], leg.rot[2]);
       addMesh(legGroup, new THREE.CylinderGeometry(legRadius * 0.7, legRadius, legLen, 8), ctx, [0, -legLen * 0.5, 0]);
+      [-1, 0, 1].forEach(toe => addCone(legGroup, ctx, [toe * legRadius * 0.26, -legLen - legRadius * 0.08, legRadius * 0.6], legRadius * 0.18, legRadius * 0.56, 6, [Math.PI / 2, 0, toe * 0.18]));
       root.add(legGroup);
     });
   } else if (species.form === 'avian') {
@@ -411,6 +562,7 @@ export function buildExportCreatureGroup(
       legGroup.position.set((i === 0 ? 1 : -1) * bodyHeight * 0.2, bodyY * 0.7, 0);
       legGroup.rotation.set(rot[0], rot[1], rot[2]);
       addMesh(legGroup, new THREE.CylinderGeometry(bodyHeight * 0.06, bodyHeight * 0.08, legLen, 8), ctx, [0, -legLen * 0.5, 0]);
+      [-1, 0, 1].forEach(toe => addCone(legGroup, ctx, [toe * bodyHeight * 0.055, -legLen, bodyHeight * 0.09], bodyHeight * 0.028, bodyHeight * 0.11, 6, [Math.PI / 2, 0, toe * 0.54]));
       root.add(legGroup);
     });
   }
@@ -475,7 +627,9 @@ export function buildExportPropGroup(
       [-1, 1].forEach(x => [-1, 1].forEach(z => {
         addCylinder(root, ctx, [x * 0.72, 0.2, z * 0.28], 0.15, 0.15, 0.08, 18, [0, 0, Math.PI / 2]);
         addCylinder(root, ctx, [x * 0.765, 0.2, z * 0.28], 0.07, 0.07, 0.09, 16, [0, 0, Math.PI / 2]);
+        [0, 1, 2].forEach(i => addBox(root, ctx, [x * 0.772, 0.2, z * 0.28], [0.012, 0.19, 0.012], [0, 0, i * Math.PI / 3]));
       }));
+      [-1, 1].forEach(sign => addBox(root, ctx, [sign * 0.32, 0.45, 0.382], [0.018, 0.22, 0.018]));
       addBox(root, ctx, [0, 0.39, 0.38], [0.62, 0.08, 0.035]);
       addBox(root, ctx, [0, 0.38, -0.38], [0.54, 0.06, 0.035]);
       return root;
@@ -483,6 +637,7 @@ export function buildExportPropGroup(
     if (kind === 'rock') {
       addMesh(root, new THREE.DodecahedronGeometry(0.55, 0), ctx, [0, 0.38, 0], [0.08, 0.18, -0.12], [1.05, 0.82, 0.75]);
       addMesh(root, new THREE.DodecahedronGeometry(0.35, 0), ctx, [0.22, 0.56, 0.08], [0.1, -0.35, 0.18], [0.52, 0.36, 0.4]);
+      [0, 1, 2].forEach(i => addBox(root, ctx, [-0.2 + i * 0.18, 0.65 - i * 0.08, 0.43], [0.22, 0.018, 0.018], [0, 0, -0.55 + i * 0.28]));
       return root;
     }
     if (kind === 'crate') {
@@ -504,6 +659,7 @@ export function buildExportPropGroup(
   if (actor.type === 'prop-cylinder') {
     if (kind === 'tree') {
       addCylinder(root, ctx, [0, 0.68, 0], 0.12, 0.18, 1.35, 12);
+      Array.from({ length: 5 }).forEach((_, i) => addBox(root, ctx, [0, 0.42 + i * 0.18, 0.145], [0.028, 0.16, 0.018], [0.08, 0, (i % 2 === 0 ? 1 : -1) * 0.12]));
       [0, 1, 2].forEach(i => addSphere(root, ctx, [(i - 1) * 0.18, 1.42 + (i % 2) * 0.12, (i % 2) * 0.1], 0.45 - i * 0.03, [1, 0.82, 1]));
       [-0.08, 0.08].forEach(x => addCylinder(root, ctx, [x, 1.05, 0.08], 0.025, 0.04, 0.46, 8, [0.8, 0, x > 0 ? -0.55 : 0.55]));
       return root;
@@ -515,6 +671,7 @@ export function buildExportPropGroup(
     if (kind === 'bike') {
       [-1, 1].forEach(sign => {
         addTorus(root, ctx, [sign * 0.42, 0.34, 0], 0.22, 0.018);
+        [0, 1, 2, 3].forEach(i => addBox(root, ctx, [sign * 0.42, 0.34, 0], [0.01, 0.39, 0.01], [0, 0, i * Math.PI / 4]));
         addCylinder(root, ctx, [sign * 0.42, 0.34, 0], 0.045, 0.045, 0.035, 12, [Math.PI / 2, 0, 0]);
       });
       [
@@ -533,7 +690,21 @@ export function buildExportPropGroup(
     if (kind === 'mic') {
       addCylinder(root, ctx, [0, 0.48, 0], 0.025, 0.025, 0.86, 10);
       addSphere(root, ctx, [0, 0.93, 0], 0.12);
+      [0, 1, 2].forEach(i => addTorus(root, ctx, [0, 0.91 + i * 0.035, 0], 0.104 - i * 0.01, 0.004, [Math.PI / 2, 0, 0]));
       addCylinder(root, ctx, [0, 0.08, 0], 0.22, 0.22, 0.04, 18);
+      return root;
+    }
+    if (kind === 'pillar') {
+      addCylinder(root, ctx, [0, 0.5, 0], 0.18, 0.2, 1, 18);
+      [0.08, 0.5, 0.92].forEach((y, i) => addTorus(root, ctx, [0, y, 0], 0.2, i === 1 ? 0.012 : 0.024, [Math.PI / 2, 0, 0]));
+      addCylinder(root, ctx, [0, 1.04, 0], 0.26, 0.22, 0.12, 18);
+      return root;
+    }
+    if (kind === 'candle') {
+      addCylinder(root, ctx, [0, 0.28, 0], 0.07, 0.08, 0.56, 16);
+      addCone(root, ctx, [0, 0.6, 0], 0.09, 0.22, 14, [0, 0, Math.PI]);
+      addSphere(root, ctx, [0, 0.62, 0], 0.045);
+      addCylinder(root, ctx, [0, 0.02, 0], 0.16, 0.16, 0.04, 18);
       return root;
     }
     if (kind === 'stool') {
@@ -582,6 +753,11 @@ export function buildExportPropGroup(
       addBox(root, ctx, [0, 1, 0.085], [0.055, 1.42, 0.035]);
       return root;
     }
+    if (kind === 'wall') {
+      Array.from({ length: 5 }).forEach((_, i) => addBox(root, ctx, [0, 0.28 + i * 0.36, 0.065], [1.52, 0.028, 0.03]));
+      [-0.48, 0, 0.48].forEach(x => addBox(root, ctx, [x, 1, 0.07], [0.028, 1.58, 0.026]));
+      return root;
+    }
     if (kind === 'screen') {
       addBox(root, ctx, [0, 1, 0.04], [1.42, 1.72, 0.025]);
       addBox(root, ctx, [0, 1.88, 0.08], [1.56, 0.055, 0.04]);
@@ -614,4 +790,23 @@ export function buildExportPropGroup(
   }
 
   return root;
+}
+
+export function buildDirector3DActorGroup(
+  actor: LinghuiDirector3DActor,
+  ctx: ExportGeometryContext,
+): THREE.Group {
+  if (actor.type === 'mannequin') {
+    return buildExportMannequinGroup(actor, ctx);
+  }
+  if (actor.type === 'mannequin-lite') {
+    return buildExportLiteMannequinGroup(actor, ctx);
+  }
+  if (actor.type === 'formation') {
+    return buildExportFormationGroup(actor, ctx);
+  }
+  if (actor.type === 'creature') {
+    return buildExportCreatureGroup(actor, ctx);
+  }
+  return buildExportPropGroup(actor, ctx);
 }

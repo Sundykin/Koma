@@ -1,5 +1,29 @@
 # Findings
 
+## 2026-05-13 Director3D Unified Render Pipeline
+
+- 导出视频模型和画布模型不一致的根因是渲染管线被拆成了两套：画布 actor 使用 `Director3DMannequin` / `Director3DLiteMannequin` / `Director3DFormation` / `Director3DCreature` / `Director3DProp` 等 r3f JSX 组件，视频/截图导出则在 `CaptureRenderer` 中通过 `director3dExportGeometry.ts` 的 vanilla three.js 构建器重新拼一遍。
+- `exportDirector3DTimelineVideo()` 逐帧调用 `viewport.captureCurrentView({ sceneOverride: frameScene })`，所以时间轴视频导出实际也走 `CaptureRenderer` 的离屏构建路径。只要 JSX 组件与 `director3dExportGeometry.ts` 不同步，导出视频就会和画布不同。
+- 首次把 R3F 画布也切到 `<primitive object={group}>` 后，用户反馈无法选中假人且样式变化。根因是 primitive 内部非 React 子树的事件命中/冒泡不如原 JSX 组件稳定，并且共享 builder 使用统一材质会丢掉 JSX 组件里的分件材质。
+- 修正后策略调整为：画布继续使用原有 JSX actor 组件，恢复选中、接地圈和原预览样式；离屏截图/视频导出使用共享 `buildDirector3DActorGroup()`，并把导出细节补齐到接近画布结构。交互正确性优先于把画布也强行塞进 vanilla builder。
+- 选择圈、拖拽手柄、高度球和旋转环继续留在 `ActorDragLayer` 交互层；导出 builder 只生成实体模型，避免编辑器控件进入导出画面。
+- 共享 builder 补齐了主角正面/背面识别细节、lite 群演和 formation 成员细节，使导出不再只靠旧的低保真复刻。后续动物/道具/人物细节应继续改这个共享 builder，而不是恢复 JSX/导出双实现。
+- Electron UI 烟测遵守项目规约：没有打开普通浏览器，使用 `http://127.0.0.1:9333` 的 DevTools Protocol websocket 验证当前 Electron 页面在线；当前页面停在项目列表，未进入 3D 工作台，因此只记录为端口/页面级烟测。
+
+## 2026-05-12 Director3D Procedural Model Refinement
+
+- Electron 自定义调试端口在 `electron/main.ts` 中配置：开发模式下读取 `KOMA_ELECTRON_REMOTE_DEBUGGING_PORT`，默认 `9333`，并打印 `chrome-devtools-mcp browser-url=http://127.0.0.1:${port}`。后续可视化验证不能打开普通前端 URL，应连接这个 DevTools 协议端口。
+- 当前分支工作树起步为干净状态，上一批导出/模型增强已经在当前代码中。
+- 外部开源模型目录 `director3dOpenModelCatalog.ts` 仅作为 reference/procedural-ready 元信息存在；`Director3DNodeEditor` 当前左侧 tab 只有 characters / creatures / cameras / props / templates，没有直接展示外部模型库入口，符合“外部模型库先隐藏”。
+- `Director3DProp.tsx` 与 `director3dExportGeometry.ts` 的 `propKind()` 标签识别不完全一致。导出里能识别“车厢、山巅岩、圆台、云台”，视口里可能回退为普通几何，造成所见和导出不一致。
+- 四足动物和龙的腿目前挂在 root，不随 spine group。优点是脚更贴地，但在大幅 spine/飞行动作里容易产生躯干与四肢脱节观感，需要增加肩/胯连接件或调整层级表达。
+- 本轮公开资料只用于参考画法与骨架表达思路：Three.js `SkeletonHelper` 的父子骨骼可视化、Kenney 低多边角色包的 blocky silhouette、MakeHuman 的人体比例/骨骼来源说明、Khronos glTF sample assets 的 skinned/rigged 资产结构。未下载、导入、打包任何外部模型或贴图。
+- 可视化验证边界：`127.0.0.1:9333/json/version` 当前连接失败，说明 Electron 未运行；按用户要求没有打开普通浏览器 URL。下一次需要真实画面验证时应先启动 `npm run dev` 或 Electron dev 命令，再连接该 remote debugging 端口。
+- 后续用户要求“现在就开始并写入项目规约”后，当前 Electron 已在 `127.0.0.1:9333` 监听。通过 CDP 读取到页面 target `Koma - 漫剧创作工具`，并确认 DOM 来自 Electron renderer。`AGENTS.md` 与 `CLAUDE.md` 已写入禁止普通浏览器 UI 验证、必须使用 Electron remote debugging 端口的规约。
+- `Maximum update depth exceeded` 的日志根因在 `Director3DNodeEditor -> Popover -> Field -> Slider -> SliderTooltip -> Tooltip -> Trigger -> Popup -> Portal`。Director3D 右侧属性面板本身是 AntD Popover，Slider 默认 tooltip 又会开一个 portal，AntD 6 下两层 portal/trigger 在该浮层场景里会递归更新。
+- 修复策略是只关闭 Director3D 属性面板里的 Slider tooltip portal：朝向、骨骼微调、缩放、FOV 统一设置 `tooltip={{ open: false }}`；FOV 改用行内角度文本显示，避免丢失数值反馈。
+- Electron CDP 9333 实测：打开已有 `3D 导演工作台` 节点、打开右侧属性 Popover、拖动 FOV 滑块后，DOM 中 `.ant-slider-tooltip` 数量为 0，未出现 `Maximum update depth`、`Cannot read properties of null` 或 `popoverEventBlockers`。
+
 ## 2026-05-10 Storyboard Image Mode
 
 - 故事板模式应复用现有分镜引用 bundle，而不是新增独立上传/引用协议。这样 `@storyboard_anchor` / `@previous_storyboard_anchor` 会和角色、场景、道具、用户参考图共享同一个 references 顺序，并由 `compileShotPromptToBundle()` 统一编译成 `@Image N`。
@@ -392,3 +416,14 @@
 - 对动物同理，四足动物需要按物种分“肉掌/蹄/鹿角/胡须/狮尾/飞羽”等结构分支；否则即使头身对齐，也会像统一低模生物换色。
 - 继续检查发现导出链路是独立 vanilla three.js 构建器，不能只改 R3F 视口组件；否则工作台显示已细化，但导出的线稿参考图、时间轴首帧和下游图片/视频参考仍然是旧占位几何。
 - 因此结构化模型需要同时覆盖 `Director3DProp` / `Director3DCreatureMesh` 和 `director3dExportGeometry`，并用导出几何测试防止 CaptureRenderer 回退。
+
+## 2026-05-13 Director3D Entity Combinations + Direct Transform
+
+- 现有 `LinghuiDirector3DActor.position` 已经是 `[x,y,z]`，其中 Y 是高度；用户说“没有 z 轴高度”本质是 UI 没有显式把 Y 作为高度控制暴露出来，视口拖拽也只在水平 X/Z 平面移动。
+- 当前 `ActorDragLayer` 已在 R3F Canvas 内用 live camera 做 ray-plane 求交。它把 `planeY = actor.position[1]` 固定住，所以拖拽物体本体只改变 X/Z 且保持高度，这是正确基础；新增高度和旋转应作为单独 gizmo 模式，不破坏本体拖拽。
+- 组合实体最小风险方案是给 actor 增加 `groupId/groupRole/groupLabel` 元数据，仍然保存绝对坐标；移动/旋转时在编辑器层对同组 actors 应用 delta。这样不需要 nested parent transform，离屏导出和 timeline 插值基本不被重构。
+- `sit` rig 当前 hip/knee 都是强负角，视觉上容易腿向后折；骑马还需要单独 `ride` rig，髋部外展、膝盖弯曲、躯干微前倾，不能复用普通坐姿。
+
+- 实现后确认：人骑马组合不需要 nested transform；使用 group 元数据能让编辑器做组合联动，同时保留导出 / timeline 对 actor 世界坐标的既有假设。
+- 旋转 pivot 应优先用 groupRole=`mount` 的坐骑位置，而不是选中骑手自身位置；否则选中骑手旋转时马会绕人转，物理关系不对。
+- 视口高度操控应保持和现有拖拽一样只在 pointerup 提交，pointermove 只更新 R3F 局部 preview，避免每帧 updateNodeData 造成全局重渲染。
