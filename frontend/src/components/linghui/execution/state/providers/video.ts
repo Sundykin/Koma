@@ -34,7 +34,7 @@ import {
 import { getVideoCapabilityDescriptor } from '../../../editors/state/videoCapabilityUtils';
 import { persistMediaAsset } from '../../../../../services/mediaPersistenceService';
 import {
-  executeWithProviderFallback,
+  executeSingleProviderWithRetry,
   summarizeProviderFallbackMetadata,
   withProviderFallbackMetadata,
   type LinghuiProviderFallbackCandidate,
@@ -410,7 +410,10 @@ export async function generateVideoWithProvider(params: {
     });
   }
 
-  const execution = await executeWithProviderFallback({
+  // 视频执行严禁跨 Provider 降级：用户选了哪个渠道就只用哪个，失败如实抛错。
+  // 同一 Provider 上的瞬时抖动（网络 / 5xx）由 executeSingleProviderWithRetry 内部
+  // 指数退避重试消化（默认 2 次），不会变成静默切换到别的视频渠道。
+  const execution = await executeSingleProviderWithRetry({
     mediaLabel: '视频',
     category: 'itv',
     capability: params.capability,
