@@ -67,13 +67,16 @@ function Director3DNodeInner({ id, data, selected }: NodeProps) {
     '--linghui-progress': `${runState?.progress ?? 0}%`,
   });
 
-  const handleOpenEditor = useCallback(() => {
+  const handleOpenEditor = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
     interactionApi.openNodeEditor(id);
   }, [interactionApi, id]);
 
   return (
     <div
-      className={`linghuiCompactNode nopan ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''}`}
+      className={`linghuiCompactNode linghuiDirector3DNode nopan ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''}`}
+      data-node-preview-area="true"
       data-view-mode={viewMode}
       style={nodeStyle}
       {...interactionHandlers}
@@ -87,6 +90,7 @@ function Director3DNodeInner({ id, data, selected }: NodeProps) {
       >
         {isVideoOutput ? (
           <video
+            className="linghuiDirector3DCompactVideo"
             src={timelineVideoUrl}
             poster={timelineVideoPoster}
             muted
@@ -94,7 +98,6 @@ function Director3DNodeInner({ id, data, selected }: NodeProps) {
             playsInline
             controls
             draggable={false}
-            style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }}
           />
         ) : lineartDataUrl ? (
           <img src={lineartDataUrl} alt="lineart" draggable={false} />
@@ -107,21 +110,33 @@ function Director3DNodeInner({ id, data, selected }: NodeProps) {
       </div>
 
       <div className="linghuiCompactInfo">
-        <EditableCompactNodeLabel nodeId={id} label={nodeData.label} fallbackLabel="3D 导演" />
+        <div className="linghuiDirector3DCompactHeader">
+          <div className="linghuiDirector3DCompactTitle">
+            <span className="linghuiDirector3DCompactIcon"><Camera size={13} /></span>
+            <EditableCompactNodeLabel nodeId={id} label={nodeData.label} fallbackLabel="3D 导演" />
+          </div>
+          <span className="linghuiDirector3DCompactMode">{isVideoOutput ? '视频' : '线稿'}</span>
+        </div>
         <div className="linghuiDirector3DCompactStats" data-node-preview-area="true">
           <span><Users size={11} /> {scene.actors.length} 人</span>
           <span><Camera size={11} /> {Math.round(scene.camera.fov)}° · {scene.camera.aspectRatio}</span>
           <span><ImageIcon size={11} /> {scene.background.mode === 'panorama' ? '全景' : scene.background.mode === 'image-plane' ? '图片' : scene.background.mode === 'color' ? '纯色' : '空'}</span>
         </div>
-        <button
-          type="button"
-          className="linghuiDirector3DOpenButton"
-          onClick={handleOpenEditor}
-          title="打开 3D 导演工作台进行编辑"
-        >
-          <Maximize2 size={12} />
-          <span>打开工作台</span>
-        </button>
+        <div className="linghuiDirector3DActionRow" data-node-preview-area="true">
+          <span className="linghuiDirector3DDragHint">拖动卡片空白区移动节点</span>
+          <button
+            type="button"
+            className="linghuiDirector3DOpenButton nodrag nopan"
+            onPointerDown={event => event.stopPropagation()}
+            onMouseDown={event => event.stopPropagation()}
+            onClick={handleOpenEditor}
+            title="打开 3D 导演工作台进行编辑"
+            aria-label="打开 3D 导演工作台"
+          >
+            <Maximize2 size={13} />
+            <span>工作台</span>
+          </button>
+        </div>
         <LinghuiNodeRunError runState={runState} />
         {status === 'running' && (
           <div className="linghuiCompactProgress">

@@ -142,7 +142,7 @@ export function useLinghuiCanvasNodeInteractions({
     setPendingGroupFrame,
   ]);
 
-  const isInteractiveNodeTarget = useCallback((target: EventTarget | null): boolean => {
+  const isPointerInteractiveNodeTarget = useCallback((target: EventTarget | null): boolean => {
     const element = target as HTMLElement | null;
     if (!element) return false;
 
@@ -152,11 +152,21 @@ export function useLinghuiCanvasNodeInteractions({
       element.closest('.linghuiNodeEditorMainSurface') ||
       element.closest('.linghuiEditorPanel') ||
       element.closest('.react-flow__handle') ||
-      // 节点上标注的「预览区」：点这里只看产物，不展开编辑器（Director3D 节点用）
-      element.closest('[data-node-preview-area="true"]') ||
       element.closest('button, input, textarea, select, a, [role="button"], [contenteditable="true"]'),
     );
   }, []);
+
+  const isClickInteractiveNodeTarget = useCallback((target: EventTarget | null): boolean => {
+    const element = target as HTMLElement | null;
+    if (!element) return false;
+
+    return Boolean(
+      isPointerInteractiveNodeTarget(target) ||
+      // 节点上标注的「预览区」：点这里只看产物，不展开编辑器；
+      // 但它不能阻止 pointer down，否则大面积缩略图区无法作为拖拽起点。
+      element.closest('[data-node-preview-area="true"]'),
+    );
+  }, [isPointerInteractiveNodeTarget]);
 
   const applyPendingDragMovement = useCallback(() => {
     const activePress = activePressRef.current;
@@ -225,7 +235,7 @@ export function useLinghuiCanvasNodeInteractions({
   const bindNodeSurface = useCallback((nodeId: string) => ({
     onPointerDown: (event: ReactPointerEvent<HTMLElement>) => {
       if (event.button !== 0) return;
-      if (isInteractiveNodeTarget(event.target)) return;
+      if (isPointerInteractiveNodeTarget(event.target)) return;
 
       clearActivePress();
       const pointerId = event.pointerId;
@@ -317,7 +327,7 @@ export function useLinghuiCanvasNodeInteractions({
     cancelDragFrame,
     clearActivePress,
     emitSnapshot,
-    isInteractiveNodeTarget,
+    isPointerInteractiveNodeTarget,
     onNodeDragStart,
     onNodeDragStop,
     scheduleDragFrame,
@@ -351,7 +361,7 @@ export function useLinghuiCanvasNodeInteractions({
   }, [openContextMenuAt, reactFlow, setNodes, setPendingGroupFrame]);
 
   const handleNodeClick = useCallback((event: ReactMouseEvent, node: Node) => {
-    if (isInteractiveNodeTarget(event.target)) {
+    if (isClickInteractiveNodeTarget(event.target)) {
       return;
     }
     if (
@@ -371,7 +381,7 @@ export function useLinghuiCanvasNodeInteractions({
     setPendingGroupFrame(null);
     closeContextMenu();
     openNodeEditor(node.id);
-  }, [closeContextMenu, isInteractiveNodeTarget, openNodeEditor, setPendingGroupFrame]);
+  }, [closeContextMenu, isClickInteractiveNodeTarget, openNodeEditor, setPendingGroupFrame]);
 
   const handlePaneClick = useCallback(() => {
     setEditorSelection(null);
