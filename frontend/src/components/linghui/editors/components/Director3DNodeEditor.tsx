@@ -81,6 +81,7 @@ import { toDirector3DColorInputValue } from '../../director3d/director3dColors';
 import { Director3DViewport, type Director3DViewportHandle } from '../../director3d/Director3DViewport';
 import { useLinghuiNodeEditorApi, useLinghuiNodeMutation } from '../../nodes/state/LinghuiNodeRunsContext';
 import { toFileSystemDisplayUrl } from '../../../../services/fileSystemPort';
+import { persistMediaAsset } from '../../../../services/mediaPersistenceService';
 import { getLinghuiResultPrimaryMedia } from '../../../../types/linghui';
 
 interface Director3DNodeEditorProps {
@@ -985,7 +986,31 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
       return;
     }
     const modeLabel = RENDER_MODE_LABELS[renderModeForExport];
-    // 把 dataUrl 写到节点 properties，方便下游图片节点直接拿来当参考。
+
+    // 关键：落盘成 koma-local URL，否则下游 @-ref 系统拒绝 data: URL，导致
+    // 图片导出后无法被下游图片/视频节点引用（视频流之所以能用，是因为时间轴导出
+    // 走 ffmpeg 已经写到文件了）。落盘失败兜底回 dataUrl，至少 UI 缩略图还能预览。
+    let persistedSource = dataUrl;
+    try {
+      const stored = await persistMediaAsset({
+        projectId: 'linghui',
+        kind: 'image',
+        source: dataUrl,
+        mimeType: 'image/png',
+        provider: 'director3d-local',
+        metadata: { nodeId, slot: 'lineart', origin: 'director3d-capture', renderMode: renderModeForExport },
+      });
+      if (stored.localPath) {
+        persistedSource = toFileSystemDisplayUrl(stored.localPath) ?? stored.localPath;
+      }
+    } catch (error) {
+      // 落盘失败不阻塞导出 —— 缩略图仍可预览，下游 @-ref 拿不到时再让用户手动 Run 节点走执行落盘
+      message.warning('线稿落盘失败，下游可能无法直接引用，请尝试运行节点');
+      // eslint-disable-next-line no-console
+      console.warn('[Director3D] 线稿落盘失败', error);
+    }
+
+    // 把 koma-local URL 写到节点 properties，方便下游图片节点直接拿来当参考。
     // 不同 renderMode 共享同一份 lineartDataUrl 字段（下游不感知具体风格，只需要"参考图"），
     // 但 metadata 里同时透传 exportRenderMode 用于排错与日志。
     updateNodeData(nodeId, prev => {
@@ -1005,7 +1030,7 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
           ...prev.properties,
           scene: nextScene,
           prompt: props.prompt ?? '',
-          lineartDataUrl: dataUrl,
+          lineartDataUrl: persistedSource,
           directorPromptFragment: fragment,
           exportRenderMode: renderModeForExport,
         },
