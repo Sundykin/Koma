@@ -44,7 +44,24 @@ interface PersistResult {
 
 const POLL_INTERVAL_MS = 5_000;
 const MAX_POLL_MS = 30 * 60 * 1_000;
+const SNAPSHOT_TIMEOUT_MS = 2 * 60 * 1_000;
 const PERSIST_TIMEOUT_MS = 15 * 60 * 1_000;
+
+function formatErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error || '');
+}
+
+function isAbortError(error: unknown): boolean {
+  return formatErrorMessage(error).toLowerCase() === 'aborted';
+}
+
+function isTransientSnapshotError(error: unknown): boolean {
+  const message = formatErrorMessage(error);
+  if (!message || isAbortError(error)) return false;
+  return /delegateToRenderer timeout|timed?\s*out|timeout|HTTP\s*(?:408|429|5\d\d)|\b(?:408|429|500|502|503|504)\b|Gateway|fetch failed|network|ECONN|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|上游未返回内容|查询返回非 JSON/i
+    .test(message);
+}
 
 async function sleepWithSignal(ms: number, signal: AbortSignal): Promise<void> {
   if (signal.aborted) throw new Error('aborted');
@@ -77,28 +94,44 @@ function makePollHandler(taskType: 'tti' | 'itv' | 'tts'): Parameters<typeof tas
       patch({ remoteTaskId: input.remoteTaskId });
 
       const start = Date.now();
+      let lastTransientSnapshotError: string | undefined;
       while (Date.now() - start < MAX_POLL_MS) {
         if (signal.aborted) throw new Error('aborted');
 
-        const snapshot = await delegateToRenderer<SnapshotResult>({
-          type: 'media:snapshot',
-          args: {
-            rendererHandlerType: input.rendererHandlerType,
-            remoteTaskId: input.remoteTaskId,
-            channelId: input.channelId,
-            modelId: input.modelId,
-            capability: input.capability,
-            selection: input.selection,
-          },
-          signal,
-          timeoutMs: 30_000,
-        });
+        let snapshot: SnapshotResult;
+        try {
+          snapshot = await delegateToRenderer<SnapshotResult>({
+            type: 'media:snapshot',
+            args: {
+              rendererHandlerType: input.rendererHandlerType,
+              remoteTaskId: input.remoteTaskId,
+              channelId: input.channelId,
+              modelId: input.modelId,
+              capability: input.capability,
+              selection: input.selection,
+            },
+            signal,
+            timeoutMs: SNAPSHOT_TIMEOUT_MS,
+          });
+          lastTransientSnapshotError = undefined;
+        } catch (error) {
+          if (signal.aborted || isAbortError(error)) throw error;
+          if (!isTransientSnapshotError(error)) throw error;
+          lastTransientSnapshotError = formatErrorMessage(error);
+          await sleepWithSignal(POLL_INTERVAL_MS, signal);
+          continue;
+        }
 
         if (typeof snapshot.progress === 'number') {
           onProgress(snapshot.progress);
         }
 
         if (snapshot.state === 'failed') {
+          if (isTransientSnapshotError(snapshot.error)) {
+            lastTransientSnapshotError = snapshot.error || '查询任务状态失败';
+            await sleepWithSignal(POLL_INTERVAL_MS, signal);
+            continue;
+          }
           throw new Error(snapshot.error || '生成失败');
         }
         if (snapshot.state === 'succeeded') {
@@ -125,7 +158,9 @@ function makePollHandler(taskType: 'tti' | 'itv' | 'tts'): Parameters<typeof tas
         await sleepWithSignal(POLL_INTERVAL_MS, signal);
       }
 
-      throw new Error('任务超时');
+      throw new Error(lastTransientSnapshotError
+        ? `任务超时，最近一次查询失败: ${lastTransientSnapshotError}`
+        : '任务超时');
     },
   };
 }
@@ -138,3 +173,11 @@ export function registerMediaPollHandlers(): void {
   taskRunner.registerHandler(makePollHandler('itv'));
   taskRunner.registerHandler(makePollHandler('tts'));
 }
+
+export function __createMediaPollHandlerForTesting(taskType: 'tti' | 'itv' | 'tts') {
+  return makePollHandler(taskType);
+}
+
+export const __mediaPollConstantsForTesting = {
+  SNAPSHOT_TIMEOUT_MS,
+};
