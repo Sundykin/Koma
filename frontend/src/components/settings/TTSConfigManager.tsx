@@ -110,7 +110,7 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
     loadConfigs,
   } = useMediaConfigManager<TTSModelConfig>('tts', loadBuiltins, onConfigChange);
 
-  const showChannelConfigCreateEntry = import.meta.env.DEV;
+  const showChannelConfigCreateEntry = false;
 
   const currentProviderType = Form.useWatch('providerType', form) as string | undefined;
   const currentDefinition = currentProviderType ? definitionMap.get(currentProviderType) : undefined;
