@@ -12,14 +12,11 @@ import type { TTIProvider, TTIRequest, ImageResult } from './types';
 import { safeFetch } from '../../utils/safeFetch';
 import { buildChannelAuthRequest } from '../channel/auth';
 import { createLogger } from '../../store/logger';
-import { electronService } from '../../services/electronService';
-import { base64ToBytes, parseDataUrl } from '../../utils/encoding';
 import { sanitizeBodyForLog } from '../../utils/logFormatting';
 
 const logger = createLogger('Grok2ApiImagineTTI');
 
 const GROK2API_MAX_BATCH_IMAGES = 10;
-const GROK2API_LITE_MAX_EDIT_BATCH_IMAGES = 4;
 
 // Grok2API 上游 _ALLOWED_SIZES（grok2api/app/products/openai/router.py:213）唯一接受这一组：
 // 1280x720 / 720x1280 / 1792x1024 / 1024x1792 / 1024x1024。
@@ -94,16 +91,6 @@ type ChatCompletionsResponse = {
   }>;
 };
 
-function extFromMime(mimeType: string): string {
-  const m = mimeType.toLowerCase();
-  if (m.includes('png')) return 'png';
-  if (m.includes('jpeg') || m.includes('jpg')) return 'jpg';
-  if (m.includes('webp')) return 'webp';
-  if (m.includes('gif')) return 'gif';
-  return 'bin';
-}
-
-
 function joinUrl(baseUrl: string, path: string): string {
   const b = baseUrl.replace(/\/+$/, '');
   const p = path.startsWith('/') ? path : `/${path}`;
@@ -114,10 +101,6 @@ function clampCount(value: unknown, max: number): number {
   const normalized = Number(value);
   if (!Number.isFinite(normalized)) return 1;
   return Math.max(1, Math.min(max, Math.floor(normalized)));
-}
-
-function isLiteImageModel(modelName: string): boolean {
-  return /(?:^|[-_\s])lite(?:$|[-_\s])/i.test(modelName);
 }
 
 function extractMarkdownUrls(text: string): string[] {
@@ -336,10 +319,6 @@ export class Grok2ApiImagineTTIProvider implements TTIProvider {
       : resolveGenSize(request.options, this.config.defaultSize);
     const generationCount = clampCount(request.count, GROK2API_MAX_BATCH_IMAGES);
     const chatCount = clampCount(request.count, GROK2API_MAX_BATCH_IMAGES);
-    const editCount = clampCount(
-      request.count,
-      isLiteImageModel(modelName) ? GROK2API_LITE_MAX_EDIT_BATCH_IMAGES : GROK2API_MAX_BATCH_IMAGES,
-    );
 
     // 1) No references: call OpenAI-compatible images generation endpoint
     if (!hasRefs) {
@@ -386,189 +365,70 @@ export class Grok2ApiImagineTTIProvider implements TTIProvider {
       return { mode: 'immediate', output: createImmediateImageResult(images) };
     }
 
-    // 2) With references:
-    // Some deployments/proxies may not support multipart reliably. Try JSON-body edit first.
+    // 2) With references: 单走 chat/completions 这条路。
+    // 之前 chat/edit 失败时会悄悄回落到 /v1/images/edits multipart——但 multipart 路径在
+    // komaapi 上同样要绕 _normalize_edit_size、还要先 IPC 下载远程图到临时目录，
+    // 一旦 IPC 失败错误信息变成"文件下载失败"而不是真实的上游错误，定位起来非常痛苦。
+    // 与视频侧"零容忍降级"策略对齐：失败如实抛出，上层（executeSingleProviderWithRetry）
+    // 在同一 provider 内做指数退避重试，不再静默换条路。
     const refsAll = request.references || [];
     const refs = refsAll.slice(0, 3);
     const prompt = dropOverflowImageTags(request.prompt, refs.length);
 
-    try {
-      const content = [
-        { type: 'text', text: prompt },
-        ...refs.map(r => ({ type: 'image_url', image_url: { url: r.value } })),
-      ];
+    const content = [
+      { type: 'text', text: prompt },
+      ...refs.map(r => ({ type: 'image_url', image_url: { url: r.value } })),
+    ];
 
-      // 带参考图：上游 chat/completions 命中 image_to_image alias 走 grok-imagine-image-edit，
-      // image_config.size 由 _normalize_edit_size 强制为 1024x1024，发别的会 400 — 索性老老实实送 1024x1024。
-      const size = resolveSize();
-      const body: Record<string, any> = {
-        model: modelName,
-        stream: false,
-        messages: [{ role: 'user', content }],
-        image_config: {
-          n: chatCount,
-          size,
-        },
-      };
-
-      if (debugBody) {
-        logger.info('TTI chat(edit) request body', {
-          provider: this.config.provider,
-          ...(protocol ? { promptProtocol: protocol } : undefined),
-          size,
-          requestedAspectRatio: request.options?.aspectRatio,
-          defaultSize: this.config.defaultSize,
-          body: sanitizeBodyForLog(body),
-        });
-      }
-
-      const resp = await safeFetch(joinUrl(this.config.baseUrl || '', '/v1/chat/completions'), {
-        method: 'POST',
-        headers: {
-          ...this.getJsonHeaders(),
-          ...(debugBody ? { 'x-koma-debug-body': '1' } : undefined),
-          ...(debugBody ? { 'x-koma-trace-operation': 'tti.chat.edit' } : undefined),
-        },
-        body: JSON.stringify(body),
-      });
-      const raw = await resp.text();
-      if (!resp.ok) throw new Error(`chat/edit failed (${resp.status}): ${raw.slice(0, 600)}`);
-
-      let data: ChatCompletionsResponse;
-      try {
-        data = JSON.parse(raw) as ChatCompletionsResponse;
-      } catch {
-        throw new Error(`chat/edit non-json: ${raw.slice(0, 600)}`);
-      }
-
-      const images = findMediaUrlsDeep(data, this.config.baseUrl || '')
-        .map(url => ({ path: url, url } satisfies ImageResult));
-      if (!images.length) throw new Error('chat/edit has no media url');
-      return { mode: 'immediate', output: createImmediateImageResult(images) };
-    } catch (err: any) {
-      logger.warn('TTI chat(edit) failed; falling back to images/edits multipart', {
-        provider: this.config.provider,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-
-    // 2.2) Fallback: use /v1/images/edits (multipart)
-    // 上游 _normalize_edit_size 硬编码 1024x1024，其他值 400。直接送 1024x1024 避免回落失败。
-    const editSize = resolveSize();
-    const form = new FormData();
-    form.append('model', modelName);
-    form.append('prompt', prompt);
-    form.append('n', String(editCount));
-    form.append('size', editSize);
-
-    // 先收集所有有效 refs（解析字节），再按数量决定字段名，避免循环里失败导致字段错乱。
-    const validRefs: Array<{ bytes: Uint8Array; mimeType: string; index: number }> = [];
-    for (let i = 0; i < refs.length; i += 1) {
-      const ref = refs[i];
-      if (!ref?.value) continue;
-
-      let mimeType = ref.mimeType || 'image/png';
-      let bytes: Uint8Array | null = null;
-
-      if (ref.value.startsWith('data:')) {
-        const parsed = parseDataUrl(ref.value);
-        mimeType = parsed.mimeType || mimeType;
-        bytes = parsed.bytes;
-      } else if (ref.transport === 'remote-url') {
-        // Edits endpoint expects file parts; for remote URLs we best-effort download to temp first.
-        if (!electronService.isElectron()) {
-          throw new Error('当前环境无法处理 remote-url 参考图，请改用 data-url 或在 Electron 环境中运行');
-        }
-        const tmpDir = await electronService.app.getPath('temp');
-        const tmpPath = `${tmpDir.replace(/\/+$/, '')}/koma-grok2api-edit-${Date.now()}-${i}.bin`;
-        const dl = await electronService.fs.downloadFile(ref.value, tmpPath);
-        if (!dl?.success) throw new Error(`下载参考图失败: ${ref.value}`);
-        const base64 = await electronService.fs.readFileAsBase64(tmpPath);
-        bytes = base64ToBytes(base64);
-        // Best-effort cleanup (ignore errors)
-        electronService.fs.remove(tmpPath).catch(() => {});
-      } else {
-        // data-url is expected for local assets; if we reach here it's likely a filesystem path or other
-        throw new Error(`不支持的参考图输入: ${ref.transport}:${ref.value}`);
-      }
-
-      if (bytes && bytes.length > 0) {
-        validRefs.push({ bytes, mimeType, index: i });
-      }
-    }
-
-    // 防御：到这里有 refsAll 但 validRefs 为空，意味着所有 ref 解析失败 / value 为空。
-    // 如果继续发空 multipart，上游会 422 'Field required: image[]'，错误信息让人无法定位。
-    // 直接抛清晰错，让上层修资产引用。
-    if (validRefs.length === 0) {
-      throw new Error('所有参考图都未能解析为有效字节（请检查参考图来源是否可用）');
-    }
-
-    // 按 OpenAI 官方协议切换字段名：
-    //  - 1 张参考图 → `image`（OpenAI 单文件标准字段）
-    //  - 多张 → `image[]`（OpenAI 多文件数组语法）
-    // 之前统一用 `image[]` 依赖上游 adaptor 自动归一为 image，
-    // 但 komaapi 当前版本在单图场景报 "Field required: image[]" —— 显然没正确归一。
-    // 改成按数量切，跟 OpenAI 官方 SDK / Node SDK 行为一致，最大兼容上游。
-    const imageFieldName = validRefs.length === 1 ? 'image' : 'image[]';
-    for (const item of validRefs) {
-      const filename = `image${item.index + 1}.${extFromMime(item.mimeType)}`;
-      form.append(imageFieldName, new Blob([item.bytes], { type: item.mimeType }), filename);
-    }
+    // 带参考图：上游 chat/completions 命中 image_to_image alias 走 grok-imagine-image-edit，
+    // image_config.size 由 _normalize_edit_size 强制为 1024x1024，发别的会 400 — 索性老老实实送 1024x1024。
+    const size = resolveSize();
+    const body: Record<string, any> = {
+      model: modelName,
+      stream: false,
+      messages: [{ role: 'user', content }],
+      image_config: {
+        n: chatCount,
+        size,
+      },
+    };
 
     if (debugBody) {
-      logger.info('TTI edits (multipart) request', {
+      logger.info('TTI chat(edit) request body', {
         provider: this.config.provider,
         ...(protocol ? { promptProtocol: protocol } : undefined),
-        model: modelName,
-        size: resolveSize(),
+        size,
         requestedAspectRatio: request.options?.aspectRatio,
         defaultSize: this.config.defaultSize,
-        prompt,
-        images: refsAll.map((r, i) => ({
-          i: i + 1,
-          transport: r.transport,
-          mimeType: r.mimeType,
-          valuePreview: typeof r.value === 'string' ? (r.value.startsWith('data:') ? `${r.value.slice(0, 80)}...(data-url)` : r.value) : String(r.value),
-        })),
+        body: sanitizeBodyForLog(body),
       });
     }
 
-    const resp = await safeFetch(joinUrl(this.config.baseUrl || '', '/v1/images/edits'), {
+    const resp = await safeFetch(joinUrl(this.config.baseUrl || '', '/v1/chat/completions'), {
       method: 'POST',
       headers: {
-        ...this.getHeaders(),
+        ...this.getJsonHeaders(),
         ...(debugBody ? { 'x-koma-debug-body': '1' } : undefined),
-        ...(debugBody ? { 'x-koma-trace-operation': 'tti.images.edits' } : undefined),
+        ...(debugBody ? { 'x-koma-trace-operation': 'tti.chat.edit' } : undefined),
       },
-      body: form as any,
+      body: JSON.stringify(body),
     });
     const raw = await resp.text();
-    if (!resp.ok) throw new Error(`创建任务失败: ${raw.slice(0, 1200)}`);
+    if (!resp.ok) throw new Error(`创建任务失败 (chat/edit ${resp.status}): ${raw.slice(0, 600)}`);
 
-    let data: any = null;
+    let chatData: ChatCompletionsResponse;
     try {
-      data = JSON.parse(raw);
+      chatData = JSON.parse(raw) as ChatCompletionsResponse;
     } catch {
-      logger.warn('TTI images/edits response is not JSON', { preview: raw.slice(0, 1200) });
-      throw new Error('API 返回了无法识别的图片响应（images/edits，非 JSON）');
+      throw new Error(`API 返回了无法识别的图片响应（chat/edit，非 JSON）：${raw.slice(0, 600)}`);
     }
 
-    // Most deployments keep OpenAI-like shape: { data: [{url|b64_json}] }
-    let images = extractImageResultsFromGen(data as ImageGenResponse);
-    if (!images.length) {
-      images = findMediaUrlsDeep(data, this.config.baseUrl || '')
-        .map(url => ({ path: url, url } satisfies ImageResult));
+    const chatImages = findMediaUrlsDeep(chatData, this.config.baseUrl || '')
+      .map(url => ({ path: url, url } satisfies ImageResult));
+    if (!chatImages.length) {
+      throw new Error('API 返回了无法识别的图片响应（chat/edit 未发现媒体 URL）');
     }
-    if (!images.length) {
-      logger.warn('TTI images/edits response has no detectable media url', {
-        provider: this.config.provider,
-        response: sanitizeBodyForLog(data as any),
-        rawPreview: raw.slice(0, 1200),
-      });
-      throw new Error('API 返回了无法识别的图片响应（images/edits）');
-    }
-    return { mode: 'immediate', output: createImmediateImageResult(images) };
+    return { mode: 'immediate', output: createImmediateImageResult(chatImages) };
   }
 
   // Grok2API endpoints are typically immediate; keep snapshot unimplemented for now.

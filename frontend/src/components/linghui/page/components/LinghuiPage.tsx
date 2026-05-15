@@ -409,14 +409,24 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
     }
     try {
       const saved = ensureWorkspaceRuntime(await saveLinghuiWorkspace(doc));
-      activeWorkspaceRef.current = saved;
       persistedWorkspaceRef.current = saved;
-      workspaceRuntimeRef.current = {
-        nodeRuns: saved.nodeRuns,
-        executionLogs: saved.executionLogs,
-      };
       if (syncActiveWorkspace) {
+        activeWorkspaceRef.current = saved;
+        workspaceRuntimeRef.current = {
+          nodeRuns: saved.nodeRuns,
+          executionLogs: saved.executionLogs,
+        };
         setActiveWorkspace(saved);
+      } else {
+        const liveWorkspace = activeWorkspaceRef.current;
+        if (liveWorkspace?.id === saved.id) {
+          activeWorkspaceRef.current = {
+            ...liveWorkspace,
+            updatedAt: saved.updatedAt,
+          };
+        } else {
+          activeWorkspaceRef.current = saved;
+        }
       }
       setLastSavedAt(saved.updatedAt);
       if (shouldRefreshWorkspaceList) {
@@ -528,6 +538,35 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
       refreshWorkspaceList: false,
     });
   }, [applyWorkspaceRuntime, scheduleWorkspaceSave]);
+
+  const patchWorkspaceExecution = useCallback((
+    runPatches?: Record<string, LinghuiNodeRunState>,
+    logEntries?: LinghuiExecutionLogEntry[],
+  ): LinghuiWorkspaceRuntimeState => {
+    const current = activeWorkspaceRef.current;
+    const currentRuntime = workspaceRuntimeRef.current;
+    if (!current) {
+      return currentRuntime;
+    }
+
+    const hasRunPatches = runPatches && Object.keys(runPatches).length > 0;
+    const nextRuns = hasRunPatches
+      ? {
+          ...currentRuntime.nodeRuns,
+          ...runPatches,
+        }
+      : currentRuntime.nodeRuns;
+    let nextLogs = currentRuntime.executionLogs;
+    for (const entry of logEntries ?? []) {
+      nextLogs = mergeExecutionLogs(nextLogs, entry);
+    }
+
+    updateWorkspaceExecution(nextRuns, nextLogs);
+    return {
+      nodeRuns: nextRuns,
+      executionLogs: nextLogs,
+    };
+  }, [updateWorkspaceExecution]);
 
   const markNodesAsStale = useCallback((nodeIds: string[], reason: string) => {
     const context = canvasRef.current?.getExecutionContext();
@@ -674,8 +713,43 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
       return;
     }
 
-    let nextRuns = { ...current.nodeRuns };
-    let nextLogs = [...current.executionLogs];
+    let nextRuns = { ...workspaceRuntimeRef.current.nodeRuns };
+    let nextLogs = [...workspaceRuntimeRef.current.executionLogs];
+
+    // 上一次执行如果遇到 React 树崩溃或意外中断，nodeRuns 里可能留有 'running' 残影，
+    // 而 executionBatchesRef 已经清空（finally 块在 Promise 链里仍会跑）。
+    // 这种"孤儿 running"会把后续生图（特别是图片节点）卡在"仍在执行中"分支里，
+    // 直到 RUNNING_NODE_BLOCK_WINDOW_MS（10 分钟轮询 + 60s 宽限）过去。
+    // 这里在没有任何活跃执行批次时主动降级为 'stale'，让用户立刻能重新触发。
+    if (executionBatchesRef.current.size === 0) {
+      let sanitizedCount = 0;
+      const sanitizedRuns: Record<string, LinghuiNodeRunState> = {};
+      for (const [nodeId, runState] of Object.entries(nextRuns)) {
+        if (runState?.status === 'running') {
+          sanitizedRuns[nodeId] = {
+            ...runState,
+            status: 'stale',
+            progress: undefined,
+            message: '上次执行已中断，可重新运行。',
+            updatedAt: Date.now(),
+          };
+          sanitizedCount += 1;
+        } else {
+          sanitizedRuns[nodeId] = runState;
+        }
+      }
+      if (sanitizedCount > 0) {
+        workflowLogger.warn('灵绘执行入口：清理孤儿 running 状态', {
+          sanitizedCount,
+          orphanedNodeIds: Object.entries(nextRuns)
+            .filter(([, state]) => state?.status === 'running')
+            .map(([id]) => id),
+        });
+        nextRuns = sanitizedRuns;
+        updateWorkspaceExecution(nextRuns, nextLogs);
+      }
+    }
+
     const nodeSnapshotMap = new Map(context.nodes.map(node => [node.id, node]));
     let runningNodeBlocks;
     try {
@@ -703,11 +777,11 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
         targetNodeIds: runnableTargetNodeIds ?? targetNodeIds,
         runningNodeBlocks,
       });
-      nextLogs = mergeExecutionLogs(
-        nextLogs,
+      const patchedRuntime = patchWorkspaceExecution(undefined, [
         createLog('warn', content, firstRunning.nodeId),
-      );
-      updateWorkspaceExecution(nextRuns, nextLogs);
+      ]);
+      nextRuns = { ...patchedRuntime.nodeRuns };
+      nextLogs = [...patchedRuntime.executionLogs];
       message.warning(content);
       canvasRef.current?.focusNodes([firstRunning.nodeId], { select: true });
       return;
@@ -719,6 +793,8 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
     setRunning(true);
 
     try {
+      const batchBaselineRuns = { ...nextRuns };
+      const batchTouchedNodeIds = new Set<string>();
       workflowLogger.info('灵绘开始执行工作流', {
         targetNodeIds: runnableTargetNodeIds ?? targetNodeIds,
         resolveTargetsOnly: options?.resolveTargetsOnly ?? false,
@@ -727,21 +803,25 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
       const result = await executeLinghuiWorkflow({
         context,
         targetNodeIds: runnableTargetNodeIds ?? targetNodeIds,
-        previousRuns: current.nodeRuns,
+        previousRuns: batchBaselineRuns,
         resolveTargetsOnly: options?.resolveTargetsOnly,
         signal: abortController.signal,
         // workspaceId 当 projectId 兜底，节点执行会进统一任务面板
         workspaceId: activeWorkspaceRef.current?.id,
         onNodeStateChange(nodeId, nextState) {
+          batchTouchedNodeIds.add(nodeId);
           nextRuns = {
             ...nextRuns,
             [nodeId]: nextState,
           };
-          updateWorkspaceExecution(nextRuns, nextLogs);
+          const patchedRuntime = patchWorkspaceExecution({ [nodeId]: nextState });
+          nextRuns = { ...patchedRuntime.nodeRuns };
+          nextLogs = [...patchedRuntime.executionLogs];
         },
         onLog(entry) {
-          nextLogs = mergeExecutionLogs(nextLogs, entry);
-          updateWorkspaceExecution(nextRuns, nextLogs);
+          const patchedRuntime = patchWorkspaceExecution(undefined, [entry]);
+          nextRuns = { ...patchedRuntime.nodeRuns };
+          nextLogs = [...patchedRuntime.executionLogs];
         },
         onQueueChange(queue) {
           executionQueuesRef.current.set(abortController, queue);
@@ -756,50 +836,86 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
         failedNodeIds: result.queue.failedNodeIds,
         canceledNodeIds: result.queue.canceledNodeIds,
       });
-      nextRuns = finalRuns;
-      updateWorkspaceExecution(nextRuns, nextLogs);
+      const finalRunPatches: Record<string, LinghuiNodeRunState> = {};
+      for (const nodeId of batchTouchedNodeIds) {
+        const runState = finalRuns[nodeId];
+        if (runState) {
+          finalRunPatches[nodeId] = runState;
+        }
+      }
+      const patchedRuntime = patchWorkspaceExecution(finalRunPatches);
+      nextRuns = { ...patchedRuntime.nodeRuns };
+      nextLogs = [...patchedRuntime.executionLogs];
 
       const completedNodeIds = new Set(result.queue.completedNodeIds);
-      const historyCandidates = Object.entries(finalRuns).filter(([nodeId, runState]) => (
-        completedNodeIds.has(nodeId) &&
-        runState.status === 'succeeded' &&
-        Boolean(runState.result) &&
-        (runState.updatedAt ?? 0) > (current.nodeRuns[nodeId]?.updatedAt ?? 0)
-      ));
+      const historyCandidates = [...completedNodeIds].flatMap(nodeId => {
+        const runState = finalRuns[nodeId];
+        if (
+          runState?.status === 'succeeded' &&
+          runState.result &&
+          (runState.updatedAt ?? 0) > (batchBaselineRuns[nodeId]?.updatedAt ?? 0)
+        ) {
+          return [[nodeId, runState] as const];
+        }
+        return [];
+      });
 
       if (current.id && historyCandidates.length > 0) {
-        const historyResults = await Promise.allSettled(historyCandidates.map(async ([nodeId, runState]) => {
+        const historyResults = await Promise.all(historyCandidates.map(async ([nodeId, runState]) => {
           const nodeSnapshot = nodeSnapshotMap.get(nodeId);
-          if (!nodeSnapshot) return null;
-          const result = await createLinghuiWorkspaceHistoryRecord({
-            workspaceId: current.id,
-            nodeId,
-            nodeData: nodeSnapshot.data,
-            nodeRun: runState,
-          });
-          return { nodeId, ...result };
+          if (!nodeSnapshot) return { status: 'skipped' as const, nodeId };
+          try {
+            const result = await createLinghuiWorkspaceHistoryRecord({
+              workspaceId: current.id,
+              nodeId,
+              nodeData: nodeSnapshot.data,
+              nodeRun: runState,
+            });
+            return { status: 'fulfilled' as const, nodeId, ...result };
+          } catch (error) {
+            return {
+              status: 'rejected' as const,
+              nodeId,
+              nodeLabel: nodeSnapshot.data.label,
+              nodeType: nodeSnapshot.data.linghuiType,
+              error,
+            };
+          }
         }));
 
         let hasHistoryMutate = false;
-        let hasRunMaterialization = false;
+        const materializedRunPatches: Record<string, LinghuiNodeRunState> = {};
 
         for (const outcome of historyResults) {
-          if (outcome.status !== 'fulfilled' || !outcome.value) continue;
+          if (outcome.status === 'rejected') {
+            const errorMessage = outcome.error instanceof Error ? outcome.error.message : String(outcome.error);
+            workflowLogger.warn('灵绘历史结果落盘失败', {
+              nodeId: outcome.nodeId,
+              nodeLabel: outcome.nodeLabel,
+              nodeType: outcome.nodeType,
+              error: errorMessage,
+            });
+            const patchedHistoryErrorRuntime = patchWorkspaceExecution(undefined, [
+              createLog('warn', `历史结果落盘失败：${outcome.nodeLabel || outcome.nodeId} · ${errorMessage}`, outcome.nodeId),
+            ]);
+            nextRuns = { ...patchedHistoryErrorRuntime.nodeRuns };
+            nextLogs = [...patchedHistoryErrorRuntime.executionLogs];
+            continue;
+          }
+          if (outcome.status !== 'fulfilled') continue;
           hasHistoryMutate = true;
-          if (outcome.value.materializedRun) {
-            nextRuns = {
-              ...nextRuns,
-              [outcome.value.nodeId]: outcome.value.materializedRun,
-            };
-            hasRunMaterialization = true;
+          if (outcome.materializedRun) {
+            materializedRunPatches[outcome.nodeId] = outcome.materializedRun;
           }
         }
 
         if (hasHistoryMutate) {
           handleHistoryLibraryMutate();
         }
-        if (hasRunMaterialization) {
-          updateWorkspaceExecution(nextRuns, nextLogs);
+        if (Object.keys(materializedRunPatches).length > 0) {
+          const patchedMaterializedRuntime = patchWorkspaceExecution(materializedRunPatches);
+          nextRuns = { ...patchedMaterializedRuntime.nodeRuns };
+          nextLogs = [...patchedMaterializedRuntime.executionLogs];
         }
       }
 
@@ -835,8 +951,11 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
         error: error?.message || String(error),
       });
       const failureMessage = error?.message || '执行灵绘工作流失败';
-      nextLogs = mergeExecutionLogs(nextLogs, createLog('error', failureMessage));
-      updateWorkspaceExecution(nextRuns, nextLogs);
+      const patchedRuntime = patchWorkspaceExecution(undefined, [
+        createLog('error', failureMessage),
+      ]);
+      nextRuns = { ...patchedRuntime.nodeRuns };
+      nextLogs = [...patchedRuntime.executionLogs];
       message.error(failureMessage);
     } finally {
       executionBatchesRef.current.delete(abortController);
@@ -847,7 +966,7 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
       }
       canvasRef.current?.notifyMutation();
     }
-  }, [handleHistoryLibraryMutate, message, recomputeExecutionQueue, updateWorkspaceExecution]);
+  }, [handleHistoryLibraryMutate, message, patchWorkspaceExecution, recomputeExecutionQueue, updateWorkspaceExecution]);
 
   const openDrawer = useCallback(async (drawer: LinghuiLibraryDrawerKey) => {
     setProjectPanelOpen(false);

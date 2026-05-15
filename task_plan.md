@@ -1,5 +1,38 @@
 # Task Plan
 
+## Session: 2026-05-14 Linghui Media Remote URL Flow
+
+### Goal
+- 优化灵绘图片/视频节点的图床上传数据流：生成节点已有远程 URL 时，下游按渠道需求直接复用，不再反复触发上传。
+- 把本地落盘文件和远程地址作为同一媒体资产的结构化元数据流转，只有纯本地文件或远程链接失效时才上传。
+
+### Scope
+- `frontend/src/components/linghui/execution/state/**`
+- `frontend/src/components/linghui/editors/state/linghuiPromptReferences.ts`
+- `frontend/src/services/mediaRemoteUrlService.ts`
+- `frontend/src/services/mediaAssetResolver.ts`
+- 相关测试
+
+### Phases
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Data Flow Recovery | complete | 复查灵绘生成落盘、引用收集、提示词编译、provider request 映射 |
+| 2. Structured Asset Flow | complete | 让灵绘媒体引用携带 `StoredMediaAsset`，避免降级成纯本地字符串 |
+| 3. Upload Reuse Rules | complete | 确认远程 URL 优先、失效再传、纯本地文件才上传 |
+| 4. Regression Coverage | complete | 补目标测试覆盖下游复用已存远程 URL |
+| 5. Validation | complete | 跑目标测试、TypeScript 和 diff check |
+
+### Acceptance Criteria
+- 灵绘图片生成结果保存本地文件时保留同一媒体的 `remoteUrl`。
+- 下游图片/视频节点引用上游图片时，provider remote-url 模式优先使用已保存 remoteUrl。
+- 本地文件只有没有 remoteUrl、或 remoteUrl 确认失效时才触发图床上传。
+- 提示词 `@` 引用与静默上游引用都不应把结构化媒体资产压成纯字符串。
+- 不回滚当前工作区中其它未提交改动。
+
+### Error Log
+| Error | Attempt | Resolution |
+|------|---------|------------|
+
 ## Session: 2026-05-13 Director3D Unified Render Pipeline
 
 ### Goal

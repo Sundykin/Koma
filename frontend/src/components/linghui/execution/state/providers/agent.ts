@@ -1,4 +1,4 @@
-import type { AppSettings } from '../../../../../types';
+import type { AppSettings, MediaAssetSource } from '../../../../../types';
 import { buildLLMConfigFromContext, resolveConfiguredChannelModel } from '../../../../../providers/channel/resolver';
 import {
   cancelStream,
@@ -43,11 +43,11 @@ function bytesToDataUrl(bytes: Uint8Array, mimeType: string): string {
   return `data:${mimeType};base64,${btoa(binary)}`;
 }
 
-async function resolveAgentImageParts(imageSources: string[]): Promise<ContentPart[]> {
+async function resolveAgentImageParts(imageSources: MediaAssetSource[]): Promise<ContentPart[]> {
   const parts: ContentPart[] = [];
 
   for (const source of imageSources) {
-    const resolved = await resolveProviderAssetInput(source);
+    const resolved = await resolveProviderAssetInput(source, { preferLocalFile: true });
     if (!resolved) {
       throw new Error('Agent 节点无法读取上游图片参考，请确认图片文件仍可访问');
     }
@@ -79,7 +79,7 @@ export async function runAgentWithProvider(params: {
   llmSelection?: string;
   enabledTools?: string[];
   maxIterations?: number;
-  imageSources?: string[];
+  imageSources?: MediaAssetSource[];
   inputTextCount?: number;
   settingsSnapshot?: AppSettings;
   onChunk?: (delta: string, accumulated: string) => void;
@@ -110,7 +110,9 @@ export async function runAgentWithProvider(params: {
     : [];
   const maxIterations = Math.max(1, Number(params.maxIterations ?? 6));
   const imageSources = Array.isArray(params.imageSources)
-    ? params.imageSources.map(source => String(source).trim()).filter(Boolean)
+    ? params.imageSources
+        .map(source => (typeof source === 'string' ? source.trim() : source))
+        .filter(source => (typeof source === 'string' ? Boolean(source) : Boolean(source)))
     : [];
   const imageParts = await resolveAgentImageParts(imageSources);
   const inputContent: string | ContentPart[] = imageParts.length > 0

@@ -59,6 +59,7 @@ import { runWithTask } from '../../../../services/taskRunner';
 import type { TaskSubType } from '../../../../services/TaskManager';
 import { persistMediaAsset } from '../../../../services/mediaPersistenceService';
 import { toFileSystemDisplayUrl } from '../../../../services/fileSystemPort';
+import { buildLinghuiVisualSourceKey } from '../../utils/linghuiMediaAssetSource';
 
 const imageExecutionLogger = createLogger('LinghuiImageExecution');
 
@@ -765,6 +766,10 @@ export async function executeImageNode(
   const prompt = String(node.properties.prompt ?? '').trim();
   const ttiSelection = String(node.properties.ttiSelection ?? '');
   const batchCount = Math.max(1, Math.min(4, Number(node.properties.batchCount ?? 1)));
+  // 画布 UI 选的比例 / 分辨率以前在执行器这层就被丢了 —— provider 永远拿不到用户的选择。
+  // 这里收集起来，下面所有 generateImageWithProvider / 批量调用统一透传到 provider.start。
+  const aspectRatio = String(properties.aspectRatio ?? '').trim() || undefined;
+  const resolution = String(properties.resolution ?? '').trim() || undefined;
   const multiAngleConfig = properties.multiAngle?.enabled === true
     ? {
         endpointPath: properties.multiAngle.endpointPath,
@@ -836,6 +841,8 @@ export async function executeImageNode(
       prompt: explicitPrompt,
       referenceSources: upstreamReferenceSources,
       ttiSelection,
+      aspectRatio,
+      resolution,
       promptReferences: [],
       settingsSnapshot: node.settingsSnapshot,
       multiAngle: multiAngleConfig,
@@ -865,6 +872,8 @@ export async function executeImageNode(
       sharedParams: {
         referenceSources,
         ttiSelection,
+        aspectRatio,
+        resolution,
         promptReferences,
         settingsSnapshot: node.settingsSnapshot,
         onProgress,
@@ -899,6 +908,8 @@ export async function executeImageNode(
     prompt: effectivePrompt,
     referenceSources,
     ttiSelection,
+    aspectRatio,
+    resolution,
     promptReferences,
     settingsSnapshot: node.settingsSnapshot,
     onProgress,
@@ -1247,7 +1258,12 @@ export async function executeVideoNode(
   }
 
   const primaryReferenceSource = resolvedSources.primaryImageSource || resolvedSources.startFrameSource;
-  const primaryReferenceId = promptReferences.find(item => item.source === primaryReferenceSource)?.id;
+  const primaryReferenceKey = buildLinghuiVisualSourceKey(primaryReferenceSource);
+  const primaryReferenceId = primaryReferenceKey
+    ? promptReferences.find(item => (
+        buildLinghuiVisualSourceKey(item.source) === primaryReferenceKey
+      ))?.id
+    : undefined;
   const effectivePrompt = mergePromptWithTextInputs(prompt || node.title, textSnippets);
 
   const video = await generateVideoWithProvider({

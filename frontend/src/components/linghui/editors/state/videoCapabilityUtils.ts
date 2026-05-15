@@ -18,13 +18,13 @@ export interface VideoCapabilityDescriptor {
   emptyStateHint: string;
 }
 
-export interface ResolvedVideoCapabilitySources {
-  visualSources: string[];
-  primaryImageSource?: string;
-  additionalReferenceSources: string[];
-  referenceImageSources: string[];
-  startFrameSource?: string;
-  endFrameSource?: string;
+export interface ResolvedVideoCapabilitySources<TSource = string> {
+  visualSources: TSource[];
+  primaryImageSource?: TSource;
+  additionalReferenceSources: TSource[];
+  referenceImageSources: TSource[];
+  startFrameSource?: TSource;
+  endFrameSource?: TSource;
 }
 
 export const VIDEO_CAPABILITY_ORDER: LinghuiVideoCapability[] = [
@@ -123,15 +123,40 @@ export function getVideoCapabilityDescriptor(
   return VIDEO_CAPABILITY_DESCRIPTORS[resolved];
 }
 
-export function resolveVideoCapabilitySources(
+function buildVisualSourceKey(source: unknown): string {
+  if (!source) return '';
+  if (typeof source === 'string') return source.trim();
+  if (typeof source === 'object' && 'transport' in source && 'value' in source) {
+    const providerInput = source as { transport?: unknown; value?: unknown };
+    return `${String(providerInput.transport ?? '')}:${String(providerInput.value ?? '')}`;
+  }
+  if (typeof source === 'object') {
+    const asset = source as { remoteUrl?: unknown; localPath?: unknown };
+    return String(asset.remoteUrl || asset.localPath || JSON.stringify(source));
+  }
+  return String(source);
+}
+
+function normalizeVisualSources<TSource>(visualSources: TSource[]): TSource[] {
+  const normalized: TSource[] = [];
+  const seen = new Set<string>();
+
+  for (const source of visualSources) {
+    const candidate = typeof source === 'string' ? source.trim() : source;
+    const key = buildVisualSourceKey(candidate);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    normalized.push(candidate as TSource);
+  }
+
+  return normalized;
+}
+
+export function resolveVideoCapabilitySources<TSource = string>(
   capability: LinghuiVideoCapability,
-  visualSources: string[],
-): ResolvedVideoCapabilitySources {
-  const normalized = Array.from(new Set(
-    visualSources
-      .map(source => String(source || '').trim())
-      .filter(Boolean),
-  ));
+  visualSources: TSource[],
+): ResolvedVideoCapabilitySources<TSource> {
+  const normalized = normalizeVisualSources(visualSources);
 
   if (capability === 'video.text-to-video') {
     return {
@@ -169,7 +194,7 @@ export function resolveVideoCapabilitySources(
 
 export function getVideoCapabilityInputError(
   capability: LinghuiVideoCapability,
-  sources: ResolvedVideoCapabilitySources,
+  sources: ResolvedVideoCapabilitySources<unknown>,
 ): string | undefined {
   if (capability === 'video.text-to-video') {
     return undefined;

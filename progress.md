@@ -1,5 +1,33 @@
 # Progress Log
 
+## Session: 2026-05-14 Linghui Media Remote URL Flow
+
+### Phase 1: Data Flow Recovery
+- **Status:** complete
+- Actions taken:
+  - 使用 `pi-planning-with-files` 技能记录本轮复杂修复。
+  - 读取现有计划/发现/进度文件，确认上一轮上传去重已完成但本轮需要修复更上游的结构化媒体流转问题。
+  - 确认当前工作区已有多处未提交改动，本轮只做灵绘媒体上传复用相关的局部修改。
+
+### Phases 2-4: Structured Asset Flow and Tests
+- **Status:** complete
+- Actions taken:
+  - 新增 `linghuiMediaAssetSource.ts`，把 `LinghuiMediaItem.metadata.persist.localPath/remoteUrl` 还原成 `StoredMediaAsset`。
+  - `collectReferenceSources()`、`collectVideoPosterSources()`、`collectLinghuiPromptReferenceImageSources()` 改为保留结构化 `MediaAssetSource`，不再把灵绘媒体压成纯字符串。
+  - 图片 provider 的 Grok `image-index` 路径在 remote-url 归一化后改为 remote-first 解析，避免已有 remoteUrl 的资产再次变成本地 data-url。
+  - 视频 provider、Agent 图片输入和视频能力分配同步接受结构化媒体源；首尾帧/参考生视频继续把对象传给 `mapVideoRequestToProviderRequest()`。
+  - 补测试覆盖上游图片 persist 元数据保留、图片节点批量引用传递结构化资产、Grok 图片索引协议复用已落盘 remoteUrl。
+
+### Phase 5: Validation
+- **Status:** complete
+- Validation:
+  - `npm run test -- --run src/components/linghui/execution/tests/linghuiExecutionShared.test.ts src/components/linghui/execution/tests/linghuiExecutionImageNode.test.ts src/components/linghui/execution/tests/linghuiExecutionProviders.test.ts`：3 files / 26 tests passed。
+  - `npm run test -- --run src/services/mediaRemoteUrlService.test.ts src/services/promptCompilation/videoRequestCompiler.test.ts src/components/linghui/editors/tests/videoCapabilityUtils.test.ts`：3 files / 26 tests passed。
+  - `npm run test -- --run src/components/linghui/execution/tests/linghuiExecutionVideoNode.test.ts`：1 file / 3 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json`（frontend）：passed。
+  - `npx tsc --noEmit --project tsconfig.json`（root）：passed。
+  - `git diff --check`：passed。
+
 ## Session: 2026-05-13 Director3D Unified Render Pipeline
 
 ### Phases 1-4: Diagnosis and Fix

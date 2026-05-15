@@ -1,5 +1,13 @@
 # Findings
 
+## 2026-05-14 Linghui Media Remote URL Flow
+
+- 当前需要从数据模型层修复灵绘上传复用：前一轮已做请求内去重和远程 URL 缓存，但如果灵绘媒体引用在执行流中只传 `media.source` 字符串，下游仍然看不到 `metadata.persist.remoteUrl`，会按本地文件重新进入上传/缓存检测。
+- 关键方向：灵绘媒体结果仍可用本地 `source` 方便 UI 展示，但执行/提示词引用应把 `metadata.persist.localPath` 与 `metadata.persist.remoteUrl` 还原为 `StoredMediaAsset` 后传给 provider 映射层。
+- `LinghuiMediaItem.metadata.persist` 现有结构足够作为最小数据模型，不需要迁移节点 schema；新增工具把它还原成 `StoredMediaAsset`，使 `source` 字符串继续服务 UI，执行链路服务 provider。
+- Grok `image-index` 图片协议在归一化 remote URL 后必须用 remote-first 解析 provider reference；否则 `StoredMediaAsset(localPath + remoteUrl)` 会被 `preferLocalFile=true` 重新解析成本地 data-url，等于绕回原问题。
+- 视频节点的能力分配也必须保留结构化 source。`resolveVideoCapabilitySources()` 改成泛型后，图生视频/参考生视频/首尾帧视频不会把对象 source 字符串化，后续 `mapVideoRequestToProviderRequest()` 可直接复用资产 remoteUrl。
+
 ## 2026-05-13 Director3D Unified Render Pipeline
 
 - 导出视频模型和画布模型不一致的根因是渲染管线被拆成了两套：画布 actor 使用 `Director3DMannequin` / `Director3DLiteMannequin` / `Director3DFormation` / `Director3DCreature` / `Director3DProp` 等 r3f JSX 组件，视频/截图导出则在 `CaptureRenderer` 中通过 `director3dExportGeometry.ts` 的 vanilla three.js 构建器重新拼一遍。

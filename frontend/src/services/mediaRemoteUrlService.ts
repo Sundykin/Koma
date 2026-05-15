@@ -60,6 +60,14 @@ type RemoteUrlCacheLookupResult =
 const remoteUrlInflightUploads = new Map<string, Promise<string | undefined>>();
 const remoteUrlAccessibilityCache = new Map<string, Promise<boolean>>();
 
+// 缓存文件采用「内存为真，磁盘为副本」：
+// - 同一项目所有读写都走内存 map，避免并发 readFile/writeFile 撕裂（之前 JSON.parse 失败的来源）。
+// - 磁盘持久化按项目串行排队，单文件不会并发被 fs.promises.writeFile 截断。
+// - 文件被截断到 0 字节（上次写到一半崩了）时，按空缓存处理，不再抛"Unexpected end of JSON input"。
+const remoteUrlCacheStateByProject = new Map<string, RemoteUrlCacheFile>();
+const remoteUrlCacheLoadPromiseByProject = new Map<string, Promise<RemoteUrlCacheFile>>();
+const remoteUrlCachePersistChainByProject = new Map<string, Promise<void>>();
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -168,7 +176,7 @@ async function getRemoteUrlCachePath(projectId: string): Promise<string> {
   return `${projectPath}/${REMOTE_URL_CACHE_PATH}`;
 }
 
-async function readRemoteUrlCache(projectId: string): Promise<RemoteUrlCacheFile> {
+async function loadRemoteUrlCacheFromDisk(projectId: string): Promise<RemoteUrlCacheFile> {
   if (!electronService.isElectron()) {
     return { version: REMOTE_URL_CACHE_SCHEMA_VERSION, entries: {} };
   }
@@ -179,7 +187,12 @@ async function readRemoteUrlCache(projectId: string): Promise<RemoteUrlCacheFile
     if (!exists) {
       return { version: REMOTE_URL_CACHE_SCHEMA_VERSION, entries: {} };
     }
-    return normalizeCacheFile(JSON.parse(await electronService.fs.readFile(cachePath)));
+    const raw = await electronService.fs.readFile(cachePath);
+    // 上次写盘被截断到 0 字节时，readFile 返回 '' / 空白，直接当空缓存处理。
+    if (!raw || !raw.trim()) {
+      return { version: REMOTE_URL_CACHE_SCHEMA_VERSION, entries: {} };
+    }
+    return normalizeCacheFile(JSON.parse(raw));
   } catch (error) {
     logger.warn('读取远程图片 URL 缓存失败，忽略缓存', {
       projectId,
@@ -189,20 +202,62 @@ async function readRemoteUrlCache(projectId: string): Promise<RemoteUrlCacheFile
   }
 }
 
-async function writeRemoteUrlCache(projectId: string, cache: RemoteUrlCacheFile): Promise<void> {
-  if (!electronService.isElectron()) return;
+async function readRemoteUrlCache(projectId: string): Promise<RemoteUrlCacheFile> {
+  const cached = remoteUrlCacheStateByProject.get(projectId);
+  if (cached) return cached;
 
-  try {
-    const cachePath = await getRemoteUrlCachePath(projectId);
-    const parent = cachePath.slice(0, cachePath.lastIndexOf('/'));
-    await electronService.fs.mkdir(parent);
-    await electronService.fs.writeFile(cachePath, JSON.stringify(cache, null, 2));
-  } catch (error) {
+  let loading = remoteUrlCacheLoadPromiseByProject.get(projectId);
+  if (!loading) {
+    loading = loadRemoteUrlCacheFromDisk(projectId).then(loaded => {
+      // 加载完成时若内存里已有别处写入的新版本，以内存为准。
+      const existing = remoteUrlCacheStateByProject.get(projectId);
+      if (existing) return existing;
+      remoteUrlCacheStateByProject.set(projectId, loaded);
+      return loaded;
+    });
+    remoteUrlCacheLoadPromiseByProject.set(projectId, loading);
+    void loading.finally(() => {
+      remoteUrlCacheLoadPromiseByProject.delete(projectId);
+    });
+  }
+  return loading;
+}
+
+async function persistRemoteUrlCacheToDisk(projectId: string, cache: RemoteUrlCacheFile): Promise<void> {
+  if (!electronService.isElectron()) return;
+  const cachePath = await getRemoteUrlCachePath(projectId);
+  const parent = cachePath.slice(0, cachePath.lastIndexOf('/'));
+  await electronService.fs.mkdir(parent);
+  await electronService.fs.writeFile(cachePath, JSON.stringify(cache, null, 2));
+}
+
+// Test helper: 单元测试在 beforeEach 里通过它清空模块级内存缓存，避免跨用例污染。
+export function __resetMediaRemoteUrlCacheForTests(): void {
+  remoteUrlCacheStateByProject.clear();
+  remoteUrlCacheLoadPromiseByProject.clear();
+  remoteUrlCachePersistChainByProject.clear();
+  remoteUrlInflightUploads.clear();
+  remoteUrlAccessibilityCache.clear();
+}
+
+function writeRemoteUrlCache(projectId: string, cache: RemoteUrlCacheFile): Promise<void> {
+  // 内存立刻可见：后续 readRemoteUrlCache 拿到的就是这份最新值。
+  remoteUrlCacheStateByProject.set(projectId, cache);
+  if (!electronService.isElectron()) return Promise.resolve();
+
+  const previous = remoteUrlCachePersistChainByProject.get(projectId) ?? Promise.resolve();
+  const next = previous.then(() => {
+    // 链尾用 map 里最新值刷盘，中间多次写入会被合并。
+    const latest = remoteUrlCacheStateByProject.get(projectId) ?? cache;
+    return persistRemoteUrlCacheToDisk(projectId, latest);
+  }).catch(error => {
     logger.warn('写入远程图片 URL 缓存失败', {
       projectId,
       error: stringifyUploadError(error),
     });
-  }
+  });
+  remoteUrlCachePersistChainByProject.set(projectId, next);
+  return next;
 }
 
 function withTimeoutSignal<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
