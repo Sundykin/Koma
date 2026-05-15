@@ -9,6 +9,7 @@ import {
   DIRECTOR3D_PROP_LIBRARY,
   DIRECTOR3D_SCENE_TEMPLATES,
   createDirector3DCharacter,
+  createDirector3DRidingHorse,
 } from './director3dScene';
 
 describe('C-5A 内置资产库', () => {
@@ -39,6 +40,19 @@ describe('C-5A 内置资产库', () => {
     const actor = createDirector3DCharacter(preset, { id: 'a2', scale: 2.0, color: 'crimson' });
     expect(actor.scale).toBe(2.0);
     expect(actor.color).toBe('crimson');
+  });
+
+  it('createDirector3DRidingHorse 生成骑手和马，并用 groupId 绑定', () => {
+    const combo = createDirector3DRidingHorse({ groupId: 'ride_1', position: [2, 0, -1], rotationY: Math.PI / 2 });
+    expect(combo).toHaveLength(2);
+    const horse = combo.find(actor => actor.groupRole === 'mount');
+    const rider = combo.find(actor => actor.groupRole === 'rider');
+    expect(horse?.type).toBe('creature');
+    expect(horse?.species).toBe('horse');
+    expect(rider?.type).toBe('mannequin');
+    expect(rider?.rig).toBeDefined();
+    expect(new Set(combo.map(actor => actor.groupId))).toEqual(new Set(['ride_1']));
+    expect(rider?.position[1]).toBeGreaterThan(horse?.position[1] ?? 0);
   });
 
   it('道具库 20+ 个，按 5 个 category 分类，id 唯一', () => {

@@ -15,7 +15,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { App, Button, InputNumber, Popover, Slider, Tooltip } from 'antd';
 import { useNodes } from '@xyflow/react';
 import type { Node } from '@xyflow/react';
-import { ArrowRight, Box, Camera, Cylinder, Eye, Grid2x2, Image as ImageIcon, Layers, LayoutTemplate, Link2, Maximize2, Minimize2, Plus, Square, Trash2, Users, Wand2, Zap } from 'lucide-react';
+import { ArrowRight, Box, Camera, Cylinder, Eye, Grid2x2, Image as ImageIcon, Layers, LayoutTemplate, Link2, Maximize2, Minimize2, Plus, RotateCw, Square, Trash2, Users, Wand2, Zap } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type {
   LinghuiDirector3DActor,
@@ -59,6 +59,7 @@ import {
   createDirector3DBattalion,
   createDirector3DCharacter,
   createDirector3DCreature,
+  createDirector3DRidingHorse,
   createDirector3DLiteSoldier,
   CREATURE_SPECIES_LIBRARY,
   createDirector3DProp,
@@ -80,6 +81,7 @@ import { toDirector3DColorInputValue } from '../../director3d/director3dColors';
 import { Director3DViewport, type Director3DViewportHandle } from '../../director3d/Director3DViewport';
 import { useLinghuiNodeEditorApi, useLinghuiNodeMutation } from '../../nodes/state/LinghuiNodeRunsContext';
 import { toFileSystemDisplayUrl } from '../../../../services/fileSystemPort';
+import { persistMediaAsset } from '../../../../services/mediaPersistenceService';
 import { getLinghuiResultPrimaryMedia } from '../../../../types/linghui';
 
 interface Director3DNodeEditorProps {
@@ -94,6 +96,11 @@ interface Selection {
   kind: SelectionKind;
   actorId?: string;
 }
+
+// Director3D inspector lives inside an AntD Popover. AntD Slider opens its own
+// Tooltip portal by default, and the nested Popover -> SliderTooltip portals can
+// recurse in AntD 6. Keep the value readouts inline instead.
+const DIRECTOR3D_INSPECTOR_SLIDER_TOOLTIP = { open: false } as const;
 
 const ASSET_PROPS: Array<{ id: string; label: string }> = [
   { id: 'mannequin', label: '假人' },
@@ -112,6 +119,13 @@ const CAMERA_PRESET_CATEGORY_ORDER: Director3DCameraPresetCategory[] = ['shot-si
 
 const ASPECT_RATIOS = ['16:9', '21:9', '4:3', '1:1', '9:16'];
 type Director3DAssetTab = 'props' | 'characters' | 'creatures' | 'cameras' | 'templates';
+
+function normalizeAngleRadians(value: number): number {
+  let next = value;
+  while (next > Math.PI) next -= Math.PI * 2;
+  while (next < -Math.PI) next += Math.PI * 2;
+  return next;
+}
 
 const RENDER_MODE_LABELS: Record<LinghuiDirector3DRenderMode, string> = {
   preview: '彩色',
@@ -263,6 +277,23 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
       return { ...prev, actors: [...prev.actors, creature] };
     });
   }, [updateScene]);
+
+  const handleAddRidingHorse = useCallback(() => {
+    const seq = scene.actors.filter(a => a.groupRole === 'rider').length + 1;
+    const offsetX = (seq % 2 === 1 ? 1 : -1) * 1.1 * Math.ceil(seq / 2);
+    const combo = createDirector3DRidingHorse({
+      label: `人骑马 ${seq}`,
+      position: [Number(offsetX.toFixed(2)), 0, 0],
+    });
+    const riderId = combo.find(actor => actor.groupRole === 'rider')?.id ?? combo[0]?.id ?? null;
+    updateScene(prev => {
+      return { ...prev, actors: [...prev.actors, ...combo] };
+    });
+    if (riderId) {
+      setSelection({ kind: 'actor', actorId: riderId });
+    }
+    message.success('已添加人骑马组合，可拖动任一成员整体移动 / 旋转');
+  }, [message, scene.actors, updateScene]);
 
   // 全局资产库（C-5B）：跨 workspace 用户自定义角色 / 道具
   const characterAssets = useLinghuiGlobalAssets({ kind: 'character' });
@@ -789,7 +820,62 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
 
   const handleActorChange = useCallback((actorId: string, patch: Partial<LinghuiDirector3DActor>) => {
     updateScene(prev => {
-      const nextActors = prev.actors.map(a => (a.id === actorId ? { ...a, ...patch } : a));
+      const sourceActor = prev.actors.find(a => a.id === actorId);
+      const groupId = sourceActor?.groupId;
+      const shouldMoveGroup = Boolean(groupId && patch.position);
+      const shouldRotateGroup = Boolean(groupId && typeof patch.rotationY === 'number');
+      const deltaPosition = sourceActor && patch.position
+        ? [
+            patch.position[0] - sourceActor.position[0],
+            patch.position[1] - sourceActor.position[1],
+            patch.position[2] - sourceActor.position[2],
+          ] as [number, number, number]
+        : null;
+      const deltaRotation = sourceActor && typeof patch.rotationY === 'number'
+        ? normalizeAngleRadians(patch.rotationY - sourceActor.rotationY)
+        : 0;
+      const groupMembers = groupId ? prev.actors.filter(actor => actor.groupId === groupId) : [];
+      const mountPivot = groupMembers.find(actor => actor.groupRole === 'mount')?.position;
+      const averagePivot: [number, number, number] | null = groupMembers.length > 0
+        ? [
+            groupMembers.reduce((sum, actor) => sum + actor.position[0], 0) / groupMembers.length,
+            groupMembers.reduce((sum, actor) => sum + actor.position[1], 0) / groupMembers.length,
+            groupMembers.reduce((sum, actor) => sum + actor.position[2], 0) / groupMembers.length,
+          ]
+        : null;
+      const pivot: [number, number, number] = mountPivot ?? averagePivot ?? sourceActor?.position ?? [0, 0, 0];
+      const nextActors: LinghuiDirector3DActor[] = prev.actors.map((actor): LinghuiDirector3DActor => {
+        if (actor.id === actorId && !shouldRotateGroup) return { ...actor, ...patch };
+        if (!groupId || actor.groupId !== groupId) return actor;
+        if (shouldMoveGroup && deltaPosition) {
+          return {
+            ...actor,
+            position: [
+              Number((actor.position[0] + deltaPosition[0]).toFixed(4)),
+              Number((actor.position[1] + deltaPosition[1]).toFixed(4)),
+              Number((actor.position[2] + deltaPosition[2]).toFixed(4)),
+            ] as [number, number, number],
+          };
+        }
+        if (shouldRotateGroup) {
+          const dx = actor.position[0] - pivot[0];
+          const dz = actor.position[2] - pivot[2];
+          const cos = Math.cos(deltaRotation);
+          const sin = Math.sin(deltaRotation);
+          const isSource = actor.id === actorId;
+          return {
+            ...actor,
+            ...(isSource ? patch : {}),
+            position: [
+              Number((pivot[0] + dx * cos - dz * sin).toFixed(4)),
+              isSource && patch.position ? patch.position[1] : actor.position[1],
+              Number((pivot[2] + dx * sin + dz * cos).toFixed(4)),
+            ] as [number, number, number],
+            rotationY: normalizeAngleRadians(actor.rotationY + deltaRotation),
+          };
+        }
+        return actor;
+      });
       const tl = prev.timeline;
       // 时间轴还没启用（无关键帧）→ 仅静态修改，不自动加帧
       if (!tl || tl.keyframes.length === 0) {
@@ -798,22 +884,29 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
       const nextActor = nextActors.find(a => a.id === actorId);
       if (!nextActor) return { ...prev, actors: nextActors };
       const t = Math.max(0, Math.min(tl.duration, Number(currentTime.toFixed(3))));
-      const scope = `actor:${actorId}` as const;
-      // 永远 ensure 自己 scope 的关键帧，不再去碰 scene 帧 —— 让图层真正独立
-      const existing = tl.keyframes.find(k => k.scope === scope && Math.abs(k.time - t) < 0.02);
-      const snapshot = snapshotActorAsKeyframeActor(nextActor);
+      const changedActorIds = groupId && (shouldMoveGroup || shouldRotateGroup)
+        ? nextActors.filter(actor => actor.groupId === groupId).map(actor => actor.id)
+        : [actorId];
       let nextKeyframes = tl.keyframes;
-      if (existing) {
-        nextKeyframes = nextKeyframes.map(k => (k.id === existing.id ? { ...k, actors: [snapshot] } : k));
-      } else {
-        const newKf: LinghuiDirector3DKeyframe = {
-          id: `kf_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 5)}`,
-          time: t,
-          scope,
-          actors: [snapshot],
-          camera: prev.camera,
-        };
-        nextKeyframes = [...nextKeyframes, newKf].sort((a, b) => a.time - b.time);
+      for (const changedActorId of changedActorIds) {
+        const actorForSnapshot = nextActors.find(actor => actor.id === changedActorId);
+        if (!actorForSnapshot) continue;
+        const scope = `actor:${changedActorId}` as const;
+        // 永远 ensure 自己 scope 的关键帧，不再去碰 scene 帧 —— 让图层真正独立
+        const existing = nextKeyframes.find(k => k.scope === scope && Math.abs(k.time - t) < 0.02);
+        const snapshot = snapshotActorAsKeyframeActor(actorForSnapshot);
+        if (existing) {
+          nextKeyframes = nextKeyframes.map(k => (k.id === existing.id ? { ...k, actors: [snapshot] } : k));
+        } else {
+          const newKf: LinghuiDirector3DKeyframe = {
+            id: `kf_${Date.now().toString(36)}_${changedActorId}_${Math.random().toString(36).slice(2, 5)}`,
+            time: t,
+            scope,
+            actors: [snapshot],
+            camera: prev.camera,
+          };
+          nextKeyframes = [...nextKeyframes, newKf].sort((a, b) => a.time - b.time);
+        }
       }
       return {
         ...prev,
@@ -827,8 +920,18 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
     handleActorChange(actorId, { position });
   }, [handleActorChange]);
 
+  const handleActorRotate = useCallback((actorId: string, rotationY: number) => {
+    handleActorChange(actorId, { rotationY });
+  }, [handleActorChange]);
+
   const handleDeleteActor = useCallback((actorId: string) => {
-    updateScene(prev => ({ ...prev, actors: prev.actors.filter(a => a.id !== actorId) }));
+    updateScene(prev => {
+      const actor = prev.actors.find(a => a.id === actorId);
+      if (!actor?.groupId) {
+        return { ...prev, actors: prev.actors.filter(a => a.id !== actorId) };
+      }
+      return { ...prev, actors: prev.actors.filter(a => a.groupId !== actor.groupId) };
+    });
     setSelection({ kind: null });
   }, [updateScene]);
 
@@ -883,7 +986,31 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
       return;
     }
     const modeLabel = RENDER_MODE_LABELS[renderModeForExport];
-    // 把 dataUrl 写到节点 properties，方便下游图片节点直接拿来当参考。
+
+    // 关键：落盘成 koma-local URL，否则下游 @-ref 系统拒绝 data: URL，导致
+    // 图片导出后无法被下游图片/视频节点引用（视频流之所以能用，是因为时间轴导出
+    // 走 ffmpeg 已经写到文件了）。落盘失败兜底回 dataUrl，至少 UI 缩略图还能预览。
+    let persistedSource = dataUrl;
+    try {
+      const stored = await persistMediaAsset({
+        projectId: 'linghui',
+        kind: 'image',
+        source: dataUrl,
+        mimeType: 'image/png',
+        provider: 'director3d-local',
+        metadata: { nodeId, slot: 'lineart', origin: 'director3d-capture', renderMode: renderModeForExport },
+      });
+      if (stored.localPath) {
+        persistedSource = toFileSystemDisplayUrl(stored.localPath) ?? stored.localPath;
+      }
+    } catch (error) {
+      // 落盘失败不阻塞导出 —— 缩略图仍可预览，下游 @-ref 拿不到时再让用户手动 Run 节点走执行落盘
+      message.warning('线稿落盘失败，下游可能无法直接引用，请尝试运行节点');
+      // eslint-disable-next-line no-console
+      console.warn('[Director3D] 线稿落盘失败', error);
+    }
+
+    // 把 koma-local URL 写到节点 properties，方便下游图片节点直接拿来当参考。
     // 不同 renderMode 共享同一份 lineartDataUrl 字段（下游不感知具体风格，只需要"参考图"），
     // 但 metadata 里同时透传 exportRenderMode 用于排错与日志。
     updateNodeData(nodeId, prev => {
@@ -903,7 +1030,7 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
           ...prev.properties,
           scene: nextScene,
           prompt: props.prompt ?? '',
-          lineartDataUrl: dataUrl,
+          lineartDataUrl: persistedSource,
           directorPromptFragment: fragment,
           exportRenderMode: renderModeForExport,
         },
@@ -1112,6 +1239,15 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
                 >
                   <Users size={20} style={{ opacity: 0.6 }} />
                   <span>群演</span>
+                </button>
+                <button
+                  type="button"
+                  className="linghuiDirector3DAssetTile"
+                  onClick={handleAddRidingHorse}
+                  title="添加骑手与马的组合，任一成员移动 / 旋转都会保持相对关系"
+                >
+                  <Zap size={20} />
+                  <span>人骑马</span>
                 </button>
                 {characterAssets.assets.length > 0 ? (
                   <>
@@ -1374,6 +1510,7 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
               selectedActorId={selection.kind === 'actor' ? selection.actorId : null}
               onActorClick={(id) => setSelection({ kind: 'actor', actorId: id })}
               onActorMove={handleActorMove}
+              onActorRotate={handleActorRotate}
               onCanvasClick={() => setSelection({ kind: null })}
               onCameraChange={handleCameraChange}
               renderMode={previewMode}
@@ -1503,20 +1640,45 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
                   onChange={(e) => handleActorChange(selectedActor.id, { label: e.target.value })}
                 />
               </Field>
-              <Field label="位置 (m)">
+              <Field label="位置 X / 高度Y / Z (m)">
                 <Vec3Input
                   value={selectedActor.position}
                   onChange={(value) => handleActorChange(selectedActor.id, { position: value })}
                 />
+              </Field>
+              <Field label="高度 Y (m)">
+                <div className="linghuiDirector3DRigSliderRow">
+                  <Slider
+                    min={-1}
+                    max={8}
+                    step={0.05}
+                    value={Number(selectedActor.position[1].toFixed(2))}
+                    tooltip={DIRECTOR3D_INSPECTOR_SLIDER_TOOLTIP}
+                    onChange={(height) => {
+                      const y = Number(height);
+                      handleActorChange(selectedActor.id, {
+                        position: [selectedActor.position[0], Number(y.toFixed(2)), selectedActor.position[2]],
+                      });
+                    }}
+                    style={{ flex: 1 }}
+                  />
+                  <span className="linghuiDirector3DRigSliderValue">{selectedActor.position[1].toFixed(2)}</span>
+                </div>
               </Field>
               <Field label="朝向 (°)">
                 <Slider
                   min={-180}
                   max={180}
                   value={Math.round((selectedActor.rotationY * 180) / Math.PI)}
+                  tooltip={DIRECTOR3D_INSPECTOR_SLIDER_TOOLTIP}
                   onChange={(deg) => handleActorChange(selectedActor.id, { rotationY: ((deg as number) * Math.PI) / 180 })}
                 />
               </Field>
+              {selectedActor.groupId ? (
+                <div className="linghuiDirector3DGroupHint">
+                  {selectedActor.groupLabel || '组合'} · {selectedActor.groupRole === 'rider' ? '骑手' : selectedActor.groupRole === 'mount' ? '坐骑' : '成员'}，移动 / 旋转会联动同组实体
+                </div>
+              ) : null}
               {selectedActor.type === 'mannequin' ? (
                 <>
                   <Field label="预置动作">
@@ -1563,6 +1725,7 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
                                     max={180}
                                     step={1}
                                     value={degValue}
+                                    tooltip={DIRECTOR3D_INSPECTOR_SLIDER_TOOLTIP}
                                     onChange={(deg) => {
                                       const nextRad = ((deg as number) * Math.PI) / 180;
                                       const nextRig = patchRigJoint(currentRig, joint.key, axis, nextRad);
@@ -1719,6 +1882,7 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
                   max={selectedActor.type === 'mannequin' ? 1.5 : 3}
                   step={0.05}
                   value={selectedActor.scale}
+                  tooltip={DIRECTOR3D_INSPECTOR_SLIDER_TOOLTIP}
                   onChange={(scale) => handleActorChange(selectedActor.id, { scale: scale as number })}
                 />
               </Field>
@@ -1780,14 +1944,24 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
                   </Popover>
                 ) : null}
                 <Button danger size="small" icon={<Trash2 size={14} />} onClick={() => handleDeleteActor(selectedActor.id)}>
-                  删除
+                  {selectedActor.groupId ? '删除组合' : '删除'}
                 </Button>
               </div>
             </div>
           ) : (
             <div className="linghuiDirector3DInspectorBody">
               <Field label="FOV">
-                <Slider min={18} max={90} value={scene.camera.fov} onChange={(fov) => handleCameraField('fov', fov as number)} tooltip={{ formatter: (v) => `${v}°` }} />
+                <div className="linghuiDirector3DRigSliderRow">
+                  <Slider
+                    min={18}
+                    max={90}
+                    value={scene.camera.fov}
+                    tooltip={DIRECTOR3D_INSPECTOR_SLIDER_TOOLTIP}
+                    onChange={(fov) => handleCameraField('fov', fov as number)}
+                    style={{ flex: 1 }}
+                  />
+                  <span className="linghuiDirector3DRigSliderValue">{Math.round(scene.camera.fov)}°</span>
+                </div>
               </Field>
               <Field label="比例">
                 <div className="linghuiDirector3DRatioGrid">
@@ -1819,6 +1993,7 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
               </Field>
               <div className="linghuiDirector3DInspectorActions">
                 <Button size="small" icon={<Plus size={14} />} onClick={handleAddActor}>添加假人</Button>
+                <Button size="small" icon={<RotateCw size={14} />} onClick={handleAddRidingHorse}>人骑马</Button>
               </div>
             </div>
           )}
@@ -1895,9 +2070,10 @@ const Vec3Input: React.FC<Vec3InputProps> = ({ value, onChange }) => {
     updated[idx] = typeof next === 'number' && Number.isFinite(next) ? next : 0;
     onChange(updated);
   };
+  const labels = ['X', '高度Y', 'Z'] as const;
   return (
     <div className="linghuiDirector3DVec3">
-      {(['X', 'Y', 'Z'] as const).map((axis, idx) => (
+      {labels.map((axis, idx) => (
         <div key={axis} className="linghuiDirector3DVec3Cell">
           <span className="linghuiDirector3DVec3Axis">{axis}</span>
           <InputNumber

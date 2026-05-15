@@ -1054,8 +1054,8 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
         }}
         width={920}
         centered
-        destroyOnClose
-        maskClosable={!isSplittingGridImage}
+        destroyOnHidden
+        mask={{ closable: !isSplittingGridImage }}
         closable={!isSplittingGridImage}
       >
         {!gridSplitAsset ? (
@@ -1168,7 +1168,7 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
         footer={null}
         width={800}
         centered
-        destroyOnClose
+        destroyOnHidden
       >
         <div className="aspect-video bg-black rounded overflow-hidden">
           <StagePlayer

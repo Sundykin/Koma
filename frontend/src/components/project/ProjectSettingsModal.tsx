@@ -488,10 +488,10 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
       title="项目设置"
       open={open}
       onClose={onClose}
-      width={520}
-      destroyOnClose
+      size={520}
+      destroyOnHidden
       placement="right"
-      maskClosable={false}
+      mask={{ closable: false }}
       footer={
         <div className={styles.drawerFooter}>
           <Space>

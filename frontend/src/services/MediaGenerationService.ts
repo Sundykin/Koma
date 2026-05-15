@@ -773,6 +773,11 @@ export class MediaGenerationService {
     itvSelection?: string;
     taskName?: string;
     destPath?: string;
+    /**
+     * @deprecated 视频渠道**降级零容忍**：用户选了哪个渠道就只用哪个，
+     * capability 不匹配时直接报错让用户调整，不静默切到另一个能力更广的模型/渠道。
+     * 该参数保留但默认 false；显式传 true 也会被忽略以维持安全行为。
+     */
     allowCapabilityFallback?: boolean;
   }): Promise<StoredMediaAsset> {
     const {
@@ -783,8 +788,9 @@ export class MediaGenerationService {
       taskName,
       promptCompilation,
       destPath,
-      allowCapabilityFallback = true,
     } = params;
+    // 视频渠道零容忍：永远关掉 capability fallback。
+    const allowCapabilityFallback = false;
     const { provider, resolvedContext } = await resolveProviderAndContext({
       category: 'itv',
       selectionKey: itvSelection,
@@ -1183,9 +1189,9 @@ export class MediaGenerationService {
       },
     });
     const final = await waitForTaskCompletion(submitted.id);
-    const output = (final.payload as { output?: { asset?: StoredMediaAsset } } | undefined)?.output;
-    if (!output?.asset) throw new Error('任务完成但缺少结果资产');
-    return output.asset;
+    const asset = (final.payload as { output?: StoredMediaAsset } | undefined)?.output;
+    if (!asset) throw new Error('任务完成但缺少结果资产');
+    return asset;
   }
 
 }

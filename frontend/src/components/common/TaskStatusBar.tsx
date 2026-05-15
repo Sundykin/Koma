@@ -596,8 +596,8 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         placement="right"
-        width={460}
-        destroyOnClose
+        size={460}
+        destroyOnHidden
         styles={{ body: { padding: '12px 16px' } }}
       >
         {/* 项目维度筛选 */}

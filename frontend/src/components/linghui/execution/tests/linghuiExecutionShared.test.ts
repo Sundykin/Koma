@@ -340,6 +340,39 @@ describe('collectReferenceSources / collectVideoSources：下游识别 director3
     expect(sources).toContain('koma-local://files/timeline-frame-0.png');
   });
 
+  it('上游图片带 persist 元数据时保留本地文件和 remoteUrl 给下游 provider 选择', async () => {
+    const { collectReferenceSources } = await import('../state/linghuiExecutionShared');
+
+    const imageResult = {
+      kind: 'image' as const,
+      primary: {
+        kind: 'image' as const,
+        source: 'koma-local://files/tmp/generated.png',
+        mimeType: 'image/png',
+        width: 1024,
+        height: 768,
+        metadata: {
+          persist: {
+            localPath: '/tmp/generated.png',
+            remoteUrl: 'https://cdn.example.com/generated.png',
+          },
+        },
+      },
+    };
+
+    const sources = collectReferenceSources([imageResult]);
+    expect(sources).toEqual([
+      expect.objectContaining({
+        kind: 'image',
+        localPath: '/tmp/generated.png',
+        remoteUrl: 'https://cdn.example.com/generated.png',
+        mimeType: 'image/png',
+        width: 1024,
+        height: 768,
+      }),
+    ]);
+  });
+
   it('collectVideoSources 从视频结果里提取真实 mp4 源（区别于 posterSource）', async () => {
     const { collectVideoSources } = await import('../state/linghuiExecutionShared');
 

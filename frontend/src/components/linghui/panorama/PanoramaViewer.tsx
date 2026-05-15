@@ -532,7 +532,7 @@ export const PanoramaViewer: React.FC<PanoramaViewerProps> = ({
       onCancel={onClose}
       footer={null}
       width="min(96vw, 1600px)"
-      destroyOnClose
+      destroyOnHidden
       centered
       className="linghuiPanoramaModal"
       rootClassName="linghuiPanoramaModal"

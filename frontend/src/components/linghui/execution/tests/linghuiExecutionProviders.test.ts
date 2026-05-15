@@ -484,6 +484,63 @@ describe('linghuiExecutionProviders', () => {
     expect(result.source).toBe('https://cdn.example.com/grok-image.png');
   });
 
+  it('grok 图片索引协议遇到已落盘 remoteUrl 的灵绘图片时直接复用远程地址', async () => {
+    const provider = {
+      type: 'grok2api-imagine-tti',
+      config: { provider: 'grok2api-imagine-tti', promptProtocol: 'grok-image-index' },
+      validate: () => true,
+      start: vi.fn(async () => ({
+        mode: 'immediate' as const,
+        output: {
+          url: 'https://cdn.example.com/grok-image.png',
+        },
+      })),
+    };
+    const storedSource = {
+      kind: 'image' as const,
+      localPath: '/tmp/generated.png',
+      remoteUrl: 'https://cdn.example.com/generated.png',
+      mimeType: 'image/png',
+      createdAt: 1,
+    };
+
+    getProjectTTIProviderMock.mockResolvedValue(provider);
+    getPromptProtocolMock.mockReturnValue('grok-image-index');
+    ensureRemoteUrlForImageSourcesMock.mockImplementation(async ({ sources }) => sources);
+
+    const { generateImageWithProvider } = await import('../state/linghuiExecutionProviders');
+
+    await generateImageWithProvider({
+      prompt: '沿用 @ref_generated 的构图',
+      referenceSources: [storedSource],
+      silentReferenceSources: [storedSource],
+      promptReferences: [
+        {
+          id: 'generated',
+          nodeId: 'node-image-1',
+          kind: 'image',
+          name: '已生成图',
+          source: storedSource,
+        },
+      ],
+      ttiSelection: 'channel-image::model-image',
+      placeholderTitle: 'grok refs',
+    });
+
+    expect(ensureRemoteUrlForImageSourcesMock).toHaveBeenCalledWith(expect.objectContaining({
+      sources: [storedSource, storedSource],
+    }));
+    expect(provider.start).toHaveBeenCalledWith(expect.objectContaining({
+      prompt: '沿用 @Image 1 的构图',
+      references: [
+        expect.objectContaining({
+          transport: 'remote-url',
+          value: 'https://cdn.example.com/generated.png',
+        }),
+      ],
+    }));
+  });
+
   it('多角度图片请求会回退到通用图生图 provider，而不是复用原提示词', async () => {
     const provider = {
       type: 'gemini-native-tti',
@@ -658,7 +715,10 @@ describe('linghuiExecutionProviders', () => {
     expect(result.source).toBe('https://cdn.example.com/snapshot-image.png');
   });
 
-  it('图片生成在首个 Provider 提交失败后会自动切换到备选并记录尝试摘要', async () => {
+  it('图片生成的 Provider 失败时只在同渠道内重试，不再静默降级到备选渠道', async () => {
+    // 与视频策略对齐：用户选了 tti-primary 就只用 tti-primary，
+    // 失败时同 provider 内指数退避重试 N 次（默认 2 次 → 共 3 次尝试），
+    // 重试用尽就抛原始错误，不会悄悄切到 tti-backup。
     const primaryProvider = {
       type: 'openai-compatible-tti',
       config: { provider: 'openai-compatible-tti' },
@@ -708,53 +768,38 @@ describe('linghuiExecutionProviders', () => {
 
     const { generateImageWithProvider } = await import('../state/linghuiExecutionProviders');
 
-    const result = await generateImageWithProvider({
-      prompt: '给我一张秋日街景插画',
-      ttiSelection: 'tti-primary::model-a',
-      placeholderTitle: '秋日街景',
-    });
-
-    expect(primaryProvider.start).toHaveBeenCalledTimes(1);
-    expect(backupProvider.start).toHaveBeenCalledTimes(1);
-    expect(result.source).toBe('https://cdn.example.com/fallback-image.png');
-    expect(result.metadata).toEqual(expect.objectContaining({
-      seed: 7,
-      providerFallback: expect.objectContaining({
-        category: 'tti',
-        finalSelectionKey: 'tti-backup::model-b',
-        usedFallback: true,
-        attempts: [
-          expect.objectContaining({
-            selectionKey: 'tti-primary::model-a',
-            outcome: 'failed',
-            error: 'primary start failed',
-          }),
-          expect.objectContaining({
-            selectionKey: 'tti-backup::model-b',
-            outcome: 'succeeded',
-          }),
-        ],
+    await expect(
+      generateImageWithProvider({
+        prompt: '给我一张秋日街景插画',
+        ttiSelection: 'tti-primary::model-a',
+        placeholderTitle: '秋日街景',
       }),
-    }));
-  });
+    ).rejects.toThrow(/primary start failed/);
 
-  it('视频 Provider 全部失败时会抛出聚合后的尝试摘要', async () => {
+    // primary 被同渠道重试 N 次（默认 2 次重试 → 共 3 次尝试），backup 永远不会被碰
+    expect(primaryProvider.start.mock.calls.length).toBeGreaterThanOrEqual(1);
+    expect(backupProvider.start).not.toHaveBeenCalled();
+  }, 30_000);
+
+  it('视频 Provider 失败时只在所选 Provider 上重试，不跨渠道降级', async () => {
+    // 视频渠道降级零容忍：即使候选列表里有其它 Provider（Backup ITV），
+    // 实际执行也只用首位（用户选定的 Primary ITV），失败后在同一 Provider 内
+    // 重试 2 次，全部失败后抛出该 Provider 的错误 —— **不会**切换到 Backup ITV。
+    let primaryStartCallCount = 0;
     const primaryProvider = {
       config: { provider: 'vidu' },
       validate: () => true,
-      start: vi.fn(async () => ({
-        mode: 'async' as const,
-        taskId: 'task-video-primary',
-      })),
-      getTaskSnapshot: vi.fn(async () => {
+      start: vi.fn(async () => {
+        primaryStartCallCount += 1;
         throw new Error('任务轮询超时');
       }),
+      getTaskSnapshot: vi.fn(),
     };
     const backupProvider = {
       config: { provider: 'runway' },
       validate: () => true,
       start: vi.fn(async () => {
-        throw new Error('quota exceeded');
+        throw new Error('backup 不应该被调用');
       }),
     };
 
@@ -786,13 +831,28 @@ describe('linghuiExecutionProviders', () => {
 
     const { generateVideoWithProvider } = await import('../state/linghuiExecutionProviders');
 
-    await expect(generateVideoWithProvider({
-      capability: 'video.text-to-video',
-      prompt: '一只海鸥掠过日落海面',
-      itvSelection: 'itv-primary::vidu-pro',
-    })).rejects.toThrow(
-      '视频执行失败，已尝试 2 个 Provider：Primary ITV / Vidu Pro（任务轮询超时）；Backup ITV / Runway Pro（quota exceeded）。最后错误：quota exceeded',
-    );
+    // 关键调用 + 计时器并行：fake timers 推动 waitForRetry 的 setTimeout，避免真等 4.5s
+    vi.useFakeTimers();
+    try {
+      // 提前 .catch 兜住 rejection，避免 vitest 把推时间过程中的 reject
+      // 当作 unhandled error 报错（推时间 → reject 触发 → assert 还没挂上）
+      const pending = generateVideoWithProvider({
+        capability: 'video.text-to-video',
+        prompt: '一只海鸥掠过日落海面',
+        itvSelection: 'itv-primary::vidu-pro',
+      }).catch((err: unknown) => err);
+      // 推时间到所有 backoff 结束（最多 1500 + 3000 = 4500ms，加一点 buffer）
+      await vi.advanceTimersByTimeAsync(10_000);
+      const result = await pending;
+      expect(result).toBeInstanceOf(Error);
+      expect((result as Error).message).toMatch(/视频执行失败（已重试 2 次）：任务轮询超时/);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    // Primary 被调用 3 次（首次 + 2 次重试）；Backup 永远不调
+    expect(primaryStartCallCount).toBe(3);
+    expect(backupProvider.start).not.toHaveBeenCalled();
   });
 
   it('Agent 执行会映射 chat session 并收集 reasoning 与工具轨迹', async () => {

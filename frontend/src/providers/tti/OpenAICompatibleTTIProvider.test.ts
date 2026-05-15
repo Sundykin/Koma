@@ -169,6 +169,59 @@ describe('OpenAICompatibleTTIProvider', () => {
     expect((result as any).output.metadata?.batchImages).toHaveLength(9);
   });
 
+  it('maps imageSize "1K" to small 16:9 size for gpt-image-2 (avoids 2K being silently used)', async () => {
+    (safeFetch as any).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: [{ url: 'https://cdn.example.com/sd.png' }] }),
+    });
+
+    const provider = new OpenAICompatibleTTIProvider({
+      id: 'c2',
+      name: 'openai-compatible',
+      provider: 'openai-compatible-tti' as any,
+      baseUrl: 'https://api.example.com',
+      apiKey: 'k',
+      isDefault: true,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      modelName: 'gpt-image-2',
+    } as any);
+
+    await provider.start({
+      prompt: 'p',
+      options: { aspectRatio: '16:9', imageSize: '1K' } as any,
+    } as any);
+
+    const body = JSON.parse((safeFetch as any).mock.calls[0][1].body);
+    expect(body.size).toBe('1280x720');
+  });
+
+  it('falls back to 2K default for gpt-image-2 when imageSize is not specified', async () => {
+    (safeFetch as any).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: [{ url: 'https://cdn.example.com/hd.png' }] }),
+    });
+
+    const provider = new OpenAICompatibleTTIProvider({
+      id: 'c3',
+      name: 'openai-compatible',
+      provider: 'openai-compatible-tti' as any,
+      baseUrl: 'https://api.example.com',
+      apiKey: 'k',
+      isDefault: true,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      modelName: 'gpt-image-2',
+    } as any);
+
+    await provider.start({ prompt: 'p', options: { aspectRatio: '16:9' } } as any);
+
+    const body = JSON.parse((safeFetch as any).mock.calls[0][1].body);
+    expect(body.size).toBe('2048x1152');
+  });
+
   it('sends OpenAI-compatible size as WxH instead of raw aspectRatio', async () => {
     (safeFetch as any).mockResolvedValueOnce({
       ok: true,

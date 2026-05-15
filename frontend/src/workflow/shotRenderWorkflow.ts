@@ -38,6 +38,7 @@ import { resolveConfiguredChannelModel } from '../providers/channel/resolver';
 import { getModelMaxReferenceImages } from '../providers/itv/modelCatalog';
 import type { StyleSnapshotLike } from '../utils/promptNormalize';
 import { normalizeVideoDurationSeconds } from '../utils/videoDuration';
+import { clampDurationToSpec, getDurationSpecForITVSelection } from '../providers/itv/durationSpec';
 
 const logger = createLogger('ShotRender');
 
@@ -236,7 +237,12 @@ export async function shotRenderWorkflow(
 
     const providerType = capabilitySupport?.resolvedContext?.definition.runtimeProviderType
       || capabilitySupport?.resolvedContext?.channelConfig.providerType;
-    const videoDuration = normalizeVideoDurationSeconds(normalizedShot.duration);
+    const videoDuration = settings
+      ? clampDurationToSpec(
+          normalizedShot.duration,
+          getDurationSpecForITVSelection(effectiveITVSelection, settings.channelConfigs || []),
+        )
+      : normalizeVideoDurationSeconds(normalizedShot.duration);
     const compiledVideoRequest = compileShotVideoGenerationRequest({
       plan: resolvedVideoPlan,
       prompt: videoPrompt,

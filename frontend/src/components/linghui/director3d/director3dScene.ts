@@ -24,7 +24,7 @@ import type {
   LinghuiDirector3DTimeline,
 } from '../../../types/linghui';
 import { DIRECTOR3D_ACTOR_COLOR_TOKENS } from './director3dColors';
-import { describeRigForPrompt, lerpRig, resolveActorRig } from './director3dRig';
+import { EXTENDED_RIG_PRESETS, describeRigForPrompt, lerpRig, resolveActorRig } from './director3dRig';
 import {
   CREATURE_SPECIES_LIBRARY,
   findCreatureSpecies,
@@ -78,6 +78,10 @@ export function createDirector3DActor(overrides: Partial<LinghuiDirector3DActor>
     scale: overrides.scale ?? 1,
     color: overrides.color ?? ACTOR_DEFAULT_COLORS[indexHint] ?? ACTOR_DEFAULT_COLORS[0],
     posePreset: overrides.posePreset ?? 'idle',
+    ...(overrides.groupId ? { groupId: overrides.groupId } : {}),
+    ...(overrides.groupRole ? { groupRole: overrides.groupRole } : {}),
+    ...(overrides.groupLabel ? { groupLabel: overrides.groupLabel } : {}),
+    ...(overrides.rig ? { rig: cloneRig(overrides.rig) } : {}),
     // formation 字段仅在 type='formation' 时使用，平时不写入 actor
     ...(overrides.formation ? { formation: overrides.formation } : {}),
     // creature 字段仅在 type='creature' 时使用
@@ -339,6 +343,50 @@ export function createDirector3DCreature(
     posePreset: 'idle',
     ...overrides,
   });
+}
+
+export interface Director3DRidingHorseOptions {
+  groupId?: string;
+  label?: string;
+  position?: [number, number, number];
+  rotationY?: number;
+}
+
+/**
+ * 组合实体：人骑马。返回两个独立 actor（马 + 骑手），通过 groupId 轻量绑定。
+ * 坐标仍是世界坐标，方便导出和时间轴沿用现有逻辑。
+ */
+export function createDirector3DRidingHorse(options: Director3DRidingHorseOptions = {}): LinghuiDirector3DActor[] {
+  const groupId = options.groupId ?? `combo_riding_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+  const groupLabel = options.label ?? '人骑马';
+  const [x, y, z] = options.position ?? [0, 0, 0];
+  const rotationY = options.rotationY ?? 0;
+  const horse = createDirector3DCreature('horse', {
+    id: `${groupId}_horse`,
+    label: `${groupLabel} · 马`,
+    position: [x, y, z],
+    rotationY,
+    scale: 1.05,
+    groupId,
+    groupRole: 'mount',
+    groupLabel,
+    creatureAction: 'idle',
+  });
+  const rider = createDirector3DActor({
+    id: `${groupId}_rider`,
+    type: 'mannequin',
+    label: `${groupLabel} · 骑手`,
+    position: [x, Number((y + 0.46).toFixed(3)), Number((z - 0.05).toFixed(3))],
+    rotationY,
+    scale: 0.86,
+    color: ACTOR_DEFAULT_COLORS[0],
+    posePreset: 'idle',
+    rig: EXTENDED_RIG_PRESETS.ride,
+    groupId,
+    groupRole: 'rider',
+    groupLabel,
+  });
+  return [horse, rider];
 }
 
 /** 暴露 species 库给 UI 资产 tab */
@@ -952,10 +1000,31 @@ export function compileDirector3DPromptFragment(scene: LinghuiDirector3DScene): 
       const spec = findCreatureSpecies(actor.species);
       const action = actor.creatureAction ?? 'idle';
       // 把 species hint + 动作翻译成英文，让下游 AI 看到具体生物 + 姿态
-      return `  - ${actor.label} (${spec.promptHint}) at (${pos}), facing ${facing}deg, ${action} pose`;
+      return `  - ${actor.label} (${spec.promptHint}) at (${pos}), facing ${facing}deg, ${action} pose, procedural animal blocking with aligned feet-legs-torso-neck-head skeleton, readable eyes, muzzle/beak, ears/horns/antlers, tail, claws/hooves and species-specific markings`;
     });
     lines.push('Creatures / mythical beasts on scene:');
     lines.push(...creatureLines);
+  }
+
+  const comboGroups = new Map<string, LinghuiDirector3DActor[]>();
+  for (const actor of scene.actors) {
+    if (!actor.groupId) continue;
+    const list = comboGroups.get(actor.groupId) ?? [];
+    list.push(actor);
+    comboGroups.set(actor.groupId, list);
+  }
+  const comboLines = Array.from(comboGroups.values())
+    .filter(group => group.length > 1)
+    .map((group) => {
+      const label = group[0]?.groupLabel ?? 'linked entity group';
+      const members = group
+        .map(actor => `${actor.groupRole ?? 'linked'}:${actor.label}`)
+        .join(', ');
+      return `  - ${label}: linked composition group (${members}); keep relative spacing, shared facing and physical contact coherent.`;
+    });
+  if (comboLines.length > 0) {
+    lines.push('Linked entity combinations:');
+    lines.push(...comboLines);
   }
 
   if (mannequins.length > 0) {
@@ -1009,10 +1078,10 @@ export function compileDirector3DPromptFragment(scene: LinghuiDirector3DScene): 
 
   if (props.length > 0) {
     const propTypeLabels: Record<string, string> = {
-      'prop-box': 'box / table prop',
-      'prop-cylinder': 'cylindrical prop (barrel / pillar)',
-      'prop-plane': 'flat panel (wall / screen)',
-      'prop-camera': 'secondary camera marker',
+      'prop-box': 'structured box-derived prop with separated material parts (furniture / vehicle / crate / rock)',
+      'prop-cylinder': 'structured cylindrical prop with visible rings, spokes, legs, trunk or stand details',
+      'prop-plane': 'framed flat prop (door / window / screen) with mullions, panels or bezels',
+      'prop-camera': 'secondary camera / spotlight marker with lens, body, stand and direction cue',
       'prop-arrow': 'directional cue (motion or gaze)',
     };
     const propLines = props.map((actor) => {

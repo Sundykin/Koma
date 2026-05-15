@@ -257,6 +257,15 @@ export class SuiheITVProvider implements ITVProvider {
       functionMode = 'first_last_frames';
     }
 
+    // 关键：koma-jimeng 协议下 prompt 占位符固定为 @image_file_N / @video_file_N / @audio_file_N，
+    // 网关字段命名只有 function_mode='omni_reference' 时才匹配（image_file_N 等）。其它模式
+    // （first_frame / first_last_frames）会把图上传成 first_frame / frame_N，与 prompt 不匹配
+    // → 上游模型找不到占位符对应文件 → 失败。所以这里强制 omni_reference 覆盖 capability
+    // 默认值，保证 prompt 与字段名一致。
+    if (hasKomaClassified) {
+      functionMode = 'omni_reference';
+    }
+
     // metadata.ratio 在网关侧优先级高于 size 推断 —— 作为防御性兜底。
     // function_mode、end_frame_url 等扩展字段全部走 metadata 透传。
     const metadata: Record<string, unknown> = { ratio };

@@ -33,6 +33,11 @@ import {
   resolveLinghuiImageResultWithSelectedPrimary,
 } from '../../editors/state/linghuiImageCollections';
 import { parseLinghuiScriptContent } from '../../editors/state/linghuiScriptNodeUtils';
+import type { MediaAssetSource } from '../../../../types';
+import {
+  buildLinghuiVisualSourceKey,
+  resolveLinghuiMediaAssetSource,
+} from '../../utils/linghuiMediaAssetSource';
 
 export const EXECUTION_PROJECT_ID = 'linghui';
 const placeholderThemeTokens = getThemeById(DEFAULT_THEME_ID).tokens;
@@ -421,31 +426,40 @@ function resolveStaticNodeResult(snapshot?: LinghuiRFNodeSnapshot): LinghuiNodeR
   return undefined;
 }
 
-export function collectReferenceSources(results: LinghuiNodeResult[]): string[] {
-  const sources: string[] = [];
+export function collectReferenceSources(results: LinghuiNodeResult[]): MediaAssetSource[] {
+  const sources: MediaAssetSource[] = [];
   const dedupe = new Set<string>();
-  const pushSource = (candidate?: string) => {
-    if (!candidate || dedupe.has(candidate)) return;
-    dedupe.add(candidate);
+  const pushSource = (candidate?: MediaAssetSource) => {
+    const key = buildLinghuiVisualSourceKey(candidate);
+    if (!candidate || !key || dedupe.has(key)) return;
+    dedupe.add(key);
     sources.push(candidate);
   };
 
   for (const result of results) {
     const primary = getLinghuiResultPrimaryMedia(result);
     if (primary?.kind === 'image') {
-      pushSource(primary.source);
+      pushSource(resolveLinghuiMediaAssetSource(primary));
     }
     // 上游视频也算图片参考：用其首帧 posterSource 作为下游图片节点的参考图，
     // 否则 3D 导演台 / 视频节点的输出在 image 槽位被无效化（减产）
     if (primary?.kind === 'video' && primary.posterSource) {
-      pushSource(primary.posterSource);
+      pushSource(resolveLinghuiMediaAssetSource(primary, {
+        kind: 'image',
+        sourceOverride: primary.posterSource,
+        usePersist: false,
+      }));
     }
 
     for (const item of getLinghuiResultItems(result)) {
       if (item.kind === 'image') {
-        pushSource(item.source);
+        pushSource(resolveLinghuiMediaAssetSource(item));
       } else if (item.kind === 'video' && item.posterSource) {
-        pushSource(item.posterSource);
+        pushSource(resolveLinghuiMediaAssetSource(item, {
+          kind: 'image',
+          sourceOverride: item.posterSource,
+          usePersist: false,
+        }));
       }
     }
   }
@@ -482,24 +496,33 @@ export function collectVideoSources(results: LinghuiNodeResult[]): string[] {
   return sources;
 }
 
-export function collectVideoPosterSources(results: LinghuiNodeResult[]): string[] {
-  const sources: string[] = [];
+export function collectVideoPosterSources(results: LinghuiNodeResult[]): MediaAssetSource[] {
+  const sources: MediaAssetSource[] = [];
   const dedupe = new Set<string>();
-  const pushSource = (candidate?: string) => {
-    if (!candidate || dedupe.has(candidate)) return;
-    dedupe.add(candidate);
+  const pushSource = (candidate?: MediaAssetSource) => {
+    const key = buildLinghuiVisualSourceKey(candidate);
+    if (!candidate || !key || dedupe.has(key)) return;
+    dedupe.add(key);
     sources.push(candidate);
   };
 
   for (const result of results) {
     const primary = getLinghuiResultPrimaryMedia(result);
     if (primary?.kind === 'video') {
-      pushSource(primary.posterSource);
+      pushSource(resolveLinghuiMediaAssetSource(primary, {
+        kind: 'image',
+        sourceOverride: primary.posterSource,
+        usePersist: false,
+      }));
     }
 
     for (const item of getLinghuiResultItems(result)) {
       if (item.kind === 'video') {
-        pushSource(item.posterSource);
+        pushSource(resolveLinghuiMediaAssetSource(item, {
+          kind: 'image',
+          sourceOverride: item.posterSource,
+          usePersist: false,
+        }));
       }
     }
   }
@@ -507,14 +530,15 @@ export function collectVideoPosterSources(results: LinghuiNodeResult[]): string[
   return sources;
 }
 
-export function mergeUniqueSources(...groups: string[][]): string[] {
-  const merged: string[] = [];
+export function mergeUniqueSources<TSource extends MediaAssetSource>(...groups: TSource[][]): TSource[] {
+  const merged: TSource[] = [];
   const dedupe = new Set<string>();
 
   for (const group of groups) {
     for (const source of group) {
-      if (!source || dedupe.has(source)) continue;
-      dedupe.add(source);
+      const key = buildLinghuiVisualSourceKey(source);
+      if (!source || !key || dedupe.has(key)) continue;
+      dedupe.add(key);
       merged.push(source);
     }
   }

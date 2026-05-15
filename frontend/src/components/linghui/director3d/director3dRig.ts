@@ -102,16 +102,16 @@ export const RIG_PRESETS: Record<LinghuiDirector3DActorPose, Director3DRig> = {
     rightKnee: [-0.2, 0, 0],
   },
   sit: {
-    spine: [0.02, 0, 0],
-    neck: [0, 0, 0],
+    spine: [-0.08, 0, 0],
+    neck: [0.04, 0, 0],
     leftShoulder: [0, 0, 0.06],
     rightShoulder: [0, 0, -0.06],
     leftElbow: [-0.4, 0, 0],
     rightElbow: [-0.4, 0, 0],
-    leftHip: [-1.5, 0, 0.06],
-    rightHip: [-1.5, 0, -0.06],
-    leftKnee: [-1.5, 0, 0],
-    rightKnee: [-1.5, 0, 0],
+    leftHip: [1.28, 0.04, 0.08],
+    rightHip: [1.28, -0.04, -0.08],
+    leftKnee: [-1.34, 0, 0],
+    rightKnee: [-1.34, 0, 0],
   },
   wave: {
     spine: [0, 0, 0.02],
@@ -223,6 +223,19 @@ export const EXTENDED_RIG_PRESETS = {
     rightHip: [0, -0.1, 0],
     leftKnee: [-0.05, 0, 0],
     rightKnee: [-0.05, 0, 0],
+  },
+  /** 骑乘：髋部外展跨坐，膝盖自然下垂弯曲，上身微前倾握缰 */
+  ride: {
+    spine: [-0.12, 0, 0],
+    neck: [0.08, 0, 0],
+    leftShoulder: [-0.65, 0.18, 0.12],
+    rightShoulder: [-0.65, -0.18, -0.12],
+    leftElbow: [-0.9, 0, 0],
+    rightElbow: [-0.9, 0, 0],
+    leftHip: [0.92, 0.18, 0.42],
+    rightHip: [0.92, -0.18, -0.42],
+    leftKnee: [-1.05, 0, 0],
+    rightKnee: [-1.05, 0, 0],
   },
 } as const satisfies Record<string, Director3DRig>;
 
@@ -348,7 +361,7 @@ export function patchRigJoint(
 /**
  * 所有可选的"预置动作"清单（UI 下拉用）。
  *  - 基础 6 个（与 LinghuiDirector3DActorPose 同名）来自 RIG_PRESETS
- *  - 扩展 6 个来自 EXTENDED_RIG_PRESETS
+ *  - 扩展预置来自 EXTENDED_RIG_PRESETS
  */
 export const DIRECTOR3D_RIG_PRESET_OPTIONS: Array<{
   key: string;
@@ -369,6 +382,7 @@ export const DIRECTOR3D_RIG_PRESET_OPTIONS: Array<{
   { key: 'cheer', label: '欢呼', rig: EXTENDED_RIG_PRESETS.cheer },
   { key: 'prone', label: '匍匐', rig: EXTENDED_RIG_PRESETS.prone },
   { key: 'turnBack', label: '回头', rig: EXTENDED_RIG_PRESETS.turnBack },
+  { key: 'ride', label: '骑乘', rig: EXTENDED_RIG_PRESETS.ride },
 ];
 
 /**
@@ -443,6 +457,9 @@ export function describeRigForPrompt(rig: Director3DRig): string {
     fragments.push('crouched, knees deeply bent');
   } else if (kneeBendLeft > 0.8 || kneeBendRight > 0.8) {
     fragments.push('mid-stride, knee bent');
+  }
+  if (rig.leftHip[2] > 0.3 && rig.rightHip[2] < -0.3 && kneeBendLeft > 0.8 && kneeBendRight > 0.8) {
+    fragments.push('riding posture, legs opened around a mount');
   }
   if (spineLean > 0.15) {
     fragments.push('leaning forward');

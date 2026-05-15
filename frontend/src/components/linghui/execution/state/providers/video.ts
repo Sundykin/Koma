@@ -1,4 +1,4 @@
-import type { AppSettings, VideoGenerationCapability } from '../../../../../types';
+import type { AppSettings, MediaAssetSource, ProviderAssetInput, VideoGenerationCapability } from '../../../../../types';
 import { getProjectITVProvider } from '../../../../../providers';
 import { listCapabilityFallbackCandidates, resolveConfiguredChannelModel } from '../../../../../providers/channel/resolver';
 import {
@@ -33,8 +33,9 @@ import {
 } from '../linghuiExecutionShared';
 import { getVideoCapabilityDescriptor } from '../../../editors/state/videoCapabilityUtils';
 import { persistMediaAsset } from '../../../../../services/mediaPersistenceService';
+import { getLinghuiSourceDisplayValue } from '../../../utils/linghuiMediaAssetSource';
 import {
-  executeWithProviderFallback,
+  executeSingleProviderWithRetry,
   summarizeProviderFallbackMetadata,
   withProviderFallbackMetadata,
   type LinghuiProviderFallbackCandidate,
@@ -46,6 +47,7 @@ import {
 } from './shared';
 
 const logger = createLogger('LinghuiVideoExecution');
+type LinghuiVideoAssetSource = MediaAssetSource | ProviderAssetInput;
 
 async function executeVideoProviderAttempt(
   provider: NonNullable<Awaited<ReturnType<typeof getProjectITVProvider>>>,
@@ -55,11 +57,11 @@ async function executeVideoProviderAttempt(
   params: {
     capability: VideoGenerationCapability;
     prompt: string;
-    primaryImageSource?: string;
-    additionalReferenceSources?: string[];
-    referenceImageSources?: string[];
-    startFrameSource?: string;
-    endFrameSource?: string;
+    primaryImageSource?: LinghuiVideoAssetSource;
+    additionalReferenceSources?: LinghuiVideoAssetSource[];
+    referenceImageSources?: LinghuiVideoAssetSource[];
+    startFrameSource?: LinghuiVideoAssetSource;
+    endFrameSource?: LinghuiVideoAssetSource;
     duration?: number;
     aspectRatio?: string;
     resolution?: string;
@@ -79,7 +81,7 @@ async function executeVideoProviderAttempt(
   const primarySource = params.capability === 'video.start-end-to-video'
     ? params.startFrameSource
     : params.primaryImageSource;
-  let additionalSources;
+  let additionalSources: LinghuiVideoAssetSource[];
   if (params.capability === 'video.reference-to-video') {
     additionalSources = params.referenceImageSources ?? [];
   } else if (params.capability === 'video.start-end-to-video') {
@@ -333,11 +335,11 @@ async function executeVideoProviderAttempt(
 export async function generateVideoWithProvider(params: {
   capability: VideoGenerationCapability;
   prompt: string;
-  primaryImageSource?: string;
-  additionalReferenceSources?: string[];
-  referenceImageSources?: string[];
-  startFrameSource?: string;
-  endFrameSource?: string;
+  primaryImageSource?: LinghuiVideoAssetSource;
+  additionalReferenceSources?: LinghuiVideoAssetSource[];
+  referenceImageSources?: LinghuiVideoAssetSource[];
+  startFrameSource?: LinghuiVideoAssetSource;
+  endFrameSource?: LinghuiVideoAssetSource;
   duration?: number;
   aspectRatio?: string;
   resolution?: string;
@@ -358,8 +360,9 @@ export async function generateVideoWithProvider(params: {
   const previewSource = params.primaryImageSource
     || params.startFrameSource
     || params.referenceImageSources?.[0];
-  const placeholderPoster = previewSource
-    ? toPreviewSource(previewSource)
+  const previewSourceValue = getLinghuiSourceDisplayValue(previewSource);
+  const placeholderPoster = previewSourceValue
+    ? toPreviewSource(previewSourceValue)
     : createPlaceholderImage({ title: '视频预览占位', subtitle: '未配置 ITV 服务' });
 
   const settings = await resolveExecutionSettings(params.settingsSnapshot);
@@ -410,7 +413,10 @@ export async function generateVideoWithProvider(params: {
     });
   }
 
-  const execution = await executeWithProviderFallback({
+  // 视频执行严禁跨 Provider 降级：用户选了哪个渠道就只用哪个，失败如实抛错。
+  // 同一 Provider 上的瞬时抖动（网络 / 5xx）由 executeSingleProviderWithRetry 内部
+  // 指数退避重试消化（默认 2 次），不会变成静默切换到别的视频渠道。
+  const execution = await executeSingleProviderWithRetry({
     mediaLabel: '视频',
     category: 'itv',
     capability: params.capability,

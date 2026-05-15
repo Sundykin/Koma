@@ -1,6 +1,7 @@
 import type { MediaAssetSource, ProviderAssetInput } from '../../../../types';
 import type {
   LinghuiImageNodeProperties,
+  LinghuiMediaItem,
   LinghuiNodeData,
   LinghuiNodeResult,
   LinghuiScriptNodeProperties,
@@ -20,6 +21,10 @@ import {
   type ParsedPromptReference,
 } from '../../../../services/promptCompilation/promptReferenceCompiler';
 import { resolveLinghuiImageResultWithSelectedPrimary } from './linghuiImageCollections';
+import {
+  buildLinghuiVisualSourceKey,
+  resolveLinghuiMediaAssetSource,
+} from '../../utils/linghuiMediaAssetSource';
 
 export type LinghuiPromptReferenceKind = 'image' | 'video' | 'audio' | 'text';
 
@@ -78,14 +83,14 @@ function resolvePromptReferenceSourceValue(source?: MediaAssetSource): string | 
 
 export function collectLinghuiPromptReferenceImageSources(
   references: LinghuiPromptReferenceItem[],
-): string[] {
-  const sources: string[] = [];
+): MediaAssetSource[] {
+  const sources: MediaAssetSource[] = [];
   const dedupe = new Set<string>();
-  const pushSource = (candidate?: string) => {
-    const normalized = String(candidate ?? '').trim();
-    if (!normalized || dedupe.has(normalized)) return;
-    dedupe.add(normalized);
-    sources.push(normalized);
+  const pushSource = (candidate?: MediaAssetSource) => {
+    const key = buildLinghuiVisualSourceKey(candidate);
+    if (!candidate || !key || dedupe.has(key)) return;
+    dedupe.add(key);
+    sources.push(candidate);
   };
 
   for (const item of references) {
@@ -93,7 +98,7 @@ export function collectLinghuiPromptReferenceImageSources(
       continue;
     }
 
-    pushSource(resolvePromptReferenceSourceValue(item.source) ?? item.previewSource);
+    pushSource(item.source ?? item.previewSource);
   }
 
   return sources;
@@ -119,9 +124,14 @@ function getMediaUploadSource(media?: {
   kind?: string;
   source?: string;
   posterSource?: string;
-}): string | undefined {
+  mimeType?: string;
+  width?: number;
+  height?: number;
+  durationSec?: number;
+  metadata?: Record<string, unknown>;
+}): MediaAssetSource | undefined {
   if (!media) return undefined;
-  return media.source || undefined;
+  return resolveLinghuiMediaAssetSource(media as LinghuiMediaItem);
 }
 
 /**
@@ -155,7 +165,7 @@ function pushVisualReference(
     kind: LinghuiPromptReferenceKind;
     name: string;
     description?: string;
-    source?: string;
+    source?: MediaAssetSource;
     previewSource?: string;
   },
 ) {
@@ -168,7 +178,7 @@ function pushVisualReference(
     name: params.name,
     description: params.description,
     source: params.source,
-    previewSource: params.previewSource ?? params.source,
+    previewSource: params.previewSource ?? resolvePromptReferenceSourceValue(params.source),
   });
 }
 
@@ -228,7 +238,7 @@ function buildResultReferences(
         name: baseName,
         description: baseDescription,
         source: audioSource,
-        previewSource: getMediaPreviewSource(primary) ?? audioSource,
+        previewSource: getMediaPreviewSource(primary) ?? resolvePromptReferenceSourceValue(audioSource),
       });
     } else {
       refs.push({
@@ -254,7 +264,7 @@ function buildResultReferences(
     });
   } else {
     const primarySource = getMediaUploadSource(primary);
-    const primaryPreview = getMediaPreviewSource(primary) ?? primarySource;
+    const primaryPreview = getMediaPreviewSource(primary);
     pushVisualReference(refs, {
       id: nodeId,
       nodeId,
@@ -262,15 +272,17 @@ function buildResultReferences(
       name: baseName,
       description: baseDescription,
       source: primarySource,
-      previewSource: primaryPreview,
+      previewSource: primaryPreview ?? resolvePromptReferenceSourceValue(primarySource),
     });
   }
 
   if (nodeData.linghuiType !== 'linghui/image') {
     items.forEach((item, index) => {
       const itemSource = getMediaUploadSource(item);
-      const itemPreview = getMediaPreviewSource(item) ?? itemSource;
-      if (primaryKind !== 'audio' && index === 0 && itemSource && getMediaUploadSource(primary) === itemSource) {
+      const itemPreview = getMediaPreviewSource(item);
+      const primarySourceKey = buildLinghuiVisualSourceKey(getMediaUploadSource(primary));
+      const itemSourceKey = buildLinghuiVisualSourceKey(itemSource);
+      if (primaryKind !== 'audio' && index === 0 && itemSourceKey && primarySourceKey === itemSourceKey) {
         return;
       }
 
@@ -284,7 +296,7 @@ function buildResultReferences(
             name: audioName,
             description: `${baseDescription} · 产物 ${index + 1}`,
             source: itemSource,
-            previewSource: itemPreview,
+            previewSource: itemPreview ?? resolvePromptReferenceSourceValue(itemSource),
           });
         } else {
           refs.push({
@@ -318,7 +330,7 @@ function buildResultReferences(
         name: getDescriptionText(item.label, `${baseName} ${index + 1}`) || `${baseName} ${index + 1}`,
         description: `${baseDescription} · 产物 ${index + 1}`,
         source: itemSource,
-        previewSource: itemPreview,
+        previewSource: itemPreview ?? resolvePromptReferenceSourceValue(itemSource),
       });
     });
   }
@@ -337,7 +349,7 @@ function buildResultReferences(
         name: shotName,
         description: shotDescription,
         source: shotSource,
-        previewSource: shotSource,
+        previewSource: resolvePromptReferenceSourceValue(shotSource),
       });
       return;
     }

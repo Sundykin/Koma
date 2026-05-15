@@ -15,6 +15,35 @@ import {
 
 type TimelineScope = 'project' | 'episode';
 
+/**
+ * 子表（tracks / clips / keyframes / animations / transitions）的 PK 都是单列
+ * `id TEXT PRIMARY KEY`，但前端跨 timeline（project + 每个 episode）会复用同一
+ * track / clip id（如 'main' / 'v1'），导致跨 episode 的相同 id 在写库时 PK 冲突。
+ *
+ * 为避免大动 schema（涉及多张表的外键 cascade），在 repository 层做透明命名空间：
+ *   - 写库：所有子表 id 与外键引用前缀加 `${timeline_id}::`
+ *   - 读库：再剥掉前缀还原前端 id
+ * 同一 timeline 内的 id 仍唯一（先 DELETE WHERE timeline_id = ? 再 INSERT，
+ * 不会自冲）；跨 timeline 因前缀不同也唯一。
+ *
+ * 老数据（无前缀）继续兼容：DELETE 按 timeline_id 清理旧行，再 INSERT 加前缀的
+ * 新行，不再混合冲突；读时 stripTimelinePrefix 对无前缀字符串原样返回。
+ */
+const TIMELINE_ID_SEPARATOR = '::';
+
+function namespaceWithinTimeline(timelineId: string, id: string): string {
+  if (!id) return id;
+  // 已经带前缀的（重复 save 走回写路径）不再二次包裹
+  if (id.startsWith(`${timelineId}${TIMELINE_ID_SEPARATOR}`)) return id;
+  return `${timelineId}${TIMELINE_ID_SEPARATOR}${id}`;
+}
+
+function stripTimelinePrefix(timelineId: string, id: string | null | undefined): string {
+  if (!id) return id ?? '';
+  const prefix = `${timelineId}${TIMELINE_ID_SEPARATOR}`;
+  return id.startsWith(prefix) ? id.slice(prefix.length) : id;
+}
+
 export class SqliteTimelineRepository implements ITimelineRepository {
   constructor(private db: Database.Database) {}
 
@@ -289,22 +318,45 @@ export class SqliteTimelineRepository implements ITimelineRepository {
     const keyframeRows: TimelineClipKeyframeRow[] = [];
     const animationRows: TimelineClipAnimationRow[] = [];
 
+    // 子表 id 与外键引用统一加 `${timelineId}::` 前缀，避免跨 timeline 共享同名
+    // track/clip id 撞 PK。helper 输出后再就地改写 id / 外键到带前缀的形式。
+    const ns = (id: string) => namespaceWithinTimeline(timelineRow.id, id);
+
     timeline.tracks.forEach((track, trackIndex) => {
       const trackRow = trackToRow(timelineRow.id, track, trackIndex);
+      trackRow.id = ns(trackRow.id);
       trackRows.push(trackRow);
 
       (track.clips || []).forEach((clip, clipIndex) => {
-        clipRows.push(clipToRow(track.id, clip, clipIndex));
+        const clipRow = clipToRow(track.id, clip, clipIndex);
+        clipRow.id = ns(clipRow.id);
+        clipRow.track_id = ns(clipRow.track_id);
+        clipRows.push(clipRow);
         (clip.keyframes || []).forEach((frame, frameIndex) => {
-          keyframeRows.push(keyframeToRow(clip.id, frame, frameIndex));
+          const kfRow = keyframeToRow(clip.id, frame, frameIndex);
+          kfRow.id = ns(kfRow.id);
+          kfRow.clip_id = ns(kfRow.clip_id);
+          keyframeRows.push(kfRow);
         });
         (clip.animations || []).forEach((animation, animationIndex) => {
-          animationRows.push(animationToRow(clip.id, animation, animationIndex));
+          const animRow = animationToRow(clip.id, animation, animationIndex);
+          animRow.id = ns(animRow.id);
+          animRow.clip_id = ns(animRow.clip_id);
+          animationRows.push(animRow);
         });
       });
 
       (track.transitions || []).forEach((transition, transitionIndex) => {
-        transitionRows.push(transitionToRow(track.id, transition, transitionIndex));
+        const transitionRow = transitionToRow(track.id, transition, transitionIndex);
+        transitionRow.id = ns(transitionRow.id);
+        transitionRow.track_id = ns(transitionRow.track_id);
+        if (transitionRow.from_clip_id) {
+          transitionRow.from_clip_id = ns(transitionRow.from_clip_id);
+        }
+        if (transitionRow.to_clip_id) {
+          transitionRow.to_clip_id = ns(transitionRow.to_clip_id);
+        }
+        transitionRows.push(transitionRow);
       });
     });
 
@@ -403,13 +455,41 @@ export class SqliteTimelineRepository implements ITimelineRepository {
         ).all(...clipIds) as TimelineClipAnimationRow[]
       : [];
 
+    // 剥前缀：写库时统一加了 `${timeline_id}::`，读出还原前端原始 id（老数据无前缀
+    // 时 strip 不变）。track_id / clip_id 等外键引用一并剥，保持 buildTimelineData
+    // 内部的 Map.get(row.id) 能命中。
+    const strip = (id: string | null | undefined) => stripTimelinePrefix(timelineRow.id, id);
+    const strippedTracks = trackRows.map(row => ({ ...row, id: strip(row.id) }));
+    const strippedClips = clipRows.map(row => ({
+      ...row,
+      id: strip(row.id),
+      track_id: strip(row.track_id),
+    }));
+    const strippedTransitions = transitionRows.map(row => ({
+      ...row,
+      id: strip(row.id),
+      track_id: strip(row.track_id),
+      from_clip_id: strip(row.from_clip_id),
+      to_clip_id: strip(row.to_clip_id),
+    }));
+    const strippedKeyframes = keyframeRows.map(row => ({
+      ...row,
+      id: strip(row.id),
+      clip_id: strip(row.clip_id),
+    }));
+    const strippedAnimations = animationRows.map(row => ({
+      ...row,
+      id: strip(row.id),
+      clip_id: strip(row.clip_id),
+    }));
+
     return buildTimelineData(
       timelineRow,
-      trackRows,
-      clipRows,
-      transitionRows,
-      keyframeRows,
-      animationRows,
+      strippedTracks,
+      strippedClips,
+      strippedTransitions,
+      strippedKeyframes,
+      strippedAnimations,
     );
   }
 }

@@ -574,8 +574,19 @@
     font-size: 11px;
     color: var(--token-text-muted);
     font-weight: 700;
-    width: 12px;
+    min-width: 12px;
     text-align: center;
+    white-space: nowrap;
+  }
+
+  &GroupHint {
+    padding: 6px 8px;
+    border-radius: 6px;
+    border: 1px solid color-mix(in srgb, var(--token-accent-base) 28%, transparent);
+    background: color-mix(in srgb, var(--token-accent-base) 10%, transparent);
+    color: var(--token-text-secondary);
+    font-size: 11px;
+    line-height: 1.45;
   }
 
   &PoseGrid,
@@ -1537,31 +1548,200 @@
   color: var(--token-text-primary);
 }
 
-/* 紧凑节点上的「打开工作台」按钮：唯一会展开 Director3DNodeEditor 的入口；
-   其余区域（预览缩略图 + 统计行）都标记 data-node-preview-area，
-   点击只看产物，不进编辑器（避免误展开覆盖整个画布）。 */
+.linghuiDirector3DNode {
+  cursor: grab;
+  border-radius: 12px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 12% 0%, color-mix(in srgb, var(--linghui-accent, var(--token-accent-base)) 15%, transparent), transparent 34%),
+    linear-gradient(180deg, color-mix(in srgb, var(--token-bg-card) 98%, transparent), color-mix(in srgb, var(--token-bg-surface) 96%, transparent));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--token-text-primary) 3%, transparent),
+    0 12px 26px color-mix(in srgb, var(--token-bg-app) 18%, transparent);
+
+  &:active {
+    cursor: grabbing;
+  }
+
+  &.isSelected {
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--linghui-accent, var(--token-accent-base)) 36%, transparent),
+      0 14px 30px color-mix(in srgb, var(--token-bg-app) 24%, transparent);
+  }
+
+  &.isCollapsed {
+    .linghuiDirector3DCompactHeader {
+      align-items: center;
+    }
+
+    .linghuiDirector3DActionRow {
+      display: none;
+    }
+  }
+}
+
+.linghuiDirector3DCompactThumb {
+  border-radius: 10px 10px 0 0;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--token-bg-surface) 96%, transparent), color-mix(in srgb, var(--token-bg-app) 92%, transparent));
+
+  img,
+  .linghuiDirector3DCompactVideo {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: contain;
+    background: var(--token-bg-app);
+  }
+}
+
+.linghuiDirector3DCompactPlaceholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: color-mix(in srgb, var(--token-text-secondary) 88%, transparent);
+  font-size: 12px;
+  font-weight: 700;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--token-text-primary) 5%, transparent) 1px, transparent 1px),
+    linear-gradient(180deg, color-mix(in srgb, var(--token-text-primary) 5%, transparent) 1px, transparent 1px),
+    radial-gradient(circle at 50% 46%, color-mix(in srgb, var(--linghui-accent, var(--token-accent-base)) 16%, transparent), transparent 38%);
+  background-size: 28px 28px, 28px 28px, auto;
+}
+
+.linghuiDirector3DCompactHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.linghuiDirector3DCompactTitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+
+  .linghuiCompactLabel,
+  .linghuiCompactLabelInput {
+    min-width: 0;
+  }
+}
+
+.linghuiDirector3DCompactIcon {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: $lh-radius-pill;
+  background: color-mix(in srgb, var(--linghui-accent, var(--token-accent-base)) 14%, transparent);
+  color: color-mix(in srgb, var(--linghui-accent, var(--token-accent-base)) 84%, var(--token-text-primary));
+}
+
+.linghuiDirector3DCompactMode {
+  min-height: 22px;
+  padding: 0 8px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: $lh-radius-pill;
+  background: color-mix(in srgb, var(--token-text-primary) 6%, transparent);
+  color: $lh-text-muted;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.linghuiDirector3DCompactStats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+
+  span {
+    min-width: 0;
+    min-height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 0 6px;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--token-text-primary) 5%, transparent);
+    color: $lh-text-secondary;
+    font-size: 10px;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+.linghuiDirector3DActionRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 30px;
+  padding-top: 2px;
+}
+
+.linghuiDirector3DDragHint {
+  min-width: 0;
+  flex: 1 1 auto;
+  color: $lh-text-muted;
+  font-size: 10px;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+/* 紧凑节点上的「工作台」按钮：唯一会展开 Director3DNodeEditor 的入口；
+   其余区域只负责选择/拖动节点，避免误展开覆盖整个画布。 */
 .linghuiDirector3DOpenButton {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  margin-top: 6px;
-  align-self: flex-start;
-  font-size: 12px;
-  font-weight: 600;
-  border-radius: 6px;
-  border: 1px solid var(--token-border-base);
-  background: var(--token-bg-elevated);
+  justify-content: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 0 10px;
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 800;
+  border-radius: $lh-radius-pill;
+  border: 1px solid color-mix(in srgb, var(--linghui-accent, var(--token-accent-base)) 28%, transparent);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--token-bg-elevated) 96%, transparent), color-mix(in srgb, var(--token-bg-card) 96%, transparent));
   color: var(--token-text-primary);
   cursor: pointer;
-  transition: background 160ms, border-color 160ms;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--token-text-primary) 3%, transparent);
+  transition:
+    transform 160ms ease,
+    background 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
 
-  &:hover {
-    background: color-mix(in srgb, var(--token-accent-base) 10%, var(--token-bg-elevated));
-    border-color: var(--token-accent-base);
+  &:hover,
+  &:focus-visible {
+    outline: none;
+    transform: translateY(-1px);
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--linghui-accent, var(--token-accent-base)) 16%, var(--token-bg-elevated)), color-mix(in srgb, var(--token-bg-card) 96%, transparent));
+    border-color: color-mix(in srgb, var(--linghui-accent, var(--token-accent-base)) 62%, transparent);
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--token-text-primary) 5%, transparent),
+      0 8px 16px color-mix(in srgb, var(--token-bg-app) 18%, transparent);
   }
 
   &:active {
-    transform: translateY(1px);
+    transform: translateY(0);
   }
 }

@@ -20,7 +20,7 @@ import {
   throwIfExecutionAborted,
 } from '../linghuiExecutionShared';
 import {
-  executeWithProviderFallback,
+  executeSingleProviderWithRetry,
   summarizeProviderFallbackMetadata,
   withProviderFallbackMetadata,
   type LinghuiProviderFallbackCandidate,
@@ -36,10 +36,15 @@ const imageLogger = createLogger('LinghuiImageExecution');
 
 type GenerateImageWithProviderParams = {
   prompt: string;
-  referenceSources?: string[];
-  silentReferenceSources?: string[];
+  referenceSources?: Array<MediaAssetSource | ProviderAssetInput>;
+  silentReferenceSources?: Array<MediaAssetSource | ProviderAssetInput>;
   steps?: number;
   count?: number;
+  /** 画布上用户选的比例（'1:1' / '16:9' / '9:16' / ...）。会透传给 provider.start 的 options。 */
+  aspectRatio?: string;
+  /** 画布上用户选的分辨率档位（'1K' / '2K' / '4K' / 'auto'）。透传到 options.imageSize，
+   *  让 OpenAI 兼容 / 通用上游按用户挑的档位算尺寸。'auto' / 空值表示用模型默认。 */
+  resolution?: string;
   onProgress?: (progress: number, message?: string, partialResult?: unknown) => void;
   placeholderTitle: string;
   placeholderSubtitle?: string;
@@ -50,6 +55,17 @@ type GenerateImageWithProviderParams = {
   multiAngle?: Omit<MultiAngleTTIRequest, 'originalPrompt' | 'anglePrompt' | 'compiledPrompt'> | null;
   signal?: AbortSignal;
 };
+
+function buildTTIRequestOptions(params: GenerateImageWithProviderParams): Record<string, unknown> | undefined {
+  const options: Record<string, unknown> = {};
+  if (params.steps !== undefined) options.steps = params.steps;
+  const aspectRatio = String(params.aspectRatio ?? '').trim();
+  if (aspectRatio) options.aspectRatio = aspectRatio;
+  const imageSize = String(params.resolution ?? '').trim();
+  // 'auto' 表示让 provider 决定；只有用户显式挑了档位才透传。
+  if (imageSize && imageSize.toLowerCase() !== 'auto') options.imageSize = imageSize;
+  return Object.keys(options).length > 0 ? options : undefined;
+}
 
 interface GenerateImageVariantRequest {
   label?: string;
@@ -250,7 +266,7 @@ async function executeImageProviderAttempt(
   }
 
   let multiAngleRequest: MultiAngleTTIRequest | undefined;
-  let references = [];
+  let references: ProviderAssetInput[] = [];
   try {
     if (params.multiAngle) {
       if (provider.supportsMultiAngle === false) {
@@ -303,7 +319,9 @@ async function executeImageProviderAttempt(
       ...resolvedReferenceSources,
       ...resolvedSilentReferenceSources,
     ]);
-    references = await ensureProviderAssetInputs(providerReferenceSources);
+    references = await ensureProviderAssetInputs(providerReferenceSources, {
+      preferLocalFile: !requiresRemoteUrlUpload,
+    });
 
     if (params.multiAngle && references.length === 0) {
       throw new Error('多角度生图无法读取上游参考图，请确认当前图片文件仍可访问');
@@ -351,7 +369,7 @@ async function executeImageProviderAttempt(
       prompt: compiledPrompt,
       references,
       count: Math.max(1, Math.floor(Number(params.count ?? 1) || 1)),
-      options: { steps: params.steps },
+      options: buildTTIRequestOptions(params) as never,
       ...(multiAngleRequest ? { requestType: 'multi-angle' as const, multiAngle: multiAngleRequest } : undefined),
     });
   } catch (error) {
@@ -465,7 +483,10 @@ export async function generateImagesWithProvider(params: GenerateImageWithProvid
     })];
   }
 
-  const execution = await executeWithProviderFallback({
+  // 与视频路径对齐：用户选哪个 TTI 渠道就只用哪个，**绝不跨渠道降级**。
+  // 同 provider 上的瞬时错误（502 / ERR_CONNECTION_CLOSED）通过指数退避重试消化；
+  // 重试用尽仍失败就把原始错误如实抛出，不悄悄换上别的渠道让账单和效果都出乎意料。
+  const execution = await executeSingleProviderWithRetry({
     mediaLabel: '图片',
     category: 'tti',
     capability: requestedCapability,
