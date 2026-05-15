@@ -1167,25 +1167,30 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       message.warning('未选择剧集');
       return;
     }
-    const shot = shots.find(s => s.id === shotId);
+    const shot = shotsRef.current.find(s => s.id === shotId);
     if (!shot) return;
     setSubmittingImagePrompts(prev => new Set(prev).add(shotId));
     try {
+      await flushQueuedShotSaves();
+      const shotsSnapshot = shotsRef.current;
+      const latestShot = shotsSnapshot.find(s => s.id === shotId) || shot;
       const result = await generateShotPrompt(
         projectId,
         episodeId,
-        shot,
+        latestShot,
         projectStylePrompt,
         llmSelection,
         { image: true, video: false },  // 只生成图片提示词
-        undefined,
+        { shotsSnapshot },
         styleSnapshot
       );
       if (result.success) {
-        setShots(prev => prev.map(s => s.id === shotId ? {
+        const updatedShots = shotsRef.current.map(s => s.id === shotId ? {
           ...s,
           imagePrompt: result.imagePrompt,
-        } : s));
+        } : s);
+        shotsRef.current = updatedShots;
+        setShots(updatedShots);
         message.success('图片提示词生成完成');
       } else {
         message.error(result.error || '生成失败');
@@ -1200,7 +1205,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         return next;
       });
     }
-  }, [projectId, episodeId, shots, llmSelection, projectStylePrompt, styleSnapshot]);
+  }, [projectId, episodeId, llmSelection, projectStylePrompt, styleSnapshot, flushQueuedShotSaves]);
 
   // 生成视频提示词（首次生成）
   const handleGenerateVideoPrompt = useCallback(async (shotId: string) => {
@@ -1208,25 +1213,30 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       message.warning('未选择剧集');
       return;
     }
-    const shot = shots.find(s => s.id === shotId);
+    const shot = shotsRef.current.find(s => s.id === shotId);
     if (!shot) return;
     setSubmittingVideoPrompts(prev => new Set(prev).add(shotId));
     try {
+      await flushQueuedShotSaves();
+      const shotsSnapshot = shotsRef.current;
+      const latestShot = shotsSnapshot.find(s => s.id === shotId) || shot;
       const result = await generateShotPrompt(
         projectId,
         episodeId,
-        shot,
+        latestShot,
         projectStylePrompt,
         llmSelection,
         { image: false, video: true },  // 只生成视频提示词
-        undefined,
+        { shotsSnapshot },
         styleSnapshot
       );
       if (result.success) {
-        setShots(prev => prev.map(s => s.id === shotId ? {
+        const updatedShots = shotsRef.current.map(s => s.id === shotId ? {
           ...s,
           videoPrompt: result.videoPrompt,
-        } : s));
+        } : s);
+        shotsRef.current = updatedShots;
+        setShots(updatedShots);
         message.success('视频提示词生成完成');
       } else {
         message.error(result.error || '生成失败');
@@ -1241,7 +1251,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         return next;
       });
     }
-  }, [projectId, episodeId, shots, llmSelection, projectStylePrompt, styleSnapshot]);
+  }, [projectId, episodeId, llmSelection, projectStylePrompt, styleSnapshot, flushQueuedShotSaves]);
 
   // 优化图片提示词（强制重新生成）
   const handleOptimizeImagePrompt = useCallback(async (shotId: string, _currentPrompt: string) => {
@@ -1249,25 +1259,30 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       message.warning('未选择剧集');
       return;
     }
-    const shot = shots.find(s => s.id === shotId);
+    const shot = shotsRef.current.find(s => s.id === shotId);
     if (!shot) return;
     setSubmittingImagePrompts(prev => new Set(prev).add(shotId));
     try {
+      await flushQueuedShotSaves();
+      const shotsSnapshot = shotsRef.current;
+      const latestShot = shotsSnapshot.find(s => s.id === shotId) || shot;
       const result = await generateShotPrompt(
         projectId,
         episodeId,
-        shot,
+        latestShot,
         projectStylePrompt,
         llmSelection,
         { image: true, video: false },
-        { force: true },  // 强制重新生成
+        { force: true, shotsSnapshot },  // 强制重新生成
         styleSnapshot
       );
       if (result.success) {
-        setShots(prev => prev.map(s => s.id === shotId ? {
+        const updatedShots = shotsRef.current.map(s => s.id === shotId ? {
           ...s,
           imagePrompt: result.imagePrompt,
-        } : s));
+        } : s);
+        shotsRef.current = updatedShots;
+        setShots(updatedShots);
         message.success('图片提示词优化完成');
       } else {
         message.error(result.error || '优化失败');
@@ -1282,7 +1297,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         return next;
       });
     }
-  }, [projectId, episodeId, shots, llmSelection, projectStylePrompt, styleSnapshot]);
+  }, [projectId, episodeId, llmSelection, projectStylePrompt, styleSnapshot, flushQueuedShotSaves]);
 
   // 优化视频提示词（强制重新生成）
   const handleOptimizeVideoPrompt = useCallback(async (shotId: string, _currentPrompt: string) => {
@@ -1290,25 +1305,30 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       message.warning('未选择剧集');
       return;
     }
-    const shot = shots.find(s => s.id === shotId);
+    const shot = shotsRef.current.find(s => s.id === shotId);
     if (!shot) return;
     setSubmittingVideoPrompts(prev => new Set(prev).add(shotId));
     try {
+      await flushQueuedShotSaves();
+      const shotsSnapshot = shotsRef.current;
+      const latestShot = shotsSnapshot.find(s => s.id === shotId) || shot;
       const result = await generateShotPrompt(
         projectId,
         episodeId,
-        shot,
+        latestShot,
         projectStylePrompt,
         llmSelection,
         { image: false, video: true },
-        { force: true },  // 强制重新生成
+        { force: true, shotsSnapshot },  // 强制重新生成
         styleSnapshot
       );
       if (result.success) {
-        setShots(prev => prev.map(s => s.id === shotId ? {
+        const updatedShots = shotsRef.current.map(s => s.id === shotId ? {
           ...s,
           videoPrompt: result.videoPrompt,
-        } : s));
+        } : s);
+        shotsRef.current = updatedShots;
+        setShots(updatedShots);
         message.success('视频提示词优化完成');
       } else {
         message.error(result.error || '优化失败');
@@ -1323,7 +1343,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         return next;
       });
     }
-  }, [projectId, episodeId, shots, llmSelection, projectStylePrompt, styleSnapshot]);
+  }, [projectId, episodeId, llmSelection, projectStylePrompt, styleSnapshot, flushQueuedShotSaves]);
 
   // 批量入口前置守门：DB 里已经有同 (type, episode) 的活跃任务（pending/running/processing）
   // 时直接告诉用户当前批量在跑，不再创建第二条。这是离开页面、submitting 本地集合丢失
@@ -1353,9 +1373,11 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       return;
     }
     if (!(await ensureNoActiveBatch('prompt-generation:image', '批量图片提示词'))) return;
+    await flushQueuedShotSaves();
+    const currentShots = shotsRef.current;
     const baseShots = targetShotIds
-      ? shots.filter(s => targetShotIds.includes(s.id))
-      : shots;
+      ? currentShots.filter(s => targetShotIds.includes(s.id))
+      : currentShots;
     const shotsWithoutPrompt = baseShots.filter(s => !s.imagePrompt?.trim());
     if (shotsWithoutPrompt.length === 0) {
       message.info('所选分镜都已有图片提示词');
@@ -1381,7 +1403,8 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         },
         llmSelection,
         styleSnapshot,
-        { image: true, video: false }
+        { image: true, video: false },
+        { shotsSnapshot: currentShots }
       );
       const successCount = results.filter(r => r.success).length;
       if (successCount === 0 && results.length > 0) {
@@ -1397,7 +1420,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       setSubmittingImagePrompts(new Set());
       setBatchProgress(undefined);
     }
-  }, [projectId, episodeId, shots, llmSelection, projectStylePrompt, styleSnapshot, ensureNoActiveBatch, message]);
+  }, [projectId, episodeId, llmSelection, projectStylePrompt, styleSnapshot, ensureNoActiveBatch, message, flushQueuedShotSaves]);
 
   // 批量重新生成图片提示词
   const handleBatchReGenerateImagePrompts = useCallback(async (targetShotIds?: string[]) => {
@@ -1408,9 +1431,11 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     // batchGenerateShotPrompts 的 task type 固定是 prompt-generation:*（不区分 force），
     // 所以 re-generate 与 generate 共享同一去重 key。
     if (!(await ensureNoActiveBatch('prompt-generation:image', '批量图片提示词'))) return;
+    await flushQueuedShotSaves();
+    const currentShots = shotsRef.current;
     const baseShots = targetShotIds
-      ? shots.filter(s => targetShotIds.includes(s.id))
-      : shots;
+      ? currentShots.filter(s => targetShotIds.includes(s.id))
+      : currentShots;
     const shotsWithPrompt = baseShots.filter(s => s.imagePrompt?.trim());
     if (shotsWithPrompt.length === 0) {
       message.info('所选分镜都没有图片提示词');
@@ -1437,7 +1462,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         llmSelection,
         styleSnapshot,
         { image: true, video: false },
-        { force: true }
+        { force: true, shotsSnapshot: currentShots }
       );
       const successCount = results.filter(r => r.success).length;
       if (successCount === 0 && results.length > 0) {
@@ -1453,7 +1478,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       setSubmittingImagePrompts(new Set());
       setBatchProgress(undefined);
     }
-  }, [projectId, episodeId, shots, llmSelection, projectStylePrompt, styleSnapshot, ensureNoActiveBatch, message]);
+  }, [projectId, episodeId, llmSelection, projectStylePrompt, styleSnapshot, ensureNoActiveBatch, message, flushQueuedShotSaves]);
 
   // 批量生成视频提示词（跳过已有视频提示词的）
   const handleBatchGenerateVideoPrompts = useCallback(async (targetShotIds?: string[]) => {
@@ -1462,9 +1487,11 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       return;
     }
     if (!(await ensureNoActiveBatch('prompt-generation:video', '批量视频提示词'))) return;
+    await flushQueuedShotSaves();
+    const currentShots = shotsRef.current;
     const baseShots = targetShotIds
-      ? shots.filter(s => targetShotIds.includes(s.id))
-      : shots;
+      ? currentShots.filter(s => targetShotIds.includes(s.id))
+      : currentShots;
     const shotsWithoutPrompt = baseShots.filter(s => !s.videoPrompt?.trim());
     if (shotsWithoutPrompt.length === 0) {
       message.info('所选分镜都已有视频提示词');
@@ -1490,7 +1517,8 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         },
         llmSelection,
         styleSnapshot,
-        { image: false, video: true }
+        { image: false, video: true },
+        { shotsSnapshot: currentShots }
       );
       const successCount = results.filter(r => r.success).length;
       if (successCount === 0 && results.length > 0) {
@@ -1506,7 +1534,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       setSubmittingVideoPrompts(new Set());
       setBatchProgress(undefined);
     }
-  }, [projectId, episodeId, shots, llmSelection, projectStylePrompt, styleSnapshot, ensureNoActiveBatch, message]);
+  }, [projectId, episodeId, llmSelection, projectStylePrompt, styleSnapshot, ensureNoActiveBatch, message, flushQueuedShotSaves]);
 
   // 批量重新生成视频提示词
   const handleBatchReGenerateVideoPrompts = useCallback(async (targetShotIds?: string[]) => {
@@ -1515,9 +1543,11 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       return;
     }
     if (!(await ensureNoActiveBatch('prompt-generation:video', '批量视频提示词'))) return;
+    await flushQueuedShotSaves();
+    const currentShots = shotsRef.current;
     const baseShots = targetShotIds
-      ? shots.filter(s => targetShotIds.includes(s.id))
-      : shots;
+      ? currentShots.filter(s => targetShotIds.includes(s.id))
+      : currentShots;
     const shotsWithPrompt = baseShots.filter(s => s.videoPrompt?.trim());
     if (shotsWithPrompt.length === 0) {
       message.info('所选分镜都没有视频提示词');
@@ -1544,7 +1574,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         llmSelection,
         styleSnapshot,
         { image: false, video: true },
-        { force: true }
+        { force: true, shotsSnapshot: currentShots }
       );
       const successCount = results.filter(r => r.success).length;
       if (successCount === 0 && results.length > 0) {
@@ -1560,7 +1590,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       setSubmittingVideoPrompts(new Set());
       setBatchProgress(undefined);
     }
-  }, [projectId, episodeId, shots, llmSelection, projectStylePrompt, styleSnapshot, ensureNoActiveBatch, message]);
+  }, [projectId, episodeId, llmSelection, projectStylePrompt, styleSnapshot, ensureNoActiveBatch, message, flushQueuedShotSaves]);
 
   // 创建新分镜
   const createNewShot = useCallback((): Shot => ({
