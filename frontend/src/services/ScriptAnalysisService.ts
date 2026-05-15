@@ -499,20 +499,24 @@ export class ScriptAnalysisService {
           if (!Array.isArray(parsed?.characters)) return [];
           return parsed.characters.filter((c: any) => c && typeof c.name === 'string' && c.name.trim());
         },
-        (c, index) => ({
-          // prompt 只承载纯视觉 appearance；description 保留为非视觉的人物小传
-          // 即便 LLM 越线把剧情写进 appearance，也会在这里被过滤掉，避免污染后续生图链路。
-          id: `char_${Date.now()}_${index}`,
-          name: c.name,
-          appearance: sanitizeCharacterAppearance(c.appearance, c.name),
-          description: cleanText(c.description || ''),
-          prompt: sanitizeCharacterAppearance(c.appearance, c.name) || c.name,
-          age: c.age || '未知',
-          gender: ['male', 'female', 'neutral', 'unknown'].includes(c.gender) ? c.gender : 'unknown',
-          role: c.role || 'supporting',
-          aliases: typeof c.aliases === 'string' ? c.aliases.trim() : (Array.isArray(c.aliases) ? c.aliases.join(',') : ''),
-          episodeId: this.episodeContext?.episodeId,
-        })
+        (c, index) => {
+          // LLM 仍按 schema 同时返回 appearance（视觉外观）和 description（≤20 字身份标签），
+          // 但我们只保留一份 prompt：把 sanitize 后的 appearance 放前面（视觉重要），
+          // description 作为身份补充拼到后面。这样后续读取只有一份真相，UI 改了就立刻生效。
+          const visualAppearance = sanitizeCharacterAppearance(c.appearance, c.name);
+          const briefDescription = cleanText(c.description || '');
+          const promptParts = [visualAppearance, briefDescription].filter(Boolean);
+          return {
+            id: `char_${Date.now()}_${index}`,
+            name: c.name,
+            prompt: promptParts.join('\n') || c.name,
+            age: c.age || '未知',
+            gender: ['male', 'female', 'neutral', 'unknown'].includes(c.gender) ? c.gender : 'unknown',
+            role: c.role || 'supporting',
+            aliases: typeof c.aliases === 'string' ? c.aliases.trim() : (Array.isArray(c.aliases) ? c.aliases.join(',') : ''),
+            episodeId: this.episodeContext?.episodeId,
+          };
+        }
       );
 
       this.reportProgress('characters', 'completed', `识别到 ${characters.length} 个角色`, { stageProgress: 1 });
@@ -588,9 +592,9 @@ export class ScriptAnalysisService {
         (p, index) => ({
           id: `prop_${Date.now()}_${index}`,
           name: p.name,
-          prompt: p.description || p.name,
+          // description 字段已从 Prop 类型上删，LLM 抽出的描述直接入 prompt。
+          prompt: cleanText(p.description || '') || p.name,
           type: p.type,
-          description: p.description || '',
           aliases: typeof p.aliases === 'string' ? p.aliases.trim() : (Array.isArray(p.aliases) ? p.aliases.join(',') : ''),
           episodeId: this.episodeContext?.episodeId,
         })

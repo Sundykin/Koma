@@ -116,12 +116,12 @@ describe('buildDialogueGuardNote', () => {
   });
 
   it('does not expose static character appearance in multi-ref baseline when a reference image exists', () => {
+    // Character.appearance 字段已删，外观文本现在直接是 prompt 的一部分。
     const character = {
       id: '1778207028644_1',
       name: '小白',
       role: 'supporting',
-      prompt: '小白',
-      appearance: '银白色齐腰长发披散，浅紫色大眼睛，脸颊带婴儿肥，身穿淡粉色丝绸交领短袖短衫，白色百褶短裙。',
+      prompt: '小白，银白色齐腰长发披散，浅紫色大眼睛，脸颊带婴儿肥，身穿淡粉色丝绸交领短袖短衫，白色百褶短裙。',
       media: {
         costumePhoto: { url: 'https://example.com/xiaobai.png' },
       },
@@ -142,8 +142,7 @@ describe('buildDialogueGuardNote', () => {
       id: '1778207028644_1',
       name: '小白',
       role: 'supporting',
-      prompt: '小白',
-      appearance: '银白色齐腰长发披散，浅紫色大眼睛，身穿淡粉色短衫。',
+      prompt: '小白，银白色齐腰长发披散，浅紫色大眼睛，身穿淡粉色短衫。',
     } as unknown as Character;
     const referenceBundle: ShotReferenceBundle = {
       items: [{
@@ -172,8 +171,7 @@ describe('buildDialogueGuardNote', () => {
       id: '1778207028644_0',
       name: '我',
       role: 'protagonist',
-      prompt: '我',
-      appearance: '白色亚麻交领长袖武袍，黑色棉质灯笼裤。',
+      prompt: '我，白色亚麻交领长袖武袍，黑色棉质灯笼裤。',
     } as unknown as Character;
 
     const baseline = formatCharacterMappingBaseline([character], 'multi-ref');
@@ -419,7 +417,7 @@ describe('ShotPromptService storyboard prompt variables', () => {
     const service = new ShotPromptService(createContext());
     await service.generateSpecialImageShotPrompt(
       createStoryboardShot(),
-      [{ id: 'char_yeshu', name: '叶赎', appearance: '青年修士' } as Character],
+      [{ id: 'char_yeshu', name: '叶赎', role: 'protagonist', prompt: '青年修士' } as Character],
       '修仙玄幻写实',
     );
 
@@ -465,7 +463,7 @@ describe('ShotPromptService storyboard prompt variables', () => {
     const service = new ShotPromptService(createContext());
     await service.generateSpecialImageShotPrompt(
       createStoryboardShot({ id: 'shot-current' }),
-      [{ id: 'char_yeshu', name: '叶赎', appearance: '青年修士' } as Character],
+      [{ id: 'char_yeshu', name: '叶赎', role: 'protagonist', prompt: '青年修士' } as Character],
       '修仙玄幻写实',
     );
 
@@ -507,7 +505,7 @@ describe('ShotPromptService storyboard prompt variables', () => {
 
     await service.generateSpecialImageShotPrompt(
       current,
-      [{ id: 'char_yeshu', name: '叶赎', appearance: '青年修士' } as Character],
+      [{ id: 'char_yeshu', name: '叶赎', role: 'protagonist', prompt: '青年修士' } as Character],
       '修仙玄幻写实',
       undefined,
       [previous, current],
@@ -559,7 +557,7 @@ describe('ShotPromptService storyboard prompt variables', () => {
 
     const result = await service.generateSpecialImageShotPrompt(
       current,
-      [{ id: 'char_yeshu', name: '叶赎', appearance: '青年修士' } as Character],
+      [{ id: 'char_yeshu', name: '叶赎', role: 'protagonist', prompt: '青年修士' } as Character],
       '修仙玄幻写实',
       undefined,
       [previous, current],

@@ -27,12 +27,12 @@ export interface Character {
   id: string;
   name: string;
   role: 'protagonist' | 'antagonist' | 'supporting'; // 主角 | 反派 | 配角
-  prompt: string;      // 核心视觉提示词
+  // prompt 是唯一的视觉/小传文本来源。旧字段 description / appearance 已删除：
+  // load 时 normalizeCharacterMediaState 会把它们折叠进 prompt 然后剥掉。
+  prompt: string;
 
   age?: string;
   gender?: CharacterGender;
-  description?: string;
-  appearance?: string;
   /** 该人物在原文中的全部代称，多个用英文逗号分隔；无代称为空字符串 */
   aliases?: string;
 
@@ -49,12 +49,12 @@ export interface Character {
 export interface Scene {
   id: string;
   name: string;
-  prompt: string;     // 核心提示词
+  // 同 Character：旧 description 字段已删除，老数据 load 时折叠进 prompt。
+  prompt: string;
 
   location?: string;
   time?: 'day' | 'night' | 'twilight';
   mood?: string;
-  description?: string;
   /** 该场景在原文中的全部代称，多个用英文逗号分隔；无代称为空字符串 */
   aliases?: string;
 
@@ -68,10 +68,10 @@ export interface Scene {
 export interface Prop {
   id: string;
   name: string;
-  prompt: string;     // 核心提示词
+  // 同 Character：旧 description 字段已删除，老数据 load 时折叠进 prompt。
+  prompt: string;
 
   type?: string;
-  description?: string;
   /** 该道具在原文中的全部代称，多个用英文逗号分隔；无代称为空字符串 */
   aliases?: string;
 

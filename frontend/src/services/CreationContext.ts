@@ -164,21 +164,21 @@ export function buildEntitySummaries(ctx: CreationContext): EntitySummary[] {
     summaries.push({
       name: c.name,
       type: 'character',
-      brief: truncate(c.description || c.appearance || c.role || '', 30),
+      brief: truncate(c.prompt || c.role || '', 30),
     });
   }
   for (const s of ctx.scenes) {
     summaries.push({
       name: s.name,
       type: 'scene',
-      brief: truncate(s.description || s.mood || '', 30),
+      brief: truncate(s.prompt || s.mood || '', 30),
     });
   }
   for (const p of ctx.props) {
     summaries.push({
       name: p.name,
       type: 'prop',
-      brief: truncate(p.description || '', 30),
+      brief: truncate(p.prompt || '', 30),
     });
   }
 

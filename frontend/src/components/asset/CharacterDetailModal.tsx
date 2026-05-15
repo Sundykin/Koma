@@ -135,11 +135,12 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
       }
 
       const storedCharacter = characters[index];
+      const promptValue = values.prompt || '';
       const updatedCharacter: Character = {
         ...storedCharacter,
         ...editedCharacter,
         ...values,
-        prompt: values.prompt || '',
+        prompt: promptValue,
         media: storedCharacter.media ?? editedCharacter.media,
         episodeRefs: mergeEpisodeRefs(storedCharacter.episodeRefs, editedCharacter.episodeRefs),
       };

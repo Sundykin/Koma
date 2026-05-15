@@ -280,6 +280,20 @@ export class ShotPromptService {
       gridSequenceNotice,
       shotsSection,
     };
+
+    // 排查"合并分镜后推理只剩末尾一句"类问题时的关键日志：把 LLM 实际拿到的 scriptContent
+    // 完整打出来，对比 shot.scriptLines 看是否在传输过程中被截断。如果这里看到的剧情是完整的，
+    // 但 LLM 输出只回了末尾一段，那是 LLM 模板的"单帧聚焦"行为（参考模板说明），不是数据丢失。
+    logger.info('分镜图片提示词推理 - LLM 输入', {
+      shotId: shot.id,
+      scriptLineCount: shot.scriptLines?.length ?? 0,
+      visualScriptContent,
+      dialogueText: templateVariables.dialogueText,
+      characters: templateVariables.characters,
+      scenes: templateVariables.scenes,
+      props: templateVariables.props,
+    });
+
     const resolvedPrompt = await resolvePromptTemplate(templateKey, templateVariables);
     const prompt = resolvedPrompt.prompt;
 
@@ -304,6 +318,12 @@ export class ShotPromptService {
     if (cleanedResult.startsWith('"') && cleanedResult.endsWith('"')) {
       cleanedResult = cleanedResult.slice(1, -1);
     }
+
+    logger.info('分镜图片提示词推理 - LLM 输出', {
+      shotId: shot.id,
+      outputLength: cleanedResult.length,
+      output: cleanedResult,
+    });
 
     return cleanedResult;
   }
@@ -402,6 +422,18 @@ export class ShotPromptService {
       '只能输出一套最终字段结构。`shotsSection` / 镜头结构约束只用于内部规划，不得作为第二套逐镜头段落输出；如果有镜头细节，必须合并进 `角色动作提示词`、`画面描述`、`光影氛围提示词` 等对应字段。',
     ].join('\n');
 
+    // 与图片路径对齐：把 LLM 实际拿到的 scriptContent 打出来，方便排查"合并分镜后
+    // 视频推理只剩末尾一段"类问题。
+    logger.info('分镜视频提示词推理 - LLM 输入', {
+      shotId: shot.id,
+      templateKey,
+      scriptLineCount: shot.scriptLines?.length ?? 0,
+      videoScriptContent,
+      dialogueText: explicitDialogueText,
+      videoMode,
+      duration: shot.duration,
+    });
+
     const result = await this.ctx.llmProvider.chat([
       { role: 'system', content: systemPrompt },
       {
@@ -411,6 +443,12 @@ export class ShotPromptService {
           .join('\n\n'),
       },
     ]);
+
+    logger.info('分镜视频提示词推理 - LLM 输出', {
+      shotId: shot.id,
+      outputLength: result.length,
+      output: result,
+    });
 
     return ensureExplicitDialogueInVideoPrompt(
       sanitizeVideoPromptResult(result),
@@ -504,7 +542,7 @@ export class ShotPromptService {
       dialogueText: formatDialogueTextForPrompt(getShotDialogueText(shot), shotCharacterNames, this.ctx.projectMode) || '无',
       dialogueModeDirective: buildVideoDialogueModeDirective(this.ctx.projectMode),
       ...projectHeader,
-      characters: shotCharacters.map(c => `${c.name}（${c.appearance || c.description || ''}）`).join('; ') || '无',
+      characters: shotCharacters.map(c => `${c.name}（${c.prompt || ''}）`).join('; ') || '无',
       scenes: shotScenes.map(s => s.name).join(', ') || '无',
       props: shotProps.map(p => p.name).join(', ') || '无',
       emotion: shot.emotion || '中性',
@@ -963,7 +1001,7 @@ export function formatCharacterMappingBaseline(
       if (hasReferenceImage) {
         return `- ${mention} ${c.name}：外观身份以绑定参考图为准；最终提示词只写本镜头动作、姿态、朝向、视线、表情、手部和临时状态变化，禁止展开发型、脸型、眼睛、体型、常规服装颜色材质、常规配饰。`;
       }
-      const appearance = (c.appearance || c.description || '').trim();
+      const appearance = (c.prompt || '').trim();
       return `- ${mention} ${c.name}：${appearance || '（无外观描述）'}`;
     })
     .join('\n');
@@ -980,7 +1018,7 @@ function formatSceneMappingBaseline(
   return shotScenes
     .map(s => {
       const mention = createMentionString('scene', s.id);
-      const desc = (s.description || s.prompt || '').trim();
+      const desc = (s.prompt || '').trim();
       return `- ${mention} ${s.name}：${desc || '（无空间描述）'}`;
     })
     .join('\n');
@@ -1456,7 +1494,7 @@ function buildSpatialAnchorDirective(
       : '**场景空间基线（继承自 @scene，本分镜的空间真相；只能引用此处出现过的区域 / 标志物作为站位参照，禁止编造）：**');
     for (const scene of shotScenes) {
       const mention = createMentionString('scene', scene.id);
-      const desc = (scene.description || scene.prompt || '').trim();
+      const desc = (scene.prompt || '').trim();
       lines.push(`  - ${mention} ${scene.name}：${desc || '（无空间描述，此场景无法提供空间锚点）'}`);
     }
   }

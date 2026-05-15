@@ -164,27 +164,28 @@ export function exportToManjuDSL(
     updatedAt: new Date(project.updatedAt).toISOString(),
   };
 
-  // 转换角色
+  // 转换角色：内部只有 prompt 一份真相，DSL 接口仍保留 description / appearance
+  // 字段名（向后兼容外部消费者），两个字段都填同一份 prompt，让 DSL 读者无论挑哪个都拿到正确文本。
   const manjuCharacters: ManjuCharacter[] = characters.map((c) => ({
     id: c.id,
     name: c.name,
     role: c.role,
     age: c.age,
     gender: c.gender,
-    description: c.description || '',
-    appearance: c.appearance || '',
+    description: c.prompt || '',
+    appearance: c.prompt || '',
     voiceId: c.voiceId,
     avatar: getCharacterCostumePhotoSource(c),
   }));
 
-  // 转换场景
+  // 转换场景：同 character，DSL description 直接镜像 prompt。
   const manjuScenes: ManjuScene[] = scenes.map((s) => ({
     id: s.id,
     name: s.name,
     location: s.location,
     time: s.time,
     mood: s.mood,
-    description: s.description || '',
+    description: s.prompt || '',
   }));
 
   // 转换分镜
@@ -259,6 +260,8 @@ export function importFromManjuDSL(manju: ManjuProject): ImportedProjectData {
     role: c.role,
     age: c.age || '未知',
     gender: c.gender || 'unknown',
+    // 导入时把 DSL 的 appearance + description 合并成内部 prompt（单一来源）。
+    // 老字段已从 Character 类型上删除，导入端也不再回写。
     prompt: promptParts.join('\n') || '',
     voiceId: c.voiceId,
     media: c.avatar
@@ -266,9 +269,6 @@ export function importFromManjuDSL(manju: ManjuProject): ImportedProjectData {
             costumePhoto: createStoredMediaAsset('image', { remoteUrl: c.avatar }),
           }
         : undefined,
-      // 保留旧字段用于兼容
-    description: c.description,
-    appearance: c.appearance,
   };
   });
 
@@ -283,11 +283,9 @@ export function importFromManjuDSL(manju: ManjuProject): ImportedProjectData {
       id: s.id,
       name: s.name,
       prompt: promptParts.join('\n') || '',
-      // 保留旧字段用于兼容
       location: s.location,
       time: s.time,
       mood: s.mood,
-      description: s.description,
     };
   });
 

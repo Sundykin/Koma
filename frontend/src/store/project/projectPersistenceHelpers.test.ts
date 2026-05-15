@@ -39,8 +39,8 @@ describe('projectPersistenceHelpers', () => {
       id: 'char-1',
       name: '主角',
       role: 'protagonist',
-      prompt: '黑色风衣',
-      description: '冷静',
+      // description / appearance 字段已删，所有文本统一进 prompt。
+      prompt: '黑色风衣，冷静',
       voiceId: 'voice-a',
       timestampRange: { start: 3, end: 8 },
       episodeRefs: [],
@@ -66,7 +66,7 @@ describe('projectPersistenceHelpers', () => {
     expect(character).toEqual(expect.objectContaining({
       id: 'char-1',
       name: '主角',
-      prompt: '黑色风衣',
+      prompt: '黑色风衣，冷静',
       voiceId: 'voice-a',
       timestampRange: { start: 3, end: 8 },
       episodeRefs: [

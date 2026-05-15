@@ -4,6 +4,7 @@
  */
 import {
   getMediaAssetDisplaySource,
+  getShotScriptText,
   isImageToVideoRequest,
   isReferenceToVideoRequest,
   type AppSettings,
@@ -104,15 +105,26 @@ export async function shotRenderWorkflow(
 ): Promise<ShotRenderResult> {
   const { projectId, episodeId, shot, settings, mediaSelections, project } = params;
   const normalizedShot = normalizeShotMediaState(shot);
-  const sourceVideoPrompt = (normalizedShot.videoPrompt || '').trim();
+  // videoPrompt 是 LLM 推理出的视频版"优化提示词"，合并 / 拆分 / 编辑剧情后会过期。
+  // 这里和 shotImageWorkflow 对齐：缓存为空时回落到 scriptLines（"剧情"原文），避免出现
+  // "剧情已合并 6 个分镜、生成视频却只覆盖最后一段"的情况。
+  const cachedVideoPrompt = (normalizedShot.videoPrompt || '').trim();
+  const fallbackScriptText = getShotScriptText(normalizedShot).trim();
+  const sourceVideoPrompt = cachedVideoPrompt || fallbackScriptText;
   if (!sourceVideoPrompt) {
-    logger.warn('分镜视频生成被阻止：视频提示词为空', { shotId: normalizedShot.id });
+    logger.warn('分镜视频生成被阻止：视频提示词与剧情均为空', { shotId: normalizedShot.id });
     return {
       shotId: normalizedShot.id,
       version: {} as ShotVersion,
       success: false,
-      error: '请先填写视频提示词',
+      error: '请先填写剧情或视频提示词',
     };
+  }
+  if (!cachedVideoPrompt) {
+    logger.info('分镜未推理 videoPrompt，使用 scriptLines 作为兜底', {
+      shotId: normalizedShot.id,
+      scriptLength: fallbackScriptText.length,
+    });
   }
   const episodeShots = params.allShots
     ?? (episodeId ? await loadEpisodeShots(projectId, episodeId).catch(() => undefined) : undefined);
@@ -220,6 +232,14 @@ export async function shotRenderWorkflow(
     // 视频生成只能使用用户在分镜编辑器中看到的 videoPrompt。
     // 空 prompt 在入口处已拒绝，不再隐式套用 itv_shot_video 默认模板，避免发送"看不见的提示词"。
     let videoPrompt = sanitizeVideoPromptResult(sourceVideoPrompt);
+    logger.info('分镜视频生成 - 最终下发 ITV 的 prompt', {
+      shotId: normalizedShot.id,
+      cachedVideoPromptUsed: Boolean(cachedVideoPrompt),
+      fellBackToScriptLines: !cachedVideoPrompt,
+      rawScriptText: fallbackScriptText,
+      sourceVideoPrompt,
+      sanitizedVideoPrompt: videoPrompt,
+    });
     let templateId = 'shot.videoPrompt';
     let promptSource: 'default' | 'custom' | 'finalized' = 'finalized';
 

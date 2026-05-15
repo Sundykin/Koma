@@ -105,6 +105,16 @@ function getShotVideoCount(shot: Shot): number {
 }
 
 // 合并两个分镜（duration 按当前 ITV 渠道 spec 吸附；不再硬编码到 grok 枚举）
+//
+// scriptLines 是剧情的唯一来源；imagePrompt / videoPrompt 是上一轮 LLM 从单个分镜
+// 各自的 scriptLines 推出来的派生缓存。合并后两个分镜的剧情拼成了新整体，旧派生
+// 已经过时——以前的实现直接做 `[target.imagePrompt, source.imagePrompt].filter(Boolean).join(...)`
+// 看起来"合并"了，实际上：
+//   - 若只有一个分镜跑过 AI 推理，其余为空，filter(Boolean) 后只剩那一段，结果就是用户报告的
+//     "推理只剩'我静居闺中、日日盼着佳期'，前面的纳采问名/聘礼盈箱全丢"。
+//   - videoPrompt 当时压根没被合并，永远只保留 target 那条。
+// 现在直接把两个派生字段清空，触发 shotImage/shotRender workflow 用新整段 scriptLines
+// 作为兜底输入（见下方 workflow 改动）。用户也可以手动点 "AI 推理 prompt" 重新生成更精炼的版本。
 function mergeShots(target: Shot, source: Shot, durationSpec: VideoDurationSpec): Shot {
   const mergedMedia = {
     references: [...(target.media?.references || []), ...(source.media?.references || [])],
@@ -117,7 +127,8 @@ function mergeShots(target: Shot, source: Shot, durationSpec: VideoDurationSpec)
   return {
     ...target,
     scriptLines: [...(target.scriptLines || []), ...(source.scriptLines || [])],
-    imagePrompt: [target.imagePrompt, source.imagePrompt].filter(Boolean).join('\n\n'),
+    imagePrompt: undefined,
+    videoPrompt: undefined,
     duration: clampDurationToSpec(target.duration + source.duration, durationSpec),
     characters: [...new Set([...target.characters, ...source.characters])],
     dialogue: [target.dialogue, source.dialogue].filter(Boolean).join('\n'),

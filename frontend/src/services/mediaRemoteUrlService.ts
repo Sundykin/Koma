@@ -100,7 +100,7 @@ function buildProviderInputCacheKey(source: ProviderAssetInput): string {
   return `${source.transport}:${source.value}`;
 }
 
-function buildRemoteUrlSourceKey(source: MediaAssetSource | ProviderAssetInput): string {
+function buildRemoteUrlSourceKeyRaw(source: MediaAssetSource | ProviderAssetInput): string {
   if (typeof source === 'object' && 'transport' in source && 'value' in source) {
     if (source.transport === 'remote-url') return `remote:${source.value}`;
     if (isDataUri(source.value)) return createDataUrlCacheKey(source.value);
@@ -120,6 +120,36 @@ function buildRemoteUrlSourceKey(source: MediaAssetSource | ProviderAssetInput):
   if (isRemoteMediaUri(source)) return `remote:${source}`;
   if (isDataUri(source)) return createDataUrlCacheKey(source);
   return `local:${normalizeLocalSourcePath(source)}`;
+}
+
+/**
+ * 项目资产（角色 / 场景 / 道具定妆照）落盘走的是**固定路径**——
+ *   `assets/characters/{id}/costume.png` / `assets/scenes/{id}/previewImage.png` 等。
+ * 重新生图时新字节会**原地覆盖**同一个文件。
+ * 如果缓存键只看路径，那二次生图的 sourceKey 跟首次完全一样，
+ * lookupCachedRemoteUrl 会把第一次的远程 URL 当成命中返回，**新图根本不会被上传**，
+ * UI 还在拿旧 CDN，于是"重新生成没换"。
+ *
+ * 修复：本地文件型 sourceKey 后面带上 `#{mtime}#{size}`。
+ *   - 新字节落盘 → mtime 变 → key 变 → 缓存自然 miss → 走真实上传 → 写新条目。
+ *   - 同字节、同 mtime 的反复查询仍然命中。
+ *   - 旧条目残留几条无大碍（一份就几十字节，下次 schemaVersion 升级时再统一清）。
+ *
+ * 非本地源（data-url / provider-input / remote-url）走 raw key —— 这些天然 content-addressed，
+ * 不需要 stat。
+ */
+async function buildRemoteUrlSourceKey(source: MediaAssetSource | ProviderAssetInput): Promise<string> {
+  const raw = buildRemoteUrlSourceKeyRaw(source);
+  if (!raw.startsWith('local:')) return raw;
+  if (!electronService.isElectron()) return raw;
+  const fsPath = raw.slice('local:'.length);
+  try {
+    const stat = await electronService.fs.stat(fsPath);
+    if (!stat || stat.isDirectory) return raw;
+    return `${raw}#${Math.floor(stat.modifiedAt)}#${stat.size}`;
+  } catch {
+    return raw;
+  }
 }
 
 function inferSourceKind(source: MediaAssetSource | ProviderAssetInput): RemoteUrlCacheEntry['sourceKind'] {
@@ -588,7 +618,7 @@ export async function ensureRemoteUrlForImageAsset(params: {
   }
 
   const filename = filenameHint || safeFilenameFromPath(source, asset.mimeType);
-  const sourceKey = buildRemoteUrlSourceKey(asset);
+  const sourceKey = await buildRemoteUrlSourceKey(asset);
   const cached = await lookupCachedRemoteUrl({
     projectId: params.projectId,
     sourceKey,
@@ -682,7 +712,7 @@ async function uploadSourceWithCache(params: {
   fallbackToSourceOnUploadFailure?: boolean;
   mimeType?: string;
 }): Promise<string | undefined> {
-  const sourceKey = buildRemoteUrlSourceKey(params.source);
+  const sourceKey = await buildRemoteUrlSourceKey(params.source);
   const cached = await lookupCachedRemoteUrl({
     projectId: params.projectId,
     sourceKey,
@@ -751,7 +781,7 @@ export async function ensureRemoteUrlForImageSource(params: {
     // data-url -> remote-url
     const filename = filenameHint
       || defaultFilenameForMime(source.mimeType || mimeTypeFromDataUrl(source.value));
-    const sourceKey = buildRemoteUrlSourceKey(source);
+    const sourceKey = await buildRemoteUrlSourceKey(source);
     const cached = await lookupCachedRemoteUrl({
       projectId: params.projectId,
       sourceKey,
@@ -801,7 +831,7 @@ export async function ensureRemoteUrlForImageSource(params: {
 
   const filename = filenameHint
     || safeFilenameFromPath(source, isDataUri(source) ? mimeTypeFromDataUrl(source) : undefined);
-  const sourceKey = buildRemoteUrlSourceKey(source);
+  const sourceKey = await buildRemoteUrlSourceKey(source);
   const cached = await lookupCachedRemoteUrl({
     projectId: params.projectId,
     sourceKey,
@@ -842,7 +872,7 @@ export async function ensureRemoteUrlForImageSources(params: {
       results[index] = undefined;
       continue;
     }
-    const sourceKey = buildRemoteUrlSourceKey(source);
+    const sourceKey = await buildRemoteUrlSourceKey(source);
     const firstIndex = firstIndexBySourceKey.get(sourceKey);
     if (firstIndex != null) {
       const firstResult = results[firstIndex];

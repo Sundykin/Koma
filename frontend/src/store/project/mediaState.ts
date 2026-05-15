@@ -46,28 +46,63 @@ function clampIndex(index: number | undefined, length: number): number | undefin
   return Math.max(0, Math.min(index, length - 1));
 }
 
+/**
+ * 历史上 Character / Scene / Prop 同时存了多份冗余文本字段：
+ *   - Character 有 prompt / description / appearance 三份；UI 只能编辑 prompt，
+ *     description / appearance 是首次剧本分析时 LLM 抽出的旧文本，永远没人写回 →
+ *     生成时优先读旧字段就会让 UI 改动失效（用户曾汇报"改成绿色流仙裙仍出大红嫁衣"）。
+ *   - Scene / Prop 各自的 description 同理。
+ *
+ * 清理策略：prompt 是唯一来源；老数据 load 时把残留的 appearance / description
+ * 折叠进 prompt（仅当 prompt 为空），然后从对象上彻底剥掉。这样 type 上看不到这两个字段，
+ * 下游任何残留的 `c.appearance` / `c.description` 读取在 TS 编译期就会报错。
+ */
+function foldLegacyTextIntoPrompt<T extends { prompt: string }>(record: T, legacyKeys: ReadonlyArray<string>): T {
+  const indexed = record as unknown as Record<string, unknown>;
+  const existingPrompt = String(indexed.prompt ?? '').trim();
+  const cleaned: Record<string, unknown> = { ...indexed };
+  const folded: string[] = [];
+  if (!existingPrompt) {
+    for (const key of legacyKeys) {
+      const value = String(indexed[key] ?? '').trim();
+      if (value) folded.push(value);
+    }
+  }
+  for (const key of legacyKeys) {
+    delete cleaned[key];
+  }
+  if (!existingPrompt && folded.length > 0) {
+    // 把 appearance 和 description 合并：appearance 一般在前（视觉描述），description 是补充小传。
+    cleaned.prompt = folded.join('\n');
+  }
+  return cleaned as T;
+}
+
 export function normalizeCharacterMediaState(character: Character): Character {
-  const costumePhoto = compactAsset(character.media?.costumePhoto);
-  const previewVideo = compactAsset(character.media?.previewVideo);
+  const folded = foldLegacyTextIntoPrompt(character, ['appearance', 'description']);
+  const costumePhoto = compactAsset(folded.media?.costumePhoto);
+  const previewVideo = compactAsset(folded.media?.previewVideo);
   const media = (costumePhoto || previewVideo)
     ? { costumePhoto, previewVideo }
     : undefined;
-  return { ...character, media };
+  return { ...folded, media };
 }
 
 export function normalizeSceneMediaState(scene: Scene): Scene {
-  const previewImage = compactAsset(scene.media?.previewImage);
+  const folded = foldLegacyTextIntoPrompt(scene, ['description']);
+  const previewImage = compactAsset(folded.media?.previewImage);
   const media = previewImage ? { previewImage } : undefined;
-  return { ...scene, media };
+  return { ...folded, media };
 }
 
 export function normalizePropMediaState(prop: Prop): Prop {
-  const previewImage = compactAsset(prop.media?.previewImage);
-  const previewVideo = compactAsset(prop.media?.previewVideo);
+  const folded = foldLegacyTextIntoPrompt(prop, ['description']);
+  const previewImage = compactAsset(folded.media?.previewImage);
+  const previewVideo = compactAsset(folded.media?.previewVideo);
   const media = (previewImage || previewVideo)
     ? { previewImage, previewVideo }
     : undefined;
-  return { ...prop, media };
+  return { ...folded, media };
 }
 
 export function normalizeShotVersionMediaState(version: ShotVersion): ShotVersion {

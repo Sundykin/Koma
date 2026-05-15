@@ -208,13 +208,14 @@ function buildFaceCandidateRoleBrief(
   ageClause: string,
 ): string {
   const genderClause = stripTrailingComma(variables.gender);
+  // 以前同时输出 `brief: ${description}` + `appearance note: ${appearance}` + `visual brief: ${prompt}`
+  // 三段重复——现在统一只有 `visual brief` 一条（来自 variables.appearance / 即 prompt），
+  // 避免同一份描述以不同标签塞三遍把 LLM 弄糊涂。
   return [
     character.name ? `character name: ${character.name}` : undefined,
     character.role ? `story role: ${formatCharacterRole(character.role)}` : undefined,
     genderClause ? `gender: ${genderClause}` : undefined,
     ageClause ? `age: ${ageClause}` : undefined,
-    character.description ? `brief: ${normalizePromptClause(character.description)}` : undefined,
-    character.appearance ? `appearance note: ${normalizePromptClause(character.appearance)}` : undefined,
     variables.appearance ? `visual brief: ${variables.appearance}` : undefined,
   ].filter(Boolean).join('; ');
 }

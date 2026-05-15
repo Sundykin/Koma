@@ -719,7 +719,10 @@ describe('shotRenderWorkflow video chain', () => {
     expect(request.prompt.match(/我叫叶赎/g)).toHaveLength(1);
   });
 
-  it('视频提示词为空时不套用默认模板发送视频请求', async () => {
+  it('videoPrompt 与 scriptLines 都为空才阻止视频生成', async () => {
+    // 合并分镜后 videoPrompt 会被清空，但 scriptLines 仍然完整 —— 此时应该回落到
+    // scriptLines 作为兜底，不能直接报"请先填写视频提示词"否则用户看到剧情齐全却生不出来。
+    // 这条用例验证：videoPrompt 与 scriptLines 都空才硬拦。
     const { shotRenderWorkflow } = await import('./shotRenderWorkflow');
     const { mediaGenerationService } = await import('../services/MediaGenerationService');
     const projectStore = await import('../store/projectStore');
@@ -733,14 +736,14 @@ describe('shotRenderWorkflow video chain', () => {
       {
         projectId: 'project-1',
         episodeId: 'episode-1',
-        shot: createShot({ videoPrompt: '' }),
+        shot: createShot({ videoPrompt: '', scriptLines: [] }),
         settings: createSettings('grok-main', 'grok-imagine-video'),
         mediaSelections: { itvSelection: 'grok-main::grok-imagine-video' },
       },
       () => {},
     );
 
-    expect(result).toMatchObject({ success: false, error: '请先填写视频提示词' });
+    expect(result).toMatchObject({ success: false, error: '请先填写剧情或视频提示词' });
     expect(mediaGenerationService.generateVideo).not.toHaveBeenCalled();
   });
 });

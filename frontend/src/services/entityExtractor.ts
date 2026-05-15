@@ -93,17 +93,22 @@ export async function extractCharacters(
 
   const data = parseLLMJSON<any>(response);
 
-  const characters: Character[] = (data.characters || []).map((c: any, idx: number) => ({
-    id: `char_${Date.now()}_${idx}`,
-    name: c.name,
-    age: c.age || '未知',
-    gender: ['male', 'female', 'neutral', 'unknown'].includes(c.gender) ? c.gender : 'unknown',
-    appearance: sanitizeCharacterAppearance(c.appearance, c.name),
-    description: cleanText(c.description || ''),
-    prompt: sanitizeCharacterAppearance(c.appearance, c.name) || c.name,
-    role: c.role || 'supporting',
-    aliases: normalizeAliases(c.aliases),
-  }));
+  const characters: Character[] = (data.characters || []).map((c: any, idx: number) => {
+    // LLM 抽出来的 appearance（视觉外观）和 description（非视觉小传）合并成 prompt 一份存。
+    // 后续生成 / 列表 / 编辑都只看 prompt，避免多字段漂移导致 UI 改了不生效。
+    const visualAppearance = sanitizeCharacterAppearance(c.appearance, c.name);
+    const briefDescription = cleanText(c.description || '');
+    const promptParts = [visualAppearance, briefDescription].filter(Boolean);
+    return {
+      id: `char_${Date.now()}_${idx}`,
+      name: c.name,
+      age: c.age || '未知',
+      gender: ['male', 'female', 'neutral', 'unknown'].includes(c.gender) ? c.gender : 'unknown',
+      prompt: promptParts.join('\n') || c.name,
+      role: c.role || 'supporting',
+      aliases: normalizeAliases(c.aliases),
+    };
+  });
 
   onProgress?.(100, '角色提取完成');
   return characters;
@@ -139,11 +144,11 @@ export async function extractScenes(
     return {
       id: `scene_${Date.now()}_${idx}`,
       name: s.name,
-      description: s.description || '',
+      // 同 Character：description 字段已删，LLM 抽出的描述直接写入 prompt。
+      prompt: cleanText(s.description || '') || s.name || '',
       time,
       mood: s.mood,
       aliases: normalizeAliases(s.aliases),
-      // weather / keyElements 在 Scene 类型上不是固定字段，作为附加信息保留在 description / mood 中
     } as Scene;
   });
 
@@ -175,9 +180,12 @@ export async function extractProps(
 
   const data = parseLLMJSON<any>(propResponse);
 
+  // 这里返回的是文件内的本地 Prop interface（仅 LLM 抽取中间产物），
+  // 不是 frontend/src/types 里的全局 Prop。下游 ScriptAnalysisService.extractProps
+  // 会自己把字段映射成真正的 Prop（其中 description 字段已废弃，统一进 prompt）。
   const props: Prop[] = (data.props || []).map((p: any) => ({
     name: p.name,
-    description: p.description || '',
+    description: cleanText(p.description || ''),
     importance: p.importance || 'medium',
     scenes: Array.isArray(p.scenes) ? p.scenes : [],
     aliases: normalizeAliases(p.aliases),

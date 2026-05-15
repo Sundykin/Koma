@@ -175,10 +175,8 @@ function formatEmotionCue(emotion?: string): string {
 
 function getCharacterAppearance(character?: Character): string {
   if (!character) return '';
-  // 优先使用结构化提取出来的 appearance；用户在角色面板里手动改的也会回写到 appearance。
-  // prompt 历史上是 appearance 的镜像，作为兜底；最后用 name 兜底防止全空。
-  const primary = sanitizeCharacterAppearance(character.appearance, '');
-  if (primary) return primary;
+  // prompt 是 Character 上视觉外观的唯一来源（旧 description / appearance 字段已删，
+  // load 路径会把残留的老字段折叠进 prompt）。这里只读 prompt，name 兜底防止全空。
   return sanitizeCharacterAppearance(character.prompt, character.name);
 }
 

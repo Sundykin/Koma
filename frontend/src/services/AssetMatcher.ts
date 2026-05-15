@@ -89,8 +89,8 @@ export class AssetMatcher {
 
     // 描述相似度
     let descSimilarity = 0;
-    if (candidate.description && existing.description) {
-      descSimilarity = this.calculateStringSimilarity(candidate.description, existing.description);
+    if (candidate.description && existing.prompt) {
+      descSimilarity = this.calculateStringSimilarity(candidate.description, existing.prompt);
     }
 
     // 综合评分
@@ -104,8 +104,8 @@ export class AssetMatcher {
     if (nameSimilarity === 1) return 1;
 
     let descSimilarity = 0;
-    if (candidate.description && existing.description) {
-      descSimilarity = this.calculateStringSimilarity(candidate.description, existing.description);
+    if (candidate.description && existing.prompt) {
+      descSimilarity = this.calculateStringSimilarity(candidate.description, existing.prompt);
     }
 
     // 检查位置是否相同
@@ -124,8 +124,8 @@ export class AssetMatcher {
     if (nameSimilarity === 1) return 1;
 
     let descSimilarity = 0;
-    if (candidate.description && existing.description) {
-      descSimilarity = this.calculateStringSimilarity(candidate.description, existing.description);
+    if (candidate.description && existing.prompt) {
+      descSimilarity = this.calculateStringSimilarity(candidate.description, existing.prompt);
     }
 
     return nameSimilarity * 0.7 + descSimilarity * 0.3;

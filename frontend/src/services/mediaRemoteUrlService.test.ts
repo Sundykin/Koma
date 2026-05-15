@@ -9,6 +9,9 @@ vi.mock('./imageHostingService', () => {
 vi.mock('./electronService', () => {
   const files = new Map<string, string>();
   const binaryFiles = new Map<string, string>();
+  // 模拟 mtime/size 仓库：测试可以在 setup 阶段直接往里塞条目，
+  // 用来验证 buildRemoteUrlSourceKey 是否把 mtime 附加进 cache key。
+  const stats = new Map<string, { modifiedAt: number; size: number; isDirectory?: boolean }>();
   const exists = vi.fn(async (path: string) => files.has(path) || binaryFiles.has(path));
   const readFile = vi.fn(async (path: string) => files.get(path) || '');
   const readFileAsBase64 = vi.fn(async (path: string) => binaryFiles.get(path) || 'AA==');
@@ -16,6 +19,7 @@ vi.mock('./electronService', () => {
     files.set(path, data);
   });
   const mkdir = vi.fn(async () => undefined);
+  const stat = vi.fn(async (path: string) => stats.get(path) ?? null);
   return {
     electronService: {
       isElectron: () => true,
@@ -28,11 +32,13 @@ vi.mock('./electronService', () => {
         readFileAsBase64,
         writeFile,
         mkdir,
+        stat,
       },
     },
     __remoteUrlServiceTestFiles: files,
     __remoteUrlServiceTestBinaryFiles: binaryFiles,
-    __remoteUrlServiceTestFsMocks: { exists, readFile, readFileAsBase64, writeFile, mkdir },
+    __remoteUrlServiceTestStats: stats,
+    __remoteUrlServiceTestFsMocks: { exists, readFile, readFileAsBase64, writeFile, mkdir, stat },
   };
 });
 
@@ -53,6 +59,8 @@ describe('mediaRemoteUrlService.ensureRemoteUrlForImageAsset', () => {
     };
     electronModule.__remoteUrlServiceTestFiles.clear();
     electronModule.__remoteUrlServiceTestBinaryFiles.clear();
+    (electronModule as unknown as { __remoteUrlServiceTestStats: Map<string, unknown> })
+      .__remoteUrlServiceTestStats.clear();
 
     const { safeFetch } = await import('../utils/safeFetch');
     vi.mocked(safeFetch).mockResolvedValue(new Response('', { status: 200 }));
@@ -294,5 +302,50 @@ describe('mediaRemoteUrlService.ensureRemoteUrlForImageAsset', () => {
     expect(uploadMock).toHaveBeenCalledTimes(1);
     expect(electronModule.__remoteUrlServiceTestFiles.get('/tmp/p1/metadata/media-remote-url-cache.json'))
       .toContain('https://cdn.example.com/fresh.png');
+  });
+
+  // 项目资产（角色 / 场景 / 道具）落盘是固定路径，重新生图会**原地覆盖** `costume.png` 等同名文件。
+  // 修复前 cache key 只看路径 → 二次生图 sourceKey 跟首次一致 → lookupCachedRemoteUrl
+  // 返回上一次的远程 URL，新字节根本不会上传，UI 还在拿旧 CDN。
+  // 修复后 cache key 形如 `local:{path}#{mtime}#{size}`：mtime 变 → miss → 重新上传。
+  it('cache busts when the same local path is overwritten by a regenerated asset (different mtime)', async () => {
+    const electronModule = await import('./electronService') as unknown as {
+      __remoteUrlServiceTestFiles: Map<string, string>;
+      __remoteUrlServiceTestBinaryFiles: Map<string, string>;
+      __remoteUrlServiceTestStats: Map<string, { modifiedAt: number; size: number }>;
+    };
+    // 首次生成：mtime=1000、size=10、内容 AA==
+    electronModule.__remoteUrlServiceTestBinaryFiles.set('/tmp/costume.png', 'AA==');
+    electronModule.__remoteUrlServiceTestStats.set('/tmp/costume.png', { modifiedAt: 1000, size: 10 });
+
+    const { safeFetch } = await import('../utils/safeFetch');
+    vi.mocked(safeFetch).mockResolvedValue(new Response('', { status: 200 }));
+
+    const { uploadBytesToImageHostingWithRetry } = await import('./imageHostingService');
+    const uploadMock = uploadBytesToImageHostingWithRetry as any;
+    uploadMock.mockResolvedValueOnce({ success: true, url: 'https://cdn.example.com/first.png' });
+    uploadMock.mockResolvedValueOnce({ success: true, url: 'https://cdn.example.com/second.png' });
+
+    const { ensureRemoteUrlForImageSources } = await import('./mediaRemoteUrlService');
+
+    const firstResult = await ensureRemoteUrlForImageSources({
+      projectId: 'p1',
+      policy: 'required',
+      sources: ['/tmp/costume.png'],
+    });
+    expect(firstResult).toEqual(['https://cdn.example.com/first.png']);
+    expect(uploadMock).toHaveBeenCalledTimes(1);
+
+    // 模拟"重新生成"：同一路径被覆盖，mtime / size 变了
+    electronModule.__remoteUrlServiceTestStats.set('/tmp/costume.png', { modifiedAt: 2000, size: 12 });
+
+    const secondResult = await ensureRemoteUrlForImageSources({
+      projectId: 'p1',
+      policy: 'required',
+      sources: ['/tmp/costume.png'],
+    });
+    // 关键断言：返回新 URL（不是 first.png）—— 缓存必须 miss、必须重新上传
+    expect(secondResult).toEqual(['https://cdn.example.com/second.png']);
+    expect(uploadMock).toHaveBeenCalledTimes(2);
   });
 });

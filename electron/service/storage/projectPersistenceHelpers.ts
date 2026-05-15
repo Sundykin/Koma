@@ -328,10 +328,13 @@ export function characterToRow(character: Character, projectId: string, sortOrde
     name: character.name,
     role: character.role,
     prompt: character.prompt,
-    description: character.description,
+    // DB schema 还留着 description / appearance 两个老字段（向后兼容已发行版本读老库），
+    // 但前端 Character 类型已删；写盘时一律写 undefined，旧库里的残留值在 rowToEntity
+    // 里通过 fallback 折叠进 prompt 再丢弃。下次 schema migration 可彻底删列。
+    description: undefined,
     age: character.age,
     gender: character.gender,
-    appearance: character.appearance,
+    appearance: undefined,
     voice_id: character.voiceId,
     sora2_character_id: character.sora2CharacterId,
     timestamp_start: character.timestampRange?.start,
@@ -349,15 +352,21 @@ export function characterToRow(character: Character, projectId: string, sortOrde
 }
 
 export function characterRowToEntity(row: CharacterRow, refs?: EntityEpisodeRefRow[]): Character {
+  // 老库可能仍写了 description / appearance 列；按"prompt 单一来源"原则，prompt 为空时
+  // 折叠进 prompt，否则丢弃。同步逻辑见 frontend/src/store/project/mediaState.ts。
+  const legacyAppearance = (row.appearance ?? '').toString().trim();
+  const legacyDescription = (row.description ?? '').toString().trim();
+  const storedPrompt = (row.prompt ?? '').toString().trim();
+  const prompt = storedPrompt
+    || [legacyAppearance, legacyDescription].filter(Boolean).join('\n')
+    || '';
   return {
     id: row.id,
     name: row.name,
     role: row.role || 'supporting',
-    prompt: row.prompt || '',
-    description: row.description ?? undefined,
+    prompt,
     age: row.age ?? undefined,
     gender: row.gender as Character['gender'] | undefined,
-    appearance: row.appearance ?? undefined,
     voiceId: row.voice_id ?? undefined,
     sora2CharacterId: row.sora2_character_id ?? undefined,
     timestampRange: typeof row.timestamp_start === 'number' || typeof row.timestamp_end === 'number'
@@ -397,7 +406,8 @@ export function sceneToRow(scene: Scene, projectId: string, sortOrder: number, n
     project_id: projectId,
     name: scene.name,
     prompt: scene.prompt,
-    description: scene.description,
+    // 同 character：description 列保留以兼容老库，但写入永远 undefined。
+    description: undefined,
     location: scene.location,
     time_of_day: scene.time,
     mood: scene.mood,
@@ -412,11 +422,12 @@ export function sceneToRow(scene: Scene, projectId: string, sortOrder: number, n
 }
 
 export function sceneRowToEntity(row: SceneRow, refs?: EntityEpisodeRefRow[]): Scene {
+  const legacyDescription = (row.description ?? '').toString().trim();
+  const storedPrompt = (row.prompt ?? '').toString().trim();
   return {
     id: row.id,
     name: row.name,
-    prompt: row.prompt || '',
-    description: row.description ?? undefined,
+    prompt: storedPrompt || legacyDescription || '',
     location: row.location ?? undefined,
     time: row.time_of_day as Scene['time'] | undefined,
     mood: row.mood ?? undefined,
@@ -441,7 +452,7 @@ export function propToRow(prop: Prop, projectId: string, sortOrder: number, now:
     project_id: projectId,
     name: prop.name,
     prompt: prop.prompt,
-    description: prop.description,
+    description: undefined,
     prop_type: prop.type,
     sora2_prop_id: prop.sora2PropId,
     timestamp_start: prop.timestampRange?.start,
@@ -459,11 +470,12 @@ export function propToRow(prop: Prop, projectId: string, sortOrder: number, now:
 }
 
 export function propRowToEntity(row: PropRow, refs?: EntityEpisodeRefRow[]): Prop {
+  const legacyDescription = (row.description ?? '').toString().trim();
+  const storedPrompt = (row.prompt ?? '').toString().trim();
   return {
     id: row.id,
     name: row.name,
-    prompt: row.prompt || '',
-    description: row.description ?? undefined,
+    prompt: storedPrompt || legacyDescription || '',
     type: row.prop_type ?? undefined,
     sora2PropId: row.sora2_prop_id ?? undefined,
     timestampRange: typeof row.timestamp_start === 'number' || typeof row.timestamp_end === 'number'

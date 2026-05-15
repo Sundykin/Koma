@@ -65,10 +65,21 @@ export async function shotImageWorkflow(params: {
   const props = normalizePropsMediaState(await loadProps(projectId).catch(() => []));
   const finalAspectRatio = aspectRatio || project?.aspectRatio || '16:9';
   const allShots = allShotsSnapshot ?? await loadEpisodeShots(projectId, episodeId).catch(() => undefined);
-  const sourceImagePrompt = (normalizedShot.imagePrompt || '').trim();
+  // imagePrompt 是 AI 推理出来的"优化版"画面描述。合并分镜 / 拆分 / 编辑后这块缓存会失效，
+  // 此时回落到 scriptLines（用户在 UI 上看到的"剧情"）作为兜底，避免出现"用户看到的剧情完整、
+  // AI 推理只剩末尾一句"的脱节。两种字段都没有时再报错。
+  const cachedImagePrompt = (normalizedShot.imagePrompt || '').trim();
+  const fallbackScriptText = getShotScriptText(normalizedShot).trim();
+  const sourceImagePrompt = cachedImagePrompt || fallbackScriptText;
   if (!sourceImagePrompt) {
-    logger.warn('分镜图片生成被阻止：图片提示词为空', { shotId: normalizedShot.id });
-    throw new Error('请先填写图片提示词');
+    logger.warn('分镜图片生成被阻止：图片提示词与剧情均为空', { shotId: normalizedShot.id });
+    throw new Error('请先填写剧情或图片提示词');
+  }
+  if (!cachedImagePrompt) {
+    logger.info('分镜未推理 imagePrompt，使用 scriptLines 作为兜底', {
+      shotId: normalizedShot.id,
+      scriptLength: fallbackScriptText.length,
+    });
   }
 
   onProgress?.(0, '准备生成分镜图片...');
@@ -156,6 +167,15 @@ export async function shotImageWorkflow(params: {
   );
 
   onProgress?.(10, '调用 TTI 服务...');
+
+  logger.info('分镜图片生成 - 最终下发 TTI 的 prompt', {
+    shotId: normalizedShot.id,
+    cachedImagePromptUsed: Boolean(cachedImagePrompt),
+    fellBackToScriptLines: !cachedImagePrompt,
+    rawScriptText: fallbackScriptText,
+    sourceImagePrompt,
+    compiledPrompt,
+  });
 
   const projectPath = await getProjectPath(projectId);
   const imageVersionId = buildShotImageVersionId();

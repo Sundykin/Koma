@@ -384,13 +384,13 @@ export class ShotAnalysisService {
     const resolvedPrompt = await resolvePromptTemplate('shot_breakdown', {
       script: scriptForPrompt,
       characters: characters.length > 0
-        ? characters.map(c => c.description ? `${c.name}（${c.description}）` : c.name).join('\n')
+        ? characters.map(c => c.prompt ? `${c.name}（${c.prompt}）` : c.name).join('\n')
         : '无',
       scenes: scenes.length > 0
-        ? scenes.map(s => s.description ? `${s.name}（${s.description}）` : s.name).join('\n')
+        ? scenes.map(s => s.prompt ? `${s.name}（${s.prompt}）` : s.name).join('\n')
         : '无',
       props: props.length > 0
-        ? props.map(p => p.description ? `${p.name}（${p.description}）` : p.name).join('\n')
+        ? props.map(p => p.prompt ? `${p.name}（${p.prompt}）` : p.name).join('\n')
         : '无',
       durationConstraint,
       durationDefault,

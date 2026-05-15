@@ -82,11 +82,12 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
     if (!keyword) return currentExistingCandidates;
 
     return currentExistingCandidates.filter((asset) => {
-      const fields: Array<string | undefined> = [asset.name, asset.prompt, asset.description];
+      // description / appearance 已经折叠进 prompt，搜索仅看 prompt + 结构化基本信息。
+      const fields: Array<string | undefined> = [asset.name, asset.prompt];
 
       if (bindModalType === 'character') {
         const character = asset as Character;
-        fields.push(character.role, character.gender, character.age, character.appearance);
+        fields.push(character.role, character.gender, character.age);
       } else if (bindModalType === 'scene') {
         const scene = asset as Scene;
         fields.push(scene.location, scene.time, scene.mood);
@@ -256,12 +257,14 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
   };
 
   const getExistingAssetMeta = (asset: Character | Scene | Prop) => {
+    // 列表副标题展示用：以前读 description（独立字段），现在 description 已并入 prompt，
+    // 直接读 prompt 即可。
     if (bindModalType === 'character') {
       const character = asset as Character;
       return {
         imagePath: getCharacterCostumePhotoSource(character),
         subtitle: getRoleLabel(character.role || 'supporting'),
-        description: character.description,
+        description: character.prompt,
         icon: <UserOutlined />,
       };
     }
@@ -270,7 +273,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
       return {
         imagePath: getScenePreviewImageSource(scene),
         subtitle: scene.location,
-        description: scene.description,
+        description: scene.prompt,
         icon: <EnvironmentOutlined />,
       };
     }
@@ -279,7 +282,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
     return {
       imagePath: getPropPreviewImageSource(prop),
       subtitle: prop.type,
-      description: prop.description,
+      description: prop.prompt,
       icon: <InboxOutlined />,
     };
   };
@@ -462,7 +465,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
               getCharacterCostumePhotoSource(char),
               !!char.sora2CharacterId,
               getRoleLabel(char.role || 'supporting'),
-              char.description,
+              char.prompt,
               char.media?.costumePhoto?.createdAt,
             ))}
           </div>
@@ -491,7 +494,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
               getScenePreviewImageSource(scene),
               false,
               scene.location,
-              scene.description
+              scene.prompt
             ))}
           </div>
         ) : (
@@ -519,7 +522,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
               getPropPreviewImageSource(prop),
               !!prop.sora2PropId,
               prop.type,
-              prop.description
+              prop.prompt
             ))}
           </div>
         ) : (

@@ -38,11 +38,10 @@ function createCharacter(partial?: Partial<Character>): Character {
     id: 'char-1',
     name: '林夏',
     role: 'protagonist',
-    prompt: '灵异调查员，短发，旧风衣，神情冷静',
+    // Character 上 description / appearance 字段已删，所有视觉 / 小传文本合并进 prompt。
+    prompt: '灵异调查员，短发，旧风衣，神情冷静\n能看见鬼魂的私家侦探',
     age: '28',
     gender: 'female',
-    description: '能看见鬼魂的私家侦探',
-    appearance: '短发，冷静，风衣领口',
     media: {},
     ...partial,
   };
@@ -59,6 +58,38 @@ function expectPromptNotToContain(prompt: string, clauses: string[]): void {
     expect(prompt).not.toContain(clause);
   }
 }
+
+describe('buildCharacterCostumeTemplateVariables - prompt is single source of truth', () => {
+  it('UI 改了 prompt 立刻生效（不再被 stale appearance 覆盖）', async () => {
+    const { buildCharacterCostumeTemplateVariables } = await import('./promptVariableBuilders');
+    const character: Character = {
+      id: 'c1',
+      name: '林夏',
+      role: 'protagonist',
+      prompt: '一个约17岁的年轻女子，黑色长发，身穿绿色流仙裙',
+      gender: 'female',
+      age: '17',
+      media: {},
+    };
+
+    const variables = buildCharacterCostumeTemplateVariables(character, '');
+    expect(variables.appearance).toContain('绿色流仙裙');
+  });
+
+  it('prompt 空时回落到 name 兜底，类型上已无 appearance / description 字段', async () => {
+    const { buildCharacterCostumeTemplateVariables } = await import('./promptVariableBuilders');
+    const character: Character = {
+      id: 'c2',
+      name: '老角色',
+      role: 'supporting',
+      prompt: '',
+      media: {},
+    };
+
+    const variables = buildCharacterCostumeTemplateVariables(character, '');
+    expect(variables.appearance).toContain('老角色');
+  });
+});
 
 describe('characterAssetWorkflow draw prompts', () => {
   it('人脸候选 prompt 明确身份维度差异化，并禁止三视图/全身/最终定妆照', () => {
@@ -334,8 +365,12 @@ describe('characterAssetWorkflow draw prompts', () => {
     expect(call.request.prompt).toContain('story role: protagonist');
     expect(call.request.prompt).toContain('gender: female');
     expect(call.request.prompt).toContain('age: 28 years old');
-    expect(call.request.prompt).toContain('brief: 能看见鬼魂的私家侦探');
-    expect(call.request.prompt).toContain('appearance note: 短发，冷静，风衣领口');
+    // brief / appearance note 三段重复已删，统一只剩 visual brief。
+    // sanitizeCharacterAppearance 会过滤"灵异调查员/私家侦探"这种身份小传，
+    // 只保留纯视觉短语（短发 / 旧风衣 / 神情冷静），这是预期行为。
+    expect(call.request.prompt).toContain('visual brief:');
+    expect(call.request.prompt).toContain('短发');
+    expect(call.request.prompt).toContain('旧风衣');
     expect(call.request.prompt).toContain('not male-coded');
     expect(call.request.prompt).toContain('not masculine body');
     expect(call.request.prompt).toContain('not male clothing');
