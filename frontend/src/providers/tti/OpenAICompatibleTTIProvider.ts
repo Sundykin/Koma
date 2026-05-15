@@ -85,7 +85,7 @@ const OPENAI_IMAGE_ALLOWED_SIZES_FIXED = new Set([
 ]);
 
 // gpt-image-2：常用比例 → 16-对齐合规预设。
-// 16:9 用 2048x1152（精确 16:9 + 16 对齐 + 不到 2K，速度合理）。
+// 默认（不指定 1K/2K/4K 时）= 2K 档。1K/4K 通过 imageSize 切换到下面的小/大表。
 // 用户若显式给 width/height，按上面 4 条规则现场验证后照搬。
 const OPENAI_ASPECT_TO_SIZE_GPT_IMAGE_2: Record<string, string> = {
   '1:1': '1024x1024',
@@ -98,6 +98,41 @@ const OPENAI_ASPECT_TO_SIZE_GPT_IMAGE_2: Record<string, string> = {
   '21:9': '2240x960',
   '9:21': '960x2240',
 };
+
+// gpt-image-2 + "1K"：长边 ≈1280，所有边都 16 对齐，pixels ≥ 655,360（合规底线）。
+// 适合给"标清"/快速预览用，速度更快、tokens 更少。
+const OPENAI_ASPECT_TO_SIZE_GPT_IMAGE_2_1K: Record<string, string> = {
+  '1:1': '1024x1024',
+  '16:9': '1280x720',
+  '9:16': '720x1280',
+  '3:2': '1280x848',
+  '2:3': '848x1280',
+  '4:3': '1152x864',
+  '3:4': '864x1152',
+  '21:9': '1280x544',
+  '9:21': '544x1280',
+};
+
+// gpt-image-2 + "4K"：长边封顶 3840，并兼顾 pixels ≤ 8,294,400 的总像素上限。
+// 1:1 在 4K 档需要降到 2880x2880（再大就超总像素）。
+const OPENAI_ASPECT_TO_SIZE_GPT_IMAGE_2_4K: Record<string, string> = {
+  '1:1': '2880x2880',
+  '16:9': '3840x2160',
+  '9:16': '2160x3840',
+  '3:2': '3504x2336',
+  '2:3': '2336x3504',
+  '4:3': '3296x2480',
+  '3:4': '2480x3296',
+  '21:9': '3840x1648',
+  '9:21': '1648x3840',
+};
+
+function pickGptImage2SizeTable(imageSize: string | undefined): Record<string, string> {
+  const key = String(imageSize || '').trim().toLowerCase();
+  if (key === '1k') return OPENAI_ASPECT_TO_SIZE_GPT_IMAGE_2_1K;
+  if (key === '4k') return OPENAI_ASPECT_TO_SIZE_GPT_IMAGE_2_4K;
+  return OPENAI_ASPECT_TO_SIZE_GPT_IMAGE_2;
+}
 
 const OPENAI_ASPECT_TO_SIZE_GPT_IMAGE_1: Record<string, string> = {
   '1:1': '1024x1024',
@@ -180,9 +215,11 @@ function resolveOpenAITTISize(
     if (typeof w === 'number' && typeof h === 'number' && isValidGptImage2Size(w, h)) {
       return `${Math.round(w)}x${Math.round(h)}`;
     }
+    // 按用户选的 1K/2K/4K 档（imageSize）切表；未指定时用 2K 默认。
+    const sizeTable = pickGptImage2SizeTable(options?.imageSize);
     const ratio = normalizeAspectRatioInput(options?.aspectRatio);
-    if (ratio && OPENAI_ASPECT_TO_SIZE_GPT_IMAGE_2[ratio]) {
-      return OPENAI_ASPECT_TO_SIZE_GPT_IMAGE_2[ratio];
+    if (ratio && sizeTable[ratio]) {
+      return sizeTable[ratio];
     }
     if (defaultSize) {
       const m = defaultSize.match(/^(\d+)x(\d+)$/);
@@ -190,7 +227,7 @@ function resolveOpenAITTISize(
         return defaultSize;
       }
     }
-    return OPENAI_ASPECT_TO_SIZE_GPT_IMAGE_2['1:1'];
+    return sizeTable['1:1'];
   }
 
   // gpt-image-1 / dall-e-3：固定白名单

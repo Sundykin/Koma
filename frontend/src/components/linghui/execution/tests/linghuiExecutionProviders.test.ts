@@ -484,6 +484,63 @@ describe('linghuiExecutionProviders', () => {
     expect(result.source).toBe('https://cdn.example.com/grok-image.png');
   });
 
+  it('grok 图片索引协议遇到已落盘 remoteUrl 的灵绘图片时直接复用远程地址', async () => {
+    const provider = {
+      type: 'grok2api-imagine-tti',
+      config: { provider: 'grok2api-imagine-tti', promptProtocol: 'grok-image-index' },
+      validate: () => true,
+      start: vi.fn(async () => ({
+        mode: 'immediate' as const,
+        output: {
+          url: 'https://cdn.example.com/grok-image.png',
+        },
+      })),
+    };
+    const storedSource = {
+      kind: 'image' as const,
+      localPath: '/tmp/generated.png',
+      remoteUrl: 'https://cdn.example.com/generated.png',
+      mimeType: 'image/png',
+      createdAt: 1,
+    };
+
+    getProjectTTIProviderMock.mockResolvedValue(provider);
+    getPromptProtocolMock.mockReturnValue('grok-image-index');
+    ensureRemoteUrlForImageSourcesMock.mockImplementation(async ({ sources }) => sources);
+
+    const { generateImageWithProvider } = await import('../state/linghuiExecutionProviders');
+
+    await generateImageWithProvider({
+      prompt: '沿用 @ref_generated 的构图',
+      referenceSources: [storedSource],
+      silentReferenceSources: [storedSource],
+      promptReferences: [
+        {
+          id: 'generated',
+          nodeId: 'node-image-1',
+          kind: 'image',
+          name: '已生成图',
+          source: storedSource,
+        },
+      ],
+      ttiSelection: 'channel-image::model-image',
+      placeholderTitle: 'grok refs',
+    });
+
+    expect(ensureRemoteUrlForImageSourcesMock).toHaveBeenCalledWith(expect.objectContaining({
+      sources: [storedSource, storedSource],
+    }));
+    expect(provider.start).toHaveBeenCalledWith(expect.objectContaining({
+      prompt: '沿用 @Image 1 的构图',
+      references: [
+        expect.objectContaining({
+          transport: 'remote-url',
+          value: 'https://cdn.example.com/generated.png',
+        }),
+      ],
+    }));
+  });
+
   it('多角度图片请求会回退到通用图生图 provider，而不是复用原提示词', async () => {
     const provider = {
       type: 'gemini-native-tti',
@@ -658,7 +715,10 @@ describe('linghuiExecutionProviders', () => {
     expect(result.source).toBe('https://cdn.example.com/snapshot-image.png');
   });
 
-  it('图片生成在首个 Provider 提交失败后会自动切换到备选并记录尝试摘要', async () => {
+  it('图片生成的 Provider 失败时只在同渠道内重试，不再静默降级到备选渠道', async () => {
+    // 与视频策略对齐：用户选了 tti-primary 就只用 tti-primary，
+    // 失败时同 provider 内指数退避重试 N 次（默认 2 次 → 共 3 次尝试），
+    // 重试用尽就抛原始错误，不会悄悄切到 tti-backup。
     const primaryProvider = {
       type: 'openai-compatible-tti',
       config: { provider: 'openai-compatible-tti' },
@@ -708,35 +768,18 @@ describe('linghuiExecutionProviders', () => {
 
     const { generateImageWithProvider } = await import('../state/linghuiExecutionProviders');
 
-    const result = await generateImageWithProvider({
-      prompt: '给我一张秋日街景插画',
-      ttiSelection: 'tti-primary::model-a',
-      placeholderTitle: '秋日街景',
-    });
-
-    expect(primaryProvider.start).toHaveBeenCalledTimes(1);
-    expect(backupProvider.start).toHaveBeenCalledTimes(1);
-    expect(result.source).toBe('https://cdn.example.com/fallback-image.png');
-    expect(result.metadata).toEqual(expect.objectContaining({
-      seed: 7,
-      providerFallback: expect.objectContaining({
-        category: 'tti',
-        finalSelectionKey: 'tti-backup::model-b',
-        usedFallback: true,
-        attempts: [
-          expect.objectContaining({
-            selectionKey: 'tti-primary::model-a',
-            outcome: 'failed',
-            error: 'primary start failed',
-          }),
-          expect.objectContaining({
-            selectionKey: 'tti-backup::model-b',
-            outcome: 'succeeded',
-          }),
-        ],
+    await expect(
+      generateImageWithProvider({
+        prompt: '给我一张秋日街景插画',
+        ttiSelection: 'tti-primary::model-a',
+        placeholderTitle: '秋日街景',
       }),
-    }));
-  });
+    ).rejects.toThrow(/primary start failed/);
+
+    // primary 被同渠道重试 N 次（默认 2 次重试 → 共 3 次尝试），backup 永远不会被碰
+    expect(primaryProvider.start.mock.calls.length).toBeGreaterThanOrEqual(1);
+    expect(backupProvider.start).not.toHaveBeenCalled();
+  }, 30_000);
 
   it('视频 Provider 失败时只在所选 Provider 上重试，不跨渠道降级', async () => {
     // 视频渠道降级零容忍：即使候选列表里有其它 Provider（Backup ITV），

@@ -60,6 +60,8 @@ export function useLinghuiCanvasHistory({
   const nodeRunsRef = useRef(nodeRuns);
   const reactFlowRef = useRef(reactFlow);
   const setNodesRef = useRef(setNodes);
+  const pendingSnapshotRafIdRef = useRef<number | null>(null);
+  const pendingSnapshotOptionsRef = useRef<{ recordHistory: boolean; force: boolean } | null>(null);
 
   useEffect(() => {
     onGraphChangeRef.current = onGraphChange;
@@ -189,9 +191,21 @@ export function useLinghuiCanvasHistory({
   }, [captureCanvasDocumentSnapshot, commitHistorySnapshot]);
 
   const scheduleSnapshot = useCallback((options?: { recordHistory?: boolean; force?: boolean }) => {
-    const { recordHistory = true } = options ?? {};
-    requestAnimationFrame(() => {
-      flushCanvasSnapshot({ ...options, recordHistory });
+    const { recordHistory = true, force = false } = options ?? {};
+    const previous = pendingSnapshotOptionsRef.current;
+    pendingSnapshotOptionsRef.current = {
+      recordHistory: previous ? previous.recordHistory || recordHistory : recordHistory,
+      force: (previous?.force ?? false) || force,
+    };
+    if (pendingSnapshotRafIdRef.current !== null) {
+      return;
+    }
+    pendingSnapshotRafIdRef.current = requestAnimationFrame(() => {
+      pendingSnapshotRafIdRef.current = null;
+      const merged = pendingSnapshotOptionsRef.current;
+      pendingSnapshotOptionsRef.current = null;
+      if (!merged) return;
+      flushCanvasSnapshot(merged);
     });
   }, [flushCanvasSnapshot]);
 

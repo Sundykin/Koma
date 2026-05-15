@@ -37,6 +37,7 @@ export function getExecutionErrorMessage(error: unknown): string {
 
 export async function ensureProviderAssetInputs(
   sources: Array<MediaAssetSource | ProviderAssetInput>,
+  options?: { preferLocalFile?: boolean },
 ): Promise<ProviderAssetInput[]> {
   const resolved = await Promise.all(
     sources.map(async source => {
@@ -44,7 +45,9 @@ export async function ensureProviderAssetInputs(
         return source as ProviderAssetInput;
       }
       // 灵绘节点产物本地都已落盘，refs 优先用本地文件，避免 provider 再去远端拉一次
-      return resolveProviderAssetInput(source as MediaAssetSource, { preferLocalFile: true });
+      return resolveProviderAssetInput(source as MediaAssetSource, {
+        preferLocalFile: options?.preferLocalFile ?? true,
+      });
     }),
   );
 

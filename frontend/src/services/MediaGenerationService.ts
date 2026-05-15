@@ -1189,9 +1189,9 @@ export class MediaGenerationService {
       },
     });
     const final = await waitForTaskCompletion(submitted.id);
-    const output = (final.payload as { output?: { asset?: StoredMediaAsset } } | undefined)?.output;
-    if (!output?.asset) throw new Error('任务完成但缺少结果资产');
-    return output.asset;
+    const asset = (final.payload as { output?: StoredMediaAsset } | undefined)?.output;
+    if (!asset) throw new Error('任务完成但缺少结果资产');
+    return asset;
   }
 
 }

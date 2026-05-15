@@ -56,6 +56,9 @@ describe('mediaRemoteUrlService.ensureRemoteUrlForImageAsset', () => {
 
     const { safeFetch } = await import('../utils/safeFetch');
     vi.mocked(safeFetch).mockResolvedValue(new Response('', { status: 200 }));
+
+    const { __resetMediaRemoteUrlCacheForTests } = await import('./mediaRemoteUrlService');
+    __resetMediaRemoteUrlCacheForTests();
   });
 
   it('uploads data-url bytes and fills remoteUrl (best-effort success)', async () => {
@@ -124,8 +127,8 @@ describe('mediaRemoteUrlService.ensureRemoteUrlForImageAsset', () => {
       'https://cdn.example.com/1.png',
       'https://cdn.example.com/2.png',
     ]);
-    expect(uploadMock.mock.calls[0][1]).toEqual({ filename: 'image-1.png' });
-    expect(uploadMock.mock.calls[1][1]).toEqual({ filename: 'image-2.png' });
+    expect(uploadMock.mock.calls[0][1]).toEqual({ filename: 'image-1.jpg' });
+    expect(uploadMock.mock.calls[1][1]).toEqual({ filename: 'image-2.jpg' });
   });
 
   it('dedupes repeated sources in one normalization batch', async () => {

@@ -222,7 +222,11 @@ describe('executeImageNode', () => {
       promptReferences,
       referenceSources: [
         'https://cdn.example.com/upstream.png',
-        'https://cdn.example.com/prompt-ref.png',
+        expect.objectContaining({
+          kind: 'image',
+          localPath: '/tmp/prompt-ref.png',
+          remoteUrl: 'https://cdn.example.com/prompt-ref.png',
+        }),
       ],
     }));
   });
