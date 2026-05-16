@@ -45,6 +45,7 @@ export interface LinghuiCanvasOverlaysProps {
   }) => string | null;
   onExecuteImageUpscale?: (nodeId: string, options?: { factor?: 2 | 4 }) => void;
   onExecuteImageCrop?: (nodeId: string, options: { aspectRatio: string; label?: string }) => void;
+  onCreatePanoramaPreview?: (nodeId: string) => void;
   onGenerateImageFromController?: (controllerNodeId: string) => string | null;
   onExecuteMultiAngle?: (options?: LinghuiExecuteMultiAngleOptions) => void;
   onApplyImageToolPreset: (preset: {

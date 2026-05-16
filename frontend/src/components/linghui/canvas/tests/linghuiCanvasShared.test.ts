@@ -432,9 +432,12 @@ describe('detectCanvasMutationKind', () => {
     expect(panoramaData.inputs).toHaveLength(2);
     expect(panoramaData.outputs).toHaveLength(1);
     expect(panoramaData.properties).toEqual(expect.objectContaining({
-      aspectRatio: '21:9',
+      aspectRatio: '2:1',
       panoramaTemplate: 'auto',
-      projectionMode: 'ar720-band',
+      projectionMode: 'equirectangular-2to1',
+      panoramaSlashScene: '720_panoramic',
+      panoramaModelKey: 'lib-image-2',
+      panoramaQuality: 'medium',
     }));
     expect(panoramaData.active).toBe(false);
 

@@ -29,6 +29,28 @@ interface LinghuiMultiAngleModalProps {
   onConfirm: () => void;
 }
 
+function rotationToAzimuth(rotation: number): LinghuiMultiAngleConfig['azimuth'] {
+  const normalized = ((Math.round(rotation / 45) * 45) % 360 + 360) % 360;
+  return LINGHUI_MULTI_ANGLE_AZIMUTHS.find(item => item.value === normalized)?.value ?? 0;
+}
+
+function tiltToElevation(tilt: number): LinghuiMultiAngleConfig['elevation'] {
+  const snapped = Math.max(-30, Math.min(60, Math.round(tilt / 30) * 30));
+  return LINGHUI_MULTI_ANGLE_ELEVATIONS.find(item => item.value === snapped)?.value ?? 0;
+}
+
+function scaleToDistance(scale: number): LinghuiMultiAngleConfig['distance'] {
+  if (scale <= 25) return 1.8;
+  if (scale >= 75) return 0.6;
+  return 1;
+}
+
+function distanceToScale(distance: LinghuiMultiAngleConfig['distance']): number {
+  if (distance === 0.6) return 100;
+  if (distance === 1.8) return 0;
+  return 50;
+}
+
 export const LinghuiMultiAngleModal: React.FC<LinghuiMultiAngleModalProps> = ({
   open,
   sourceImage,
@@ -70,11 +92,21 @@ export const LinghuiMultiAngleModal: React.FC<LinghuiMultiAngleModalProps> = ({
           <div className="linghuiMultiAngleStageHint">拖动画布切换相机机位，滚轮切换景别</div>
           <LinghuiMultiAngle3DViewport
             imageUrl={sourceImage}
-            azimuth={config.azimuth}
-            elevation={config.elevation}
-            distance={config.distance}
-            onAngleChange={(azimuth, elevation) => onChangeConfig({ azimuth, elevation })}
-            onDistanceChange={(distance) => onChangeConfig({ distance })}
+            mode={config.mode}
+            rotation={config.rotation}
+            tilt={config.tilt}
+            scale={config.scale}
+            isWideAngle={config.isWideAngle}
+            onRotationTiltChange={(rotation, tilt) => onChangeConfig({
+              rotation,
+              tilt,
+              azimuth: rotationToAzimuth(rotation),
+              elevation: tiltToElevation(tilt),
+            })}
+            onScaleChange={(scale) => onChangeConfig({
+              scale,
+              distance: scaleToDistance(scale),
+            })}
           />
         </div>
 
@@ -106,7 +138,7 @@ export const LinghuiMultiAngleModal: React.FC<LinghuiMultiAngleModalProps> = ({
                   key={item.value}
                   type="button"
                   className={`linghuiMultiAngleChip ${item.value === config.elevation ? 'isActive' : ''}`}
-                  onClick={() => onChangeConfig({ elevation: item.value })}
+                  onClick={() => onChangeConfig({ elevation: item.value, tilt: item.value })}
                 >
                   {item.label}
                 </button>
@@ -122,7 +154,7 @@ export const LinghuiMultiAngleModal: React.FC<LinghuiMultiAngleModalProps> = ({
                   key={item.value}
                   type="button"
                   className={`linghuiMultiAngleChip ${item.value === config.distance ? 'isActive' : ''}`}
-                  onClick={() => onChangeConfig({ distance: item.value })}
+                  onClick={() => onChangeConfig({ distance: item.value, scale: distanceToScale(item.value) })}
                 >
                   {item.label}
                 </button>

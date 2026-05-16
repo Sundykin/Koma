@@ -76,13 +76,25 @@ describe('resolveLinghuiQuickCreateCatalog', () => {
       '全能参考',
       '首尾帧视频',
       '脚本生成器',
-      '进入全景预览',
+      '全景节点',
+      '3D 导演工作台',
     ]));
 
     expect(LINGHUI_CANVAS_CREATE_MENU_CATALOG.find(item => item.id === 'generator-video-start-end')).toEqual(expect.objectContaining({
       type: 'linghui/video',
       nodeLabel: '首尾帧视频',
       initialProperties: { videoCapability: 'video.start-end-to-video' },
+    }));
+    expect(LINGHUI_CANVAS_CREATE_MENU_CATALOG.find(item => item.id === 'spatial-panorama')).toEqual(expect.objectContaining({
+      type: 'linghui/panorama',
+      label: '全景节点',
+      description: '生成或导入全景环境图，并在画布中预览空间关系。',
+      nodeLabel: '全景节点',
+    }));
+    expect(LINGHUI_CANVAS_CREATE_MENU_CATALOG.find(item => item.id === 'spatial-director3d')).toEqual(expect.objectContaining({
+      type: 'linghui/director3d',
+      label: '3D 导演工作台',
+      nodeLabel: '3D 导演工作台',
     }));
   });
 });

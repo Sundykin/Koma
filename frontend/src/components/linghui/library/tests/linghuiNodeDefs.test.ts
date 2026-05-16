@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  LINGHUI_NODE_CATALOG,
   createNewNodeData,
   isLinghuiConnectionValid,
   isLinghuiSlotDataTypeCompatible,
@@ -176,10 +177,32 @@ describe('isLinghuiConnectionValid', () => {
       mode: 'generate',
       focusRegion: null,
       markPoints: [],
-      aspectRatio: '21:9',
+      aspectRatio: '2:1',
       batchCount: 1,
       panoramaTemplate: 'auto',
+      projectionMode: 'equirectangular-2to1',
+      panoramaSlashScene: '720_panoramic',
+      panoramaWithPromptScene: '720_panoramic_with_prompt',
+      panoramaSlashLabel: '720°全景图',
+      panoramaModelKey: 'lib-image-2',
+      panoramaQuality: 'medium',
     }));
+  });
+
+  it('在节点目录中暴露全景节点和 3D 导演工作台', () => {
+    expect(LINGHUI_NODE_CATALOG).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'linghui/panorama',
+        label: '全景节点',
+        category: 'spatial',
+        description: '生成或导入全景环境图，并在画布中预览空间关系',
+      }),
+      expect.objectContaining({
+        type: 'linghui/director3d',
+        label: '3D 导演工作台',
+        category: 'spatial',
+      }),
+    ]));
   });
 
   // LibTV 1:1：linghui/image-generator 已删除，所有"生成图片"都用统一 linghui/image 节点（mode='generate'）。

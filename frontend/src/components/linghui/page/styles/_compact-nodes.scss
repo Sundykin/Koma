@@ -119,12 +119,12 @@
     );
     animation: linghui-glow-spin 1.4s linear infinite;
     -webkit-mask:
-      linear-gradient(#fff 0 0) content-box,
-      linear-gradient(#fff 0 0);
+      linear-gradient(var(--token-text-primary) 0 0) content-box,
+      linear-gradient(var(--token-text-primary) 0 0);
     -webkit-mask-composite: xor;
             mask:
-      linear-gradient(#fff 0 0) content-box,
-      linear-gradient(#fff 0 0);
+      linear-gradient(var(--token-text-primary) 0 0) content-box,
+      linear-gradient(var(--token-text-primary) 0 0);
             mask-composite: exclude;
     pointer-events: none;
   }
@@ -661,15 +661,16 @@
   align-items: center;
   justify-content: center;
   gap: 4px;
-  padding: 6px 8px;
-  // 加大圆角以适配 wrap 多行；保留 LibTV 圆角药丸视觉。
-  border-radius: 18px;
+  padding: 4px 5px;
+  border-radius: 14px;
   background: color-mix(in srgb, var(--token-bg-app) 92%, transparent);
   border: 1px solid color-mix(in srgb, var(--token-border-base) 64%, transparent);
-  box-shadow: 0 10px 26px color-mix(in srgb, var(--token-bg-app) 30%, transparent);
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--token-bg-app) 34%, transparent);
   backdrop-filter: blur(18px);
-  // 单行最大宽度，太长则 wrap 到第二行（对齐 LibTV 截图 10 的双行布局）。
-  max-width: min(720px, 96vw);
+  max-width: min(520px, 96vw);
+  max-height: 64px;
+  overflow: auto;
+  scrollbar-width: thin;
   // 默认隐藏；节点 hover / 选中时显示，对齐 LibTV 工具条仅在 hover 出现的视觉。
   opacity: 0;
   pointer-events: none;
@@ -690,27 +691,33 @@
   &Chip {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    height: 32px;
-    padding: 0 12px;
-    border-radius: 9999px;
+    gap: 5px;
+    height: 28px;
+    padding: 0 7px;
+    border-radius: 8px;
     border: 1px solid transparent;
     background: transparent;
     color: $lh-text-strong;
-    font-size: 13px;
-    font-weight: 500;
+    font-size: 12px;
+    font-weight: 650;
     line-height: 1;
     cursor: pointer;
     transition: background $lh-transition-base, color $lh-transition-base;
 
-    &:hover:not(:disabled):not(.isPlaceholder) {
+    &:hover:not(:disabled):not(.isPlaceholder),
+    &.isActive,
+    &.isPrimary {
       background: color-mix(in srgb, var(--token-bg-elevated) 78%, transparent);
     }
 
     &.isIcon {
-      width: 32px;
+      width: 28px;
       padding: 0;
       justify-content: center;
+    }
+
+    &.isHero {
+      padding-left: 8px;
     }
 
     &.isPlaceholder,
@@ -724,9 +731,17 @@
       color: color-mix(in srgb, var(--token-text-primary) 88%, transparent);
     }
 
+    > svg,
+    &Icon {
+      width: 14px;
+      height: 14px;
+    }
+
     &Caret {
       flex: 0 0 auto;
       opacity: 0.72;
+      width: 11px;
+      height: 11px;
     }
 
     &HintIcon {
@@ -742,7 +757,7 @@
       height: 16px;
       padding: 0 5px;
       border-radius: 4px;
-      font-size: 10px;
+      font-size: 9px;
       font-weight: 800;
       letter-spacing: 0.04em;
       color: var(--token-text-primary);
@@ -755,26 +770,26 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    margin-left: 2px;
-    height: 18px;
-    padding: 0 8px;
+    margin-left: 0;
+    height: 16px;
+    padding: 0 6px;
     border-radius: 9999px;
-    font-size: 11px;
+    font-size: 9px;
     font-weight: 800;
     letter-spacing: 0.04em;
     text-transform: uppercase;
 
     &.isNew {
       // LibTV 截图：dark 模式 #3CB5CC40 背 / #5DDCFF 文字（绿松石 + cyan）。
-      background: color-mix(in srgb, #3CB5CC 32%, transparent);
-      color: #5DDCFF;
+      background: color-mix(in srgb, var(--token-status-info) 32%, transparent);
+      color: color-mix(in srgb, var(--token-status-info) 48%, var(--token-text-primary));
     }
   }
 
   &Divider {
     width: 1px;
-    height: 16px;
-    margin: 0 4px;
+    height: 18px;
+    margin: 0 2px;
     background: color-mix(in srgb, var(--token-border-base) 60%, transparent);
   }
 }
@@ -791,15 +806,95 @@
 .linghuiImageFloatingToolbar.isStatic {
   position: static;
   transform: none;
-  margin: 0 0 12px;
+  margin: 0;
   opacity: 1;
   pointer-events: auto;
-  max-width: none;
-  width: 100%;
+  width: max-content;
+  max-width: min(520px, calc(100vw - 56px));
+  max-height: 36px;
+  overflow: visible;
 
   &::before {
     display: none;
   }
+}
+
+.linghuiImageToolbarDropdown {
+  z-index: 10020;
+
+  .ant-dropdown-menu {
+    min-width: 168px;
+    max-height: 260px;
+    overflow: auto;
+    padding: 4px;
+    border-radius: 9px;
+    border: 1px solid color-mix(in srgb, var(--token-border-base) 66%, transparent);
+    background: color-mix(in srgb, var(--token-bg-app) 92%, transparent);
+    box-shadow: 0 14px 30px color-mix(in srgb, var(--token-bg-app) 38%, transparent);
+    backdrop-filter: blur(22px);
+  }
+
+  .ant-dropdown-menu-item,
+  .ant-dropdown-menu-submenu-title {
+    min-height: 30px;
+    border-radius: 7px;
+    color: $lh-text-primary;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  .ant-dropdown-menu-title-content,
+  .linghuiImageToolbarMenuContent {
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .ant-dropdown-menu-item:hover,
+  .ant-dropdown-menu-submenu-title:hover,
+  .ant-dropdown-menu-item-active {
+    background: color-mix(in srgb, var(--token-bg-elevated) 78%, transparent);
+  }
+}
+
+.linghuiImageToolbarMenuItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  max-width: 220px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+
+  > span:last-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.linghuiImageToolbarMenuIcon,
+.linghuiImageToolbarMenuItem > svg {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  color: color-mix(in srgb, var(--token-text-primary) 58%, transparent);
+}
+
+.linghuiImageToolbarMenuBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 21px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--token-text-primary) 36%, transparent);
+  color: color-mix(in srgb, var(--token-text-primary) 76%, transparent);
+  font-size: 9px;
+  font-weight: 800;
 }
 
 // LibTV 截图 2 节点正上方独立"上传"浮按钮：无图时显示，hover 时高亮。

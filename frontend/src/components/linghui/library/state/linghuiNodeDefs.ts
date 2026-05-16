@@ -6,6 +6,14 @@ import type {
   LinghuiSlotDef,
 } from '../../../../types/linghui';
 import { createDefaultDirector3DScene } from '../../director3d/director3dScene';
+import {
+  LIBTV_PANORAMA_SLASH_LABEL,
+  LIBTV_PANORAMA_SLASH_QUALITY,
+  LIBTV_PANORAMA_SLASH_SCENE,
+  LIBTV_PANORAMA_SUBMIT_MODEL_KEY,
+  LIBTV_PANORAMA_WITH_PROMPT_SCENE,
+  getLibTVPanoramaRatioForModel,
+} from '../../panorama/panoramaPromptTemplate';
 
 export interface LinghuiNodeMeta {
   type: LinghuiNodeType;
@@ -92,8 +100,8 @@ export const NODE_META: Record<LinghuiNodeType, LinghuiNodeMeta> = {
     title: '全景',
     desc: '生成 720° 全景环境板，结果支持球面拖拽预览',
     catalogCategory: 'spatial',
-    catalogLabel: '全景生图',
-    catalogDescription: '内置 AR720 提示词模板 + 球面伪 720° 浏览（拖拽/缩放）',
+    catalogLabel: '全景节点',
+    catalogDescription: '生成或导入全景环境图，并在画布中预览空间关系',
     accent: LINGHUI_NODE_COLORS.image,
     background: LINGHUI_NODE_BACKGROUND,
   },
@@ -283,7 +291,7 @@ export const NODE_PROPERTY_DEFAULTS: Record<LinghuiNodeType, Record<string, unkn
     primaryResultSource: '',
     prompt: '',
     ttiSelection: '',
-    aspectRatio: '21:9',
+    aspectRatio: getLibTVPanoramaRatioForModel(LIBTV_PANORAMA_SUBMIT_MODEL_KEY),
     resolution: 'auto',
     gridType: 'none',
     batchCount: 1,
@@ -292,8 +300,13 @@ export const NODE_PROPERTY_DEFAULTS: Record<LinghuiNodeType, Record<string, unkn
     cinematic: { lighting: 'auto', focalLength: 'auto', aperture: 'auto' },
     // 全景模板档位：'auto' | 'indoor' | 'outdoor'，影响执行器拼装的 system prompt
     panoramaTemplate: 'auto',
-    // 投影契约：'ar720-band' 默认（21:9 / 16:9 环境带），可切到真 2:1 球面或宽幅平面
-    projectionMode: 'ar720-band',
+    // LibTV 全景 slash 默认用 lib-image-2 + 2:1，等价于真经纬球面预览。
+    projectionMode: 'equirectangular-2to1',
+    panoramaSlashScene: LIBTV_PANORAMA_SLASH_SCENE,
+    panoramaWithPromptScene: LIBTV_PANORAMA_WITH_PROMPT_SCENE,
+    panoramaSlashLabel: LIBTV_PANORAMA_SLASH_LABEL,
+    panoramaModelKey: LIBTV_PANORAMA_SUBMIT_MODEL_KEY,
+    panoramaQuality: LIBTV_PANORAMA_SLASH_QUALITY,
   },
   'linghui/video': {
     prompt: '',

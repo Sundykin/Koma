@@ -20,6 +20,9 @@ const {
   onExecuteImageUpscaleMock,
   onExecuteImageCropMock,
   onApplyImageToolPresetMock,
+  onCreatePanoramaPreviewMock,
+  onSetGridSplitTypeMock,
+  onClearGridSplitCellsMock,
   setActiveToolMock,
 } = vi.hoisted(() => ({
   useEdgesMock: vi.fn(),
@@ -29,6 +32,9 @@ const {
   onExecuteImageUpscaleMock: vi.fn(),
   onExecuteImageCropMock: vi.fn(),
   onApplyImageToolPresetMock: vi.fn(),
+  onCreatePanoramaPreviewMock: vi.fn(),
+  onSetGridSplitTypeMock: vi.fn(),
+  onClearGridSplitCellsMock: vi.fn(),
   setActiveToolMock: vi.fn(),
 }));
 
@@ -167,8 +173,9 @@ describe('LinghuiNodeEditor', () => {
       onExecuteImageCrop: onExecuteImageCropMock,
       onExecuteMultiAngle: vi.fn(),
       onApplyImageToolPreset: onApplyImageToolPresetMock,
-      onSetGridSplitType: vi.fn(),
-      onClearGridSplitCells: vi.fn(),
+      onCreatePanoramaPreview: onCreatePanoramaPreviewMock,
+      onSetGridSplitType: onSetGridSplitTypeMock,
+      onClearGridSplitCells: onClearGridSplitCellsMock,
       onExecuteGridSplit: vi.fn(),
       onGenerateImageFromController: vi.fn(),
       gridSplitUpscaleFactor: 2,
@@ -179,7 +186,7 @@ describe('LinghuiNodeEditor', () => {
 
   // LibTV 1:1 图片工具条行为验证：
   // - 多角度单按钮打开面板
-  // - AI 工具（扩图 ▼ /裁剪 ▼ 等）弹 preset 二级菜单，选 preset 修改当前节点 prompt 并自动运行
+  // - 重绘 ▼ 聚合扩图/重绘/擦除等编辑工具，选扩图/重绘后打开对应 LibTV 大面板
   // - 高清 ▼ 弹 2x/4x，本地 FFmpeg 派生高清节点
 
   it('LibTV 多角度单按钮打开面板（无 Dropdown）', async () => {
@@ -195,37 +202,151 @@ describe('LinghuiNodeEditor', () => {
     });
   });
 
-  it('LibTV 扩图 ▼ 弹 preset 选横向扩图 → 修改当前节点 onApplyImageToolPreset', async () => {
+  it('LibTV 全景 NEW 创建全景预览节点而不是打开多角度', async () => {
     render(
       <App>
         <LinghuiNodeEditor nodeId="image-node-1" nodeType="linghui/image" />
       </App>,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /扩\s*图/ }));
-    fireEvent.click(await screen.findByText('横向扩图'));
+    fireEvent.click(screen.getByRole('button', { name: '全景' }));
 
     await waitFor(() => {
-      expect(onApplyImageToolPresetMock).toHaveBeenCalledWith(expect.objectContaining({
-        label: '横向扩图',
-        promptSnippet: expect.stringContaining('横向扩图'),
-        properties: expect.objectContaining({ aspectRatio: '16:9', resolution: '2K' }),
-      }));
+      expect(onCreatePanoramaPreviewMock).toHaveBeenCalledWith('image-node-1');
+    });
+    expect(setActiveToolMock).not.toHaveBeenCalledWith('image-node-1', 'multi-angle');
+  });
+
+  it('LibTV 重绘 ▼ 菜单里的扩图打开可视化面板', async () => {
+    render(
+      <App>
+        <LinghuiNodeEditor nodeId="image-node-1" nodeType="linghui/image" />
+      </App>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /重\s*绘/ }));
+    fireEvent.click(await screen.findByText('扩图'));
+
+    await waitFor(() => {
+      expect(setActiveToolMock).toHaveBeenCalledWith('image-node-1', 'outpaint');
     });
   });
 
-  it('LibTV 高清 ▼ 弹 2 倍/4 倍 → 调用 onExecuteImageUpscale', async () => {
+  it('LibTV 打光按钮打开可视化面板', async () => {
     render(
       <App>
         <LinghuiNodeEditor nodeId="image-node-1" nodeType="linghui/image" />
       </App>,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /高\s*清/ }));
+    fireEvent.click(screen.getByRole('button', { name: /打\s*光/ }));
+
+    await waitFor(() => {
+      expect(setActiveToolMock).toHaveBeenCalledWith('image-node-1', 'relight');
+    });
+  });
+
+  it('LibTV 重绘 ▼ 菜单里的重绘打开可视化面板', async () => {
+    render(
+      <App>
+        <LinghuiNodeEditor nodeId="image-node-1" nodeType="linghui/image" />
+      </App>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /重\s*绘/ }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /重\s*绘/ }));
+
+    await waitFor(() => {
+      expect(setActiveToolMock).toHaveBeenCalledWith('image-node-1', 'repaint');
+    });
+  });
+
+  it('LibTV 更多菜单里的高清弹 2 倍/4 倍 → 调用 onExecuteImageUpscale', async () => {
+    render(
+      <App>
+        <LinghuiNodeEditor nodeId="image-node-1" nodeType="linghui/image" />
+      </App>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /更\s*多/ }));
+    fireEvent.mouseEnter(await screen.findByRole('menuitem', { name: /高\s*清/ }));
     fireEvent.click(await screen.findByText('2 倍高清'));
 
     await waitFor(() => {
       expect(onExecuteImageUpscaleMock).toHaveBeenCalledWith('image-node-1', { factor: 2 });
     });
+  });
+
+  it('LibTV 九宫格菜单提交内置分镜生成 preset，不直接进入宫格切分', async () => {
+    render(
+      <App>
+        <LinghuiNodeEditor nodeId="image-node-1" nodeType="linghui/image" />
+      </App>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /更\s*多/ }));
+    fireEvent.mouseEnter(await screen.findByRole('menuitem', { name: /九\s*宫\s*格/ }));
+    fireEvent.click(await screen.findByText('剧情推演九宫格'));
+
+    await waitFor(() => {
+      expect(onApplyImageToolPresetMock).toHaveBeenCalledWith(expect.objectContaining({
+        label: '剧情推演九宫格',
+        promptSnippet: expect.stringContaining('生成一张单张完整的宫格分镜图，而不是切分原图'),
+        properties: expect.objectContaining({
+          aspectRatio: '1:1',
+          batchCount: 1,
+        }),
+      }));
+    });
+    expect(onSetGridSplitTypeMock).not.toHaveBeenCalled();
+    expect(onClearGridSplitCellsMock).not.toHaveBeenCalled();
+    expect(setActiveToolMock).not.toHaveBeenCalledWith('image-node-1', 'grid-split');
+    expect(setActiveToolMock).not.toHaveBeenCalledWith('image-node-1', 'multi-angle');
+    expect(setActiveToolMock).not.toHaveBeenCalledWith('image-node-1', 'relight');
+  });
+
+  it('LibTV 重绘菜单不再重复显示高清入口', async () => {
+    render(
+      <App>
+        <LinghuiNodeEditor nodeId="image-node-1" nodeType="linghui/image" />
+      </App>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /重\s*绘/ }));
+
+    await screen.findByRole('menuitem', { name: /扩\s*图/ });
+    expect(screen.queryByRole('menuitem', { name: /高\s*清/ })).not.toBeInTheDocument();
+  });
+
+  it('LibTV 宫格切分菜单会写入 4/9/16/25 档位', async () => {
+    render(
+      <App>
+        <LinghuiNodeEditor nodeId="image-node-1" nodeType="linghui/image" />
+      </App>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /更\s*多/ }));
+    fireEvent.mouseEnter(await screen.findByRole('menuitem', { name: /宫\s*格\s*切\s*分/ }));
+    fireEvent.click(await screen.findByText('16 宫格 (4×4)'));
+
+    await waitFor(() => {
+      expect(onSetGridSplitTypeMock).toHaveBeenCalledWith('4x4');
+      expect(onClearGridSplitCellsMock).toHaveBeenCalled();
+      expect(setActiveToolMock).toHaveBeenCalledWith('image-node-1', 'grid-split');
+    });
+  });
+
+  it('导入素材节点的更多菜单不显示无效的聚焦/标记入口', async () => {
+    render(
+      <App>
+        <LinghuiNodeEditor nodeId="image-node-1" nodeType="linghui/image" />
+      </App>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /更\s*多/ }));
+
+    await screen.findByRole('menuitem', { name: /九\s*宫\s*格/ });
+    expect(screen.queryByRole('menuitem', { name: /聚\s*焦/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: /标\s*记/ })).not.toBeInTheDocument();
   });
 });

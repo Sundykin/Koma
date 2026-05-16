@@ -36,6 +36,7 @@ import {
   PANORAMA_PERSPECTIVE_EIGHT_DIRECTIONS,
   PANORAMA_PERSPECTIVE_SIX_FACES,
 } from '../../panorama/panoramaPerspectiveExtractor';
+import { extractPerspectiveViewGpu } from '../../panorama/panoramaGpuExtractor';
 import { persistMediaAsset } from '../../../../services/mediaPersistenceService';
 import { toFileSystemDisplayUrl } from '../../../../services/fileSystemPort';
 import { nanoid } from 'nanoid';
@@ -163,22 +164,25 @@ export const PanoramaNodeEditor: React.FC<PanoramaNodeEditorProps> = (props) => 
       const newViews: LinghuiPanoramaPerspectiveView[] = [];
       for (let i = 0; i < config.length; i++) {
         const angle = config[i];
-        const extracted = await extractPerspectiveView(displaySrc, {
+        const extractOptions = {
           yaw: angle.yaw,
           pitch: angle.pitch,
           fovDeg: angle.fovDeg,
           width: outputSize,
           height: outputSize,
           projectionMode: currentProjection,
-        });
+        };
+        const extracted = await extractPerspectiveViewGpu(displaySrc, extractOptions).catch(() => (
+          extractPerspectiveView(displaySrc, extractOptions)
+        ));
         // 落盘成 koma-local URL（下游 grok / 视频 provider 才能读）
         const persisted = await persistMediaAsset({
           projectId: 'linghui',
           kind: 'image',
           source: extracted.dataUrl,
-          provider: 'panorama-perspective',
+          provider: 'panorama-perspective-gpu',
           metadata: {
-            origin: 'panorama-perspective',
+            origin: 'panorama-perspective-gpu',
             sourceNodeId: nodeId,
             yaw: angle.yaw,
             pitch: angle.pitch,

@@ -272,7 +272,7 @@ interface VideoGeneratePanelProps {
   canvasInteractionVersion?: number;
 }
 
-const DROPDOWN_ROOT_CLASS_NAME = 'linghuiNodeEditorDropdownMenu linghuiVideoEditorDropdownMenu';
+const DROPDOWN_ROOT_CLASS_NAME = 'linghuiNodeEditorDropdownMenu linghuiEditorModelDropdownMenu linghuiVideoEditorDropdownMenu';
 const NODE_EDITOR_POPUP_Z_INDEX = 1500;
 const POPUP_ROOT_STYLE = { zIndex: NODE_EDITOR_POPUP_Z_INDEX } as const;
 
@@ -338,10 +338,15 @@ export function VideoGeneratePanel({
     providers.map(provider => ({
       key: provider.value,
       label: (
-        <div className="linghuiNodeEditorDropdownOption">
-          <div className="linghuiNodeEditorDropdownTitle">{provider.modelLabel || provider.label}</div>
-          <div className="linghuiNodeEditorDropdownDesc">
-            {provider.channelLabel ? `${provider.channelLabel} / ${provider.label}` : provider.label}
+        <div className="linghuiNodeEditorDropdownOption isModelOption">
+          <span className="linghuiNodeEditorDropdownIcon" aria-hidden="true">视</span>
+          <div className="linghuiNodeEditorDropdownBody">
+            <div className="linghuiNodeEditorDropdownTitle">{provider.modelLabel || provider.label}</div>
+            <div className="linghuiNodeEditorDropdownDesc">
+              {provider.channelLabel && provider.modelLabel
+                ? `${provider.channelLabel} / ${provider.modelLabel}`
+                : provider.channelLabel || provider.label}
+            </div>
           </div>
         </div>
       ),
@@ -525,8 +530,8 @@ export function VideoGeneratePanel({
           references={promptReferences}
           placeholder="描述镜头动作、节奏和风格，输入 @ 引用上游产物"
           surfaceStyle="fusion"
-          minHeight="76px"
-          maxHeight="176px"
+          minHeight="64px"
+          maxHeight="152px"
         />
       </div>
 
@@ -543,6 +548,7 @@ export function VideoGeneratePanel({
           <button
             type="button"
             className={`linghuiVideoEditorInlineTrigger ${providers.length === 0 ? 'isDisabled' : ''}`}
+            title="选择视频模型"
             onClick={handleModelTriggerClick}
             disabled={providers.length === 0}
           >
@@ -563,6 +569,7 @@ export function VideoGeneratePanel({
           <button
             type="button"
             className="linghuiVideoEditorInlineTrigger"
+            title="选择视频参数"
             onClick={handleParamsTriggerClick}
           >
             {parameterSummary}

@@ -77,6 +77,7 @@ export function LinghuiCanvasSurface({
     onCreateDerivedMultiAngleImage: overlayProps.onCreateDerivedMultiAngleImage,
     onExecuteImageUpscale: overlayProps.onExecuteImageUpscale,
     onExecuteImageCrop: overlayProps.onExecuteImageCrop,
+    onCreatePanoramaPreview: overlayProps.onCreatePanoramaPreview,
     onGenerateImageFromController: overlayProps.onGenerateImageFromController,
     onExecuteMultiAngle: overlayProps.onExecuteMultiAngle,
     onApplyImageToolPreset: overlayProps.onApplyImageToolPreset,

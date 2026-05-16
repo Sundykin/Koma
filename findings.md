@@ -1,5 +1,122 @@
 # Findings
 
+## 2026-05-16 Phase 32 反查结论：添加节点空间入口 / LibTV 全景 slash 默认值
+
+- 当前灵绘 `LINGHUI_CANVAS_CREATE_MENU_CATALOG` 已经有 `spatial-panorama` 和 `spatial-director3d`；`resolveLinghuiQuickCreateCatalog()` 空白场景返回的也是完整创建目录，不是数据源缺失。
+- 真正问题在 `LinghuiCanvasQuickCreate.tsx`：组件收到 `catalog` prop 后没有使用，空白“添加节点”和拖线“引用该节点生成”都固定渲染 `LINGHUI_REFER_NODE_PRESETS` 六项，所以 `全景节点` / `导演工作台` 从 UI 上消失。
+- LibTV `0gg5ir~xd-ho3.js` 中图片工具条全景按钮点击 `image-toolbar-panorama-slash`，tooltip 是 `基于当前场景创建720°全景图`，运行 `submitSlashImageCommand(..., promptOverride: "/")`，并把当前图片放进 `imageList`。
+- LibTV 全景常量不在主大 chunk，而在 `template_/libtv/0c7etgphqc14l.js`；已用 `npx js-beautify` 格式化到 `/tmp/libtv-panorama-0c7.beautified.js`。反编译结论：
+  - `PANORAMIC_SLASH_SCENE = "720_panoramic"`
+  - `PANORAMIC_SLASH_SUBMIT_MODEL_KEY = "lib-image-2"`
+  - `buildPanoramicWithPromptEnablePatch` 使用 `"720_panoramic_with_prompt"`，用于带用户 prompt 的全景模式。
+  - `getPanoramicRatioForModel("lib-image-2") = "2:1"`；其它支持模型回落 `"21:9"`。
+  - `mergeSettingsForPanoramicSlashScene(scene, settings, model)` 只在 `scene === "720_panoramic"` 时强制 `{ quality: "medium", ratio }`。
+- 因此灵绘应把全景生图默认值对齐到 LibTV slash 语义：空白创建显示 `全景节点`，默认用 `lib-image-2`、`2:1`、`medium` 和 `720°全景图` 元数据；用户手动 prompt 继续作为 prompt tail 追加到灵绘现有全景模板。
+- 用户指出“按 LibTV 720° 全景图场景生成 2:1 空间环境板，并用球面预览检查空间。”这类文案不能要；落地时保留内部默认值和 metadata，但可见文案改为“生成或导入全景环境图，并在画布中预览空间关系”，不暴露 LibTV、模型、比例等实现细节。
+- Electron CDP `127.0.0.1:9333` 实测：空白处右键 `添加节点` 后 quickCreate 面板显示 `素材 / 生成 / 剧情 / 空间` 分组，`空间` 下有 `全景节点` 与 `3D 导演工作台`；面板文本不含 `LibTV`、`2:1 空间环境板`、`按 LibTV`。
+
+## 2026-05-16 Phase 31 反查结论：九宫格 slash 生成 vs 宫格切分
+
+- LibTV `九宫格` 工具条真实入口位于 `/tmp/libtv-0gg5ir.beautified.js:44030` 附近：`u2({ hasImageInput, onSelect })` 从全局 `slashImage` 或 `FALLBACK_SLASH_IMAGE_ITEMS` 取命令，按钮 `aria-label="九宫格"`，菜单 item 将完整 `command` 传给 `onPick`。
+- LibTV fallback slash item 包含 `plot_deduction_four_grid / coherent_storyboard_25 / cinematic_light_correction / character_three_view_generate / frame_deduction_plus_3s / frame_deduction_minus_5s` 等 scene；这证明 `九宫格` 是 slash 图像生成菜单，不是本地切图菜单。
+- LibTV slash 执行 hook 位于 `/tmp/libtv-0gg5ir.beautified.js:51635` 附近：`runSlashCommand` / `runSlashCommandOnNewGenerateNode` 调 `submitSlashImageCommand({ command, baseParams, promptOverride: "/" })`，并把当前图片放进 `imageList`。
+- LibTV 在 `/tmp/libtv-0gg5ir.beautified.js:52264` 附近处理九宫格确认：先提交 slash 命令；只有命令携带 `gridType` 4/9/16/25 时，生成提交成功后才切到 GridSplit 编辑器。灵绘不能把菜单点击简化成直接 `openGridSplit()`。
+- 真正的 `宫格切分` 是独立工具，LibTV 在 `/tmp/libtv-0gg5ir.beautified.js:48090` 附近有 `4/9/16/25 宫格切分` 文案和 `GridSplit` editor；它用于已有宫格图片的本地选格/裁剪/派生节点。
+- Phase 31 落地：灵绘 `九宫格` 子菜单改为 `剧情推演九宫格 / 多机位九宫格 / 16宫格连贯分镜 / 25宫格连贯分镜`，点击时调用 `onApplyImageToolPreset`，以当前图片边作为参考，合并用户 prompt 与内置分镜 prompt，派生并自动运行新的 image-to-image 节点；不再直接设置 `gridSplitType`。
+- `宫格切分` 子菜单保留 `4/9/16/25 宫格`，继续写入 `2x2 / 3x3 / 4x4 / 5x5` 并打开 `grid-split`；同时 `重绘` 菜单移除重复 `高清`，高清只保留在 `更多 -> 高清`。
+- Electron CDP 实测进入灵绘画布后：图片工具条仍为 `487×36`；`更多 -> 九宫格` 子菜单只显示四个分镜生成项；`重绘` 菜单只显示 `扩图 / 重绘 / 擦除 / 抠图 / 裁剪`，无 `高清`；页面没有 dynamic import error / ErrorBoundary。
+
+## 2026-05-16 Phase 30 反查结论：提示词 / 模型 / 参数 / 镜头菜单
+
+- LibTV 的模型选择浮层来自格式化反编译文件 `/tmp/libtv-0gg5ir.beautified.js`：`选择模型` HoverCard 宽约 `370px`、高约 `384px`，模型行高约 `57px`，左侧 36px 图标卡，中间 `13px` 模型名 + `11px` 描述，右侧是选择图标；面板本身不需要在灵绘显示积分。
+- LibTV 的视频参数浮层在反编译代码里是 `dY`，约 `344px × 156px`，标题是 `视频参数`，只放帧率/分辨率等参数；这证明灵绘的参数弹层应保持小 HUD 尺寸，不应混入大表单或工具能力。
+- 当前灵绘 `ImageNodeEditor.imageSettingsContent` 把 `比例 / 分辨率 / 出图数量 / 打光 / 焦距 / 景深/光圈` 全塞在一个 Popover 中；用户要求 `打光` 从这里移除，`焦距 / 镜头 / 光圈` 拆成单独菜单，真实打光只保留在 `打光效果` 面板。
+- 当前灵绘 `renderLibTVToolFooter()` 仍渲染 `.linghuiImageLibTVCost` 和 `⚡ count`，多角度传 `1`、打光传 `14`、扩图/重绘传 batch count；这与灵绘无积分体系冲突，需要删除 UI 和 CSS。
+- LibTV 反编译中积分相关集中在 `credits/calculatePower/积分/消耗积分`，属于 LibTV 业务体系；灵绘文档 `libtv-node-full-comparison.md` 也明确记录“无积分系统，不需要”。本阶段所有复刻只取布局和交互，不取积分/消耗文案。
+- Phase 30 落地后 Electron CDP 实测：图片参数菜单 `344×328`，只包含 `比例 / 分辨率 / 出图数量`，不含 `打光 / 焦距 / 光圈`；镜头菜单 `359×222`，只包含 `焦距 / 镜头` 与 `光圈 / 景深`，不含打光；模型菜单 `370×303`，单行 `352×57`，无积分；视频参数菜单约 `343×300`，无积分；页面无 `Failed to fetch dynamically imported module`、无 ErrorBoundary/TypeError。
+
+## 2026-05-16 Phase 29 复查结论：图片工具菜单 / 宫格入口
+
+- 用户反馈的菜单被挡住与换行，根因是静态图片工具条为了压缩 HUD 尺寸设置了 `max-height: 36px`，而 Dropdown popup 仍可能挂在工具条附近/子菜单未继承专属 class；本轮把主菜单与子菜单都统一挂到 `document.body`，并通过 AntD `menu.classNames.popup.root` / submenu `popupClassName` 让嵌套菜单也拿到 `linghuiImageToolbarDropdown` 样式。
+- Electron CDP 实测：`更多` 主菜单 rect `168×189`，`九宫格` 子菜单 rect `168×146`，二者 parent/弹层均脱离工具条，z-index `10020`；所有主/子菜单 item 的 computed `white-space` 与 title content 都是 `nowrap`。
+- `九宫格` 原先把 `多机位九宫格/剧情推演/三视图/光影校正` 混到 `multi-angle` / `relight`，导致用户点击宫格后变成多角度或打光；本轮改成宫格档位入口：四宫格/九宫格/16宫格/25宫格分别写入 `2x2/3x3/4x4/5x5` 并进入 `grid-split`。
+- Electron CDP 行为验证：`更多 -> 九宫格 -> 多机位九宫格` 后画布显示 `宫格 9格 / 已选择 0 个宫格 / 创建生图节点`，且无 `多角度编辑器` / `打光效果`；`更多 -> 宫格切分 -> 16 宫格` 后显示 `宫格 16格` 和 16 个网格编号。
+- 当前点击菜单中去掉无执行链路的 `旋转`，导入素材节点继续隐藏 `聚焦 / 标记`，避免继续出现“图标菜单没有功能”的误导入口。
+
+## 2026-05-16 Phase 28 复查结论：HUD 尺寸 / 打光光球 / 多角度舞台
+
+- 用户复查后指出 `894×354` 打光面板、`754×398` 多角度面板和 820px 工具条仍显得比画布 HUD 大；这次按 LibTV CSS 真实尺寸重收敛：
+  - LibTV `angle-editor-v3` 原始宽度是 `600px`，左侧 `.angle-editor-v3-scene` 是 `240px × 240px`。
+  - LibTV `light-editor` 不是 900px 宽表单，主体是 `200px` 光球 scene + `224px` controls + `224px` smart column。
+- 当前落地后的 Electron CDP 量测：
+  - 静态图片点击菜单不再铺开所有功能，顶层只保留 `全景 / 多角度 / 打光 / 重绘 / 更多 / 下载 / 全屏`，真实尺寸 `487×36`；九宫格、高清、宫格切分、聚焦、标记放入 `更多`。
+  - 打光面板约 `634×337`；左侧 stage class 是 `linghuiImageLibTVPreviewStage isLightingSphere linghuiImageLibTVLightingStage`，内部没有 DOM `<img>`，只有 188×188 Three.js/WebGL canvas，像素检查非空。参考图缩为小卡，中心是受光圆球和光源演示。
+  - 多角度面板约 `554×350`；左侧 stage class 是 `linghuiImageLibTVPreviewStage isMultiAngleScene linghuiImageLibTVOrbitStage`，内部是 Three.js/WebGL canvas，stage 内没有 DOM `<img>`，并有 4 个方向按钮。
+  - AntD 下拉项降到 30px；本轮 Linghui SCSS 不再有 stylelint 硬编码颜色报错。
+- 结论：打光和多角度左侧已是实际 Three.js/canvas 预览，不是图片占位；后续若还需继续瘦身，应优先减少工具条顶层入口数量或把低频图标折到更多菜单，而不是再压缩 Three.js 预览尺寸。
+
+## 2026-05-16 Phase 27 反查结论：多角度 / 打光 / 全景
+
+- `template_/docs` 当前是 11 份 Markdown、2032 行；新增的 `libtv-panorama-wasm-alternatives.md` 已读完。结论更新：全景视角抽取可以直接用项目已有 Three.js 做 GPU 投影，用户要求本轮落地，不再只停留在文档中的“未来升级”。
+- LibTV 打光真实实现位于格式化文件 `/tmp/libtv-0gg5ir.beautified.js`：
+  - `ug` 是 8 个预设：`过曝胶片 / 蓝色逆光 / 伦勃朗光 / 赛博朋克 / 落日迷幻 / 神秘暗调 / 黄金时刻 / 诺兰冷灰`，并带 `values/prompt/referenceImage`。
+  - `uy` 控制 `direction/brightness/lightColor/rimLight` 与单独的 `smartMode`；当前灵绘把 `rimLight` 和 `smartMode` 绑在同一个 state 上，是错误的。
+  - `uL/uD` 是 Three.js/WebGL canvas 光球预览：球面网格、主光源 bulb/cone、轮廓光、亮度/颜色动画、拖拽后 snap 到方向枚举。当前灵绘只在 `isLightingSphere` 区域放图片，是假预览。
+- LibTV 多角度真实实现位于同一格式化文件：
+  - `p8` 是 7 个预设：`custom/fisheye/tilted/front-down/front-up/panoramic-down/back`，字段是 `rotation/tilt/scale/isWideAngle/prompt`，不是旧的 `azimuth/elevation/distance`。
+  - `pV` camera 模式滑条：水平环绕 `0..315 step 45`、垂直俯仰 `-30..60 step 30`、景别缩放 `0..10 step 5` 并映射为 `scale = 10 * slider`。
+  - `pK` object 模式滑条：旋转 `-180..180`、倾斜 `-90..90`、缩放 `0..10 step 1` 并映射为 `scale = 10 * slider`，还有 `广角镜头` 开关。
+  - `p6` 左侧不是普通图片预览，而是 unified scene：cube/reference image、camera、sphere grid、direction buttons、wide-angle indicator。
+- `LinghuiImageNodeFloatingToolbar.tsx` 当前 `全景` 对普通图片仍调用 `fireImageTool('multi-angle')`，和用户反馈一致；需要接到 `createDerivedPanoramaNodeFromNode` / `进入全景预览` 链路。
+- Phase 27 落地后：
+  - 多角度编辑器已改用 LibTV 字段 `mode/rotation/tilt/scale/isWideAngle/presetKey/promptEnabled`，并保留旧字段映射给现有 provider。
+  - 打光编辑器已改用结构化 `relight` 配置，智能模式与轮廓光独立；左侧是 Three.js/r3f 光球 canvas，Electron 像素检查非空。
+  - 图片工具条 `全景 NEW` 已改为 `onCreatePanoramaPreview(nodeId)`，测试覆盖它不会再调用 `multi-angle`。
+  - 全景透视抽取新增 Three.js GPU 路径，persist metadata 标记为 `panorama-perspective-gpu`，WebGL 不可用时回退原 Canvas2D 抽取。
+  - 用户指出菜单和面板过大后，工具条按钮、Dropdown 项和面板宽度已收敛到当前画布 HUD 尺寸；Electron CDP 实测打光面板约 `894×354`、多角度面板约 `754×398`。
+
+## 2026-05-16 LibTV 图片工具浮层重做方向
+
+- 用户反馈当前实现过度复杂且偏右侧参数表单，和 LibTV 截图不一致；后续以 LibTV 的“图片上方工具条 + 小型下拉菜单 + 画布下方大悬浮编辑器”为准。
+- LibTV 截图结构：
+  - 图片节点上方是一条横向深色圆角工具条，包含 `全景 NEW / 多角度 / 打光 / 九宫格 ▼ / 高清 ▼ / 宫格切分 ▼ / 重绘 ▼ / 标记/聚焦/下载/全屏` 等入口。
+  - `九宫格 / 重绘 / 高清 / 宫格切分` 是紧贴工具条按钮的小型下拉菜单，列表项大字号、左侧图标、hover 高亮。
+  - `多角度` 和 `打光` 是下方大悬浮编辑器：宽面板、标题 + 右上角关闭、顶部 preset tabs、左侧可视化舞台、右侧参数/智能模式/预设，底部重置 + 消耗数 + 白色生成箭头。
+- 实现原则更新：`扩图 / 打光 / 重绘` 不再做右侧独立抽屉。重绘类入口先恢复为 LibTV 样式小下拉；多角度/打光优先做接近截图的大悬浮编辑器骨架和视觉结构，再逐步接真实参数。
+- Phase 22 验证结论：当前灵绘已收敛到 LibTV 交互骨架，顶层图片工具条显示在选中图片节点上方；`九宫格 / 高清 / 宫格切分 / 重绘` 是小型下拉；`打光 / 扩图 / 重绘` 大面板在节点下方浮层内展开，不再是右侧固定 portal 抽屉。Electron CDP 实测 `toolbarAboveNode=true`、`panelBelowNode=true`、`panelInsideEditor=true`。
+
+## 2026-05-16 template_/docs 全量阅读后的实施队列
+
+- 已完整阅读 `template_/docs` 下 10 份 Markdown：`libtv-canvas-comparison.md`、`libtv-canvas-store-analysis.md`、`libtv-code-index.md`、`libtv-final-implementation-roadmap.md`、`libtv-imagenode-state-machine.md`、`libtv-node-full-comparison.md`、`libtv-panorama-engine-analysis.md`、`libtv-submit-generation-analysis.md`、`libtv-tool-panel-analysis.md`、`libtv-video-timeline-analysis.md`。同目录 `.DS_Store` 是 Apple 系统文件，不属于文档。
+- 文档共同结论：当前灵绘已基本完成 LibTV 画布、右键菜单、quickCreate、节点空态、上传浮按钮、图片工具入口、高清/裁剪本地处理、聚焦/标记、视频工具入口等一批对齐；下一阶段最大缺口不是“入口”，而是图片工具的 **可视化面板**。
+- P0 队列：`打光 / 重绘 / 扩图` 三个图片工具面板。它们不需要先做复杂时间轴，也能复用现有 `createDerivedImageToolNodeFromNode()` 派生执行链路，适合作为第一批；按用户反馈，这类面板必须独立悬浮，不放在图片下方。
+- P1 队列：`擦除 / 裁剪 / 抠图` 面板。其中擦除需要 mask/画笔和本地 canvas 合成；裁剪已有 FFmpeg crop 执行但缺可视化方向面板；抠图缺 loading 和 remove-bg 专属反馈；后续同样按独立悬浮面板实现。
+- P2 队列：`Mockup / 编辑元素 / 编辑文本` 面板、画布交互打磨（multiSelectionKeyCode、Esc 取消连线、canvas-interacting、Alt 拖拽复制、fitView duration、缩放百分比菜单）、文本/脚本节点对齐、视频合成 MVP。
+- 全景文档结论：灵绘现有 Canvas2D + Three/r3f 全景预览与 LibTV WASM 引擎能力等价，当前不建议优先替换为 Three.js GPU 抽取。
+- 视频时间轴文档结论：完整 NLE 时间轴是重功能，短期先做 `视频合成` FFmpeg concat 节点/动作，比直接实现 Timeline Panel 更稳。
+
+## 2026-05-16 图片打光可视化面板
+
+- Phase 19 已落地：`打光` 不再只依赖工具条二级 preset 菜单，而是通过 React portal 在 `document.body` 打开独立悬浮面板，避免挤在图片下方。
+- 面板结构：当前图片预览 + 光效 sweep 反馈、6 个打光风格 preset、比例选择、分辨率选择、`生成打光节点` 操作。
+- 执行方式：复用现有 `onApplyImageToolPreset` / `createDerivedImageToolNodeFromNode()`，生成独立 image-to-image 派生节点并自动运行，仍保留源节点素材/生成结果不被覆盖。
+- 素材图片节点和生成图片节点都能显示该面板；`focus/mark` 继续只对生成态暴露，避免素材节点假按钮。
+- 验证：`ImageNodeEditor.test.tsx` + `LinghuiNodeEditor.test.tsx` 10 tests passed；frontend/root `tsc --noEmit` passed；`git diff --check` passed。
+
+## 2026-05-16 图片重绘可视化面板
+
+- Phase 20 已落地：`重绘` 工具条入口现在打开独立悬浮面板，不占用图片下方编辑器布局。
+- 面板结构：当前图片预览、`修复细节 / 替换背景 / 风格迁移` preset、额外描述 textarea、比例、分辨率、数量和 `生成重绘节点`。
+- 执行方式：将 preset prompt 与用户描述合并后传入 `onApplyImageToolPreset`，继续派生 image-to-image 节点并自动运行。
+- 验证：`ImageNodeEditor.test.tsx` + `LinghuiNodeEditor.test.tsx` 12 tests passed；frontend/root `tsc --noEmit` passed；`git diff --check` passed。
+
+## 2026-05-16 图片扩图可视化面板
+
+- Phase 21 已落地：`扩图` 工具条入口现在打开独立悬浮面板，不再直接弹 preset dropdown，也不渲染在图片下方。
+- 面板结构：扩展画幅预览（横向/竖向/海报比例有不同视觉反馈）、`横向扩图 / 竖向扩图 / 海报延展` preset、比例、分辨率、数量和 `生成扩图节点`。
+- 执行方式：仍复用 `onApplyImageToolPreset` 派生 image-to-image 节点；当前阶段未做 LibTV 的 canvas outpaint pad 拖拽合成，作为后续 Phase 22/扩展项继续推进。
+- 验证：`ImageNodeEditor.test.tsx` + `LinghuiNodeEditor.test.tsx` 13 tests passed；frontend/root `tsc --noEmit` passed；`git diff --check` passed。
+
 ## 2026-05-16 图片工具 preset 二级菜单 + 视频上传浮按钮 + 视频编辑器精简
 
 - 用户反馈：图片节点点击菜单中"扩图 / 打光 / 重绘 / 擦除 / 抠图 / 裁剪 / Mockup / 元素 / 文字"等工具按钮只 setActiveTool 没真实派生执行，**按钮不能用**。

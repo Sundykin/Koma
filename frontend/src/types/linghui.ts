@@ -72,6 +72,42 @@ export type LinghuiMultiAngleAzimuth = 0 | 45 | 90 | 135 | 180 | 225 | 270 | 315
 export type LinghuiMultiAngleElevation = -30 | 0 | 30 | 60;
 export type LinghuiMultiAngleDistance = 0.6 | 1 | 1.8;
 export type LinghuiMultiAnglePromptProtocol = 'sks-camera-v1' | 'descriptor-only-v1';
+export type LinghuiMultiAngleMode = 'object' | 'camera';
+export type LinghuiMultiAnglePresetKey =
+  | 'custom'
+  | 'fisheye'
+  | 'tilted'
+  | 'front-down'
+  | 'front-up'
+  | 'panoramic-down'
+  | 'back';
+export type LinghuiRelightDirection =
+  | 'front'
+  | 'front-right'
+  | 'right'
+  | 'back-right'
+  | 'back'
+  | 'back-left'
+  | 'left'
+  | 'front-left'
+  | 'high-front'
+  | 'high-front-right'
+  | 'high-right'
+  | 'high-back-right'
+  | 'high-back'
+  | 'high-back-left'
+  | 'high-left'
+  | 'high-front-left'
+  | 'low-front'
+  | 'low-front-right'
+  | 'low-right'
+  | 'low-back-right'
+  | 'low-back'
+  | 'low-back-left'
+  | 'low-left'
+  | 'low-front-left'
+  | 'top'
+  | 'bottom';
 export type LinghuiNodeToolState =
   | { kind: 'image'; nodeId: string; tool: LinghuiImageToolKey }
   | { kind: 'video'; nodeId: string; tool: LinghuiVideoToolKey }
@@ -235,6 +271,7 @@ export interface LinghuiImageNodeProperties extends LinghuiScriptDerivedProperti
   gridType: LinghuiGridType;
   batchCount: number;
   multiAngle?: LinghuiMultiAngleConfig;
+  relight?: LinghuiImageRelightConfig;
   focusRegion?: LinghuiImageFocusRegion | null;
   markPoints?: LinghuiImageMarkPoint[];
   /** 电影感参数（打光/焦距/光圈），任意非 auto 字段会拼到 prompt 末尾。可选，保持旧节点兼容。 */
@@ -273,9 +310,18 @@ export interface LinghuiImageGeneratorNodeProperties {
 
 export interface LinghuiPanoramaNodeProperties extends LinghuiImageNodeProperties {
   panoramaTemplate: LinghuiPanoramaTemplateKind;
+  /** LibTV slash 场景名。默认 720_panoramic；带用户 prompt 的模式对应 720_panoramic_with_prompt。 */
+  panoramaSlashScene?: string;
+  panoramaWithPromptScene?: string;
+  panoramaSlashLabel?: string;
+  /** LibTV 全景 slash 默认提交模型 key。灵绘仍通过 ttiSelection 选择真实渠道，这里用于默认比例和元数据。 */
+  panoramaModelKey?: string;
+  /** LibTV mergeSettingsForPanoramicSlashScene 默认 quality。 */
+  panoramaQuality?: string;
   /**
-   * 投影契约：决定提示词、出图比例、展示几何。缺省 'ar720-band'，等同于产品里的"全景"。
-   * 'equirectangular-2to1' 仅在用户主动切到「真 360°×180° 球面」时启用。
+   * 投影契约：决定提示词、出图比例、展示几何。新建节点默认按 LibTV `720_panoramic`
+   * 走 'equirectangular-2to1'；老节点缺字段时仍由 resolver 回退为 'ar720-band' 保持兼容。
+   * 'equirectangular-2to1' 表示真 360°×180° 球面。
    * 'flat-wide' 是兜底，模型不支持环绕全景时把它当宽幅图。
    */
   projectionMode?: LinghuiPanoramaProjectionMode;
@@ -310,12 +356,40 @@ export interface LinghuiPanoramaPerspectiveView {
 
 export interface LinghuiMultiAngleConfig {
   enabled: boolean;
+  /** LibTV p9/pX: object/camera 两种编辑模式。 */
+  mode: LinghuiMultiAngleMode;
+  /** LibTV p8/pV/pK: 水平旋转，camera 模式按 45° 吸附，object 模式支持连续角度。 */
+  rotation: number;
+  /** LibTV p8/pV/pK: 垂直俯仰/物体倾斜。 */
+  tilt: number;
+  /** LibTV p8/pV/pK: 0=全景，50=中景，100=特写。 */
+  scale: number;
+  /** LibTV object/camera preview 的广角镜头开关。 */
+  isWideAngle: boolean;
+  presetKey: LinghuiMultiAnglePresetKey;
+  prompt: string;
+  promptEnabled: boolean;
+  /** 旧版灵绘字段，保留用于持久化兼容和现有 provider 编译。 */
   azimuth: LinghuiMultiAngleAzimuth;
   elevation: LinghuiMultiAngleElevation;
   distance: LinghuiMultiAngleDistance;
   ttiSelection: string;
   promptProtocol: LinghuiMultiAnglePromptProtocol;
   endpointPath: string;
+}
+
+export interface LinghuiImageRelightConfig {
+  direction: LinghuiRelightDirection;
+  brightness: number;
+  lightColor: string;
+  rimLight: boolean;
+  smartMode: boolean;
+  prompt: string;
+  referenceImage?: string | null;
+  presetId?: string;
+  sceneActive?: boolean;
+  brightnessActive?: boolean;
+  colorActive?: boolean;
 }
 
 export interface LinghuiExecuteMultiAngleOptions {
@@ -1396,12 +1470,34 @@ export const LINGHUI_MULTI_ANGLE_PROMPT_PROTOCOLS: Array<{
 
 export const DEFAULT_LINGHUI_MULTI_ANGLE_CONFIG: LinghuiMultiAngleConfig = {
   enabled: false,
+  mode: 'object',
+  rotation: 0,
+  tilt: 0,
+  scale: 50,
+  isWideAngle: false,
+  presetKey: 'custom',
+  prompt: '',
+  promptEnabled: false,
   azimuth: 0,
   elevation: 0,
   distance: 1,
   ttiSelection: '',
   promptProtocol: 'sks-camera-v1',
   endpointPath: DEFAULT_LINGHUI_MULTI_ANGLE_ENDPOINT,
+};
+
+export const DEFAULT_LINGHUI_IMAGE_RELIGHT_CONFIG: LinghuiImageRelightConfig = {
+  direction: 'front',
+  brightness: 50,
+  lightColor: '#ffffff',
+  rimLight: false,
+  smartMode: false,
+  prompt: '',
+  referenceImage: null,
+  presetId: undefined,
+  sceneActive: false,
+  brightnessActive: false,
+  colorActive: false,
 };
 
 function normalizeAzimuth(value: unknown): LinghuiMultiAngleAzimuth {
@@ -1423,17 +1519,120 @@ function normalizePromptProtocol(value: unknown): LinghuiMultiAnglePromptProtoco
   );
 }
 
+function normalizeMultiAngleMode(value: unknown): LinghuiMultiAngleMode {
+  return value === 'camera' || value === 'object'
+    ? value
+    : DEFAULT_LINGHUI_MULTI_ANGLE_CONFIG.mode;
+}
+
+function normalizeMultiAnglePresetKey(value: unknown): LinghuiMultiAnglePresetKey {
+  return (
+    value === 'fisheye'
+    || value === 'tilted'
+    || value === 'front-down'
+    || value === 'front-up'
+    || value === 'panoramic-down'
+    || value === 'back'
+    || value === 'custom'
+  )
+    ? value
+    : 'custom';
+}
+
+function clampNumber(value: unknown, fallback: number, min: number, max: number): number {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.max(min, Math.min(max, numeric));
+}
+
+function rotationToAzimuth(value: number): LinghuiMultiAngleAzimuth {
+  const normalized = ((Math.round(value / 45) * 45) % 360 + 360) % 360;
+  return normalizeAzimuth(normalized);
+}
+
+function tiltToElevation(value: number): LinghuiMultiAngleElevation {
+  const snapped = Math.max(-30, Math.min(60, Math.round(value / 30) * 30));
+  return normalizeElevation(snapped);
+}
+
+function scaleToDistance(value: number): LinghuiMultiAngleDistance {
+  if (value <= 25) return 1.8;
+  if (value >= 75) return 0.6;
+  return 1;
+}
+
+function distanceToScale(value: LinghuiMultiAngleDistance): number {
+  if (value === 0.6) return 100;
+  if (value === 1.8) return 0;
+  return 50;
+}
+
 export function normalizeLinghuiMultiAngleConfig(
   value: Partial<LinghuiMultiAngleConfig> | null | undefined,
 ): LinghuiMultiAngleConfig {
+  const hasRotation = typeof value?.rotation === 'number';
+  const hasTilt = typeof value?.tilt === 'number';
+  const hasScale = typeof value?.scale === 'number';
+  const azimuth = normalizeAzimuth(value?.azimuth);
+  const elevation = normalizeElevation(value?.elevation);
+  const distance = normalizeDistance(value?.distance);
+  const rotation = clampNumber(
+    hasRotation ? value?.rotation : azimuth,
+    DEFAULT_LINGHUI_MULTI_ANGLE_CONFIG.rotation,
+    -360,
+    360,
+  );
+  const tilt = clampNumber(
+    hasTilt ? value?.tilt : elevation,
+    DEFAULT_LINGHUI_MULTI_ANGLE_CONFIG.tilt,
+    -90,
+    90,
+  );
+  const scale = clampNumber(
+    hasScale ? value?.scale : distanceToScale(distance),
+    DEFAULT_LINGHUI_MULTI_ANGLE_CONFIG.scale,
+    0,
+    100,
+  );
+
   return {
     enabled: value?.enabled === true,
-    azimuth: normalizeAzimuth(value?.azimuth),
-    elevation: normalizeElevation(value?.elevation),
-    distance: normalizeDistance(value?.distance),
+    mode: normalizeMultiAngleMode(value?.mode),
+    rotation,
+    tilt,
+    scale,
+    isWideAngle: value?.isWideAngle === true,
+    presetKey: normalizeMultiAnglePresetKey(value?.presetKey),
+    prompt: String(value?.prompt ?? '').trim(),
+    promptEnabled: value?.promptEnabled === true,
+    azimuth: hasRotation ? rotationToAzimuth(rotation) : azimuth,
+    elevation: hasTilt ? tiltToElevation(tilt) : elevation,
+    distance: hasScale ? scaleToDistance(scale) : distance,
     ttiSelection: String(value?.ttiSelection ?? '').trim(),
     promptProtocol: normalizePromptProtocol(value?.promptProtocol),
     endpointPath: String(value?.endpointPath ?? DEFAULT_LINGHUI_MULTI_ANGLE_ENDPOINT).trim() || DEFAULT_LINGHUI_MULTI_ANGLE_ENDPOINT,
+  };
+}
+
+export function normalizeLinghuiImageRelightConfig(
+  value: Partial<LinghuiImageRelightConfig> | null | undefined,
+): LinghuiImageRelightConfig {
+  const direction = typeof value?.direction === 'string'
+    ? value.direction as LinghuiRelightDirection
+    : DEFAULT_LINGHUI_IMAGE_RELIGHT_CONFIG.direction;
+  const lightColor = String(value?.lightColor ?? DEFAULT_LINGHUI_IMAGE_RELIGHT_CONFIG.lightColor).trim();
+  return {
+    direction,
+    brightness: clampNumber(value?.brightness, DEFAULT_LINGHUI_IMAGE_RELIGHT_CONFIG.brightness, 0, 100),
+    lightColor: /^#[0-9a-f]{6}$/i.test(lightColor) ? lightColor : DEFAULT_LINGHUI_IMAGE_RELIGHT_CONFIG.lightColor,
+    rimLight: value?.rimLight === true,
+    smartMode: value?.smartMode === true,
+    prompt: String(value?.prompt ?? '').trim(),
+    referenceImage: value?.referenceImage ? String(value.referenceImage) : null,
+    presetId: value?.presetId ? String(value.presetId) : undefined,
+    sceneActive: value?.sceneActive === true,
+    brightnessActive: value?.brightnessActive === true,
+    colorActive: value?.colorActive === true,
   };
 }
 

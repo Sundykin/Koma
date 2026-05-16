@@ -341,7 +341,7 @@ const CANVAS_CREATE_MENU_PRESETS: Array<Parameters<typeof createMenuPreset>[0]> 
     id: 'generator-image',
     type: 'linghui/image',
     label: '图片生成器',
-    description: 'LibTV 风图片节点：未生成态显示中心占位，生成后变为带工具条的图片节点。',
+    description: '输入提示词生成图片，生成后可继续扩图、重绘、打光和多角度编辑。',
     category: 'generation',
     initialProperties: { mode: 'generate' },
     recommendation: '文生图',
@@ -414,10 +414,10 @@ const CANVAS_CREATE_MENU_PRESETS: Array<Parameters<typeof createMenuPreset>[0]> 
   {
     id: 'spatial-panorama',
     type: 'linghui/panorama',
-    label: '进入全景预览',
-    description: '生成或导入 720° 全景环境板，并用球面预览检查空间。',
+    label: '全景节点',
+    description: '生成或导入全景环境图，并在画布中预览空间关系。',
     category: 'spatial',
-    nodeLabel: '全景预览',
+    nodeLabel: '全景节点',
     recommendation: '空间',
   },
   {

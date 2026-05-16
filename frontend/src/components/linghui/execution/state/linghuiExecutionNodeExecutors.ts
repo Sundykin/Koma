@@ -41,7 +41,13 @@ import {
   resolveLinghuiImagePrimaryImportItem,
 } from '../../editors/state/linghuiImageCollections';
 import {
+  LIBTV_PANORAMA_SLASH_LABEL,
+  LIBTV_PANORAMA_SLASH_QUALITY,
+  LIBTV_PANORAMA_SLASH_SCENE,
+  LIBTV_PANORAMA_SUBMIT_MODEL_KEY,
+  LIBTV_PANORAMA_WITH_PROMPT_SCENE,
   compilePanoramaPrompt,
+  getLibTVPanoramaRatioForModel,
   type PanoramaTemplateKind,
 } from '../../panorama/panoramaPromptTemplate';
 import { resolvePanoramaProjectionMode } from '../../panorama/panoramaProjection';
@@ -1089,11 +1095,27 @@ export async function executePanoramaNode(
   const templateKind: PanoramaTemplateKind = rawTemplate === 'indoor' || rawTemplate === 'outdoor'
     ? rawTemplate
     : 'auto';
+  const panoramaModelKey = String(node.properties.panoramaModelKey ?? LIBTV_PANORAMA_SUBMIT_MODEL_KEY);
+  const panoramaRatio = String(node.properties.aspectRatio ?? '').trim()
+    || getLibTVPanoramaRatioForModel(panoramaModelKey);
+  const panoramaQuality = String(node.properties.panoramaQuality ?? LIBTV_PANORAMA_SLASH_QUALITY);
+  const panoramaSlashScene = String(node.properties.panoramaSlashScene ?? LIBTV_PANORAMA_SLASH_SCENE);
+  const panoramaWithPromptScene = String(node.properties.panoramaWithPromptScene ?? LIBTV_PANORAMA_WITH_PROMPT_SCENE);
+  const panoramaSlashLabel = String(node.properties.panoramaSlashLabel ?? LIBTV_PANORAMA_SLASH_LABEL);
   const projectionMode = resolvePanoramaProjectionMode(node.properties.projectionMode);
   const wrappedPrompt = compilePanoramaPrompt(originalPrompt, { templateKind, projectionMode });
   const wrappedNode: ExecutionNodeView = {
     ...node,
-    properties: { ...node.properties, prompt: wrappedPrompt },
+    properties: {
+      ...node.properties,
+      prompt: wrappedPrompt,
+      aspectRatio: panoramaRatio,
+      panoramaSlashScene,
+      panoramaWithPromptScene,
+      panoramaSlashLabel,
+      panoramaModelKey,
+      panoramaQuality,
+    },
   };
 
   const result = await executeImageNode(wrappedNode, onProgress, signal);
@@ -1170,6 +1192,12 @@ export async function executePanoramaNode(
       mode: 'panorama',
       panoramaTemplate: templateKind,
       panoramaProjection: projectionMode,
+      panoramaSlashScene,
+      panoramaWithPromptScene,
+      panoramaSlashLabel,
+      panoramaModelKey,
+      panoramaQuality,
+      panoramaRatio,
       originalPrompt: originalPrompt.trim(),
       detailCropCount: detailItems.length,
       perspectiveViewCount: perspectiveItems.length,

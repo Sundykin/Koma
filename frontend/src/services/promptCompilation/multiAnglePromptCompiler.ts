@@ -36,10 +36,16 @@ export function compileLinghuiMultiAnglePrompt(params: {
   const anglePrompt = config.promptProtocol === 'descriptor-only-v1'
     ? `${azimuth.prompt} ${elevation.prompt} ${distance.prompt}`
     : `<sks> ${azimuth.prompt} ${elevation.prompt} ${distance.prompt}`;
+  const customPrompt = config.promptEnabled ? config.prompt.trim() : '';
+  const compiledAnglePrompt = joinPromptLines([
+    anglePrompt,
+    config.isWideAngle ? 'wide-angle lens' : '',
+    customPrompt,
+  ]);
 
   return {
-    compiledPrompt: joinPromptLines([params.prompt, anglePrompt]),
-    anglePrompt,
+    compiledPrompt: joinPromptLines([params.prompt, compiledAnglePrompt]),
+    anglePrompt: compiledAnglePrompt,
     summary: `${azimuth.label} / ${elevation.label} / ${distance.label}`,
     tokens: {
       azimuth: azimuth.prompt,

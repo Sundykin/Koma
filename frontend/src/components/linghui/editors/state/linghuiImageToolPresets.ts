@@ -25,6 +25,69 @@ export interface LinghuiImageToolDef {
   presets: LinghuiImageToolPresetDef[];
 }
 
+export interface LinghuiImageNineGridPresetDef extends LinghuiImageToolPresetDef {
+  scene: string;
+  gridType: 9 | 16 | 25;
+}
+
+const STORYBOARD_GRID_BASE_PROMPT = [
+  '基于输入参考图和用户手动提示词，生成一张单张完整的宫格分镜图，而不是切分原图。',
+  '必须保持参考图中的主体身份、服装、道具、场景风格和色彩气质一致。',
+  '每个格子都是新的分镜画面，格子之间有清晰的时间推进、动作变化、镜头关系和情绪递进。',
+  '画面只包含视觉内容和干净分隔线，不要生成可读文字、字幕、编号、logo、水印或说明标签。',
+].join('\n');
+
+export const LINGHUI_IMAGE_NINE_GRID_PRESETS: LinghuiImageNineGridPresetDef[] = [
+  {
+    scene: 'plot_deduction_nine_grid',
+    gridType: 9,
+    label: '剧情推演九宫格',
+    description: '用内置剧情推演提示词生成 3×3 连贯分镜图。',
+    promptSnippet: [
+      STORYBOARD_GRID_BASE_PROMPT,
+      '输出为 3×3 九宫格剧情推演分镜：从当前画面延展出 9 个连续剧情节点，包含起因、转折、推进、冲突和余韵。',
+      '每格构图要有明显变化，人物/主体一致，动作和情绪逐格推进，适合用户继续做剧情推演。',
+    ].join('\n'),
+    properties: { aspectRatio: '1:1', resolution: '2K', batchCount: 1, gridType: 'none' },
+  },
+  {
+    scene: 'multi_camera_nine_grid',
+    gridType: 9,
+    label: '多机位九宫格',
+    description: '围绕同一剧情时刻生成 3×3 多机位镜头板。',
+    promptSnippet: [
+      STORYBOARD_GRID_BASE_PROMPT,
+      '输出为 3×3 多机位九宫格：围绕同一个剧情时刻，生成远景、全景、中景、近景、特写、俯拍、仰拍、侧面、背面/越肩等不同机位。',
+      '所有格子应属于同一场景和同一时间段，主体一致，光线和美术风格统一，镜头语言丰富。',
+    ].join('\n'),
+    properties: { aspectRatio: '1:1', resolution: '2K', batchCount: 1, gridType: 'none' },
+  },
+  {
+    scene: 'coherent_storyboard_16',
+    gridType: 16,
+    label: '16宫格连贯分镜',
+    description: '生成 4×4 更细密的连贯剧情分镜图。',
+    promptSnippet: [
+      STORYBOARD_GRID_BASE_PROMPT,
+      '输出为 4×4 十六宫格连贯分镜：把用户设定的剧情拆成 16 个清楚的镜头节拍。',
+      '节奏从建立场景、人物行动、冲突升级、关键反应到结尾悬念逐步推进，避免重复同一构图。',
+    ].join('\n'),
+    properties: { aspectRatio: '1:1', resolution: '2K', batchCount: 1, gridType: 'none' },
+  },
+  {
+    scene: 'coherent_storyboard_25',
+    gridType: 25,
+    label: '25宫格连贯分镜',
+    description: '生成 5×5 长段落剧情推演分镜图。',
+    promptSnippet: [
+      STORYBOARD_GRID_BASE_PROMPT,
+      '输出为 5×5 二十五宫格连贯分镜：生成一个更完整的长段落剧情推演，包含环境建立、人物目标、行动推进、障碍、反转、高潮和收束。',
+      '每格都应是可继续制作的分镜画面，镜头尺度、机位和表演有变化，整张图保持统一视觉风格。',
+    ].join('\n'),
+    properties: { aspectRatio: '1:1', resolution: '2K', batchCount: 1, gridType: 'none' },
+  },
+];
+
 export const LINGHUI_IMAGE_TOOL_PRESETS: Record<LinghuiImageToolKey, LinghuiImageToolDef> = {
   focus: {
     title: '聚焦',
@@ -85,43 +148,88 @@ export const LINGHUI_IMAGE_TOOL_PRESETS: Record<LinghuiImageToolKey, LinghuiImag
   },
   relight: {
     title: '打光',
-    description: 'LibTV 风格电影级打光预设：诺兰冷灰 / 伦勃朗光 / 黄金时刻 / 赛博朋克 等。',
+    description: 'LibTV 原始打光预设：过曝胶片 / 蓝色逆光 / 伦勃朗光 / 赛博朋克 / 落日迷幻等。',
     presets: [
       {
-        label: '电影补光',
-        description: '强调主光、边缘光和皮肤层次。',
-        promptSnippet: '电影级补光，主体面部和轮廓光干净，皮肤与材质细节保留，层次分明。',
-        properties: { resolution: '2K' },
+        label: '过曝胶片',
+        description: 'LibTV preset id=6，亮度 100，柯达胶片质感。',
+        promptSnippet: '柯达胶片质感',
+        properties: {
+          resolution: '2K',
+          relight: { presetId: '6', direction: 'front', brightness: 100, lightColor: '#ffffff', rimLight: false, smartMode: true, prompt: '柯达胶片质感' },
+        },
       },
       {
-        label: '诺兰冷灰',
-        description: '让画面质感变成诺兰同款冷灰色调。',
-        promptSnippet: '诺兰同款冷灰色调，去饱和、对比强烈，主体面部与服装保留质感，整体氛围沉稳。',
-        properties: { resolution: '2K' },
+        label: '蓝色逆光',
+        description: 'LibTV preset id=2，低位背光 + 蓝色主光。',
+        promptSnippet: '蓝色逆光',
+        properties: {
+          resolution: '2K',
+          relight: { presetId: '2', direction: 'low-back', brightness: 50, lightColor: '#2d34fa', rimLight: false, smartMode: true, prompt: '' },
+        },
       },
       {
         label: '伦勃朗光',
-        description: '戏剧人像，三角形脸颊光。',
-        promptSnippet: '伦勃朗光人像打光，主光从一侧 45° 打下，形成脸颊三角光，背景暗调，主体立体。',
-        properties: { resolution: '2K' },
+        description: 'LibTV preset id=1，高位左前主光。',
+        promptSnippet: '伦勃朗光',
+        properties: {
+          resolution: '2K',
+          relight: { presetId: '1', direction: 'high-front-left', brightness: 50, lightColor: '#ffffff', rimLight: false, smartMode: true, prompt: '' },
+        },
+      },
+      {
+        label: '赛博朋克',
+        description: 'LibTV preset id=4，银翼杀手风格。',
+        promptSnippet: '让画面拥有《银翼杀手2045》同款打光，极简背景',
+        properties: {
+          resolution: '2K',
+          relight: { presetId: '4', direction: 'front', brightness: 50, lightColor: '#ffffff', rimLight: false, smartMode: true, prompt: '让画面拥有《银翼杀手2045》同款打光，极简背景' },
+        },
+      },
+      {
+        label: '落日迷幻',
+        description: 'LibTV preset id=3，带参考图。',
+        promptSnippet: '落日迷幻打光',
+        properties: {
+          resolution: '2K',
+          relight: {
+            presetId: '3',
+            direction: 'front',
+            brightness: 50,
+            lightColor: '#ffffff',
+            rimLight: false,
+            smartMode: true,
+            prompt: '',
+            referenceImage: 'https://libtv-res.liblib.art/upload-images/4e303b89c099425a93084d50cdcb10f4/d77a5a9cd6e8753451cb80191765d5b568bd0647.jpg?x-oss-process=image/resize,w_1400,m_lfit/format,webp',
+          },
+        },
+      },
+      {
+        label: '神秘暗调',
+        description: 'LibTV preset id=5，亮度 10，百叶窗暗调。',
+        promptSnippet: '百叶窗打光，神秘优雅',
+        properties: {
+          resolution: '2K',
+          relight: { presetId: '5', direction: 'front', brightness: 10, lightColor: '#ffffff', rimLight: false, smartMode: true, prompt: '百叶窗打光，神秘优雅' },
+        },
       },
       {
         label: '黄金时刻',
-        description: '日落前温暖侧光。',
-        promptSnippet: '黄金时刻打光，温暖侧光，长阴影，主体边缘有金色光晕，背景偏暖橘。',
-        properties: { resolution: '2K' },
+        description: 'LibTV preset id=7，黄金时刻提示词。',
+        promptSnippet: '让画面光影变成"黄金时刻"',
+        properties: {
+          resolution: '2K',
+          relight: { presetId: '7', direction: 'front', brightness: 50, lightColor: '#ffffff', rimLight: false, smartMode: true, prompt: '让画面光影变成"黄金时刻"' },
+        },
       },
       {
-        label: '霓虹夜景',
-        description: '赛博朋克高对比氛围光。',
-        promptSnippet: '霓虹夜景光效，冷暖对比明显（青色 / 品红），反光与氛围雾层次丰富，主体仍然清晰。',
-        properties: { resolution: '2K' },
-      },
-      {
-        label: '柯达胶片',
-        description: '复古胶片质感 + 暖色调。',
-        promptSnippet: '柯达胶片质感，复古颗粒、轻度暖色偏黄、阴影泛绿，整体怀旧但不脏。',
-        properties: { resolution: '2K' },
+        label: '诺兰冷灰',
+        description: 'LibTV preset id=8，诺兰同款冷灰色调。',
+        promptSnippet: '让画面质感变成诺兰同款冷灰色调',
+        properties: {
+          resolution: '2K',
+          relight: { presetId: '8', direction: 'front', brightness: 50, lightColor: '#ffffff', rimLight: false, smartMode: true, prompt: '让画面质感变成诺兰同款冷灰色调' },
+        },
       },
     ],
   },

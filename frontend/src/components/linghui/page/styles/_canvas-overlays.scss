@@ -1373,6 +1373,16 @@
       color: $lh-text-strong;
     }
 
+    &Dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--token-bg-surface) 62%, transparent), transparent 42%),
+        var(--linghui-accent, var(--token-accent-base));
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--linghui-accent, var(--token-accent-base)) 14%, transparent);
+    }
+
     &Body {
       @include lh-stack(2px);
 

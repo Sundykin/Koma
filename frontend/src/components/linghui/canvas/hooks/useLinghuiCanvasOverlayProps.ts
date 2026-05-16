@@ -719,8 +719,26 @@ export function useLinghuiCanvasOverlayProps({
     }
   }, [message, nodeRuns, onAssetLibraryMutate, reactFlow, workspaceId]);
 
+  const resolvePrimaryImageAssetForNode = useCallback((nodeId: string): LinghuiImageAssetItem | null => {
+    const targetNode = reactFlow.getNode(nodeId);
+    if (!targetNode || targetNode.type === 'group') {
+      return null;
+    }
+    const nodeData = targetNode.data as unknown as LinghuiNodeData;
+    const targetRun = nodeRuns[nodeId];
+    if (nodeData.linghuiType === 'linghui/image' || nodeData.linghuiType === 'linghui/panorama') {
+      const collection = resolveLinghuiImageCollection(
+        nodeData.properties as unknown as LinghuiImageNodeProperties,
+        targetRun?.result,
+      );
+      return collection.primary ? imageMediaToAssetItem(collection.primary, 0) : null;
+    }
+    const primary = getLinghuiResultPrimaryMedia(targetRun?.result);
+    return primary?.kind === 'image' ? imageMediaToAssetItem(primary, 0) : null;
+  }, [nodeRuns, reactFlow]);
+
   const handleOpenPanoramaPreviewFromNode = useCallback((nodeId: string) => {
-    const primaryImage = contextMenuMediaActionState.primaryImage;
+    const primaryImage = resolvePrimaryImageAssetForNode(nodeId);
     if (!primaryImage) {
       message.info('当前节点没有可进入全景预览的图片');
       return;
@@ -733,7 +751,7 @@ export function useLinghuiCanvasOverlayProps({
     }
 
     message.success('已创建全景预览节点');
-  }, [contextMenuMediaActionState.primaryImage, createDerivedPanoramaNodeFromNode, message]);
+  }, [createDerivedPanoramaNodeFromNode, message, resolvePrimaryImageAssetForNode]);
 
   const handleCreateSubjectFromNode = useCallback(async (nodeId: string) => {
     const targetNode = reactFlow.getNode(nodeId);
@@ -1477,6 +1495,7 @@ export function useLinghuiCanvasOverlayProps({
     onExecuteImageCrop(nodeId, options) {
       void executeImageCrop(nodeId, options);
     },
+    onCreatePanoramaPreview: handleOpenPanoramaPreviewFromNode,
     onExecuteMultiAngle(options) {
       executeMultiAngle(options);
     },

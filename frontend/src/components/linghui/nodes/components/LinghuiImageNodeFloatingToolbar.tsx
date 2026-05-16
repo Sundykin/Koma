@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   ChevronDown,
   Crop,
@@ -6,7 +6,6 @@ import {
   Eraser,
   Expand,
   Focus,
-  Frame,
   Image as ImageIcon,
   Layers,
   Maximize2,
@@ -18,7 +17,6 @@ import {
   Sparkles,
   Sun,
   TableProperties,
-  Type,
 } from 'lucide-react';
 import { Dropdown } from 'antd';
 import type { MenuProps } from 'antd';
@@ -32,8 +30,8 @@ import {
 } from '../state/LinghuiNodeRunsContext';
 import { useLinghuiCanvasStore } from '../../canvas/state/linghuiCanvasStore';
 import {
+  LINGHUI_IMAGE_NINE_GRID_PRESETS,
   LINGHUI_IMAGE_TOOL_PRESETS,
-  LINGHUI_IMAGE_TOOLS_WITH_PRESETS,
 } from '../../editors/state/linghuiImageToolPresets';
 
 /**
@@ -65,6 +63,8 @@ interface LinghuiImageNodeFloatingToolbarProps {
    * - 'static'：编辑器顶部点击菜单常驻显示，跟随编辑器开关。这是当前 LibTV 1:1 唯一用法。
    */
   variant?: 'floating' | 'static';
+  /** 当前节点不应展示的工具，例如导入素材节点上的聚焦/标记。 */
+  hiddenTools?: LinghuiImageToolKey[];
 }
 
 interface ToolEntry {
@@ -73,23 +73,24 @@ interface ToolEntry {
   icon: React.ReactNode;
 }
 
-const PRIMARY_TOOLS: ToolEntry[] = [
-  { key: 'multi-angle', label: '多角度', icon: <Scan size={14} /> },
-  { key: 'outpaint', label: '扩图', icon: <Maximize2 size={14} /> },
-  { key: 'relight', label: '打光', icon: <Sun size={14} /> },
-  { key: 'repaint', label: '重绘', icon: <Repeat size={14} /> },
-  { key: 'erase', label: '擦除', icon: <Eraser size={14} /> },
-  { key: 'remove-bg', label: '抠图', icon: <Scissors size={14} /> },
-  { key: 'crop', label: '裁剪', icon: <Crop size={14} /> },
-  { key: 'mockup', label: 'Mockup', icon: <Layers size={14} /> },
-  { key: 'edit-elements', label: '元素', icon: <Frame size={14} /> },
-  { key: 'edit-texts', label: '文字', icon: <Type size={14} /> },
-];
+const PRIMARY_TOOL_KEYS: LinghuiImageToolKey[] = ['repaint', 'outpaint', 'erase', 'remove-bg', 'crop'];
 
 const ICON_ONLY_TOOLS: ToolEntry[] = [
   { key: 'focus', label: '聚焦', icon: <Focus size={14} /> },
   { key: 'mark', label: '标记', icon: <Pencil size={14} /> },
 ];
+
+const TOOLBAR_SUBMENU_POPUP_CLASS = 'linghuiImageToolbarDropdown linghuiImageToolbarSubmenuDropdown';
+
+const TOOLBAR_MENU_CLASS_NAMES: MenuProps['classNames'] = {
+  itemContent: 'linghuiImageToolbarMenuContent',
+  subMenu: {
+    itemContent: 'linghuiImageToolbarMenuContent',
+  },
+  popup: {
+    root: 'linghuiImageToolbarDropdown',
+  },
+};
 
 function isActiveTool(activeTool: LinghuiNodeToolState | null | undefined, nodeId: string, tool: LinghuiImageToolKey): boolean {
   if (!activeTool || activeTool.kind !== 'image') return false;
@@ -103,11 +104,21 @@ export const LinghuiImageNodeFloatingToolbar: React.FC<LinghuiImageNodeFloatingT
   onDownload,
   onFullscreen,
   variant = 'floating',
+  hiddenTools = [],
 }) => {
   const interactionApi = useLinghuiNodeInteractionApi();
-  const { onApplyImageToolPreset, onExecuteImageUpscale } = useLinghuiNodeEditorApi();
+  const {
+    onApplyImageToolPreset,
+    onExecuteImageUpscale,
+    onExecuteImageCrop,
+    onCreatePanoramaPreview,
+    onSetGridSplitType,
+    onClearGridSplitCells,
+  } = useLinghuiNodeEditorApi();
   const activeTool = useLinghuiCanvasStore(state => state.activeNodeTool);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+  const isCompactStaticToolbar = variant === 'static';
+  const hiddenToolSet = useMemo(() => new Set(hiddenTools), [hiddenTools]);
 
   const fireImageTool = (tool: LinghuiImageToolKey) => {
     interactionApi.openImageToolPanel(nodeId, tool);
@@ -118,13 +129,18 @@ export const LinghuiImageNodeFloatingToolbar: React.FC<LinghuiImageNodeFloatingT
     event.stopPropagation();
   };
 
-  const dropdownContainer = (triggerNode: HTMLElement) => (
-    triggerNode.closest('.linghuiImageFloatingToolbar') as HTMLElement | null
-    ?? triggerNode.parentElement
-    ?? triggerNode.ownerDocument.body
-  );
+  const dropdownContainer = (triggerNode: HTMLElement) => triggerNode.ownerDocument.body;
 
-  /** LibTV 1:1：扩图/打光/重绘等 AI 工具 preset 修改当前节点 prompt 并自动运行 */
+  const toolbarMenu = (items: MenuProps['items']): MenuProps => ({
+    items,
+    selectable: false,
+    triggerSubMenuAction: 'hover',
+    subMenuOpenDelay: 0,
+    subMenuCloseDelay: 0.08,
+    classNames: TOOLBAR_MENU_CLASS_NAMES,
+  });
+
+  /** LibTV 1:1：小菜单内的立即型 preset 会派生下游图生图节点并自动运行。 */
   const fireAIPreset = (preset: typeof LINGHUI_IMAGE_TOOL_PRESETS[LinghuiImageToolKey]['presets'][number]) => {
     onApplyImageToolPreset?.({
       label: preset.label,
@@ -137,15 +153,51 @@ export const LinghuiImageNodeFloatingToolbar: React.FC<LinghuiImageNodeFloatingT
   const buildToolPresetsMenu = (tool: LinghuiImageToolKey): MenuProps['items'] =>
     LINGHUI_IMAGE_TOOL_PRESETS[tool].presets.map((p, i) => ({
       key: `${tool}-${i}`,
-      label: p.label,
-      onClick: ({ domEvent }) => { domEvent.stopPropagation(); fireAIPreset(p); },
+      label: (
+        <span className="linghuiImageToolbarMenuItem">
+          <span className="linghuiImageToolbarMenuIcon"><Layers size={18} /></span>
+          <span>{p.label}</span>
+        </span>
+      ),
+      onClick: ({ domEvent }) => {
+        domEvent.stopPropagation();
+        if (p.localAction === 'crop') {
+          onExecuteImageCrop?.(nodeId, {
+            label: p.label,
+            aspectRatio: String(p.properties?.aspectRatio ?? '1:1'),
+          });
+          setOpenDropdown(null);
+          return;
+        }
+        fireAIPreset(p);
+      },
     }));
+
+  const fireNineGridPreset = (preset: typeof LINGHUI_IMAGE_NINE_GRID_PRESETS[number]) => {
+    onApplyImageToolPreset?.({
+      label: preset.label,
+      promptSnippet: preset.promptSnippet,
+      properties: preset.properties,
+    });
+    setOpenDropdown(null);
+  };
+
+  const openGridSplit = (gridType: '2x2' | '3x3' | '4x4' | '5x5') => {
+    onSetGridSplitType?.(gridType);
+    onClearGridSplitCells?.();
+    fireImageTool('grid-split');
+  };
 
   // LibTV 1:1：高清 ▼ 2x/4x 直接派生高清节点（本地 FFmpeg）
   const upscaleMenuItems: MenuProps['items'] = [
     {
       key: 'upscale-2x',
-      label: '2 倍高清',
+      label: (
+        <span className="linghuiImageToolbarMenuItem">
+          <span className="linghuiImageToolbarMenuBadge">HD</span>
+          <span>2 倍高清</span>
+        </span>
+      ),
       onClick: ({ domEvent }) => {
         domEvent.stopPropagation();
         onExecuteImageUpscale?.(nodeId, { factor: 2 });
@@ -154,7 +206,12 @@ export const LinghuiImageNodeFloatingToolbar: React.FC<LinghuiImageNodeFloatingT
     },
     {
       key: 'upscale-4x',
-      label: '4 倍高清',
+      label: (
+        <span className="linghuiImageToolbarMenuItem">
+          <span className="linghuiImageToolbarMenuBadge">HD</span>
+          <span>4 倍高清</span>
+        </span>
+      ),
       onClick: ({ domEvent }) => {
         domEvent.stopPropagation();
         onExecuteImageUpscale?.(nodeId, { factor: 4 });
@@ -164,10 +221,94 @@ export const LinghuiImageNodeFloatingToolbar: React.FC<LinghuiImageNodeFloatingT
   ];
 
   const gridSplitMenuItems: MenuProps['items'] = [
-    { key: 'split-2x2', label: '4 宫格 (2×2)', onClick: ({ domEvent }) => { domEvent.stopPropagation(); fireImageTool('grid-split'); } },
-    { key: 'split-3x3', label: '9 宫格 (3×3)', onClick: ({ domEvent }) => { domEvent.stopPropagation(); fireImageTool('grid-split'); } },
-    { key: 'split-4x4', label: '16 宫格 (4×4)', onClick: ({ domEvent }) => { domEvent.stopPropagation(); fireImageTool('grid-split'); } },
-    { key: 'split-5x5', label: '25 宫格 (5×5)', onClick: ({ domEvent }) => { domEvent.stopPropagation(); fireImageTool('grid-split'); } },
+    { key: 'split-2x2', label: <span className="linghuiImageToolbarMenuItem"><TableProperties size={18} />4 宫格 (2×2)</span>, onClick: ({ domEvent }) => { domEvent.stopPropagation(); openGridSplit('2x2'); } },
+    { key: 'split-3x3', label: <span className="linghuiImageToolbarMenuItem"><TableProperties size={18} />9 宫格 (3×3)</span>, onClick: ({ domEvent }) => { domEvent.stopPropagation(); openGridSplit('3x3'); } },
+    { key: 'split-4x4', label: <span className="linghuiImageToolbarMenuItem"><TableProperties size={18} />16 宫格 (4×4)</span>, onClick: ({ domEvent }) => { domEvent.stopPropagation(); openGridSplit('4x4'); } },
+    { key: 'split-5x5', label: <span className="linghuiImageToolbarMenuItem"><TableProperties size={18} />25 宫格 (5×5)</span>, onClick: ({ domEvent }) => { domEvent.stopPropagation(); openGridSplit('5x5'); } },
+  ];
+
+  const nineGridMenuItems: MenuProps['items'] = LINGHUI_IMAGE_NINE_GRID_PRESETS.map(preset => ({
+    key: preset.scene,
+    label: <span className="linghuiImageToolbarMenuItem"><Layers size={18} />{preset.label}</span>,
+    onClick: ({ domEvent }) => {
+      domEvent.stopPropagation();
+      fireNineGridPreset(preset);
+    },
+  }));
+
+  const editMenuItems: MenuProps['items'] = [
+    {
+      key: 'outpaint',
+      label: <span className="linghuiImageToolbarMenuItem"><Maximize2 size={18} />扩图</span>,
+      onClick: ({ domEvent }) => { domEvent.stopPropagation(); fireImageTool('outpaint'); },
+    },
+    {
+      key: 'repaint',
+      label: <span className="linghuiImageToolbarMenuItem"><Repeat size={18} />重绘</span>,
+      onClick: ({ domEvent }) => { domEvent.stopPropagation(); fireImageTool('repaint'); },
+    },
+    {
+      key: 'erase',
+      label: <span className="linghuiImageToolbarMenuItem"><Eraser size={18} />擦除</span>,
+      children: buildToolPresetsMenu('erase'),
+      popupClassName: TOOLBAR_SUBMENU_POPUP_CLASS,
+      popupOffset: [4, 0],
+    },
+    {
+      key: 'remove-bg',
+      label: <span className="linghuiImageToolbarMenuItem"><Scissors size={18} />抠图</span>,
+      children: buildToolPresetsMenu('remove-bg'),
+      popupClassName: TOOLBAR_SUBMENU_POPUP_CLASS,
+      popupOffset: [4, 0],
+    },
+    {
+      key: 'crop',
+      label: <span className="linghuiImageToolbarMenuItem"><Crop size={18} />裁剪</span>,
+      children: buildToolPresetsMenu('crop'),
+      popupClassName: TOOLBAR_SUBMENU_POPUP_CLASS,
+      popupOffset: [4, 0],
+    },
+  ];
+
+  const moreMenuItems: MenuProps['items'] = [
+    {
+      key: 'nine-grid',
+      label: <span className="linghuiImageToolbarMenuItem"><TableProperties size={18} />九宫格</span>,
+      children: nineGridMenuItems,
+      popupClassName: TOOLBAR_SUBMENU_POPUP_CLASS,
+      popupOffset: [4, 0],
+    },
+    {
+      key: 'upscale',
+      label: <span className="linghuiImageToolbarMenuItem"><span className="linghuiImageToolbarMenuBadge">HD</span>高清</span>,
+      children: upscaleMenuItems,
+      popupClassName: TOOLBAR_SUBMENU_POPUP_CLASS,
+      popupOffset: [4, 0],
+    },
+    {
+      key: 'grid-split',
+      label: <span className="linghuiImageToolbarMenuItem"><TableProperties size={18} />宫格切分</span>,
+      children: gridSplitMenuItems,
+      popupClassName: TOOLBAR_SUBMENU_POPUP_CLASS,
+      popupOffset: [4, 0],
+    },
+    { type: 'divider' },
+    ...(!hiddenToolSet.has('focus') ? [{
+      key: 'focus',
+      label: <span className="linghuiImageToolbarMenuItem"><Focus size={18} />聚焦</span>,
+      onClick: ({ domEvent }) => {
+        domEvent.stopPropagation();
+        fireImageTool('focus');
+      },
+    }] : []),
+    ...(!hiddenToolSet.has('mark') ? [{
+      key: 'mark',
+      label: <span className="linghuiImageToolbarMenuItem"><Pencil size={18} />标记</span>,
+      onClick: ({ domEvent }) => {
+        domEvent.stopPropagation();
+        fireImageTool('mark');
+      },
+    }] : []),
   ];
 
   return (
@@ -177,136 +318,182 @@ export const LinghuiImageNodeFloatingToolbar: React.FC<LinghuiImageNodeFloatingT
       onMouseDown={stopBubble}
       onClick={stopBubble}
     >
-      {/* 高清 ▼ */}
-      <Dropdown
-        trigger={['click']}
-        getPopupContainer={dropdownContainer}
-        menu={{ items: upscaleMenuItems }}
-        open={openDropdown === 'upscale'}
-        onOpenChange={(open) => setOpenDropdown(open ? 'upscale' : null)}
-      >
-        <button
-          type="button"
-          className={`linghuiImageFloatingToolbarChip ${isActiveTool(activeTool, nodeId, 'upscale') ? 'isActive' : ''}`}
-          aria-label="高清"
-          onClick={stopBubble}
-        >
-          <span className="linghuiImageFloatingToolbarChipBadgeLabel">HD</span>
-          <span>高清</span>
-          <ChevronDown size={12} className="linghuiImageFloatingToolbarChipCaret" />
-        </button>
-      </Dropdown>
-
-      {PRIMARY_TOOLS.map(tool => {
-        const isActive = isActiveTool(activeTool, nodeId, tool.key);
-        const hasPresets = LINGHUI_IMAGE_TOOLS_WITH_PRESETS.includes(tool.key);
-
-        if (hasPresets) {
-          // LibTV 1:1：扩图/打光/重绘/擦除/抠图/裁剪/Mockup/元素/文字 弹 preset 二级菜单，
-          // 选 preset 修改当前节点 prompt + 属性 → 自动运行当前节点。不创建下游节点。
-          return (
-            <Dropdown
-              key={tool.key}
-              trigger={['click']}
-              getPopupContainer={dropdownContainer}
-              menu={{ items: buildToolPresetsMenu(tool.key) }}
-              open={openDropdown === tool.key}
-              onOpenChange={(open) => setOpenDropdown(open ? tool.key : null)}
-            >
-              <button
-                type="button"
-                className={`linghuiImageFloatingToolbarChip ${isActive ? 'isActive' : ''}`}
-                aria-label={tool.label}
-                onClick={stopBubble}
-              >
-                <span className="linghuiImageFloatingToolbarChipIcon">{tool.icon}</span>
-                <span>{tool.label}</span>
-                <ChevronDown size={12} className="linghuiImageFloatingToolbarChipCaret" />
-              </button>
-            </Dropdown>
-          );
-        }
-
-        // 多角度：单按钮打开面板（multi-angle 面板有专用 UI 配置）。
-        return (
-          <button
-            key={tool.key}
-            type="button"
-            className={`linghuiImageFloatingToolbarChip ${isActive ? 'isActive' : ''}`}
-            aria-label={tool.label}
-            onClick={() => fireImageTool(tool.key)}
-          >
-            <span className="linghuiImageFloatingToolbarChipIcon">{tool.icon}</span>
-            <span>{tool.label}</span>
-          </button>
-        );
-      })}
-
-      {/* 宫格切分 ▼ */}
-      <Dropdown
-        trigger={['click']}
-        getPopupContainer={dropdownContainer}
-        menu={{ items: gridSplitMenuItems }}
-        open={openDropdown === 'grid-split'}
-        onOpenChange={(open) => setOpenDropdown(open ? 'grid-split' : null)}
-      >
-        <button
-          type="button"
-          className={`linghuiImageFloatingToolbarChip ${isActiveTool(activeTool, nodeId, 'grid-split') ? 'isActive' : ''}`}
-          aria-label="宫格切分"
-          onClick={stopBubble}
-        >
-          <TableProperties size={14} className="linghuiImageFloatingToolbarChipIcon" />
-          <span>宫格切分</span>
-          <ChevronDown size={12} className="linghuiImageFloatingToolbarChipCaret" />
-        </button>
-      </Dropdown>
-
-      <div className="linghuiImageFloatingToolbarDivider" aria-hidden="true" />
-
-      {/* 聚焦 / 标记 */}
-      {ICON_ONLY_TOOLS.map(tool => (
-        <button
-          key={tool.key}
-          type="button"
-          className={`linghuiImageFloatingToolbarChip isIcon ${isActiveTool(activeTool, nodeId, tool.key) ? 'isActive' : ''}`}
-          aria-label={tool.label}
-          title={tool.label}
-          onClick={() => fireImageTool(tool.key)}
-        >
-          {tool.icon}
-        </button>
-      ))}
-
-      {/* 全景 [NEW] */}
       <button
         type="button"
-        className="linghuiImageFloatingToolbarChip"
+        className="linghuiImageFloatingToolbarChip isHero"
         aria-label="全景"
         onClick={() => {
           if (isPanorama) {
             onFullscreen?.();
           } else {
-            interactionApi.openImageToolPanel(nodeId, 'multi-angle');
+            onCreatePanoramaPreview?.(nodeId);
           }
         }}
       >
-        <ImageIcon size={14} className="linghuiImageFloatingToolbarChipIcon" />
+        <ImageIcon size={16} className="linghuiImageFloatingToolbarChipIcon" />
         <span>全景</span>
         <span className="linghuiImageFloatingToolbarBadge isNew">NEW</span>
       </button>
 
-      {/* 旋转 — LibTV 是图片旋转处理，灵绘暂无后端，disabled */}
       <button
         type="button"
-        className="linghuiImageFloatingToolbarChip isIcon isPlaceholder"
-        aria-label="旋转"
-        title="旋转（待接入）"
-        disabled
+        className={`linghuiImageFloatingToolbarChip ${isActiveTool(activeTool, nodeId, 'multi-angle') ? 'isActive' : ''}`}
+        aria-label="多角度"
+        onClick={() => fireImageTool('multi-angle')}
       >
-        <RotateCw size={14} />
-        <Sparkles size={10} className="linghuiImageFloatingToolbarChipHintIcon" />
+        <Scan size={16} className="linghuiImageFloatingToolbarChipIcon" />
+        <span>多角度</span>
       </button>
+
+      <button
+        type="button"
+        className={`linghuiImageFloatingToolbarChip ${isActiveTool(activeTool, nodeId, 'relight') ? 'isActive' : ''}`}
+        aria-label="打光"
+        onClick={() => fireImageTool('relight')}
+      >
+        <Sun size={16} className="linghuiImageFloatingToolbarChipIcon" />
+        <span>打光</span>
+      </button>
+
+      {!isCompactStaticToolbar && (
+        <div className="linghuiImageFloatingToolbarDivider" aria-hidden="true" />
+      )}
+
+      {!isCompactStaticToolbar && (
+        <>
+          <Dropdown
+            trigger={['click']}
+            getPopupContainer={dropdownContainer}
+            classNames={{ root: 'linghuiImageToolbarDropdown' }}
+            menu={toolbarMenu(nineGridMenuItems)}
+            open={openDropdown === 'nine-grid'}
+            onOpenChange={(open) => setOpenDropdown(open ? 'nine-grid' : null)}
+          >
+            <button
+              type="button"
+              className="linghuiImageFloatingToolbarChip isPrimary"
+              aria-label="九宫格"
+              onClick={stopBubble}
+            >
+              <TableProperties size={16} className="linghuiImageFloatingToolbarChipIcon" />
+              <span>九宫格</span>
+              <ChevronDown size={13} className="linghuiImageFloatingToolbarChipCaret" />
+            </button>
+          </Dropdown>
+
+          <Dropdown
+            trigger={['click']}
+            getPopupContainer={dropdownContainer}
+            classNames={{ root: 'linghuiImageToolbarDropdown' }}
+            menu={toolbarMenu(upscaleMenuItems)}
+            open={openDropdown === 'upscale'}
+            onOpenChange={(open) => setOpenDropdown(open ? 'upscale' : null)}
+          >
+            <button
+              type="button"
+              className={`linghuiImageFloatingToolbarChip ${isActiveTool(activeTool, nodeId, 'upscale') ? 'isActive' : ''}`}
+              aria-label="高清"
+              onClick={stopBubble}
+            >
+              <span className="linghuiImageFloatingToolbarChipBadgeLabel">HD</span>
+              <span>高清</span>
+              <ChevronDown size={13} className="linghuiImageFloatingToolbarChipCaret" />
+            </button>
+          </Dropdown>
+
+          <Dropdown
+            trigger={['click']}
+            getPopupContainer={dropdownContainer}
+            classNames={{ root: 'linghuiImageToolbarDropdown' }}
+            menu={toolbarMenu(gridSplitMenuItems)}
+            open={openDropdown === 'grid-split'}
+            onOpenChange={(open) => setOpenDropdown(open ? 'grid-split' : null)}
+          >
+            <button
+              type="button"
+              className={`linghuiImageFloatingToolbarChip ${isActiveTool(activeTool, nodeId, 'grid-split') ? 'isActive' : ''}`}
+              aria-label="宫格切分"
+              onClick={stopBubble}
+            >
+              <TableProperties size={14} className="linghuiImageFloatingToolbarChipIcon" />
+              <span>宫格切分</span>
+              <ChevronDown size={12} className="linghuiImageFloatingToolbarChipCaret" />
+            </button>
+          </Dropdown>
+        </>
+      )}
+
+      <div className="linghuiImageFloatingToolbarDivider" aria-hidden="true" />
+
+      <Dropdown
+        trigger={['click']}
+        getPopupContainer={dropdownContainer}
+        classNames={{ root: 'linghuiImageToolbarDropdown' }}
+        menu={toolbarMenu(editMenuItems)}
+        open={openDropdown === 'edit'}
+        onOpenChange={(open) => setOpenDropdown(open ? 'edit' : null)}
+      >
+        <button
+          type="button"
+          className={`linghuiImageFloatingToolbarChip ${PRIMARY_TOOL_KEYS.some(tool => isActiveTool(activeTool, nodeId, tool)) ? 'isActive' : ''}`}
+          aria-label="重绘"
+          onClick={stopBubble}
+        >
+          <Repeat size={16} className="linghuiImageFloatingToolbarChipIcon" />
+          <span>重绘</span>
+          <ChevronDown size={13} className="linghuiImageFloatingToolbarChipCaret" />
+        </button>
+      </Dropdown>
+
+      {isCompactStaticToolbar ? (
+        <Dropdown
+          trigger={['click']}
+          getPopupContainer={dropdownContainer}
+          classNames={{ root: 'linghuiImageToolbarDropdown' }}
+          menu={toolbarMenu(moreMenuItems)}
+          open={openDropdown === 'more'}
+          onOpenChange={(open) => setOpenDropdown(open ? 'more' : null)}
+        >
+          <button
+            type="button"
+            className={`linghuiImageFloatingToolbarChip ${
+              ['focus', 'mark', 'upscale', 'grid-split'].some(tool => isActiveTool(activeTool, nodeId, tool as LinghuiImageToolKey)) ? 'isActive' : ''
+            }`}
+            aria-label="更多"
+            onClick={stopBubble}
+          >
+            <Layers size={14} className="linghuiImageFloatingToolbarChipIcon" />
+            <span>更多</span>
+            <ChevronDown size={12} className="linghuiImageFloatingToolbarChipCaret" />
+          </button>
+        </Dropdown>
+      ) : (
+        <>
+          {ICON_ONLY_TOOLS.map(tool => (
+            <button
+              key={tool.key}
+              type="button"
+              className={`linghuiImageFloatingToolbarChip isIcon ${isActiveTool(activeTool, nodeId, tool.key) ? 'isActive' : ''}`}
+              aria-label={tool.label}
+              title={tool.label}
+              onClick={() => fireImageTool(tool.key)}
+            >
+              {tool.icon}
+            </button>
+          ))}
+
+          <button
+            type="button"
+            className="linghuiImageFloatingToolbarChip isIcon isPlaceholder"
+            aria-label="旋转"
+            title="旋转（待接入）"
+            disabled
+          >
+            <RotateCw size={14} />
+            <Sparkles size={10} className="linghuiImageFloatingToolbarChipHintIcon" />
+          </button>
+        </>
+      )}
 
       {/* 下载 */}
       <button
