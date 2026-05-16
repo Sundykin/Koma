@@ -9,6 +9,7 @@ import { resolveDefaultCompactNodeStyle } from '../state/linghuiNodeCardSizing';
 import { cssVars } from '../../../../theme/runtime';
 import { LinghuiNodeRunError } from './LinghuiNodeRunError';
 import { LinghuiNodePorts } from './LinghuiNodeHandle';
+import { LinghuiAudioNodeEmptyState } from './LinghuiAudioNodeEmptyState';
 
 const STATUS_COLORS: Record<LinghuiRunStatus, string> = {
   idle: 'var(--token-text-muted)',
@@ -34,7 +35,7 @@ function formatDuration(durationSec?: number): string {
 
 function AudioNodeInner({ id, data, selected }: NodeProps) {
   const nodeData = data as unknown as LinghuiNodeData;
-  const props = nodeData.properties as { source?: string; prompt?: string };
+  const props = nodeData.properties as { source?: string; prompt?: string; mode?: string };
   const runState = useNodeRunState(id);
   const interactionHandlers = useLinghuiNodeInteraction(id);
   const status = runState?.status ?? 'idle';
@@ -57,21 +58,27 @@ function AudioNodeInner({ id, data, selected }: NodeProps) {
 
   return (
     <div
-      className={`linghuiCompactNode nopan ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''} ${isEditorVisible ? 'hasInlineEditor' : ''}`}
+      className={`linghuiCompactNode nopan is-${status} ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''} ${isEditorVisible ? 'hasInlineEditor' : ''}`}
       data-view-mode={viewMode}
       style={nodeStyle}
       {...interactionHandlers}
     >
+      {!hasUploadedSource ? <span className="linghuiAudioNodeUploadFloat nodrag nopan">上传</span> : null}
       <LinghuiNodePorts accent={nodeData.accent} inputs={nodeData.inputs} outputs={nodeData.outputs} />
 
       <div className="linghuiCompactThumb linghuiCompactAudioThumb">
-        <div className="linghuiCompactAudioWave linghuiCompactAccentText">
-          <span />
-          <span />
-          <span />
-          <span />
-          <span />
-        </div>
+        {props.mode === 'generate' && !hasUploadedSource ? (
+          // LibTV 1:1：音频节点 generate 态无音频时显示 EmptyState（"音频生视频"建议按钮）。
+          <LinghuiAudioNodeEmptyState nodeId={id} />
+        ) : (
+          <div className="linghuiCompactAudioWave linghuiCompactAccentText">
+            <span />
+            <span />
+            <span />
+            <span />
+            <span />
+          </div>
+        )}
       </div>
 
       <div className="linghuiCompactInfo">

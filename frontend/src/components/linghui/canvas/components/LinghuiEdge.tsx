@@ -48,6 +48,7 @@ function LinghuiEdgeInner({
     `is-${linkStatus}`,
     selected ? 'is-selected' : '',
     traceStatus ? 'has-trace' : '',
+    linkStatus === 'running' ? 'linghui-connection-breathe' : '',
   ].filter(Boolean).join(' ');
   const edgeVars = cssVars({
     '--linghui-edge-stroke': color,

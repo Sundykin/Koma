@@ -8,6 +8,7 @@ import type {
   LinghuiNodeData,
   LinghuiRunStatus,
 } from '../../../../types/linghui';
+import { normalizeLinghuiImageFocusRegion, normalizeLinghuiImageMarkPoints } from '../../../../types/linghui';
 import {
   useNodeRunState,
   useLinghuiNodeMutation,
@@ -33,6 +34,8 @@ import { resolveMediaCardSize } from '../state/linghuiNodeCardSizing';
 import { cssVars } from '../../../../theme/runtime';
 import { LinghuiNodeRunError } from './LinghuiNodeRunError';
 import { LinghuiNodePorts } from './LinghuiNodeHandle';
+import { LinghuiImageNodeEmptyState } from './LinghuiImageNodeEmptyState';
+import { LinghuiImageNodeUploadFloat } from './LinghuiImageNodeUploadFloat';
 
 const STATUS_COLORS: Record<LinghuiRunStatus, string> = {
   idle: 'var(--token-text-muted)',
@@ -346,6 +349,21 @@ function ImageNodeInner({ id, data, selected }: NodeProps) {
   const primaryDisplayItem = useMemo(() => (
     displayItems.find(item => item.isPrimary) ?? displayItems[0] ?? null
   ), [displayItems]);
+  const activeFocusRegion = useMemo(() => {
+    const region = normalizeLinghuiImageFocusRegion(props.focusRegion);
+    return region?.enabled ? region : null;
+  }, [props.focusRegion]);
+  const activeMarkPoints = useMemo(() => (
+    normalizeLinghuiImageMarkPoints(props.markPoints).filter(point => point.enabled)
+  ), [props.markPoints]);
+  const focusRegionStyle = activeFocusRegion
+    ? cssVars({
+        '--linghui-focus-x': `${activeFocusRegion.x * 100}%`,
+        '--linghui-focus-y': `${activeFocusRegion.y * 100}%`,
+        '--linghui-focus-w': `${activeFocusRegion.width * 100}%`,
+        '--linghui-focus-h': `${activeFocusRegion.height * 100}%`,
+      })
+    : undefined;
   const imageCount = Math.max(collection.items.length, displayItems.length);
   const mediaCardLayout = useMemo(() => {
     const metadataAspectRatio = typeof collection.primary?.metadata?.aspectRatio === 'string'
@@ -543,12 +561,17 @@ function ImageNodeInner({ id, data, selected }: NodeProps) {
   return (
     <div
       ref={rootRef}
-      className={`linghuiCompactNode nopan ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''} ${displayItems.length > 1 ? 'isMultiImage' : ''} ${isExpanded ? 'isImageExpanded' : ''} ${isEditorVisible ? 'hasInlineEditor' : ''}`}
+      className={`linghuiCompactNode nopan is-${status} ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''} ${displayItems.length > 1 ? 'isMultiImage' : ''} ${isExpanded ? 'isImageExpanded' : ''} ${isEditorVisible ? 'hasInlineEditor' : ''}`}
       data-view-mode={viewMode}
       data-expanded={isExpanded ? 'true' : undefined}
       style={nodeStyle}
       {...interactionHandlers}
     >
+      {/* LibTV 1:1：节点上方 hover 浮空工具条已废弃，所有工具操作改由点击节点打开的编辑器顶部工具条承载，
+          避免两套工具条项目不一致 + hover 闪退体验问题。仅保留"上传"独立浮按钮——空态时引导上传。 */}
+      {!primaryDisplayItem?.source && !isPanoramaNode ? (
+        <LinghuiImageNodeUploadFloat nodeId={id} />
+      ) : null}
       <LinghuiNodePorts accent={nodeData.accent} inputs={nodeData.inputs} outputs={nodeData.outputs} />
 
       {/* 缩略图 */}
@@ -634,6 +657,9 @@ function ImageNodeInner({ id, data, selected }: NodeProps) {
               );
             })}
           </div>
+        ) : mode === 'generate' && !isPanoramaNode ? (
+          // LibTV "empty_generate" 态：mode='generate' 且无图时显示中心 placeholder + "尝试：图生图 / 图片高清" 引导。
+          <LinghuiImageNodeEmptyState nodeId={id} />
         ) : (
           <div className="linghuiCompactThumbEmpty">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
@@ -643,12 +669,51 @@ function ImageNodeInner({ id, data, selected }: NodeProps) {
             </svg>
           </div>
         )}
+        {activeFocusRegion && displayItems.length > 0 && !gridSplitOverlay && !isPanoramaNode && (
+          <div className="linghuiCompactFocusOverlay" style={focusRegionStyle}>
+            <div className="linghuiCompactFocusBox" />
+            <span className="linghuiCompactFocusBadge">聚焦</span>
+          </div>
+        )}
+        {activeMarkPoints.length > 0 && displayItems.length > 0 && !gridSplitOverlay && !isPanoramaNode && (
+          <div className="linghuiCompactMarkOverlay">
+            {activeMarkPoints.map((point, index) => (
+              <span
+                key={point.id}
+                className="linghuiCompactMarkPoint"
+                style={cssVars({
+                  '--linghui-mark-x': `${point.x * 100}%`,
+                  '--linghui-mark-y': `${point.y * 100}%`,
+                })}
+              >
+                {index + 1}
+              </span>
+            ))}
+          </div>
+        )}
         <div className="linghuiCompactThumbMeta">
+          {!isPanoramaNode && (
+            mode === 'import' ? (
+              <span className="linghuiCompactNodeKindBadge isImport">素材</span>
+            ) : props.generatedFromNodeId ? (
+              <span className="linghuiCompactNodeKindBadge isDerived">
+                派生{typeof props.generatedSequence === 'number' ? ` #${props.generatedSequence}` : ''}
+              </span>
+            ) : (
+              <span className="linghuiCompactNodeKindBadge isGenerate">生成</span>
+            )
+          )}
           <EditableCompactNodeLabel
             nodeId={id}
             label={nodeData.label}
             fallbackLabel="图片"
           />
+          {/* LibTV 节点头部尾部：tabular-nums 等宽灰色尺寸显示（如 "2848 × 1600"），仅在有图时显示。 */}
+          {collection.primary?.width && collection.primary?.height ? (
+            <span className="linghuiCompactThumbDimensions">
+              {collection.primary.width} × {collection.primary.height}
+            </span>
+          ) : null}
           {imageCount > 1 && (
             <span className="linghuiCompactThumbCount">
               {imageCount}

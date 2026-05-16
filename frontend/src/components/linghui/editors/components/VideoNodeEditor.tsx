@@ -84,7 +84,9 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
   const rawVideoCapability = props.videoCapability as LinghuiVideoCapability | undefined;
   const aspectRatio = String(props.aspectRatio ?? '16:9');
   const resolution = String(props.resolution ?? '720p');
-  const isPassThroughNode = Boolean(source);
+  // 对齐 LibTV "视频参考"：mode='import' 时即使没上传 source 也走纯素材分支，不展示 prompt / 生成按钮。
+  const videoNodeMode = props.mode === 'import' ? 'import' : 'generate';
+  const isPassThroughNode = videoNodeMode === 'import' || Boolean(source);
   const passThroughPosterSource = String(props.posterSource ?? '').trim();
   const primaryVideo = getLinghuiResultPrimaryMedia(nodeRun?.result);
   const currentVideoSource = String(primaryVideo?.source ?? source ?? '').trim();

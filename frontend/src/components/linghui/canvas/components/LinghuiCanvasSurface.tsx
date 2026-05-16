@@ -75,6 +75,8 @@ export function LinghuiCanvasSurface({
     onGenerateScriptVideos: overlayProps.onGenerateScriptVideos,
     onCreateDerivedImportImages: overlayProps.onCreateDerivedImportImages,
     onCreateDerivedMultiAngleImage: overlayProps.onCreateDerivedMultiAngleImage,
+    onExecuteImageUpscale: overlayProps.onExecuteImageUpscale,
+    onExecuteImageCrop: overlayProps.onExecuteImageCrop,
     onGenerateImageFromController: overlayProps.onGenerateImageFromController,
     onExecuteMultiAngle: overlayProps.onExecuteMultiAngle,
     onApplyImageToolPreset: overlayProps.onApplyImageToolPreset,
@@ -84,6 +86,7 @@ export function LinghuiCanvasSurface({
     gridSplitUpscaleFactor: overlayProps.gridSplitUpscaleFactor,
     onSetGridSplitUpscaleFactor: overlayProps.onSetGridSplitUpscaleFactor,
     onRevertGridSplit: overlayProps.onRevertGridSplit,
+    onSeparateVideoAudio: overlayProps.onSeparateVideoAudio,
   }), [canvasInteractionVersion, overlayProps]);
 
   return (

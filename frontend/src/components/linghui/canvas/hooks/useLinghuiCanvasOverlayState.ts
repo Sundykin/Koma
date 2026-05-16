@@ -1,14 +1,13 @@
 import { useCallback, useMemo } from 'react';
 import type { Dispatch, RefObject, SetStateAction } from 'react';
 import type { Node, ReactFlowInstance, Viewport } from '@xyflow/react';
-import { LINGHUI_NODE_CATALOG } from '../../library/state/linghuiNodeDefs';
 import {
   type LinghuiCanvasMenuState,
   type LinghuiPendingGroupFrame,
   type QuickCreateState,
   PENDING_GROUP_ACTIONS_WIDTH,
-  resolveCompatibleTargetHandleId,
 } from '../state/linghuiCanvasShared';
+import { resolveLinghuiQuickCreateCatalog } from '../state/linghuiCanvasQuickCreateCatalog';
 import { useLinghuiCanvasStore } from '../state/linghuiCanvasStore';
 import type { CssVarStyle } from '../../../../theme/runtime';
 
@@ -43,6 +42,7 @@ export function useLinghuiCanvasOverlayState({
   const storeSetQuickCreate = useLinghuiCanvasStore(state => state.setQuickCreate);
   const storeCloseContextMenu = useLinghuiCanvasStore(state => state.closeContextMenu);
   const storeCloseQuickCreate = useLinghuiCanvasStore(state => state.closeQuickCreate);
+  const storeCloseQuickCreateFromPane = useLinghuiCanvasStore(state => state.closeQuickCreateFromPane);
   const storeOpenContextMenuAt = useLinghuiCanvasStore(state => state.openContextMenuAt);
   const storeOpenQuickCreateAt = useLinghuiCanvasStore(state => state.openQuickCreateAt);
 
@@ -78,14 +78,8 @@ export function useLinghuiCanvasOverlayState({
   }, [contextMenu?.nodeId, contextMenu?.selectionIds, pendingGroupFrame?.selectionIds, selectedNodeIds]);
 
   const quickCreateCatalog = useMemo(() => {
-    if (!quickCreate?.sourceConnection) {
-      return LINGHUI_NODE_CATALOG;
-    }
-
-    return LINGHUI_NODE_CATALOG.filter(item => (
-      resolveCompatibleTargetHandleId(item.type, quickCreate.sourceConnection!.sourceDataType) !== null
-    ));
-  }, [quickCreate?.sourceConnection]);
+    return resolveLinghuiQuickCreateCatalog(quickCreate?.sourceConnection?.sourceDataType);
+  }, [quickCreate?.sourceConnection?.sourceDataType]);
 
   const pendingGroupFrameStyle = useMemo(() => {
     if (!pendingGroupFrame || !canvasRect) return null;
@@ -133,6 +127,14 @@ export function useLinghuiCanvasOverlayState({
   const closeQuickCreate = useCallback(() => {
     storeCloseQuickCreate();
   }, [storeCloseQuickCreate]);
+
+  /**
+   * 仅给 onPaneClick 用的关闭入口：250ms 抑制窗口内来自 paneClick 的关闭会被丢弃，
+   * 防止连线松开同帧 onPaneClick 把刚开的"引用该节点生成"面板立刻关掉。
+   */
+  const closeQuickCreateFromPane = useCallback(() => {
+    storeCloseQuickCreateFromPane();
+  }, [storeCloseQuickCreateFromPane]);
 
   const openContextMenuAt = useCallback((
     clientX: number,
@@ -182,6 +184,7 @@ export function useLinghuiCanvasOverlayState({
     pendingGroupActionsStyle,
     closeContextMenu,
     closeQuickCreate,
+    closeQuickCreateFromPane,
     openContextMenuAt,
     openQuickCreateAt,
     resetOverlayStates,

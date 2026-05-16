@@ -21,8 +21,6 @@ const DEFAULT_NODE_DURATION_SEC: Record<LinghuiNodeType, number> = {
   'linghui/storyboard': 14,
   // 3D 导演节点本地导出 lineart，几乎瞬时完成
   'linghui/director3d': 2,
-  // 图片生成器（控制器）本身不执行，仅在用户点击"生成"时派生下游节点
-  'linghui/image-generator': 0,
 };
 
 export type LinghuiExecutionPlanCostStatus = 'available' | 'unavailable';

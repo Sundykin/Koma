@@ -16,6 +16,8 @@ import { LinghuiNodeEditor } from '../../editors/components/LinghuiNodeEditor';
 import { toFileSystemDisplayUrl } from '../../../../services/fileSystemPort';
 import { fromKomaLocalUrl } from '../../../../utils/urlUtils';
 import { EditableCompactNodeLabel } from './EditableCompactNodeLabel';
+import { LinghuiVideoNodeEmptyState } from './LinghuiVideoNodeEmptyState';
+import { LinghuiVideoNodeUploadFloat } from './LinghuiVideoNodeUploadFloat';
 import { resolveLinghuiNodeViewMode } from '../../editors/state/linghuiNodeViewMode';
 import { resolveMediaCardSize } from '../state/linghuiNodeCardSizing';
 import { getVideoCapabilityDescriptor } from '../../editors/state/videoCapabilityUtils';
@@ -336,11 +338,15 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
 
   return (
     <div
-      className={`linghuiCompactNode nopan ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''} ${isEditorVisible ? 'hasInlineEditor' : ''}`}
+      className={`linghuiCompactNode nopan is-${status} ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''} ${isEditorVisible ? 'hasInlineEditor' : ''}`}
       data-view-mode={viewMode}
       style={nodeStyle}
       {...interactionHandlers}
     >
+      {/* LibTV 1:1：节点上方独立"上传"浮按钮，空态时引导上传。与图片节点完全对称。 */}
+      {!videoSource && !posterSource ? (
+        <LinghuiVideoNodeUploadFloat nodeId={id} />
+      ) : null}
       <LinghuiNodePorts accent={nodeData.accent} inputs={nodeData.inputs} outputs={nodeData.outputs} />
 
       <div className="linghuiCompactThumb">
@@ -403,6 +409,10 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
           </div>
         ) : posterSource ? (
           <img src={posterSource} alt="preview" draggable={false} />
+        ) : props.mode !== 'import' ? (
+          // LibTV "empty_generate" 态：mode 非 import + 无封面/source/result 时显示中心 EmptyState
+          // + "尝试：首尾帧生成视频 / 首帧生成视频"，对齐截图 2 视频侧同款行为。
+          <LinghuiVideoNodeEmptyState nodeId={id} />
         ) : (
           <div className="linghuiCompactThumbEmpty">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
@@ -417,6 +427,12 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
             label={nodeData.label}
             fallbackLabel="视频"
           />
+          {/* LibTV 节点头部尾部：tabular-nums 等宽灰色尺寸显示，仅在视频结果带尺寸时显示。 */}
+          {primaryVideo?.width && primaryVideo?.height ? (
+            <span className="linghuiCompactThumbDimensions">
+              {primaryVideo.width} × {primaryVideo.height}
+            </span>
+          ) : null}
           <div className="linghuiCompactVideoIndicator">
             <svg width="12" height="12" viewBox="0 0 12 12" fill="white">
               <polygon points="3,1 10,6 3,11" />

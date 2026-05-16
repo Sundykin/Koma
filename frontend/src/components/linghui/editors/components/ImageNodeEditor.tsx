@@ -4,6 +4,8 @@ import type { MenuProps } from 'antd';
 import { ArrowUp, Image as ImageIcon, Trash2, UploadCloud } from 'lucide-react';
 import type {
   LinghuiExecuteMultiAngleOptions,
+  LinghuiImageFocusRegion,
+  LinghuiImageMarkPoint,
   LinghuiImageNodeMode,
   LinghuiImageNodeProperties,
   LinghuiImageToolKey,
@@ -11,10 +13,19 @@ import type {
   LinghuiNodeRunState,
 } from '../../../../types/linghui';
 import {
+  DEFAULT_LINGHUI_IMAGE_CINEMATIC_CONFIG,
+  DEFAULT_LINGHUI_IMAGE_FOCUS_REGION,
   DEFAULT_LINGHUI_MULTI_ANGLE_CONFIG,
   IMAGE_ASPECT_RATIOS,
   IMAGE_RESOLUTIONS,
+  LINGHUI_IMAGE_APERTURE_PRESETS,
+  LINGHUI_IMAGE_FOCAL_LENGTH_PRESETS,
+  LINGHUI_IMAGE_LIGHTING_PRESETS,
+  LINGHUI_IMAGE_MARK_POINT_LIMIT,
   LINGHUI_IMAGE_BATCH_COUNTS,
+  normalizeLinghuiImageCinematicConfig,
+  normalizeLinghuiImageFocusRegion,
+  normalizeLinghuiImageMarkPoints,
   normalizeLinghuiMultiAngleConfig,
 } from '../../../../types/linghui';
 import { electronService, openFileDialog } from '../../../../services/electronService';
@@ -29,6 +40,7 @@ import { LinghuiPromptEditor } from './LinghuiPromptEditor';
 import { LinghuiMultiAngleModal } from './LinghuiMultiAngleModal';
 import { useLinghuiNodeEditorApi, useLinghuiNodeMutation } from '../../nodes/state/LinghuiNodeRunsContext';
 import { useLinghuiActionLock } from '../hooks/useLinghuiActionLock';
+import { cssVars } from '../../../../theme/runtime';
 import {
   createLinghuiImageAssetItemFromSource,
   createLinghuiImageImportProperties,
@@ -54,6 +66,34 @@ export function mergePromptSnippet(currentPrompt: string, snippet: string): stri
   return normalizedCurrent ? `${normalizedCurrent}\n${normalizedSnippet}` : normalizedSnippet;
 }
 
+function buildFocusRegionPatch(
+  previous: LinghuiImageFocusRegion | null,
+  patch: Partial<LinghuiImageFocusRegion>,
+  source: string,
+): LinghuiImageFocusRegion {
+  return normalizeLinghuiImageFocusRegion({
+    ...DEFAULT_LINGHUI_IMAGE_FOCUS_REGION,
+    ...(previous ?? {}),
+    ...patch,
+    enabled: patch.enabled ?? previous?.enabled ?? true,
+    source: source || previous?.source,
+    updatedAt: Date.now(),
+  }) ?? {
+    ...DEFAULT_LINGHUI_IMAGE_FOCUS_REGION,
+    enabled: true,
+    source,
+    updatedAt: Date.now(),
+  };
+}
+
+function formatFocusRegionPercent(value: number): string {
+  return `${Math.round(value * 100)}%`;
+}
+
+function formatMarkPointPercent(value: number): string {
+  return `${Math.round(value * 100)}%`;
+}
+
 interface ProviderOption {
   value: string;
   label: string;
@@ -65,6 +105,39 @@ interface DisplayReferenceImage {
   source?: string;
   label?: string;
   badge: string;
+}
+
+type LinghuiFocusRegionAxis = 'x' | 'y' | 'width' | 'height';
+
+const IMAGE_FOCUS_REGION_STEP = 0.01;
+const IMAGE_FOCUS_REGION_PRESETS: Array<{
+  key: string;
+  label: string;
+  region: Pick<LinghuiImageFocusRegion, 'x' | 'y' | 'width' | 'height'>;
+}> = [
+  { key: 'center', label: '中心', region: { x: 0.28, y: 0.22, width: 0.44, height: 0.42 } },
+  { key: 'portrait', label: '脸部', region: { x: 0.32, y: 0.12, width: 0.36, height: 0.32 } },
+  { key: 'upper', label: '上半身', region: { x: 0.2, y: 0.1, width: 0.6, height: 0.58 } },
+  { key: 'full', label: '全图', region: { x: 0.04, y: 0.04, width: 0.92, height: 0.92 } },
+];
+
+function createLinghuiImageMarkPoint(params: {
+  x: number;
+  y: number;
+  source: string;
+  index: number;
+}): LinghuiImageMarkPoint {
+  const pointIndex = params.index + 1;
+  return {
+    id: `mark-${Date.now().toString(36)}-${pointIndex}`,
+    enabled: true,
+    x: Math.max(0, Math.min(1, params.x)),
+    y: Math.max(0, Math.min(1, params.y)),
+    source: params.source,
+    label: `标记 ${pointIndex}`,
+    prompt: `请重点关注标记 ${pointIndex} 附近的主体、动作或细节，并保持画面其它区域稳定。`,
+    updatedAt: Date.now(),
+  };
 }
 
 export interface ImageNodeEditorExtraSettingsBlock {
@@ -137,6 +210,38 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
   const isNodeRunningByExecutionQueue = Boolean(isExecutionQueueActive && executionQueue?.runningNodeIds.includes(nodeId));
   const isImageGenerating = nodeRun?.status === 'running' || isNodeRunningByExecutionQueue || isNodeQueuedByExecutionQueue;
   const { locked: isRunActionLocked, runWithActionLock } = useLinghuiActionLock(isImageGenerating);
+  const normalizedFocusRegion = normalizeLinghuiImageFocusRegion(props.focusRegion);
+  const activeFocusRegion = normalizedFocusRegion?.enabled ? normalizedFocusRegion : null;
+  const normalizedMarkPoints = normalizeLinghuiImageMarkPoints(props.markPoints);
+  const activeMarkPoints = normalizedMarkPoints.filter(point => point.enabled);
+  const cinematicConfig = useMemo(() => (
+    normalizeLinghuiImageCinematicConfig(props.cinematic ?? DEFAULT_LINGHUI_IMAGE_CINEMATIC_CONFIG)
+  ), [props.cinematic]);
+  const cinematicSummary = useMemo(() => {
+    const labels: string[] = [];
+    const lighting = LINGHUI_IMAGE_LIGHTING_PRESETS.find(option => option.value === cinematicConfig.lighting);
+    if (lighting && lighting.value !== 'auto') labels.push(lighting.label);
+    const focal = LINGHUI_IMAGE_FOCAL_LENGTH_PRESETS.find(option => option.value === cinematicConfig.focalLength);
+    if (focal && focal.value !== 'auto') labels.push(focal.label);
+    const aperture = LINGHUI_IMAGE_APERTURE_PRESETS.find(option => option.value === cinematicConfig.aperture);
+    if (aperture && aperture.value !== 'auto') labels.push(aperture.label);
+    return labels.join(' · ');
+  }, [cinematicConfig]);
+  const hasCinematicDirective = Boolean(cinematicSummary);
+  const generatedFromNodeId = String(props.generatedFromNodeId ?? '').trim();
+  const generatedSequence = Number(props.generatedSequence);
+  const isDerivedFromController = Boolean(generatedFromNodeId);
+  const derivedBannerText = isDerivedFromController
+    ? `这是控制器节点派生的结果${Number.isFinite(generatedSequence) && generatedSequence > 0 ? ` · 第 ${generatedSequence} 次` : ''}。修改 prompt / 参数请回到上游控制器节点重新生成。`
+    : '';
+  const focusRegionStyle = activeFocusRegion
+    ? cssVars({
+        '--linghui-focus-x': `${activeFocusRegion.x * 100}%`,
+        '--linghui-focus-y': `${activeFocusRegion.y * 100}%`,
+        '--linghui-focus-w': `${activeFocusRegion.width * 100}%`,
+        '--linghui-focus-h': `${activeFocusRegion.height * 100}%`,
+      })
+    : undefined;
   const generateProgressText = nodeRun?.status === 'running'
     && typeof nodeRun.progress === 'number'
     && Number.isFinite(nodeRun.progress)
@@ -151,7 +256,11 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
       : isImageGenerating
         ? '图片生成中'
         : '生成';
-  const generateButtonText = isImageGenerating ? `${generateStateLabel}${generateProgressText}` : '生成';
+  const generateButtonText = isImageGenerating
+    ? `${generateStateLabel}${generateProgressText}`
+    : isDerivedFromController
+      ? '再次生成'
+      : '生成';
   const isMultiAngleToolOpen = activeTool === 'multi-angle' && hasCurrentImage;
   const multiAngleConfig = normalizeLinghuiMultiAngleConfig(props.multiAngle ?? DEFAULT_LINGHUI_MULTI_ANGLE_CONFIG);
   const multiAngleTTISelection = String(props.multiAngle?.ttiSelection ?? props.ttiSelection ?? '');
@@ -303,11 +412,80 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
     clearNodeRunState(nodeId);
   }, [clearNodeRunState, nodeId, updateNodeData]);
 
+  const updateFocusRegion = useCallback((patch: Partial<LinghuiImageFocusRegion>) => {
+    if (!currentImageSource) {
+      message.info('请先导入或生成一张图片');
+      return;
+    }
+
+    const nextFocusRegion = buildFocusRegionPatch(
+      normalizeLinghuiImageFocusRegion(props.focusRegion),
+      patch,
+      currentImageSource,
+    );
+    updateProp('focusRegion', nextFocusRegion);
+  }, [currentImageSource, message, props.focusRegion, updateProp]);
+
+  const updateFocusRegionAxis = useCallback((axis: LinghuiFocusRegionAxis, rawValue: number) => {
+    const numeric = Math.max(0, Math.min(1, rawValue));
+    updateFocusRegion({ [axis]: numeric });
+  }, [updateFocusRegion]);
+
+  const handleEnableFocusRegion = useCallback(() => {
+    updateFocusRegion({ enabled: true });
+  }, [updateFocusRegion]);
+
+  const handleDisableFocusRegion = useCallback(() => {
+    const previous = normalizeLinghuiImageFocusRegion(props.focusRegion);
+    updateProp('focusRegion', previous ? { ...previous, enabled: false } : null);
+    onToolChange(null);
+  }, [onToolChange, props.focusRegion, updateProp]);
+
+  const updateMarkPoints = useCallback((nextPoints: LinghuiImageMarkPoint[]) => {
+    updateProp('markPoints', nextPoints);
+  }, [updateProp]);
+
+  const handleMarkStageClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    if (!currentImageSource) {
+      message.info('请先导入或生成一张图片');
+      return;
+    }
+    if (normalizedMarkPoints.length >= LINGHUI_IMAGE_MARK_POINT_LIMIT) {
+      message.warning(`焦点选择最多支持 ${LINGHUI_IMAGE_MARK_POINT_LIMIT} 个标记点`);
+      return;
+    }
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      return;
+    }
+    const x = (event.clientX - rect.left) / rect.width;
+    const y = (event.clientY - rect.top) / rect.height;
+    const nextPoint = createLinghuiImageMarkPoint({
+      x,
+      y,
+      source: currentImageSource,
+      index: normalizedMarkPoints.length,
+    });
+    updateMarkPoints([...normalizedMarkPoints, nextPoint]);
+  }, [currentImageSource, message, normalizedMarkPoints, updateMarkPoints]);
+
+  const handleRemoveMarkPoint = useCallback((pointId: string) => {
+    updateMarkPoints(normalizedMarkPoints.filter(point => point.id !== pointId));
+  }, [normalizedMarkPoints, updateMarkPoints]);
+
+  const handleClearMarkPoints = useCallback(() => {
+    updateMarkPoints([]);
+    onToolChange(null);
+  }, [onToolChange, updateMarkPoints]);
+
   const selectedProvider = useMemo(() => (
     providers.find(option => option.value === ttiSelection) ?? providers[0]
   ), [providers, ttiSelection]);
   const modelSummary = selectedProvider?.label || '未配置生图模型';
-  const parameterSummary = `${aspectRatio} · ${resolution} · ${batchCount}张`;
+  const parameterSummary = hasCinematicDirective
+    ? `${aspectRatio} · ${resolution} · ${batchCount}张 · ${cinematicSummary}`
+    : `${aspectRatio} · ${resolution} · ${batchCount}张`;
   const providerMenuItems = useMemo<MenuProps['items']>(() => (
     providers.map(provider => ({
       key: provider.value,
@@ -383,6 +561,66 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
         </div>
       )}
 
+      <div className="linghuiEditorSettingsBlock">
+        <div className="linghuiEditorSettingsLabel">打光</div>
+        <div className="linghuiEditorOptionGrid">
+          {LINGHUI_IMAGE_LIGHTING_PRESETS.map(option => (
+            <button
+              key={option.value}
+              type="button"
+              className={`linghuiEditorOptionTile ${cinematicConfig.lighting === option.value ? 'isActive' : ''}`}
+              onClick={() => updateProp('cinematic', normalizeLinghuiImageCinematicConfig({
+                ...cinematicConfig,
+                lighting: option.value,
+              }))}
+              title={option.prompt}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="linghuiEditorSettingsBlock">
+        <div className="linghuiEditorSettingsLabel">焦距</div>
+        <div className="linghuiEditorOptionGrid">
+          {LINGHUI_IMAGE_FOCAL_LENGTH_PRESETS.map(option => (
+            <button
+              key={option.value}
+              type="button"
+              className={`linghuiEditorOptionTile ${cinematicConfig.focalLength === option.value ? 'isActive' : ''}`}
+              onClick={() => updateProp('cinematic', normalizeLinghuiImageCinematicConfig({
+                ...cinematicConfig,
+                focalLength: option.value,
+              }))}
+              title={option.prompt}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="linghuiEditorSettingsBlock">
+        <div className="linghuiEditorSettingsLabel">景深 / 光圈</div>
+        <div className="linghuiEditorOptionGrid isCompact">
+          {LINGHUI_IMAGE_APERTURE_PRESETS.map(option => (
+            <button
+              key={option.value}
+              type="button"
+              className={`linghuiEditorOptionTile ${cinematicConfig.aperture === option.value ? 'isActive' : ''}`}
+              onClick={() => updateProp('cinematic', normalizeLinghuiImageCinematicConfig({
+                ...cinematicConfig,
+                aperture: option.value,
+              }))}
+              title={option.prompt}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {extraSettings && (Array.isArray(extraSettings) ? extraSettings : [extraSettings]).map((block, index) => (
         <div key={`${block.label}-${index}`} className="linghuiEditorSettingsBlock">
           <div className="linghuiEditorSettingsLabel">{block.label}</div>
@@ -404,48 +642,171 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
     </div>
   );
 
+  const focusRegionPanel = activeTool === 'focus' && hasCurrentImage ? (
+    <div className="linghuiEditorSection linghuiImageFocusPanel">
+      <div className="linghuiImageFocusHeader">
+        <div>
+          <div className="linghuiEditorSectionTitle">聚焦</div>
+          <div className="linghuiImageFocusHint">红框区域会作为下一次局部补全重点</div>
+        </div>
+        <div className="linghuiEditorSummaryRow">
+          {activeFocusRegion ? (
+            <span className="linghuiEditorSummaryPill">
+              {formatFocusRegionPercent(activeFocusRegion.width)} × {formatFocusRegionPercent(activeFocusRegion.height)}
+            </span>
+          ) : (
+            <span className="linghuiEditorSummaryPill isMuted">未启用</span>
+          )}
+        </div>
+      </div>
+
+      <div className="linghuiImageFocusStage">
+        {currentImagePreview ? (
+          <img src={currentImagePreview} alt={currentImage?.label || nodeData.label} draggable={false} />
+        ) : (
+          <ImageIcon size={22} />
+        )}
+        {activeFocusRegion && <div className="linghuiImageFocusBox" style={focusRegionStyle} />}
+      </div>
+
+      <div className="linghuiImageFocusPresetRow">
+        {IMAGE_FOCUS_REGION_PRESETS.map(preset => (
+          <button
+            key={preset.key}
+            type="button"
+            className="linghuiImageFocusPresetButton"
+            onClick={() => updateFocusRegion({ ...preset.region, enabled: true })}
+          >
+            {preset.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="linghuiImageFocusControls">
+        {([
+          ['x', '横向'],
+          ['y', '纵向'],
+          ['width', '宽度'],
+          ['height', '高度'],
+        ] as Array<[LinghuiFocusRegionAxis, string]>).map(([axis, label]) => {
+          const value = activeFocusRegion?.[axis] ?? DEFAULT_LINGHUI_IMAGE_FOCUS_REGION[axis];
+          return (
+            <label key={axis} className="linghuiImageFocusSlider">
+              <span>{label}</span>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={IMAGE_FOCUS_REGION_STEP}
+                value={value}
+                onChange={event => updateFocusRegionAxis(axis, Number(event.target.value))}
+              />
+              <strong>{formatFocusRegionPercent(value)}</strong>
+            </label>
+          );
+        })}
+      </div>
+
+      <div className="linghuiImageFocusActions">
+        <Button size="small" type="primary" onClick={handleEnableFocusRegion}>
+          标记区域
+        </Button>
+        <Button size="small" onClick={handleDisableFocusRegion} disabled={!normalizedFocusRegion}>
+          清除聚焦
+        </Button>
+      </div>
+    </div>
+  ) : null;
+
+  const markPointPanel = activeTool === 'mark' && hasCurrentImage ? (
+    <div className="linghuiEditorSection linghuiImageMarkPanel">
+      <div className="linghuiImageFocusHeader">
+        <div>
+          <div className="linghuiEditorSectionTitle">标记</div>
+          <div className="linghuiImageFocusHint">点击图片添加焦点，标记会写入下一次生成提示</div>
+        </div>
+        <span className={`linghuiEditorSummaryPill ${activeMarkPoints.length ? '' : 'isMuted'}`}>
+          {activeMarkPoints.length}/{LINGHUI_IMAGE_MARK_POINT_LIMIT}
+        </span>
+      </div>
+
+      <div
+        className="linghuiImageMarkStage"
+        role="button"
+        aria-label="添加标记点"
+        tabIndex={0}
+        onClick={handleMarkStageClick}
+        onKeyDown={event => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            const target = event.currentTarget;
+            const rect = target.getBoundingClientRect();
+            const point = createLinghuiImageMarkPoint({
+              x: 0.5,
+              y: 0.5,
+              source: currentImageSource,
+              index: normalizedMarkPoints.length,
+            });
+            if (rect.width > 0 && rect.height > 0 && normalizedMarkPoints.length < LINGHUI_IMAGE_MARK_POINT_LIMIT) {
+              updateMarkPoints([...normalizedMarkPoints, point]);
+            }
+          }
+        }}
+      >
+        {currentImagePreview ? (
+          <img src={currentImagePreview} alt={currentImage?.label || nodeData.label} draggable={false} />
+        ) : (
+          <ImageIcon size={22} />
+        )}
+        {activeMarkPoints.map((point, index) => (
+          <span
+            key={point.id}
+            className="linghuiImageMarkPoint"
+            style={cssVars({
+              '--linghui-mark-x': `${point.x * 100}%`,
+              '--linghui-mark-y': `${point.y * 100}%`,
+            })}
+          >
+            {index + 1}
+          </span>
+        ))}
+      </div>
+
+      {activeMarkPoints.length > 0 && (
+        <div className="linghuiImageMarkList">
+          {activeMarkPoints.map((point, index) => (
+            <div key={point.id} className="linghuiImageMarkListItem">
+              <span>{point.label || `标记 ${index + 1}`}</span>
+              <strong>
+                {formatMarkPointPercent(point.x)}, {formatMarkPointPercent(point.y)}
+              </strong>
+              <button type="button" onClick={() => handleRemoveMarkPoint(point.id)}>
+                删除
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="linghuiImageFocusActions">
+        <Button size="small" onClick={handleClearMarkPoints} disabled={normalizedMarkPoints.length === 0}>
+          清除标记
+        </Button>
+      </div>
+    </div>
+  ) : null;
+
   if (isImportMode) {
+    // LibTV 1:1：素材节点本身已经展示图片 + 节点上方上传/工具浮按钮，编辑器面板不再重复显示大预览图，
+    // 只保留"文件名 + 替换/清空"轻量操作行，避免反人类的"上下两张图"重复。
     return (
       <div className="linghuiEditorPanel" onMouseDown={event => event.stopPropagation()}>
-        <div className="linghuiEditorSection">
-          <div
-            className={`linghuiReferenceDropzone linghuiImageImportSurface isCompact ${hasCurrentImage ? 'hasPreview' : ''}`}
-            onClick={() => void handleReplaceImage()}
-            role="button"
-            tabIndex={0}
-            onKeyDown={event => {
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault();
-                void handleReplaceImage();
-              }
-            }}
-          >
-            {hasCurrentImage ? (
-              <>
-                <img
-                  className="linghuiReferencePreview"
-                  src={currentImagePreview}
-                  alt={currentImage?.label || nodeData.label}
-                />
-                <div className="linghuiEditorPlayerOverlay">
-                  <span className="linghuiEditorSummaryPill">点击更换图片</span>
-                  <span className="linghuiEditorSummaryPill">{currentImage?.label || nodeData.label}</span>
-                </div>
-              </>
-            ) : (
-              <div className="linghuiReferencePlaceholder">
-                <UploadCloud size={28} />
-                <div>点击导入图片</div>
-                <div className="linghuiReferencePlaceholderHint">导入后节点会直接输出当前图片</div>
-              </div>
-            )}
-          </div>
-        </div>
-
         <div className="linghuiEditorControlRow">
           {hasCurrentImage ? (
             <span className="linghuiEditorSummaryPill">{currentImage?.label || nodeData.label}</span>
-          ) : null}
+          ) : (
+            <span className="linghuiEditorSummaryPill">尚未上传图片</span>
+          )}
           <div className="linghuiEditorActionGroup">
             <Button size="small" icon={<UploadCloud size={14} />} onClick={() => void handleReplaceImage()}>
               {hasCurrentImage ? '替换图片' : '导入图片'}
@@ -489,6 +850,13 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
         </div>
       )}
 
+      {isDerivedFromController && (
+        <div className="linghuiEditorDerivedBanner" role="note">
+          <span className="linghuiEditorDerivedBannerBadge">派生</span>
+          <span className="linghuiEditorDerivedBannerText">{derivedBannerText}</span>
+        </div>
+      )}
+
       <div className="linghuiEditorPrompt">
         <LinghuiPromptEditor
           value={prompt}
@@ -500,6 +868,9 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
           maxHeight="176px"
         />
       </div>
+
+      {focusRegionPanel}
+      {markPointPanel}
 
       <div className="linghuiEditorControlRow">
         <Dropdown

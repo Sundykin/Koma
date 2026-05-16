@@ -30,6 +30,7 @@
     "@xyflow/react": "^12.10.1",
     "antd": "^6.2.1",
     "ds-markdown": "^1.0.4",
+    "elkjs": "^0.11.1",
     "i18next": "^25.8.0",
     "jsonrepair": "^3.13.3",
     "lucide-react": "^0.562.0",

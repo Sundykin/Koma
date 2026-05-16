@@ -50,6 +50,7 @@ function HookProbe({
     setPendingGroupFrame,
     closeContextMenu: vi.fn(),
     closeQuickCreate: vi.fn(),
+    closeQuickCreateFromPane: vi.fn(),
     openContextMenuAt: vi.fn(),
     emitSnapshot: vi.fn(),
     onNodeDragStart: onDragStart,
@@ -102,7 +103,7 @@ describe('useLinghuiCanvasNodeInteractions', () => {
         kind: 'node',
         nodeId: 'director-1',
         nodeType: 'linghui/director3d',
-        label: '3D 导演',
+        label: '3D 导演工作台',
       });
     });
   });
@@ -131,7 +132,7 @@ describe('useLinghuiCanvasNodeInteractions', () => {
       kind: 'node',
       nodeId: 'director-1',
       nodeType: 'linghui/director3d',
-      label: '3D 导演',
+      label: '3D 导演工作台',
     });
 
     fireEvent.click(getByTestId('body'));
@@ -141,7 +142,7 @@ describe('useLinghuiCanvasNodeInteractions', () => {
         kind: 'node',
         nodeId: 'director-1',
         nodeType: 'linghui/director3d',
-        label: '3D 导演',
+        label: '3D 导演工作台',
       });
     });
   });

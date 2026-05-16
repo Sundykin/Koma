@@ -2,9 +2,13 @@ import { describe, expect, it } from 'vitest';
 import type { LinghuiCanvasDocumentSnapshot } from '../state/linghuiCanvasShared';
 import {
   buildCanvasDocumentSnapshotFromRF,
+  buildLinghuiClipboardSnapshotFromRF,
+  createCanvasNode,
   buildRFEdgesFromSnapshot,
   buildRFNodesFromSnapshot,
   detectCanvasMutationKind,
+  resolveCompatibleTargetHandleId,
+  resolveCompatibleTargetSlotType,
   serializeCanvasDocumentSnapshot,
 } from '../state/linghuiCanvasShared';
 
@@ -170,6 +174,10 @@ describe('detectCanvasMutationKind', () => {
         target: 'video-1',
         sourceHandle: 'output-2',
         targetHandle: 'input-3',
+        data: {
+          sourceSlotType: 'image',
+          targetSlotType: 'image',
+        },
       },
     ], {
       x: 0,
@@ -180,6 +188,10 @@ describe('detectCanvasMutationKind', () => {
     expect(snapshot.graphData.edges[0]).toEqual(expect.objectContaining({
       sourceHandle: 'output-0',
       targetHandle: 'input-0',
+      data: {
+        sourceSlotType: 'image',
+        targetSlotType: 'image',
+      },
     }));
 
     const hydratedEdges = buildRFEdgesFromSnapshot({
@@ -194,6 +206,10 @@ describe('detectCanvasMutationKind', () => {
             target: 'video-1',
             sourceHandle: 'output-1',
             targetHandle: 'input-2',
+            data: {
+              sourceSlotType: 'image',
+              targetSlotType: 'image',
+            },
           },
         ],
         groups: [],
@@ -203,6 +219,10 @@ describe('detectCanvasMutationKind', () => {
     expect(hydratedEdges[0]).toEqual(expect.objectContaining({
       sourceHandle: 'output-0',
       targetHandle: 'input-0',
+      data: {
+        sourceSlotType: 'image',
+        targetSlotType: 'image',
+      },
     }));
   });
 
@@ -236,6 +256,131 @@ describe('detectCanvasMutationKind', () => {
         linghuiType: 'linghui/director3d',
       }),
     }));
+  });
+
+  it('creates preset nodes and keeps the unified handle while recording compatible target semantics', () => {
+    const node = createCanvasNode('linghui/video', { x: 0, y: 0 }, [], {
+      label: '图生视频',
+      initialProperties: { videoCapability: 'video.image-to-video' },
+    });
+    const data = node.data as any;
+
+    expect(data.label).toBe('图生视频');
+    expect(data.properties.videoCapability).toBe('video.image-to-video');
+    expect(resolveCompatibleTargetHandleId('linghui/video', 'image')).toBe('input-0');
+    expect(resolveCompatibleTargetSlotType('linghui/video', 'image')).toBe('image');
+    // audio 输出无法直接连到统一图片节点（只接 image / text 输入）。
+    expect(resolveCompatibleTargetHandleId('linghui/image', 'audio')).toBeNull();
+  });
+
+  it('keeps plain copies scoped to selected nodes without external links', () => {
+    const snapshot = buildLinghuiClipboardSnapshotFromRF(
+      [
+        {
+          id: 'source-text',
+          type: 'linghui-text',
+          position: { x: 0, y: 0 },
+          data: createCanvasNode('linghui/text', { x: 0, y: 0 }, []).data,
+        },
+        {
+          id: 'selected-image',
+          type: 'linghui-image',
+          position: { x: 240, y: 0 },
+          selected: true,
+          data: createCanvasNode('linghui/image', { x: 240, y: 0 }, []).data,
+        },
+        {
+          id: 'downstream-video',
+          type: 'linghui-video',
+          position: { x: 480, y: 0 },
+          data: createCanvasNode('linghui/video', { x: 480, y: 0 }, []).data,
+        },
+      ],
+      [
+        {
+          id: 'edge-upstream',
+          source: 'source-text',
+          target: 'selected-image',
+          sourceHandle: 'output-0',
+          targetHandle: 'input-0',
+          type: 'linghui-edge',
+        },
+        {
+          id: 'edge-downstream',
+          source: 'selected-image',
+          target: 'downstream-video',
+          sourceHandle: 'output-0',
+          targetHandle: 'input-0',
+          type: 'linghui-edge',
+        },
+      ],
+    );
+
+    expect(snapshot?.nodes.map(node => node.id)).toEqual(['selected-image']);
+    expect(snapshot?.edges).toEqual([]);
+  });
+
+  it('lets duplicate snapshots inherit external upstream links but not downstream links', () => {
+    const snapshot = buildLinghuiClipboardSnapshotFromRF(
+      [
+        {
+          id: 'source-text',
+          type: 'linghui-text',
+          position: { x: 0, y: 0 },
+          data: createCanvasNode('linghui/text', { x: 0, y: 0 }, []).data,
+        },
+        {
+          id: 'selected-image',
+          type: 'linghui-image',
+          position: { x: 240, y: 0 },
+          selected: true,
+          data: createCanvasNode('linghui/image', { x: 240, y: 0 }, []).data,
+        },
+        {
+          id: 'downstream-video',
+          type: 'linghui-video',
+          position: { x: 480, y: 0 },
+          data: createCanvasNode('linghui/video', { x: 480, y: 0 }, []).data,
+        },
+      ],
+      [
+        {
+          id: 'edge-upstream',
+          source: 'source-text',
+          target: 'selected-image',
+          sourceHandle: 'output-0',
+          targetHandle: 'input-0',
+          type: 'linghui-edge',
+          data: {
+            sourceSlotType: 'text',
+            targetSlotType: 'text',
+          },
+        },
+        {
+          id: 'edge-downstream',
+          source: 'selected-image',
+          target: 'downstream-video',
+          sourceHandle: 'output-0',
+          targetHandle: 'input-0',
+          type: 'linghui-edge',
+        },
+      ],
+      undefined,
+      { includeExternalInputEdges: true },
+    );
+
+    expect(snapshot?.nodes.map(node => node.id)).toEqual(['selected-image']);
+    expect(snapshot?.edges).toEqual([
+      expect.objectContaining({
+        id: 'edge-upstream',
+        source: 'source-text',
+        target: 'selected-image',
+        data: {
+          sourceSlotType: 'text',
+          targetSlotType: 'text',
+        },
+      }),
+    ]);
   });
 
   it('hydrates sparse restored panorama and director3d nodes with current defaults', () => {

@@ -3,6 +3,34 @@
 
 /* Node editor shell, top bar, dropdown surface */
 
+.linghuiEditorDerivedBanner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--token-status-success) 36%, transparent);
+  background: color-mix(in srgb, var(--token-status-success) 14%, transparent);
+
+  &Badge {
+    padding: 1px 8px;
+    border-radius: 9999px;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    color: var(--token-status-success);
+    background: color-mix(in srgb, var(--token-status-success) 26%, transparent);
+    border: 1px solid color-mix(in srgb, var(--token-status-success) 60%, transparent);
+  }
+
+  &Text {
+    font-size: 12px;
+    line-height: 1.5;
+    color: $lh-text-strong;
+  }
+}
+
 .linghuiNodeEditor {
   &Container {
     position: absolute;
@@ -85,11 +113,17 @@
   &TopBarActions {
     align-items: center;
     gap: 10px;
+    flex: 1 1 auto;
+    justify-content: flex-end;
   }
 
   &ToolRail,
   &GridToolRail {
     flex-wrap: wrap;
+    max-width: min(100%, 690px);
+    max-height: 72px;
+    overflow: auto;
+    scrollbar-width: thin;
   }
 
   &GridToolRail {
@@ -98,6 +132,78 @@
 
   &ToolButton {
     @include lh-chip-button(30px, 0 12px);
+
+    flex: 0 0 auto;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+
+    &.isPlaceholder {
+      opacity: 0.66;
+      cursor: not-allowed;
+    }
+
+    &Icon,
+    &HintIcon {
+      flex: 0 0 auto;
+      color: color-mix(in srgb, var(--token-text-primary) 78%, transparent);
+    }
+
+    &HintIcon {
+      color: color-mix(in srgb, var(--token-accent-base) 88%, transparent);
+    }
+
+    &Caret {
+      flex: 0 0 auto;
+      opacity: 0.72;
+    }
+
+    &Badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 22px;
+      height: 16px;
+      padding: 0 5px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      color: var(--token-text-primary);
+      background: color-mix(in srgb, var(--token-text-primary) 14%, transparent);
+      border: 1px solid color-mix(in srgb, var(--token-text-primary) 24%, transparent);
+    }
+  }
+
+  &ToolRail.isLibTVVideo {
+    // LibTV 视频工具条样式（截图复刻）：圆角药丸面板，统一 36px 高，icon + 文案，间隔 14px。
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    border-radius: 18px;
+    background: color-mix(in srgb, var(--token-bg-app) 86%, transparent);
+    box-shadow: 0 8px 22px color-mix(in srgb, var(--token-bg-app) 28%, transparent);
+    backdrop-filter: blur(20px);
+
+    .linghuiNodeEditorToolButton {
+      height: 36px;
+      padding: 0 14px;
+      border-radius: 12px;
+      background: transparent;
+      box-shadow: none;
+      color: $lh-text-primary;
+      font-weight: 600;
+
+      &:hover {
+        background: color-mix(in srgb, var(--token-bg-elevated) 80%, transparent);
+      }
+
+      &.isActive {
+        background: color-mix(in srgb, var(--token-accent-base) 24%, transparent);
+        color: var(--token-text-primary);
+      }
+    }
   }
 
   &CloseButton {

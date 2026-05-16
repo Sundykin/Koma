@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { LinghuiNodeResult } from './linghui';
 import {
+  buildLinghuiImageCinematicPromptFragment,
   getLinghuiResultItemCount,
   getLinghuiResultItems,
   getLinghuiResultPrimaryMedia,
   getLinghuiResultShots,
   getLinghuiResultText,
   linghuiTypeToRFType,
+  normalizeLinghuiImageCinematicConfig,
   rfTypeToLinghuiType,
 } from './linghui';
 
@@ -117,5 +119,40 @@ describe('linghui result helpers', () => {
     expect(getLinghuiResultText(storyboardResult)).toBe(storyboardResult.text);
     expect(getLinghuiResultText(audioResult)).toBe(audioResult.text);
     expect(getLinghuiResultText(imageResult)).toBeUndefined();
+  });
+});
+
+describe('linghui cinematic config', () => {
+  it('falls back to auto on unknown or missing values', () => {
+    expect(normalizeLinghuiImageCinematicConfig(undefined)).toEqual({
+      lighting: 'auto',
+      focalLength: 'auto',
+      aperture: 'auto',
+    });
+    expect(normalizeLinghuiImageCinematicConfig({
+      lighting: 'unknown' as never,
+      focalLength: 'nope' as never,
+      aperture: 'xyz' as never,
+    })).toEqual({
+      lighting: 'auto',
+      focalLength: 'auto',
+      aperture: 'auto',
+    });
+  });
+
+  it('returns empty fragment when everything is auto', () => {
+    expect(buildLinghuiImageCinematicPromptFragment(undefined)).toBe('');
+    expect(buildLinghuiImageCinematicPromptFragment({})).toBe('');
+  });
+
+  it('builds english fragment for non-default cinematic values', () => {
+    const fragment = buildLinghuiImageCinematicPromptFragment({
+      lighting: 'rembrandt',
+      focalLength: 'portrait-85mm',
+      aperture: 'shallow-f14',
+    });
+    expect(fragment).toContain('rembrandt');
+    expect(fragment).toContain('85mm');
+    expect(fragment.toLowerCase()).toContain('f/1.4');
   });
 });

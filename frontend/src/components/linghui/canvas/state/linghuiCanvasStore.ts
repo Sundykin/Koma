@@ -31,6 +31,13 @@ interface LinghuiCanvasUiState {
   previousGridSplitTool: LinghuiNodeToolState;
   contextMenu: LinghuiCanvasMenuState | null;
   quickCreate: QuickCreateState | null;
+  /**
+   * 抑制 paneClick 关闭 quickCreate 的截止时间。
+   * React Flow 在连线松开时会立即触发 onPaneClick（mouseup 也算 click），导致刚开的 quickCreate
+   * 在同一帧被 handlePaneClick 关掉。这里给 250ms 的护栏：openQuickCreateAt 后写入时间戳，
+   * closeQuickCreateFromPane 检查到仍在窗口内则不关。其它路径（Esc、点节点、选下游）仍正常关闭。
+   */
+  paneClickQuickCreateSuppressUntil: number;
   activeDrawer: LinghuiLibraryDrawerKey | null;
 }
 
@@ -50,6 +57,8 @@ interface LinghuiCanvasUiActions {
   setQuickCreate: (state: QuickCreateState | null) => void;
   closeContextMenu: () => void;
   closeQuickCreate: () => void;
+  /** 来自 onPaneClick 的关闭请求；如在 suppress 窗口内则忽略，避免连线松开后立刻被 pane click 关掉。 */
+  closeQuickCreateFromPane: () => void;
   openContextMenuAt: (params: {
     clientX: number;
     clientY: number;
@@ -107,9 +116,12 @@ function createInitialCanvasUiState(): LinghuiCanvasUiState {
     previousGridSplitTool: null,
     contextMenu: null,
     quickCreate: null,
+    paneClickQuickCreateSuppressUntil: 0,
     activeDrawer: null,
   };
 }
+
+const QUICK_CREATE_PANE_CLICK_SUPPRESS_MS = 250;
 
 function isGridSplitTool(tool: LinghuiNodeToolState): tool is Exclude<LinghuiNodeToolState, null> & {
   kind: 'image';
@@ -118,7 +130,7 @@ function isGridSplitTool(tool: LinghuiNodeToolState): tool is Exclude<LinghuiNod
   return tool?.kind === 'image' && tool.tool === 'grid-split';
 }
 
-export const useLinghuiCanvasStore = create<LinghuiCanvasStoreState>((set) => ({
+export const useLinghuiCanvasStore = create<LinghuiCanvasStoreState>((set, get) => ({
   ...createInitialCanvasUiState(),
 
   setSelection(selection) {
@@ -212,7 +224,16 @@ export const useLinghuiCanvasStore = create<LinghuiCanvasStoreState>((set) => ({
   },
 
   closeQuickCreate() {
-    set({ quickCreate: null });
+    set({ quickCreate: null, paneClickQuickCreateSuppressUntil: 0 });
+  },
+
+  closeQuickCreateFromPane() {
+    const suppressUntil = get().paneClickQuickCreateSuppressUntil;
+    if (suppressUntil && Date.now() < suppressUntil) {
+      // 抑制窗口内：来自 React Flow onPaneClick 的关闭被丢弃，避免连线松开同帧把刚弹的面板关掉。
+      return;
+    }
+    set({ quickCreate: null, paneClickQuickCreateSuppressUntil: 0 });
   },
 
   openContextMenuAt({ clientX, clientY, hostRect, kind, extras }) {
@@ -237,16 +258,21 @@ export const useLinghuiCanvasStore = create<LinghuiCanvasStoreState>((set) => ({
   openQuickCreateAt({ clientX, clientY, hostRect, options }) {
     const rawX = clientX - hostRect.left;
     const rawY = clientY - hostRect.top;
+    const clampedX = clampOverlayPosition(rawX, QUICK_CREATE_WIDTH, hostRect.width);
+    const clampedY = clampOverlayPosition(rawY, QUICK_CREATE_HEIGHT, hostRect.height);
 
     set({
       contextMenu: null,
       quickCreate: {
-        x: clampOverlayPosition(rawX, QUICK_CREATE_WIDTH, hostRect.width),
-        y: clampOverlayPosition(rawY, QUICK_CREATE_HEIGHT, hostRect.height),
+        x: clampedX,
+        y: clampedY,
         screenX: clientX,
         screenY: clientY,
         sourceConnection: options?.sourceConnection,
       },
+      // 写入 250ms 抑制窗口；React Flow 在连线松开时会立刻冒泡 onPaneClick，paneClick 处理器会在
+      // 抑制窗口内忽略 close。其它路径（Esc、点节点、选下游、点击空白）不受影响。
+      paneClickQuickCreateSuppressUntil: Date.now() + QUICK_CREATE_PANE_CLICK_SUPPRESS_MS,
     });
   },
 

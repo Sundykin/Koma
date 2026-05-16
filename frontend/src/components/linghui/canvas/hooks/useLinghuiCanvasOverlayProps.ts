@@ -2,6 +2,7 @@ import { useCallback, useMemo } from 'react';
 import type { MutableRefObject } from 'react';
 import { nanoid } from 'nanoid';
 import type { MessageInstance } from 'antd/es/message/interface';
+import { Modal } from 'antd';
 import type { ReactFlowInstance } from '@xyflow/react';
 import type {
   LinghuiCanvasSelection,
@@ -10,12 +11,15 @@ import type {
   LinghuiImageAssetItem,
   LinghuiGridType,
   LinghuiImageNodeProperties,
+  LinghuiMediaItem,
   LinghuiMultiAngleConfig,
+  LinghuiNodeCatalogItem,
   LinghuiNodeData,
   LinghuiNodeRunState,
   LinghuiNodeToolState,
   LinghuiNodeType,
   LinghuiStoryboardFrame,
+  LinghuiVideoNodeProperties,
 } from '../../../../types/linghui';
 import { normalizeLinghuiMultiAngleConfig } from '../../../../types/linghui';
 import {
@@ -23,19 +27,31 @@ import {
   createLinghuiWorkspaceAsset,
   getLinghuiWorkspaceDir,
 } from '../../../../store/linghuiStorage';
+import { saveLinghuiGlobalAsset } from '../../../../store/linghuiGlobalAssets';
 import type { CssVarStyle } from '../../../../theme/runtime';
 import { getFileSystemPort, toFileSystemDisplayUrl } from '../../../../services/fileSystemPort';
 import { ffmpegManager } from '../../../../services/ffmpegManager';
 import { fromKomaLocalUrl } from '../../../../utils/urlUtils';
 import { createLogger } from '../../../../store/logger';
-import { stripDataHeader } from '../../../../utils/encoding';
-import { LINGHUI_NODE_CATALOG } from '../../library/state/linghuiNodeDefs';
+import { base64ToBytes, parseDataUrl, stripDataHeader } from '../../../../utils/encoding';
+import { LINGHUI_CANVAS_CREATE_MENU_CATALOG } from '../state/linghuiCanvasQuickCreateCatalog';
 import type { LinghuiCanvasMenuState, LinghuiClipboardSnapshot, QuickCreateState } from '../state/linghuiCanvasShared';
 import type { LinghuiCanvasOverlaysProps } from '../components/LinghuiCanvasOverlays';
 import {
+  resolveLinghuiCanvasResultCopyPayload,
+  resolveLinghuiCanvasResultCopyState,
+  type LinghuiCanvasResultCopyKind,
+} from '../state/linghuiCanvasResultActions';
+import {
+  createLinghuiImageImportProperties,
   resolveImageAspectRatioLabel,
+  resolveLinghuiImageCollection,
   resolveLinghuiImagePrimaryForNode,
 } from '../../editors/state/linghuiImageCollections';
+import {
+  getLinghuiResultItems,
+  getLinghuiResultPrimaryMedia,
+} from '../../../../types/linghui';
 
 const logger = createLogger('LinghuiImageExecution');
 const MULTI_ANGLE_RUN_SYNC_RETRY_LIMIT = 12;
@@ -77,6 +93,200 @@ function getExtensionFromMimeType(mimeType?: string, fallback = 'png'): string {
   if (normalized.includes('png')) return 'png';
   if (normalized.includes('webp')) return 'webp';
   return fallback;
+}
+
+function sanitizeAssetBaseName(label: string, fallback: string): string {
+  return String(label || fallback)
+    .replace(/[\\/:*?"<>|]+/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim()
+    || fallback;
+}
+
+function resolveMediaAspectRatio(media: LinghuiMediaItem): string | undefined {
+  const metadata = media.metadata;
+  if (metadata && typeof metadata === 'object' && !Array.isArray(metadata)) {
+    const aspectRatio = (metadata as Record<string, unknown>).aspectRatio;
+    if (typeof aspectRatio === 'string' && aspectRatio.trim()) {
+      return aspectRatio.trim();
+    }
+  }
+  return resolveImageAspectRatioLabel(media.width, media.height);
+}
+
+function imageMediaToAssetItem(media: LinghuiMediaItem, index: number): LinghuiImageAssetItem | null {
+  if (media.kind !== 'image') {
+    return null;
+  }
+
+  const source = String(media.source ?? '').trim();
+  if (!source) {
+    return null;
+  }
+
+  return {
+    id: `media:${source}`,
+    source,
+    label: media.label || `图片 ${index + 1}`,
+    width: media.width,
+    height: media.height,
+    mimeType: media.mimeType,
+    aspectRatio: resolveMediaAspectRatio(media),
+  };
+}
+
+function collectVideoItemsFromResult(runState?: LinghuiNodeRunState): LinghuiMediaItem[] {
+  const result = runState?.result;
+  if (!result) {
+    return [];
+  }
+
+  const items: LinghuiMediaItem[] = [];
+  const primary = getLinghuiResultPrimaryMedia(result);
+  if (primary?.kind === 'video') {
+    items.push(primary);
+  }
+  items.push(...getLinghuiResultItems(result).filter(item => item.kind === 'video'));
+
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = `${item.source ?? ''}|${item.posterSource ?? ''}`;
+    if (!key.trim() || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function isLocalVideoSourceForAudioSplit(source?: string): boolean {
+  const videoSource = decodeLinghuiLocalSource(String(source ?? '').trim());
+  return Boolean(videoSource) && (
+    !videoSource.startsWith('http://') &&
+    !videoSource.startsWith('https://') &&
+    !videoSource.startsWith('data:') &&
+    !videoSource.startsWith('blob:')
+  );
+}
+
+function uniqueVideoItems(items: LinghuiMediaItem[]): LinghuiMediaItem[] {
+  const seen = new Set<string>();
+  return items.filter(item => {
+    if (item.kind !== 'video') return false;
+    const key = `${item.source ?? ''}|${item.posterSource ?? ''}`;
+    if (!key.trim() || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+async function writeTextToClipboard(text: string): Promise<void> {
+  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  if (typeof document === 'undefined') {
+    throw new Error('当前环境不支持剪贴板');
+  }
+
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.setAttribute('readonly', 'true');
+  textarea.style.position = 'fixed';
+  textarea.style.left = '-9999px';
+  textarea.style.top = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+
+  try {
+    const copied = document.execCommand('copy');
+    if (!copied) {
+      throw new Error('复制失败');
+    }
+  } finally {
+    document.body.removeChild(textarea);
+  }
+}
+
+function inferImageClipboardMimeType(source: string): string {
+  const normalized = source.split('?')[0].split('#')[0].toLowerCase();
+  if (normalized.endsWith('.jpg') || normalized.endsWith('.jpeg')) return 'image/jpeg';
+  if (normalized.endsWith('.webp')) return 'image/webp';
+  if (normalized.endsWith('.gif')) return 'image/gif';
+  return 'image/png';
+}
+
+function getClipboardItemConstructor(): typeof ClipboardItem | undefined {
+  if (typeof ClipboardItem !== 'undefined') {
+    return ClipboardItem;
+  }
+  const globalClipboardItem = (globalThis as unknown as { ClipboardItem?: typeof ClipboardItem }).ClipboardItem;
+  return globalClipboardItem;
+}
+
+async function readImageBlobFromSource(source: string): Promise<Blob> {
+  const trimmedSource = source.trim();
+  if (!trimmedSource) {
+    throw new Error('缺少可复制的图片');
+  }
+
+  if (trimmedSource.startsWith('data:')) {
+    const { mimeType, bytes } = parseDataUrl(trimmedSource);
+    return new Blob([bytes], { type: mimeType || 'image/png' });
+  }
+
+  if (trimmedSource.startsWith('http://') || trimmedSource.startsWith('https://') || trimmedSource.startsWith('blob:')) {
+    const response = await fetch(trimmedSource);
+    if (!response.ok) {
+      throw new Error('图片读取失败');
+    }
+    return response.blob();
+  }
+
+  const localPath = decodeLinghuiLocalSource(trimmedSource);
+  const base64 = await getFileSystemPort().readBase64(localPath);
+  return new Blob([base64ToBytes(base64)], { type: inferImageClipboardMimeType(localPath) });
+}
+
+async function normalizeImageBlobForClipboard(blob: Blob): Promise<Blob> {
+  if (blob.type === 'image/png') {
+    return blob;
+  }
+
+  const bitmap = await createImageBitmap(blob);
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const context = canvas.getContext('2d');
+    if (!context) {
+      throw new Error('无法创建图片复制画布');
+    }
+    context.drawImage(bitmap, 0, 0);
+    return await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((nextBlob) => {
+        nextBlob ? resolve(nextBlob) : reject(new Error('图片转换失败'));
+      }, 'image/png');
+    });
+  } finally {
+    bitmap.close();
+  }
+}
+
+async function writeImageToClipboard(source: string): Promise<void> {
+  if (typeof navigator === 'undefined' || !navigator.clipboard?.write) {
+    throw new Error('当前环境不支持复制图片');
+  }
+
+  const ClipboardItemCtor = getClipboardItemConstructor();
+  if (!ClipboardItemCtor) {
+    throw new Error('当前环境不支持复制图片');
+  }
+
+  const sourceBlob = await readImageBlobFromSource(source);
+  const imageBlob = await normalizeImageBlobForClipboard(sourceBlob);
+  await navigator.clipboard.write([
+    new ClipboardItemCtor({ 'image/png': imageBlob }),
+  ]);
 }
 
 async function materializeGridSplitInputSource(params: {
@@ -171,6 +381,7 @@ interface UseLinghuiCanvasOverlayPropsParams {
     updater: (prev: LinghuiNodeData) => LinghuiNodeData,
     options?: { markStale?: boolean },
   ) => void;
+  onClearNodeRunState?: (nodeId: string) => void;
   canvasRect: DOMRect | null;
   gridSplitType: LinghuiGridType;
   setGridSplitType: (type: LinghuiGridType) => void;
@@ -197,6 +408,8 @@ interface UseLinghuiCanvasOverlayPropsParams {
   onRunSelection?: (selectionIds?: string[]) => void;
   onRunAll?: () => void;
   onExportSelection?: (selectionIds?: string[]) => void;
+  onFormatLayout: () => void;
+  onOpenShortcutPanel: () => void;
   onRunSingleNodeRef: MutableRefObject<((nodeId: string) => void) | undefined>;
   openQuickCreateAt: (
     clientX: number,
@@ -211,14 +424,26 @@ interface UseLinghuiCanvasOverlayPropsParams {
     options?: {
       openEditor?: boolean;
       sourceConnection?: QuickCreateState['sourceConnection'];
+      label?: string;
+      initialProperties?: Record<string, unknown>;
     },
   ) => void;
   deriveStoryboardShotsFromScript: (nodeId: string, shots: LinghuiStoryboardFrame[]) => boolean;
   deriveStoryboardImagesFromScript: (nodeId: string, shots: LinghuiStoryboardFrame[]) => string[];
   deriveStoryboardVideosFromScript: (nodeId: string, shots: LinghuiStoryboardFrame[]) => string[];
   createDerivedImageNodesFromNode: (sourceNodeId: string, items: LinghuiImageAssetItem[]) => string[];
+  createDerivedVideoNodesFromNode: (sourceNodeId: string, items: LinghuiMediaItem[]) => string[];
+  createDerivedPanoramaNodeFromNode: (sourceNodeId: string, item: LinghuiImageAssetItem) => string | null;
+  createDerivedAudioNodeFromVideo: (
+    sourceNodeId: string,
+    options: { source: string; label?: string; prompt?: string },
+  ) => string | null;
   createDerivedMultiAngleImageNodeFromNode: (sourceNodeId: string, options?: LinghuiExecuteMultiAngleOptions) => string | null;
-  spawnImageFromGenerator: (controllerNodeId: string) => string | null;
+  createDerivedImageToolNodeFromNode: (sourceNodeId: string, options: {
+    label?: string;
+    prompt: string;
+    properties?: Partial<LinghuiImageNodeProperties>;
+  }) => string | null;
   copySelectionToClipboard: (requestedIds?: string[]) => boolean;
   duplicateSelection: (
     requestedIds?: string[],
@@ -246,6 +471,7 @@ export function useLinghuiCanvasOverlayProps({
   executionQueue,
   workspaceId,
   updateNodeData,
+  onClearNodeRunState,
   canvasRect,
   gridSplitType,
   setGridSplitType,
@@ -272,6 +498,8 @@ export function useLinghuiCanvasOverlayProps({
   onRunSelection,
   onRunAll,
   onExportSelection,
+  onFormatLayout,
+  onOpenShortcutPanel,
   onRunSingleNodeRef,
   openQuickCreateAt,
   closeContextMenu,
@@ -280,8 +508,11 @@ export function useLinghuiCanvasOverlayProps({
   deriveStoryboardImagesFromScript,
   deriveStoryboardVideosFromScript,
   createDerivedImageNodesFromNode,
+  createDerivedVideoNodesFromNode,
+  createDerivedPanoramaNodeFromNode,
+  createDerivedAudioNodeFromVideo,
   createDerivedMultiAngleImageNodeFromNode,
-  spawnImageFromGenerator,
+  createDerivedImageToolNodeFromNode,
   copySelectionToClipboard,
   duplicateSelection,
   pasteClipboardSnapshot,
@@ -340,22 +571,105 @@ export function useLinghuiCanvasOverlayProps({
     return reactFlow.getNode(contextMenu.nodeId) ?? null;
   }, [contextMenu, reactFlow]);
 
-  const addNodeFromMenu = useCallback((type: LinghuiNodeType) => {
+  const contextMenuNodeRun = contextMenu?.nodeId ? nodeRuns[contextMenu.nodeId] : undefined;
+
+  const contextMenuResultCopyState = useMemo(
+    () => resolveLinghuiCanvasResultCopyState(contextMenuNodeRun),
+    [contextMenuNodeRun],
+  );
+
+  const contextMenuMediaActionState = useMemo(() => {
+    if (!contextMenuNode || contextMenuNode.type === 'group') {
+      return {
+        imageItems: [] as LinghuiImageAssetItem[],
+        primaryImage: null as LinghuiImageAssetItem | null,
+        videoItems: [] as LinghuiMediaItem[],
+      };
+    }
+
+    const nodeData = contextMenuNode.data as unknown as LinghuiNodeData;
+    const imageItems = (() => {
+      if (nodeData.linghuiType === 'linghui/image' || nodeData.linghuiType === 'linghui/panorama') {
+        const collection = resolveLinghuiImageCollection(
+          nodeData.properties as unknown as LinghuiImageNodeProperties,
+          contextMenuNodeRun?.result,
+        );
+        return {
+          items: collection.items
+            .map((item, index) => imageMediaToAssetItem(item, index))
+            .filter((item): item is LinghuiImageAssetItem => Boolean(item)),
+          primary: collection.primary ? imageMediaToAssetItem(collection.primary, 0) : null,
+        };
+      }
+
+      const primary = getLinghuiResultPrimaryMedia(contextMenuNodeRun?.result);
+      const resultItems = [
+        ...(primary?.kind === 'image' ? [primary] : []),
+        ...getLinghuiResultItems(contextMenuNodeRun?.result).filter(item => item.kind === 'image'),
+      ];
+      const items = resultItems
+        .map((item, index) => imageMediaToAssetItem(item, index))
+        .filter((item): item is LinghuiImageAssetItem => Boolean(item));
+      return { items, primary: items[0] ?? null };
+    })();
+
+    const propertyVideoItems = (() => {
+      if (nodeData.linghuiType !== 'linghui/video') {
+        return [] as LinghuiMediaItem[];
+      }
+      const props = nodeData.properties as unknown as LinghuiVideoNodeProperties;
+      const source = String(props.source ?? '').trim();
+      const posterSource = String(props.posterSource ?? '').trim();
+      if (!source && !posterSource) {
+        return [] as LinghuiMediaItem[];
+      }
+      return [{
+        kind: 'video',
+        source,
+        posterSource,
+        label: nodeData.label,
+      } satisfies LinghuiMediaItem];
+    })();
+
+    const generatorNodeId = (() => {
+      if (nodeData.linghuiType !== 'linghui/image') return null;
+      // image-generator 控制器节点已废弃；统一图片节点没有"回控制器"流程，永远返回 null。
+      // 历史 generatedFromNodeId 字段保留作为派生关系记录，但 UI 不再暴露"返回生成节点"。
+      return null;
+    })();
+
+    return {
+      imageItems: imageItems.items,
+      primaryImage: imageItems.primary ?? imageItems.items[0] ?? null,
+      videoItems: uniqueVideoItems([
+        ...propertyVideoItems,
+        ...collectVideoItemsFromResult(contextMenuNodeRun),
+      ]),
+      generatorNodeId,
+    };
+  }, [contextMenuNode, contextMenuNodeRun, reactFlow]);
+
+  const addNodeFromMenu = useCallback((item: LinghuiNodeCatalogItem) => {
     if (!contextMenu) {
       return;
     }
 
-    insertNodeAtScreenPosition(type, contextMenu.screenX, contextMenu.screenY);
+    insertNodeAtScreenPosition(item.type, contextMenu.screenX, contextMenu.screenY, {
+      label: item.nodeLabel,
+      initialProperties: item.initialProperties,
+    });
   }, [contextMenu, insertNodeAtScreenPosition]);
 
-  const addNodeFromQuickCreate = useCallback((type: LinghuiNodeType) => {
+  const addNodeFromQuickCreate = useCallback((item: LinghuiNodeCatalogItem) => {
     if (!quickCreate) {
       return;
     }
 
-    insertNodeAtScreenPosition(type, quickCreate.screenX, quickCreate.screenY, {
+    insertNodeAtScreenPosition(item.type, quickCreate.screenX, quickCreate.screenY, {
       openEditor: true,
       sourceConnection: quickCreate.sourceConnection,
+      label: item.nodeLabel,
+      initialProperties: item.initialProperties,
     });
   }, [insertNodeAtScreenPosition, quickCreate]);
 
@@ -404,6 +718,300 @@ export function useLinghuiCanvasOverlayProps({
       message.error(error?.message || '创建资产失败');
     }
   }, [message, nodeRuns, onAssetLibraryMutate, reactFlow, workspaceId]);
+
+  const handleOpenPanoramaPreviewFromNode = useCallback((nodeId: string) => {
+    const primaryImage = contextMenuMediaActionState.primaryImage;
+    if (!primaryImage) {
+      message.info('当前节点没有可进入全景预览的图片');
+      return;
+    }
+
+    const createdId = createDerivedPanoramaNodeFromNode(nodeId, primaryImage);
+    if (!createdId) {
+      message.info('当前节点暂时不能创建全景预览');
+      return;
+    }
+
+    message.success('已创建全景预览节点');
+  }, [contextMenuMediaActionState.primaryImage, createDerivedPanoramaNodeFromNode, message]);
+
+  const handleCreateSubjectFromNode = useCallback(async (nodeId: string) => {
+    const targetNode = reactFlow.getNode(nodeId);
+    if (!targetNode || targetNode.type === 'group') {
+      message.info('当前工作流块不支持创建主体');
+      return;
+    }
+
+    const nodeData = targetNode.data as unknown as LinghuiNodeData;
+    const referenceImages = contextMenuMediaActionState.imageItems
+      .map(item => item.source.trim())
+      .filter(Boolean)
+      .filter((source, index, all) => all.indexOf(source) === index)
+      .slice(0, 4);
+
+    if (!referenceImages.length) {
+      message.info('当前节点没有可用于创建主体的图片');
+      return;
+    }
+
+    const primaryLabel = contextMenuMediaActionState.primaryImage?.label?.trim();
+    const baseLabel = String(nodeData.label || primaryLabel || '画布主体').trim();
+    const label = /主体|角色|人物/.test(baseLabel) ? baseLabel : `${baseLabel} 主体`;
+    const promptHint = resolveLinghuiCanvasResultCopyPayload(nodeRuns[nodeId], 'text')?.value
+      ?? `由灵绘画布节点「${nodeData.label || nodeId}」创建。`;
+
+    try {
+      const asset = await saveLinghuiGlobalAsset({
+        kind: 'character',
+        label,
+        hint: '从灵绘画布节点创建',
+        promptHint: promptHint.slice(0, 1200),
+        favorite: true,
+        referenceImages,
+      });
+      message.success(`已创建主体：${asset.label}`);
+    } catch (error: any) {
+      message.error(error?.message || '创建主体失败');
+    }
+  }, [contextMenuMediaActionState.imageItems, contextMenuMediaActionState.primaryImage, message, nodeRuns, reactFlow]);
+
+  const handleCopyResultFromNode = useCallback(async (
+    nodeId: string,
+    kind: LinghuiCanvasResultCopyKind,
+  ) => {
+    const payload = resolveLinghuiCanvasResultCopyPayload(nodeRuns[nodeId], kind);
+    if (!payload) {
+      message.info('当前节点还没有可复制的结果');
+      return;
+    }
+
+    try {
+      await writeTextToClipboard(payload.value);
+      message.success(payload.successMessage);
+    } catch (error: any) {
+      message.error(error?.message || '复制失败，请稍后重试');
+    }
+  }, [message, nodeRuns]);
+
+  const handleCopyPrimaryImageFromNode = useCallback(async () => {
+    const primaryImage = contextMenuMediaActionState.primaryImage;
+    const source = String(primaryImage?.source ?? '').trim();
+    if (!source) {
+      message.info('当前节点没有可复制的图片');
+      return;
+    }
+
+    try {
+      await writeImageToClipboard(source);
+      message.success('图片已复制');
+    } catch (error: any) {
+      message.error(error?.message || '复制图片失败');
+    }
+  }, [contextMenuMediaActionState.primaryImage, message]);
+
+  const handleExpandImagesFromNode = useCallback((nodeId: string) => {
+    const createdIds = createDerivedImageNodesFromNode(nodeId, contextMenuMediaActionState.imageItems);
+    if (!createdIds.length) {
+      message.info('当前节点没有可展开的图片');
+      return;
+    }
+    message.success(`已展开 ${createdIds.length} 个图片节点`);
+  }, [contextMenuMediaActionState.imageItems, createDerivedImageNodesFromNode, message]);
+
+  const handleKeepOnlyCurrentImage = useCallback((nodeId: string) => {
+    const primaryImage = contextMenuMediaActionState.primaryImage;
+    if (!primaryImage) {
+      message.info('当前节点没有可保留的主图');
+      return;
+    }
+
+    updateNodeData(nodeId, (previous) => {
+      if (previous.linghuiType !== 'linghui/image' && previous.linghuiType !== 'linghui/panorama') {
+        return previous;
+      }
+
+      return {
+        ...previous,
+        properties: createLinghuiImageImportProperties(
+          previous.properties as unknown as LinghuiImageNodeProperties,
+          [primaryImage],
+          primaryImage.id,
+        ) as unknown as Record<string, unknown>,
+      };
+    }, { markStale: false });
+    onClearNodeRunState?.(nodeId);
+    message.success('已删除其他图片，仅保留当前主图');
+  }, [contextMenuMediaActionState.primaryImage, message, onClearNodeRunState, updateNodeData]);
+
+  const handleExpandVideosFromNode = useCallback((nodeId: string) => {
+    const createdIds = createDerivedVideoNodesFromNode(nodeId, contextMenuMediaActionState.videoItems);
+    if (!createdIds.length) {
+      message.info('当前节点没有可展开的视频');
+      return;
+    }
+    message.success(`已展开 ${createdIds.length} 个视频节点`);
+  }, [contextMenuMediaActionState.videoItems, createDerivedVideoNodesFromNode, message]);
+
+  const handleKeepOnlyCurrentVideo = useCallback((nodeId: string) => {
+    const primaryVideo = contextMenuMediaActionState.videoItems[0];
+    if (!primaryVideo) {
+      message.info('当前节点没有可保留的主视频');
+      return;
+    }
+
+    updateNodeData(nodeId, (previous) => {
+      if (previous.linghuiType !== 'linghui/video') {
+        return previous;
+      }
+      const previousProps = previous.properties as unknown as LinghuiVideoNodeProperties;
+      return {
+        ...previous,
+        properties: {
+          ...previousProps,
+          source: String(primaryVideo.source ?? ''),
+          posterSource: String(primaryVideo.posterSource ?? ''),
+        } as unknown as Record<string, unknown>,
+      };
+    }, { markStale: false });
+    onClearNodeRunState?.(nodeId);
+    message.success('已删除其他视频，仅保留当前主视频');
+  }, [contextMenuMediaActionState.videoItems, message, onClearNodeRunState, updateNodeData]);
+
+  /**
+   * 视频工具栏调用入口：按任意 nodeId 分离音轨，自己解析视频源，不依赖右键菜单 contextMenuMediaActionState。
+   * 对齐 LibTV "音频分离 → 音视频分离"：从节点 properties + 当前 run result 中找一个本地视频源，
+   * FFmpeg 拆出音轨，并通过 createDerivedAudioNodeFromVideo 派生 audio 节点。
+   */
+  const handleSeparateVideoAudioForNode = useCallback(async (targetNodeId: string) => {
+    const target = reactFlow.getNode(targetNodeId);
+    if (!target) {
+      message.error('未找到目标节点');
+      return;
+    }
+
+    const targetData = target.data as unknown as LinghuiNodeData | undefined;
+    if (targetData?.linghuiType !== 'linghui/video') {
+      message.info('当前节点不是视频节点');
+      return;
+    }
+
+    const videoProps = targetData.properties as unknown as LinghuiVideoNodeProperties | undefined;
+    const runResult = nodeRuns[targetNodeId]?.result;
+    const runVideo = getLinghuiResultPrimaryMedia(runResult);
+    const candidateSource = String(
+      runVideo?.source
+      ?? videoProps?.source
+      ?? '',
+    ).trim();
+
+    if (!candidateSource || !isLocalVideoSourceForAudioSplit(candidateSource)) {
+      message.info('当前视频需要先保存为本地文件，才能分离音轨');
+      return;
+    }
+
+    if (!workspaceId) {
+      message.warning('请先打开一个灵绘工作区，再分离音轨');
+      return;
+    }
+
+    try {
+      const decodedSource = decodeLinghuiLocalSource(candidateSource);
+      const mediaInfo = await ffmpegManager.getMediaInfo(decodedSource);
+      if (!mediaInfo?.hasAudio) {
+        message.info('当前视频没有可分离的音轨');
+        return;
+      }
+
+      const workspaceDir = await getLinghuiWorkspaceDir(workspaceId);
+      const outputDir = `${workspaceDir}/assets/extracted-audio`;
+      const fileSystemPort = getFileSystemPort();
+      await fileSystemPort.mkdir(outputDir);
+      const ext = mediaInfo.audioCodec === 'aac' ? 'm4a' : 'mp3';
+      const outputPath = `${outputDir}/${Date.now()}-${targetNodeId}.${ext}`;
+      const audioPath = await ffmpegManager.splitAudio(decodedSource, outputPath);
+      const createdId = createDerivedAudioNodeFromVideo(targetNodeId, {
+        source: audioPath,
+        label: `${String(targetData.label || '视频')} 音轨`,
+        prompt: '从视频内嵌音轨分离',
+      });
+      if (!createdId) {
+        message.info('音轨已分离，但未能创建音频节点');
+        return;
+      }
+      message.success('已分离内嵌音轨为独立音频节点');
+    } catch (error: any) {
+      message.error(error?.message || '分离音轨失败');
+    }
+  }, [createDerivedAudioNodeFromVideo, message, nodeRuns, reactFlow, workspaceId]);
+
+  /**
+   * LibTV "返回生成节点"：派生 image 节点的右键菜单上的高频跳转项。
+   * 选中控制器节点 + fitView 到该节点，让用户继续在控制器上调参再生成。
+   */
+  const handleReturnToGenerator = useCallback(() => {
+    const generatorId = contextMenuMediaActionState.generatorNodeId;
+    if (!generatorId) {
+      message.info('当前节点不是派生展示节点，没有可返回的控制器');
+      return;
+    }
+    const target = reactFlow.getNode(generatorId);
+    if (!target) {
+      message.error('生成器节点已删除');
+      return;
+    }
+    reactFlow.setNodes(previous => previous.map(node => ({
+      ...node,
+      selected: node.id === generatorId,
+    })));
+    reactFlow.fitView({
+      nodes: [{ id: generatorId }],
+      duration: 220,
+      maxZoom: 1.3,
+      minZoom: 0.6,
+    });
+  }, [contextMenuMediaActionState.generatorNodeId, message, reactFlow]);
+
+  const handleSeparateVideoAudioFromNode = useCallback(async (nodeId: string) => {
+    const primaryVideo = contextMenuMediaActionState.videoItems[0];
+    const videoSource = decodeLinghuiLocalSource(String(primaryVideo?.source ?? '').trim());
+    if (!primaryVideo || !isLocalVideoSourceForAudioSplit(primaryVideo.source)) {
+      message.info('当前视频需要先保存为本地文件，才能分离音轨');
+      return;
+    }
+
+    if (!workspaceId) {
+      message.warning('请先打开一个灵绘工作区，再分离音轨');
+      return;
+    }
+
+    try {
+      const mediaInfo = await ffmpegManager.getMediaInfo(videoSource);
+      if (!mediaInfo?.hasAudio) {
+        message.info('当前视频没有可分离的音轨');
+        return;
+      }
+
+      const workspaceDir = await getLinghuiWorkspaceDir(workspaceId);
+      const outputDir = `${workspaceDir}/assets/extracted-audio`;
+      const fileSystemPort = getFileSystemPort();
+      await fileSystemPort.mkdir(outputDir);
+      const ext = mediaInfo.audioCodec === 'aac' ? 'm4a' : 'mp3';
+      const outputPath = `${outputDir}/${Date.now()}-${nodeId}.${ext}`;
+      const audioPath = await ffmpegManager.splitAudio(videoSource, outputPath);
+      const createdId = createDerivedAudioNodeFromVideo(nodeId, {
+        source: audioPath,
+        label: `${contextMenuNode ? String((contextMenuNode.data as unknown as LinghuiNodeData).label || '视频') : '视频'} 音轨`,
+        prompt: '从视频内嵌音轨分离',
+      });
+      if (!createdId) {
+        message.info('音轨已分离，但未能创建音频节点');
+        return;
+      }
+      message.success('已分离内嵌音轨为独立音频节点');
+    } catch (error: any) {
+      message.error(error?.message || '分离音轨失败');
+    }
+  }, [contextMenuMediaActionState.videoItems, contextMenuNode, createDerivedAudioNodeFromVideo, message, workspaceId]);
 
   const resolveWorkflowTemplateName = useCallback((requestedIds?: string[]) => {
     const selectionIds = requestedIds?.length ? requestedIds : contextMenuSelectionIds;
@@ -476,6 +1084,7 @@ export function useLinghuiCanvasOverlayProps({
   }, [message, onRunSelection]);
 
   const applyImageToolPreset = useCallback((preset: {
+    label?: string;
     promptSnippet: string;
     properties?: Partial<LinghuiImageNodeProperties>;
   }) => {
@@ -483,19 +1092,37 @@ export function useLinghuiCanvasOverlayProps({
       return;
     }
 
-    updateNodeData(editorSelection.nodeId, prev => {
-      const previousProps = prev.properties as unknown as LinghuiImageNodeProperties;
-      return {
-        ...prev,
-        properties: {
-          ...previousProps,
-          ...preset.properties,
-          prompt: mergePromptSnippet(String(previousProps.prompt ?? ''), preset.promptSnippet),
-        } as unknown as Record<string, unknown>,
-      };
-    }, { markStale: true });
-    message.success('已应用节点预设');
-  }, [editorSelection, message, updateNodeData]);
+    const sourceNode = reactFlow.getNode(editorSelection.nodeId);
+    const sourceNodeData = sourceNode?.data as unknown as LinghuiNodeData | undefined;
+    const sourceProps = sourceNodeData?.properties as unknown as LinghuiImageNodeProperties | undefined;
+    const prompt = mergePromptSnippet(String(sourceProps?.prompt ?? ''), preset.promptSnippet);
+
+    // LibTV 1:1：工具 preset 创建下游 IMAGE_EDIT 节点（showGenerator: false），
+    // 连接 source → target edge，自动运行。与 LibTV `action: IMAGE_EDIT` 行为一致。
+    const createdId = createDerivedImageToolNodeFromNode(editorSelection.nodeId, {
+      label: preset.label
+        ? `${sourceNodeData?.label || '图片'} ${preset.label}`
+        : `${sourceNodeData?.label || '图片'} 工具生成`,
+      prompt,
+      properties: preset.properties,
+    });
+
+    if (!createdId) {
+      message.info('创建图片工具节点失败');
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      onRunSingleNodeRef.current?.(createdId);
+      message.success(`已创建${preset.label ? `「${preset.label}」` : ''}工具节点并开始执行`);
+    });
+  }, [
+    createDerivedImageToolNodeFromNode,
+    editorSelection,
+    message,
+    onRunSingleNodeRef,
+    reactFlow,
+  ]);
 
   const executeGridSplit = useCallback(async () => {
     if (!activeNodeTool || activeNodeTool.kind !== 'image' || activeNodeTool.tool !== 'grid-split') {
@@ -531,7 +1158,7 @@ export function useLinghuiCanvasOverlayProps({
 
     try {
       const nodeLabel = String(primaryImage?.label || nodeData.label || '图片').trim() || '图片';
-      const baseName = nodeLabel.replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim() || 'grid-source';
+      const baseName = sanitizeAssetBaseName(nodeLabel, 'grid-source');
       const inputPath = await materializeGridSplitInputSource({
         source,
         workspaceId,
@@ -592,6 +1219,152 @@ export function useLinghuiCanvasOverlayProps({
     nodeRuns,
     reactFlow,
     setGridSplitSelectedCells,
+    workspaceId,
+  ]);
+
+  const executeImageUpscale = useCallback(async (nodeId: string, options?: { factor?: 2 | 4 }) => {
+    const sourceNodeId = String(nodeId ?? '').trim();
+    if (!sourceNodeId) {
+      return;
+    }
+    if (!workspaceId) {
+      message.warning('请先打开灵绘工作区，再执行高清放大');
+      return;
+    }
+    if (!getFileSystemPort().capabilities.nativeLocalPaths) {
+      message.warning('当前文件系统实现不支持高清放大');
+      return;
+    }
+
+    setActiveNodeTool({ kind: 'image', nodeId: sourceNodeId, tool: 'upscale' });
+
+    const targetNode = reactFlow.getNode(sourceNodeId);
+    if (!targetNode || targetNode.type === 'group') {
+      message.info('当前节点不可执行高清放大');
+      return;
+    }
+
+    const nodeData = targetNode.data as unknown as LinghuiNodeData;
+    const primaryImage = resolveLinghuiImagePrimaryForNode(nodeData, nodeRuns[sourceNodeId]?.result);
+    const source = String(primaryImage?.source ?? '').trim();
+    if (!source) {
+      message.info('当前图片节点没有可放大的主图');
+      return;
+    }
+
+    const factor = options?.factor ?? 2;
+
+    try {
+      const nodeLabel = String(primaryImage?.label || nodeData.label || '图片').trim() || '图片';
+      const baseName = sanitizeAssetBaseName(nodeLabel, 'upscale-source');
+      const inputPath = await materializeGridSplitInputSource({
+        source,
+        workspaceId,
+        baseName,
+      });
+      const workspaceDir = await getLinghuiWorkspaceDir(workspaceId);
+      const outputDir = `${workspaceDir}/assets/upscaled-images/${sourceNodeId}`;
+      await getFileSystemPort().mkdir(outputDir);
+      const outputPath = `${outputDir}/${Date.now()}-${baseName}-${factor}x.png`;
+      const upscaledPath = await ffmpegManager.upscaleImage({
+        input: inputPath,
+        output: outputPath,
+        factor,
+        sharpenAmount: 0.9,
+      });
+      const upscaledItem = await createLinghuiImageAssetItemFromSource({
+        source: upscaledPath,
+        label: `${nodeLabel} 高清 ${factor}x`,
+      });
+      const createdIds = createDerivedImageNodesFromNode(sourceNodeId, [upscaledItem]);
+      setActiveNodeTool(null);
+      if (createdIds.length) {
+        message.success(`已创建高清放大图片节点（${factor}x）`);
+      } else {
+        message.info('高清图片已生成，但未能创建新节点');
+      }
+    } catch (error: any) {
+      message.error(error?.message || '高清放大失败');
+    }
+  }, [
+    createDerivedImageNodesFromNode,
+    message,
+    nodeRuns,
+    reactFlow,
+    setActiveNodeTool,
+    workspaceId,
+  ]);
+
+  const executeImageCrop = useCallback(async (nodeId: string, options: { aspectRatio: string; label?: string }) => {
+    const sourceNodeId = String(nodeId ?? '').trim();
+    if (!sourceNodeId) {
+      return;
+    }
+    if (!workspaceId) {
+      message.warning('请先打开灵绘工作区，再执行裁剪');
+      return;
+    }
+    if (!getFileSystemPort().capabilities.nativeLocalPaths) {
+      message.warning('当前文件系统实现不支持裁剪');
+      return;
+    }
+
+    setActiveNodeTool({ kind: 'image', nodeId: sourceNodeId, tool: 'crop' });
+
+    const targetNode = reactFlow.getNode(sourceNodeId);
+    if (!targetNode || targetNode.type === 'group') {
+      message.info('当前节点不可执行裁剪');
+      return;
+    }
+
+    const nodeData = targetNode.data as unknown as LinghuiNodeData;
+    const primaryImage = resolveLinghuiImagePrimaryForNode(nodeData, nodeRuns[sourceNodeId]?.result);
+    const source = String(primaryImage?.source ?? '').trim();
+    if (!source) {
+      message.info('当前图片节点没有可裁剪的主图');
+      return;
+    }
+
+    try {
+      const nodeLabel = String(primaryImage?.label || nodeData.label || '图片').trim() || '图片';
+      const cropLabel = String(options.label ?? '裁剪').trim() || '裁剪';
+      const aspectRatio = String(options.aspectRatio ?? '1:1').trim() || '1:1';
+      const baseName = sanitizeAssetBaseName(`${nodeLabel}-${cropLabel}`, 'crop-source');
+      const inputPath = await materializeGridSplitInputSource({
+        source,
+        workspaceId,
+        baseName,
+      });
+      const workspaceDir = await getLinghuiWorkspaceDir(workspaceId);
+      const outputDir = `${workspaceDir}/assets/cropped-images/${sourceNodeId}`;
+      await getFileSystemPort().mkdir(outputDir);
+      const outputPath = `${outputDir}/${Date.now()}-${baseName}-${aspectRatio.replace(/[^0-9a-zA-Z]+/g, 'x')}.png`;
+      const croppedPath = await ffmpegManager.cropImage({
+        input: inputPath,
+        output: outputPath,
+        aspectRatio,
+        sharpenAmount: 0.4,
+      });
+      const croppedItem = await createLinghuiImageAssetItemFromSource({
+        source: croppedPath,
+        label: `${nodeLabel} ${cropLabel}`,
+      });
+      const createdIds = createDerivedImageNodesFromNode(sourceNodeId, [croppedItem]);
+      setActiveNodeTool(null);
+      if (createdIds.length) {
+        message.success(`已创建${cropLabel}图片节点（${aspectRatio}）`);
+      } else {
+        message.info('裁剪图片已生成，但未能创建新节点');
+      }
+    } catch (error: any) {
+      message.error(error?.message || '裁剪失败');
+    }
+  }, [
+    createDerivedImageNodesFromNode,
+    message,
+    nodeRuns,
+    reactFlow,
+    setActiveNodeTool,
     workspaceId,
   ]);
 
@@ -698,17 +1471,11 @@ export function useLinghuiCanvasOverlayProps({
     onCreateDerivedMultiAngleImage(nodeId, options) {
       return createDerivedMultiAngleImageNodeFromNode(nodeId, options);
     },
-    onGenerateImageFromController(controllerNodeId) {
-      const spawnedId = spawnImageFromGenerator(controllerNodeId);
-      if (!spawnedId) {
-        message.warning('生成失败：找不到控制器节点');
-        return null;
-      }
-      // 等 react state 应用完成后再 trigger 执行（与 deriveStoryboardImagesFromScript 同一模式）
-      requestAnimationFrame(() => {
-        onRunSingleNodeRef.current?.(spawnedId);
-      });
-      return spawnedId;
+    onExecuteImageUpscale(nodeId, options) {
+      void executeImageUpscale(nodeId, options);
+    },
+    onExecuteImageCrop(nodeId, options) {
+      void executeImageCrop(nodeId, options);
     },
     onExecuteMultiAngle(options) {
       executeMultiAngle(options);
@@ -727,6 +1494,7 @@ export function useLinghuiCanvasOverlayProps({
     gridSplitUpscaleFactor,
     onSetGridSplitUpscaleFactor: setGridSplitUpscaleFactor,
     onRevertGridSplit: revertGridSplitTool,
+    onSeparateVideoAudio: handleSeparateVideoAudioForNode,
     pendingGroupFrameStyle,
     pendingGroupActionsStyle,
     pendingGroupCreatableIds,
@@ -737,12 +1505,51 @@ export function useLinghuiCanvasOverlayProps({
     onAddNodeFromQuickCreate: addNodeFromQuickCreate,
     contextMenu,
     contextMenuNodeIsGroup: contextMenuNode?.type === 'group',
+    contextMenuResultCopyState,
+    contextMenuMediaActionState: {
+      imageCount: contextMenuMediaActionState.imageItems.length,
+      videoCount: contextMenuMediaActionState.videoItems.length,
+      canOpenPanoramaPreview: Boolean(contextMenuMediaActionState.primaryImage),
+      canCreateSubject: contextMenuMediaActionState.imageItems.length > 0,
+      canCopyPrimaryImage: Boolean(contextMenuMediaActionState.primaryImage?.source),
+      canSeparateVideoAudio: (
+        contextMenuMediaActionState.videoItems.some(item => isLocalVideoSourceForAudioSplit(item.source)) &&
+        contextMenuNode?.type !== 'group' &&
+        (contextMenuNode?.data as unknown as LinghuiNodeData | undefined)?.linghuiType === 'linghui/video'
+      ),
+      canExpandImages: contextMenuMediaActionState.imageItems.length > 1,
+      canDeleteOtherImages: (
+        contextMenuMediaActionState.imageItems.length > 1 &&
+        Boolean(contextMenuMediaActionState.primaryImage) &&
+        contextMenuNode?.type !== 'group' &&
+        (
+          ((contextMenuNode?.data as unknown as LinghuiNodeData | undefined)?.linghuiType === 'linghui/image') ||
+          ((contextMenuNode?.data as unknown as LinghuiNodeData | undefined)?.linghuiType === 'linghui/panorama')
+        )
+      ),
+      canExpandVideos: contextMenuMediaActionState.videoItems.length > 1,
+      canDeleteOtherVideos: (
+        contextMenuMediaActionState.videoItems.length > 1 &&
+        contextMenuNode?.type !== 'group' &&
+        (contextMenuNode?.data as unknown as LinghuiNodeData | undefined)?.linghuiType === 'linghui/video'
+      ),
+      canReturnToGenerator: Boolean(contextMenuMediaActionState.generatorNodeId),
+    },
     contextMenuSelectionIds,
-    nodeCatalog: LINGHUI_NODE_CATALOG,
+    nodeCatalog: LINGHUI_CANVAS_CREATE_MENU_CATALOG,
     hasClipboardData,
     canUndo,
     canRedo,
     onAddNodeFromMenu: addNodeFromMenu,
+    onOpenAddNodePanel() {
+      if (!contextMenu) {
+        return;
+      }
+      // LibTV 行为：关闭当前右键菜单，在同一画布位置弹出 quickCreate 节点目录。
+      const { screenX, screenY } = contextMenu;
+      closeContextMenu();
+      openQuickCreateAt(screenX, screenY);
+    },
     onCopyNodeSelection() {
       if (contextMenuSelectionIds.length) {
         copySelectionToClipboard(contextMenuSelectionIds);
@@ -770,6 +1577,70 @@ export function useLinghuiCanvasOverlayProps({
         return;
       }
       void handleCreateAssetFromNode(contextMenu.nodeId);
+      closeContextMenu();
+    },
+    onOpenPanoramaPreviewFromNode() {
+      if (!contextMenu?.nodeId) {
+        return;
+      }
+      handleOpenPanoramaPreviewFromNode(contextMenu.nodeId);
+      closeContextMenu();
+    },
+    onCreateSubjectFromNode() {
+      if (!contextMenu?.nodeId) {
+        return;
+      }
+      void handleCreateSubjectFromNode(contextMenu.nodeId);
+      closeContextMenu();
+    },
+    onCopyPrimaryImageFromNode() {
+      void handleCopyPrimaryImageFromNode();
+      closeContextMenu();
+    },
+    onSeparateVideoAudioFromNode() {
+      if (!contextMenu?.nodeId) {
+        return;
+      }
+      void handleSeparateVideoAudioFromNode(contextMenu.nodeId);
+      closeContextMenu();
+    },
+    onReturnToGenerator() {
+      handleReturnToGenerator();
+      closeContextMenu();
+    },
+    onCopyCurrentNodeResult(kind) {
+      if (!contextMenu?.nodeId) {
+        return;
+      }
+      void handleCopyResultFromNode(contextMenu.nodeId, kind);
+      closeContextMenu();
+    },
+    onExpandCurrentNodeImages() {
+      if (!contextMenu?.nodeId) {
+        return;
+      }
+      handleExpandImagesFromNode(contextMenu.nodeId);
+      closeContextMenu();
+    },
+    onDeleteOtherCurrentNodeImages() {
+      if (!contextMenu?.nodeId) {
+        return;
+      }
+      handleKeepOnlyCurrentImage(contextMenu.nodeId);
+      closeContextMenu();
+    },
+    onExpandCurrentNodeVideos() {
+      if (!contextMenu?.nodeId) {
+        return;
+      }
+      handleExpandVideosFromNode(contextMenu.nodeId);
+      closeContextMenu();
+    },
+    onDeleteOtherCurrentNodeVideos() {
+      if (!contextMenu?.nodeId) {
+        return;
+      }
+      handleKeepOnlyCurrentVideo(contextMenu.nodeId);
       closeContextMenu();
     },
     onRunCurrentNode() {
@@ -828,8 +1699,25 @@ export function useLinghuiCanvasOverlayProps({
       if (!contextMenu?.nodeId) {
         return;
       }
-      deleteNodesByIds([contextMenu.nodeId]);
-      closeContextMenu();
+      // LibTV 1:1：删除节点二次确认（"该节点包含已生成的内容，删除后可通过 ⌘Z 撤销。确定删除？"）
+      const nodeRun = nodeRuns[contextMenu.nodeId];
+      const hasContent = nodeRun?.status === 'succeeded' || nodeRun?.status === 'failed' || nodeRun?.status === 'stale';
+      const onConfirm = () => {
+        deleteNodesByIds([contextMenu.nodeId]);
+        closeContextMenu();
+      };
+      if (hasContent) {
+        Modal.confirm({
+          title: '删除节点',
+          content: '该节点包含已生成的内容，删除后可通过 ⌘Z 撤销。确定删除？',
+          okText: '确定删除',
+          cancelText: '取消',
+          okButtonProps: { danger: true },
+          onOk: onConfirm,
+        });
+      } else {
+        onConfirm();
+      }
     },
     onDeleteCurrentEdge() {
       if (!contextMenu?.edgeId) {
@@ -857,6 +1745,14 @@ export function useLinghuiCanvasOverlayProps({
         return;
       }
       void handleUploadAudiosToCanvas(contextMenu.screenX, contextMenu.screenY);
+      closeContextMenu();
+    },
+    onFormatLayout() {
+      onFormatLayout();
+      closeContextMenu();
+    },
+    onOpenShortcutPanel() {
+      onOpenShortcutPanel();
       closeContextMenu();
     },
     onPaste() {

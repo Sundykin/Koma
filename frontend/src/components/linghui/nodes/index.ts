@@ -2,7 +2,6 @@ import type { NodeTypes } from '@xyflow/react';
 import { TextNode } from './components/TextNode';
 import { AgentNode } from './components/AgentNode';
 import { ImageNode } from './components/ImageNode';
-import { ImageGeneratorNode } from './components/ImageGeneratorNode';
 import { VideoNode } from './components/VideoNode';
 import { AudioNode } from './components/AudioNode';
 import { ScriptNode } from './components/ScriptNode';
@@ -14,7 +13,6 @@ export const linghuiNodeTypes: NodeTypes = {
   'linghui-text': TextNode,
   'linghui-agent': AgentNode,
   'linghui-image': ImageNode,
-  'linghui-image-generator': ImageGeneratorNode,
   // 全景节点视觉与图片节点完全一致（外观就是一张宽幅图），rendering 复用 ImageNode；
   // 编辑器 / 执行器 / 提示词模板侧通过 linghuiType === 'linghui/panorama' 分支区分。
   'linghui-panorama': ImageNode,

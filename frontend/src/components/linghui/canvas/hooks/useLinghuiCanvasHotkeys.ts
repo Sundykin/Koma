@@ -17,6 +17,13 @@ interface UseLinghuiCanvasHotkeysParams {
   closeContextMenu: () => void;
   closeQuickCreate: () => void;
   clearPendingGroupFrame: () => void;
+  onRunRequested?: () => void;
+  onOpenQuickCreate?: () => void;
+  onFormatLayout?: () => void;
+  onFocusContent?: () => void;
+  onZoomIn?: () => void;
+  onZoomOut?: () => void;
+  onToggleShortcutPanel?: () => void;
 }
 
 export function useLinghuiCanvasHotkeys(params: UseLinghuiCanvasHotkeysParams) {
@@ -43,10 +50,23 @@ export function useLinghuiCanvasHotkeys(params: UseLinghuiCanvasHotkeysParams) {
         closeContextMenu,
         closeQuickCreate,
         clearPendingGroupFrame,
+        onRunRequested,
+        onOpenQuickCreate,
+        onFormatLayout,
+        onFocusContent,
+        onZoomIn,
+        onZoomOut,
+        onToggleShortcutPanel,
       } = paramsRef.current;
 
       const modifierPressed = event.metaKey || event.ctrlKey;
       const normalizedKey = event.key.toLowerCase();
+
+      if (modifierPressed && event.key === 'Enter' && onRunRequested) {
+        event.preventDefault();
+        onRunRequested();
+        return;
+      }
 
       if (modifierPressed && normalizedKey === 'c') {
         const copied = copySelectionToClipboard(pendingGroupFrame?.selectionIds ?? selectedNodeIds);
@@ -88,6 +108,42 @@ export function useLinghuiCanvasHotkeys(params: UseLinghuiCanvasHotkeysParams) {
           event.preventDefault();
           redoHistory();
         }
+        return;
+      }
+
+      if (modifierPressed && (normalizedKey === '+' || normalizedKey === '=')) {
+        event.preventDefault();
+        onZoomIn?.();
+        return;
+      }
+
+      if (modifierPressed && (normalizedKey === '-' || normalizedKey === '_')) {
+        event.preventDefault();
+        onZoomOut?.();
+        return;
+      }
+
+      if (event.shiftKey && normalizedKey === '1' && onFocusContent) {
+        event.preventDefault();
+        onFocusContent();
+        return;
+      }
+
+      if (event.altKey && event.shiftKey && normalizedKey === 'f' && onFormatLayout) {
+        event.preventDefault();
+        onFormatLayout();
+        return;
+      }
+
+      if (!modifierPressed && !event.altKey && !event.ctrlKey && !event.shiftKey && normalizedKey === 'tab' && onOpenQuickCreate) {
+        event.preventDefault();
+        onOpenQuickCreate();
+        return;
+      }
+
+      if (!modifierPressed && !event.altKey && (normalizedKey === '?' || (event.shiftKey && normalizedKey === '/'))) {
+        event.preventDefault();
+        onToggleShortcutPanel?.();
         return;
       }
 

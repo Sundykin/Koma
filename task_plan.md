@@ -1,5 +1,63 @@
 # Task Plan
 
+## Session: 2026-05-16 Linghui Canvas LibTV Recreation
+
+### Goal
+- 从 `/Users/sunmeng/workspace/Koma/template_/libtv` 的打包产物中反向分析画布功能、样式和文案。
+- 将可识别的 LibTV 画布交互、工具栏、节点/边样式、面板和操作逻辑复刻到灵绘中。
+- 允许破坏性更新灵绘现有画布样式和节点操作逻辑，并按需新增依赖；但保持项目持久化、执行链路和 Electron 验证规约不被破坏。
+
+### Scope
+- `template_/libtv/**`
+- `frontend/src/components/linghui/canvas/**`
+- `frontend/src/components/linghui/nodes/**`
+- `frontend/src/components/linghui/page/styles/**`
+- `frontend/src/components/linghui/editors/**`
+- `frontend/src/types/linghui.ts`
+- 相关测试、类型检查和 Electron CDP 视觉验证
+
+### Phases
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Artifact Recon | complete | 盘点 `template_/libtv` 文件结构，从 CSS 类名、文案和 sourcemap/打包 JS 中定位画布功能边界 |
+| 2. Current Linghui Canvas Map | complete | 梳理灵绘现有画布、节点、边、工具栏、面板和交互入口 |
+| 3. Feature Gap Matrix | complete | 建立 LibTV 功能/样式/文案到灵绘文件的映射，决定破坏性改造范围 |
+| 4. Canvas Recreation | complete | 改造灵绘画布 UI、节点操作和样式，必要时新增共享组件/状态 |
+| 5. Regression Coverage | complete | 更新/新增关键测试，覆盖节点操作、样式类、交互入口和持久化边界 |
+| 6. Visual Verification | complete | 通过 Electron remote debugging port `9333` 做真实界面检查，不打开普通浏览器 |
+| 7. Final Validation | complete | 运行目标测试、TypeScript、样式纪律/构建或最小可行校验、diff check |
+| 8. Result Context Actions | complete | 继续补齐 LibTV 式节点结果菜单：复制结果文本、媒体地址、TaskId，并覆盖剪贴板反馈与回归测试 |
+| 9. Touch Canvas Gestures | complete | 补齐 LibTV 式触控体验：粗指针设备进入触控平移模式，画布触控双击适配视图 |
+| 10. Downstream Compatibility & Menus | complete | 继续参考 LibTV 补齐输出类型驱动的下游推荐、语义槽位兼容、边数据类型记录和节点菜单扩展 |
+| 11. Binary Media Clipboard & Feedback | complete | 补齐 LibTV `复制图片` 的二进制剪贴板行为，并保留灵绘已有媒体地址复制能力 |
+| 12. Image Focus Region Tool | complete | 复刻 LibTV 图片节点 `聚焦` 局部区域反馈：选区 UI、节点红框、执行提示词和参考图链路 |
+| 13. Image Mark Points Tool | complete | 复刻 LibTV 图片节点 `标记` 点选反馈：归一化标记点、节点黄点、编辑器点选面板和执行参考链路 |
+| 14. Image High-Res Upscale Tool | complete | 复刻 LibTV 图片节点 `高清放大`：补齐 FFmpeg upscale 桥接、前端工具入口、派生高清图片节点和运行反馈 |
+| 15. Image Tool Derivation Flow | complete | 将 `扩图 / 打光 / 重绘` 从单纯 prompt preset 升级为 LibTV 式派生图生图节点、自动连线和运行反馈 |
+| 16. Extended Image Tool Entrypoints | complete | 继续补齐 LibTV 图片工具栏缺口：`擦除 / 抠图 / 裁剪 / Mockup / 编辑元素 / 编辑文本` 的工具入口、派生节点和反馈 |
+| 17. Electron Visual Pass & Next Gaps | in_progress | 通过 Electron CDP 复查扩展工具条和本地裁剪入口，并继续梳理下一批 LibTV 缺口 |
+
+### Acceptance Criteria
+- LibTV 画布的主要视觉语言、工具入口、节点/边状态和关键文案在灵绘中可见并可操作。
+- 复刻范围覆盖样式、操作反馈、性能优化、节点操作、节点菜单、节点类型入口和画布整理能力，而不是只做表层 CSS。
+- 缺失的必要依赖可以新增；新增依赖必须进入 `frontend/package.json` 和 lockfile，并被实际代码使用。
+- 灵绘节点创建、选择、编辑、运行、连线、删除/复制等核心操作仍可用。
+- 现有灵绘执行数据结构和工作区保存/恢复不被无意破坏。
+- 样式改造遵守项目 Sass/token 纪律，避免新增散落 inline style 或硬编码主题色。
+- UI 验证只使用 Electron 自定义 Chromium remote debugging 端口。
+
+### Error Log
+| Error | Attempt | Resolution |
+|------|---------|------------|
+| Node extraction script rejected due control character in command text | 1 | Rewrote the extraction script with plain regex/string checks and reran successfully |
+| `npm run check:style-discipline` failed on existing inline color/style debts outside this canvas pass | 1 | Confirmed new canvas/node changes are not listed; kept failure recorded and used TypeScript, targeted tests, build, diff check, and Electron CDP as final validation |
+| Result copy media label counted duplicate primary/items entries | 1 | Changed media menu labels to count de-duplicated copy sources, matching the actual clipboard payload |
+| Storyboard shot image predicate widened to generic media type | 1 | Narrowed `shot.image` with `NonNullable<typeof item>` so TypeScript preserves the image media subtype |
+| Video context menu missed imported video properties | 1 | Included `linghui/video` `properties.source/posterSource` in context media collection and deduped with run result media |
+| FFmpeg media info could be empty during audio separation | 1 | Added `mediaInfo?.hasAudio` guard and only show audio separation for local video sources |
+| Focus placeholder feedback kept showing user prompt | 1 | Changed focused image execution placeholder subtitle to `聚焦区域生成` so operation feedback is explicit |
+| Image tool derived node function was not wired into canvas overlay props | 1 | Added `createDerivedImageToolNodeFromNode` to `LinghuiCanvas.tsx` destructuring and overlay props, then covered with document-ops test |
+
 ## Session: 2026-05-14 Linghui Media Remote URL Flow
 
 ### Goal

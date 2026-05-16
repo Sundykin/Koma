@@ -1,5 +1,215 @@
 # Progress Log
 
+## Session: 2026-05-16 Linghui Canvas LibTV Recreation
+
+### Phase 11: Binary Media Clipboard & Feedback
+- **Status:** complete
+- Actions taken:
+  - 恢复会话后重读 `task_plan.md` / `findings.md` / `progress.md`，确认 Phase 10 已完成下游推荐、节点菜单扩展和 Electron CDP 验证。
+  - 继续从 LibTV 打包产物抽取节点菜单文案，确认 `复制图片` 在 LibTV 中会通过 `navigator.clipboard.write([new ClipboardItem({"image/png": blob})])` 写入图片本体，而灵绘当前只复制媒体地址。
+  - 决定新增独立二进制图片复制动作：保留 `复制图片地址/视频地址/TaskId` 现有行为，同时在有主图时额外显示 `复制图片`，更贴近 LibTV 操作反馈。
+  - 节点上下文菜单已接入 `复制图片`，支持远程/blob/data URL 和本地/koma-local 图片源；非 PNG 会经 canvas 转 PNG 后写入系统剪贴板。
+  - `创建副本` 改为包含外部上游输入边但不继承下游边，匹配 LibTV `副本不继承生成任务，支持复制上游连线，下游需用户手动连接` 的行为。
+- Validation:
+  - `npm run test -- --run src/components/linghui/canvas/tests/LinghuiCanvasContextMenu.test.tsx src/components/linghui/canvas/tests/linghuiCanvasResultActions.test.ts src/components/linghui/canvas/tests/linghuiCanvasQuickCreateCatalog.test.ts`：3 files / 13 tests passed。
+  - `npm run test -- --run src/components/linghui/canvas/tests/linghuiCanvasShared.test.ts src/components/linghui/canvas/tests/LinghuiCanvasContextMenu.test.tsx src/components/linghui/canvas/tests/linghuiCanvasQuickCreateCatalog.test.ts`：3 files / 21 tests passed。
+  - frontend `npx tsc --noEmit --project tsconfig.json`：passed。
+
+### Phase 12: Image Focus Region Tool
+- **Status:** complete
+- Actions taken:
+  - 继续扫描 LibTV 打包产物，确认图片生成提交前存在 `focusRegion` / `camera_focus` / `聚焦图片处理失败` 链路，核心是把用户局部标记作为 image-to-image 聚焦输入。
+  - `LinghuiImageToolKey` 新增 `focus`，图片/全景节点默认属性增加 `focusRegion: null`，并新增 `normalizeLinghuiImageFocusRegion()` 保证旧工作区兼容。
+  - 图片节点顶部工具条新增 `聚焦`；图片编辑器在有当前图片时显示聚焦面板，包含红框预览、中心/脸部/上半身/全图预设、横向/纵向/宽度/高度滑条、`标记区域` / `清除聚焦` 操作。
+  - 图片节点缩略图增加 LibTV 式红框遮罩和 `聚焦` 徽标，用户关闭编辑器后仍能看到当前局部处理范围。
+  - `executeImageNode()` 读取启用的 `focusRegion`：把标记时的图片源加入参考图，把 prompt 增强为局部补全/重绘约束，并在结果 metadata 中记录 focusRegion。
+  - 聚焦执行的占位反馈改为 `聚焦区域生成`，避免仍显示普通 prompt，看不出当前是局部操作。
+- Validation:
+  - `npm run test -- --run src/components/linghui/editors/tests/ImageNodeEditor.test.tsx src/components/linghui/execution/tests/linghuiExecutionImageNode.test.ts src/components/linghui/library/tests/linghuiNodeDefs.test.ts src/components/linghui/canvas/tests/linghuiCanvasStore.test.ts`：4 files / 25 tests passed。
+- Errors:
+  - 首轮聚焦执行测试发现 `placeholderSubtitle` 仍是用户 prompt；已改为聚焦时固定显示 `聚焦区域生成` 并复跑通过。
+
+### Phase 13: Image Mark Points Tool
+- **Status:** complete
+- Actions taken:
+  - 继续从 LibTV 打包产物定位图片工具链，确认 `标记` 会在图上记录点位，并通过后端 `clickSuggest` / magic token 机制把点选意图注入 prompt。
+  - 在灵绘中新增本地等价实现：`LinghuiImageToolKey` 支持 `mark`，图片/全景节点默认 `markPoints: []`，并新增标记点归一化与上限保护。
+  - 图片工具条新增 `标记`；图片编辑器标记面板支持点击图片舞台添加归一化点位、显示黄色编号点、坐标列表、删除单点和清空。
+  - 图片节点缩略图同步显示黄色编号点，让用户关闭编辑器后仍能看出节点携带点选上下文。
+  - `executeImageNode()` 会把标记时的图片源加入参考图，并把 `LibTV-style mark points` 坐标块追加到 prompt，同时在结果 metadata 记录 markPoints。
+- Validation:
+  - `npm run test -- --run src/components/linghui/editors/tests/ImageNodeEditor.test.tsx src/components/linghui/execution/tests/linghuiExecutionImageNode.test.ts src/components/linghui/library/tests/linghuiNodeDefs.test.ts`：3 files / 21 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json`（frontend）：passed。
+  - `npx tsc --noEmit --project tsconfig.json`（root）：passed。
+  - `git diff --check`：passed。
+
+### Phase 14: Image High-Res Upscale Tool
+- **Status:** complete
+- Actions taken:
+  - 继续参考 LibTV 打包产物中 `imagetool_upscale` / `高清放大` / `select_upscale_factor` / `upscale_tile_hdr` 相关文案，确认高清放大需要是真实图片处理入口，而不是普通 prompt preset。
+  - Electron FFmpeg 服务新增 `upscaleImage` 任务类型：通过 IPC bridge 暴露到前端，使用 lanczos scale 和轻锐化输出 PNG。
+  - 前端 `ffmpegManager` 新增 `upscaleImage()`；图片工具条新增 `高清` 下拉，支持 `2x 高清放大` 和 `4x 高清放大`。
+  - 画布 overlay 执行链路新增 `executeImageUpscale(nodeId, { factor })`：解析当前图片、本地物化远程/数据源、写入工作区 `assets/upscaled-images`，再派生新的图片节点并给出成功/失败反馈。
+  - 修复高清执行早期通过 `activeNodeTool` 读取 nodeId 的竞态，改为从菜单直接传入 `nodeId`，确保点击后立即能执行到当前图片节点。
+- Validation:
+  - `npm run test -- --run src/services/ffmpegManager.test.ts src/components/linghui/editors/tests/LinghuiNodeEditor.test.tsx src/components/linghui/editors/tests/ImageNodeEditor.test.tsx src/components/linghui/execution/tests/linghuiExecutionImageNode.test.ts src/components/linghui/library/tests/linghuiNodeDefs.test.ts`：5 files / 24 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json`（frontend）：passed。
+  - `npx tsc --noEmit --project tsconfig.json`（root）：passed。
+  - `git diff --check`：passed。
+  - Electron CDP 视觉验证：`127.0.0.1:9333` 在线；进入灵绘画布后创建图片节点并注入临时图片源，确认图片工具条真实显示 `聚焦 / 标记 / 高清 / 多角度 / 扩图 / 打光 / 重绘 / 宫格`。AntD portal 下拉点击在 CDP 缩放命中上不稳定，菜单行为由单元测试覆盖。
+
+### Phase 15: Image Tool Derivation Flow
+- **Status:** complete
+- Actions taken:
+  - 将 `扩图 / 打光 / 重绘` preset 的编辑器点击载荷扩展为 `{ label, promptSnippet, properties }`，保留工具文案和参数。
+  - 新增 `createDerivedImageToolNodeFromNode()`：从当前图片/全景节点右下方派生新的 `linghui/image` 生成节点，自动连接 image→image 语义边，继承模型/比例等必要参数并清空 source/items/run 结果。
+  - `applyImageToolPreset()` 不再直接修改当前节点 prompt，而是合并 prompt snippet 后创建独立工具节点并自动触发运行，成功提示改为 `已创建「...」工具节点并开始执行`。
+  - 修复主画布漏传 `createDerivedImageToolNodeFromNode` 的接线问题，避免编辑器按钮有事件但 overlay 无法创建节点。
+  - 新增 `useLinghuiCanvasDocumentOps.test.tsx`，覆盖工具节点创建后源节点取消选中、新节点选中、边数据类型记录、focus/mark 清空和 snapshot 调度。
+- Validation:
+  - `npm run test -- --run src/components/linghui/canvas/tests/useLinghuiCanvasDocumentOps.test.tsx src/components/linghui/editors/tests/LinghuiNodeEditor.test.tsx`：2 files / 3 tests passed。
+  - `npm run test -- --run src/services/ffmpegManager.test.ts src/components/linghui/canvas/tests/useLinghuiCanvasDocumentOps.test.tsx src/components/linghui/editors/tests/LinghuiNodeEditor.test.tsx src/components/linghui/editors/tests/ImageNodeEditor.test.tsx src/components/linghui/execution/tests/linghuiExecutionImageNode.test.ts src/components/linghui/library/tests/linghuiNodeDefs.test.ts`：6 files / 26 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json`（frontend）：passed。
+  - `npx tsc --noEmit --project tsconfig.json`（root）：passed。
+  - `git diff --check`：passed。
+- Errors:
+  - 首轮 frontend tsc 发现 `LinghuiCanvas.tsx` 没有把新增文档操作函数传进 overlay props；已补解构和传参。
+
+### Phase 16: Extended Image Tool Entrypoints
+- **Status:** complete
+- Actions taken:
+  - 继续扫描 LibTV 打包产物，确认图片工具栏还包含 `擦除 / 抠图 / 裁剪 / Mockup / 编辑元素 / 编辑文本`，且 `擦除` 有 `智能擦除 / 框选擦除` 两种入口。
+  - 扩展 `LinghuiImageToolKey` 与图片工具条，新增 `擦除 / 抠图 / 裁剪 / Mockup / 元素 / 文字` 六个入口。
+  - 为新增工具补 LibTV 式预设：`智能擦除 / 框选擦除`、`主体抠图 / 商品白底`、`方图裁剪 / 竖版裁剪 / 横版裁剪`、`海报样机 / 产品展示`、`替换元素 / 添加道具`、`去除文字 / 留出版面`。
+  - 除裁剪外，其余工具复用 Phase 15 的派生图生图节点协议：创建独立下游节点、写入工具 prompt 和参数、自动连线并运行。
+  - 裁剪升级为真实本地处理：新增 Electron `cropImage` FFmpeg bridge/service/controller/preload 和前端 `ffmpegManager.cropImage()`，以中心 cover crop 输出 1:1 / 9:16 / 16:9 PNG，再派生图片节点。
+  - 工具条样式增加最大宽度、换行和滚动保护，避免扩展入口撑破节点编辑器顶部条。
+- Validation:
+  - `npm run test -- --run src/components/linghui/editors/tests/LinghuiNodeEditor.test.tsx src/services/ffmpegManager.test.ts`：2 files / 7 tests passed。
+  - `npm run test -- --run src/services/ffmpegManager.test.ts src/components/linghui/canvas/tests/useLinghuiCanvasDocumentOps.test.tsx src/components/linghui/editors/tests/LinghuiNodeEditor.test.tsx src/components/linghui/editors/tests/ImageNodeEditor.test.tsx src/components/linghui/execution/tests/linghuiExecutionImageNode.test.ts src/components/linghui/library/tests/linghuiNodeDefs.test.ts`：6 files / 29 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json`（frontend）：passed。
+  - `npx tsc --noEmit --project tsconfig.json`（root）：passed。
+  - `git diff --check`：passed。
+- Errors:
+  - 首轮扩展工具测试用 `/文字/` 匹配 AntD 按钮名失败；AntD 会把两个中文字符拆为 `文 字`，已改成 `/文\s*字/`。
+
+### Phase 17: Electron Visual Pass & Next Gaps
+- **Status:** in_progress
+- Actions taken:
+  - 准备通过 Electron CDP 复查扩展后的真实工具条和本地裁剪入口，不打开普通浏览器。
+
+### Phase 1: Artifact Recon
+- **Status:** complete
+- Actions taken:
+  - 使用 `pi-planning-with-files` 技能建立本轮复杂任务记录。
+  - 运行 session catchup；脚本无输出。
+  - 读取现有 `task_plan.md` / `findings.md` / `progress.md` / `AGENTS.md`，确认 Electron CDP 验证规约和当前历史上下文。
+  - 确认当前工作区起步 `git status --short` 无输出。
+  - 盘点 `template_/libtv` 文件结构，确认是扁平 Turbopack 打包产物。
+  - 通过 React Flow/xyflow、canvas/node/edge、中文操作文案等关键词扫描，初步定位 LibTV 画布控制条、自动布局、离群节点、触控模式、生成按钮和节点类型相关模块。
+  - 提取打包 JS 中的中文字符串和 canvas 相关符号，确认主画布 chunk、状态 chunk、ReactFlow 基础 chunk 的分工。
+  - 读取灵绘 `LinghuiCanvasStage`、`LinghuiCanvasHud`、`LinghuiCanvasContextMenu`、`LinghuiCanvasOverlays`、`LinghuiCanvas`、viewport/hotkey hooks 和画布 Sass，确认可复刻落点集中在 HUD/右键菜单/ReactFlow 配置/样式层。
+  - 首次 Node 字符串提取脚本因命令文本控制字符被执行器拒绝；已换成朴素脚本成功提取。
+  - 用户中途补充必须覆盖完整功能和允许新增依赖；已扩大范围到依赖、自动布局、节点类型入口、操作反馈、性能优化和节点菜单。
+  - 查询 npm：`elkjs` 当前 `0.11.1` 且自带类型；`framer-motion` 当前 `12.38.0`。当前计划只新增实际要用的 `elkjs`。
+
+### Phases 2-4: Linghui Canvas Map, Gap Matrix, First Recreation Pass
+- **Status:** complete
+- Actions taken:
+  - 新增依赖 `elkjs@0.11.1`，并写入 `frontend/package.json` / `frontend/package-lock.json`。
+  - 新增 `linghuiCanvasLayout.ts`，实现 ELK layered RIGHT 自动布局、24px 网格吸附、顶层节点尺寸推断、工作流块折叠连边、离群节点检测。
+  - `LinghuiCanvasStage` 调整 React Flow 配置：`connectionRadius` 提升到 80，开启 `onlyRenderVisibleElements`，接入 snap grid、可折叠 MiniMap、Space 临时平移。
+  - `LinghuiCanvasHud` 复刻 LibTV 画布控制：运行按钮、整理画布、小地图、网格吸附、手/鼠标模式、缩放菜单、适合屏幕、快捷键面板、离群节点提醒和整理结果保留/还原。
+  - `useLinghuiCanvasHotkeys` 增加运行、缩放、fit、整理、快速创建和快捷键面板热键。
+  - 右键菜单和 overlay props 接入 `优化工作流布局`、快捷键入口、快捷键标注和节点/空白上下文整理入口。
+  - 节点库、快速创建、右键添加节点分类重组为素材/生成/分镜/空间四组。
+  - Sass 补齐新 HUD 控制条、缩放下拉、整理审阅、离群提示、快捷键面板、小地图位置、菜单快捷键和节点状态光晕样式。
+
+### Phase 5: Regression Coverage
+- **Status:** complete
+- Validation:
+  - `npm run test -- --run src/components/linghui/canvas/tests/useLinghuiCanvasHotkeys.test.tsx src/components/linghui/canvas/tests/linghuiCanvasLayout.test.ts src/components/linghui/canvas/tests/linghuiCanvasShared.test.ts src/components/linghui/canvas/tests/useLinghuiCanvasFlowBridge.test.ts src/components/linghui/library/tests/linghuiNodeDefs.test.ts`：5 files / 23 tests passed。
+  - `npm run test -- --run src/components/linghui/canvas/tests/linghuiCanvasShared.test.ts src/components/linghui/canvas/tests/useLinghuiCanvasFlowBridge.test.ts src/components/linghui/canvas/tests/linghuiCanvasLayout.test.ts src/components/linghui/library/tests/linghuiNodeDefs.test.ts src/components/linghui/nodes/tests/VideoNode.test.tsx`：5 files / 24 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json`（frontend）：passed。
+  - `npx tsc --noEmit --project tsconfig.json`（root）：passed。
+  - `git diff --check`：passed。
+  - `npm run build`（frontend）：passed；仅保留既有 Vite dynamic import/chunk size warnings。
+  - `npm run check:style-discipline`：failed on existing Director3D/settings/storyboard/theme hardcoded style debts; current canvas/node files did not appear in the failure list.
+
+### Phase 6: Electron Visual Verification
+- **Status:** complete
+- Actions taken:
+  - `127.0.0.1:9333` 初始未监听，按项目规约启动 `npm run dev`，未打开普通浏览器。
+  - 通过 Electron CDP `/json/list` 连接 `Koma - 漫剧创作工具` page target，进入灵绘工作台。
+  - 验证画布根节点、新控制条、吸附状态、可见节点数和缩放菜单存在。
+  - 点击并验证快捷键面板四组文案、小地图开关、整理画布审阅 `是否保留此次整理结果？`、`还原/保留`，并点击 `还原` 避免保留测试布局。
+  - 触发画布右键菜单，确认素材/生成/分镜/空间分类、`优化工作流布局`、粘贴/撤销/重做快捷键标注和快捷键入口。
+  - 触发 Tab 快速创建，确认四组节点类型入口完整展示。
+  - 视觉截图保存到 `/tmp/linghui-canvas-libtv-recreation.png`；验证结束后关闭快捷键面板/小地图，并停止 Electron dev app。
+
+### Phase 8: Result Context Actions
+- **Status:** complete
+- Actions taken:
+  - 新增 `linghuiCanvasResultActions.ts`，统一解析节点执行结果的可复制文本、媒体地址和 TaskId。
+  - 节点右键菜单接入 `复制结果文本`、`复制图片/视频/音频地址`、`复制 TaskId`，无可复制内容时保持禁用反馈。
+  - `useLinghuiCanvasOverlayProps` 增加系统剪贴板写入和 AntD 成功/失败提示，保留 Electron/DOM fallback。
+  - 新增 `linghuiCanvasResultActions.test.ts` 覆盖文本结果、媒体 remoteUrl 优先、TaskId 和 storyboard 文本兜底。
+- Fixes during validation:
+  - 首次结果复制测试发现菜单标签按原始媒体条目计数，图片集合 primary/items 去重后数量不一致；已改为按去重复制源计数。
+  - 首次 frontend tsc 发现 storyboard `shot.image` predicate 收窄过宽；已改为按自身 non-null 类型收窄。
+
+### Phase 9: Touch Canvas Gestures
+- **Status:** complete
+- Actions taken:
+  - 新增 `useLinghuiCanvasTouchMode`，按 `(pointer: coarse)` 检测触控设备。
+  - `LinghuiCanvasStage` 在触控模式下禁用节点拖拽/连线，关闭框选拖拽，空白区域直接平移，保留 pinch zoom。
+  - 新增 `useLinghuiCanvasDoubleTapFitView`，监听 `.react-flow__pane` 的触控双击并触发 `fitView`。
+  - 新增 `useLinghuiCanvasDoubleTapFitView.test.ts` 和 `useLinghuiCanvasTouchMode.test.ts` 覆盖双击阈值与粗指针检测。
+- Validation:
+  - `npm run test -- --run src/components/linghui/canvas/tests/linghuiCanvasResultActions.test.ts src/components/linghui/canvas/tests/useLinghuiCanvasDoubleTapFitView.test.ts src/components/linghui/canvas/tests/useLinghuiCanvasTouchMode.test.ts src/components/linghui/canvas/tests/useLinghuiCanvasHotkeys.test.tsx src/components/linghui/canvas/tests/linghuiCanvasLayout.test.ts src/components/linghui/canvas/tests/linghuiCanvasShared.test.ts`：6 files / 21 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json`（frontend）：passed。
+  - `npx tsc --noEmit --project tsconfig.json`（root）：passed。
+  - `git diff --check`：passed。
+  - `npm run build`（frontend）：passed；仅保留既有 Vite dynamic import/chunk size warnings。
+  - `npm run check:style-discipline`：仍失败于既有 Director3D/settings/storyboard/theme 等 inline style / hardcoded color 债；本轮新增 canvas result/touch/double-tap 文件未出现在失败列表中。
+  - Electron CDP `127.0.0.1:9333` 验证：启动 `npm run dev`，进入灵绘画布，右键文本节点确认菜单包含 `复制结果文本 / 复制媒体地址 / 复制 TaskId`，当前无媒体/TaskId 时后两项禁用；截图保存到 `/tmp/linghui-canvas-result-context-menu.png`。验证后已停止 dev app，`9333`/`5173` 端口不再监听。
+
+### Phase 10: Downstream Compatibility & Menus
+- **Status:** complete
+- Actions taken:
+  - 恢复会话并重读 `task_plan.md` / `findings.md` / `progress.md`，确认前面已完成 HUD、ELK、结果复制和触控手势。
+  - 复查 `linghuiNodeDefs.ts`、`linghuiCanvasShared.ts`、`useLinghuiCanvasOverlayState.ts`、`LinghuiCanvasQuickCreate.tsx`、`LinghuiCanvasContextMenu.tsx` 和执行层输入过滤，确认当前快速创建只判断“目标有输入”而没有看源输出类型。
+  - 重新检索 LibTV 打包文案，确认下一组需要补齐的能力集中在 `文生视频 / 图生视频 / 参考生视频 / 首尾帧视频` 的下游路径，以及 `保存到我的素材 / 进入全景预览 / 创建主体 / 展开或删除多媒体集合` 类节点菜单。
+  - 新增语义槽位兼容判断：物理端口仍保持 `input-0` / `output-0`，但连接校验、快速创建筛选和新建 edge.data 会记录 `sourceSlotType` / `targetSlotType`。
+  - 新增 `linghuiCanvasQuickCreateCatalog.ts`，按来源输出类型推荐下游：图片输出优先 `图生视频 / 全能参考 / 首尾帧视频`，文本输出优先 `图片生成器 / 文生视频 / 音频生成器 / 脚本生成器`，音频/视频/分镜输出也有对应下游。
+  - 快速创建项现在可携带 `initialProperties` 和 `nodeLabel`；创建 `文生视频 / 图生视频 / 首尾帧视频` 会直接写入对应 `videoCapability`。
+  - 右键节点菜单补齐 LibTV 式文案和集合操作：`保存到我的素材`、`展开所有图片`、`删除其他图片`、`展开所有视频`、`删除其他视频`。
+  - 新增视频展开能力：多视频结果可派生为多个独立 video 节点；删除其他视频会保留当前主视频为节点素材并清理旧 run state。
+  - 空白画布右键添加节点改为 LibTV 式创建预设目录，新增 `LINGHUI_CANVAS_CREATE_MENU_CATALOG`，可直接创建图片/视频/音频参考、文本生成器、文生视频、图生视频、全能参考、首尾帧视频、脚本生成器、全景预览和 3D 导演节点。
+  - 空白 Tab 快速创建也切到同一套 LibTV 式创建预设目录，避免和右键空白菜单出现两套节点入口。
+  - 右键菜单节点操作补齐 `进入全景预览` 和 `创建主体`；全景预览会派生 panorama 节点并导入当前主图，创建主体会把当前图片引用保存为灵绘全局 character 资产。
+  - 视频节点右键补齐 LibTV 文案 `分离内嵌音轨为独立音频节点`：本地视频经 FFmpeg 分离音频后，自动派生音频节点并建立语义边。
+  - Electron CDP 首轮检查发现视频右键菜单只看 run result，会漏掉导入视频属性；已把 `linghui/video` 的 `properties.source/posterSource` 纳入右键媒体集合。
+  - Electron CDP 点击分离音轨时发现 FFmpeg `getMediaInfo` 可能返回空值；已加空值防御，并让分离音轨按钮仅在本地视频源可处理时展示。
+  - 音轨防御修复后复跑：`LinghuiCanvasContextMenu` / `linghuiCanvasQuickCreateCatalog` / `linghuiCanvasShared` 3 files / 18 tests passed，frontend/root tsc passed，`git diff --check` passed。
+- Validation:
+  - `npm run test -- --run src/components/linghui/canvas/tests/LinghuiCanvasContextMenu.test.tsx src/components/linghui/canvas/tests/linghuiCanvasQuickCreateCatalog.test.ts src/components/linghui/canvas/tests/linghuiCanvasShared.test.ts src/components/linghui/library/tests/linghuiNodeDefs.test.ts`：4 files / 23 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json`（frontend）：passed。
+  - `npm run test -- --run src/components/linghui/canvas/tests/LinghuiCanvasContextMenu.test.tsx src/components/linghui/canvas/tests/linghuiCanvasQuickCreateCatalog.test.ts`：2 files / 8 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json`（frontend）：passed。
+  - `npm run test -- --run src/components/linghui/canvas/tests/LinghuiCanvasContextMenu.test.tsx src/components/linghui/canvas/tests/linghuiCanvasQuickCreateCatalog.test.ts src/components/linghui/canvas/tests/linghuiCanvasResultActions.test.ts src/components/linghui/canvas/tests/useLinghuiCanvasDoubleTapFitView.test.ts src/components/linghui/canvas/tests/useLinghuiCanvasTouchMode.test.ts src/components/linghui/canvas/tests/useLinghuiCanvasHotkeys.test.tsx src/components/linghui/canvas/tests/linghuiCanvasLayout.test.ts src/components/linghui/canvas/tests/linghuiCanvasShared.test.ts src/components/linghui/library/tests/linghuiNodeDefs.test.ts`：9 files / 37 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json`（root）：passed。
+  - `git diff --check`：passed。
+  - `npm run build`（frontend）：passed；仅保留既有 Vite dynamic import/chunk size warnings。
+  - `npm run check:style-discipline`：仍失败于既有 Director3D / settings / storyboard / theme / chat inline style 与硬编码色债；新增 canvas/menu/quick-create 文件未进入失败列表。
+  - 修复视频属性媒体集合后复跑：`npm run test -- --run src/components/linghui/canvas/tests/LinghuiCanvasContextMenu.test.tsx src/components/linghui/canvas/tests/linghuiCanvasQuickCreateCatalog.test.ts src/components/linghui/canvas/tests/linghuiCanvasShared.test.ts src/components/linghui/canvas/tests/linghuiCanvasResultActions.test.ts src/components/linghui/library/tests/linghuiNodeDefs.test.ts`：5 files / 29 tests passed。
+  - 修复视频属性媒体集合后复跑：frontend/root `npx tsc --noEmit` passed，`npm run build` passed，`git diff --check` passed。
+  - 音轨防御修复后复跑：`LinghuiCanvasContextMenu` / `linghuiCanvasQuickCreateCatalog` / `linghuiCanvasShared` 3 files / 18 tests passed，frontend/root tsc passed，`git diff --check` passed。
+  - Electron CDP `127.0.0.1:9333` 验证：空白 Tab 快速创建显示 LibTV 式预设目录，包含 `文生视频 / 图生视频 / 全能参考 / 首尾帧视频 / 进入全景预览`；视频节点右键曾确认出现 `分离内嵌音轨为独立音频节点`，随后修复 getInfo 空值防御；最终 reload 后未再出现 `Cannot read properties of undefined` 文本。
+- Errors:
+  - 首轮新增测试把 `video -> image-generator` 当作不兼容，但本轮设计明确允许视频带首帧/封面进入图片参考槽；已改用真正不兼容的 `audio -> image-generator`。
+  - 首轮 frontend tsc 缺少 `LinghuiVideoNodeProperties` 类型导入；补齐后通过。
+
 ## Session: 2026-05-14 Linghui Media Remote URL Flow
 
 ### Phase 1: Data Flow Recovery

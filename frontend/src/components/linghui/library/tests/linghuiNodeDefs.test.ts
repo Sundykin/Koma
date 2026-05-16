@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { createNewNodeData, isLinghuiConnectionValid } from '../state/linghuiNodeDefs';
+import {
+  createNewNodeData,
+  isLinghuiConnectionValid,
+  isLinghuiSlotDataTypeCompatible,
+  resolveLinghuiCompatibleInputSlot,
+} from '../state/linghuiNodeDefs';
 import type { LinghuiNodeData } from '../../../../types/linghui';
 
 function createNode(id: string, data: LinghuiNodeData) {
@@ -127,6 +132,37 @@ describe('isLinghuiConnectionValid', () => {
     expect(result.valid).toBe(true);
   });
 
+  it('按语义槽位判断兼容关系，而不是只看统一物理端口', () => {
+    expect(isLinghuiSlotDataTypeCompatible({
+      sourceDataType: 'text',
+      targetDataType: 'image',
+    })).toBe(false);
+    expect(resolveLinghuiCompatibleInputSlot('linghui/image', 'text')).toEqual({
+      slot: { name: '文本', dataType: 'text' },
+      index: 1,
+    });
+    // image 节点的 inputs 只有 image / text，audio 永远不兼容。
+    expect(resolveLinghuiCompatibleInputSlot('linghui/image', 'audio')).toBeNull();
+  });
+
+  it('为图片节点创建聚焦区域兼容默认属性', () => {
+    const data = createNewNodeData('linghui/image');
+
+    expect(data.linghuiType).toBe('linghui/image');
+    expect(data.inputs).toEqual([
+      { name: '参考', dataType: 'image' },
+      { name: '文本', dataType: 'text' },
+    ]);
+    expect(data.outputs).toEqual([{ name: 'image', dataType: 'image' }]);
+    expect(data.properties).toEqual(expect.objectContaining({
+      mode: 'generate',
+      focusRegion: null,
+      markPoints: [],
+      aspectRatio: '3:4',
+      batchCount: 1,
+    }));
+  });
+
   it('为全景节点创建图片家族槽位和全景默认参数', () => {
     const data = createNewNodeData('linghui/panorama');
 
@@ -138,32 +174,16 @@ describe('isLinghuiConnectionValid', () => {
     expect(data.outputs).toEqual([{ name: 'image', dataType: 'image' }]);
     expect(data.properties).toEqual(expect.objectContaining({
       mode: 'generate',
+      focusRegion: null,
+      markPoints: [],
       aspectRatio: '21:9',
       batchCount: 1,
       panoramaTemplate: 'auto',
     }));
   });
 
-  it('为 image-generator 控制器节点创建无输出端口的默认属性', () => {
-    const data = createNewNodeData('linghui/image-generator');
-
-    expect(data.linghuiType).toBe('linghui/image-generator');
-    // 控制器无输出：所有出图状态由派生的下游 image 节点承载
-    expect(data.outputs).toEqual([]);
-    expect(data.inputs).toEqual([
-      { name: '参考', dataType: 'image' },
-      { name: '文本', dataType: 'text' },
-    ]);
-    expect(data.properties).toEqual(expect.objectContaining({
-      prompt: '',
-      ttiSelection: '',
-      aspectRatio: '3:4',
-      resolution: 'auto',
-      batchCount: 1,
-      generatedImageNodeIds: [],
-      generationCount: 0,
-    }));
-  });
+  // LibTV 1:1：linghui/image-generator 已删除，所有"生成图片"都用统一 linghui/image 节点（mode='generate'）。
+  // 旧持久化的 linghui-image-generator type 会被 RF type 迁移层折叠为 linghui-image。
 
   it('为 agent 节点创建文本输出和安全默认属性', () => {
     const data = createNewNodeData('linghui/agent');

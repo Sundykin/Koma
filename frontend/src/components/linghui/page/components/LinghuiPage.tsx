@@ -56,6 +56,7 @@ import type { LucideIcon } from 'lucide-react';
 import LinghuiCanvas, {
   type LinghuiCanvasHandle,
 } from '../../canvas/components/LinghuiCanvas';
+import { LinghuiCanvasErrorBoundary } from '../../canvas/components/LinghuiCanvasErrorBoundary';
 import { LinghuiLibraryDrawer, type LinghuiAssetFilter, type LinghuiLibraryDrawerKey } from '../../library/components/LinghuiLibraryDrawer';
 import {
   collectLinghuiDependentNodeIds,
@@ -100,6 +101,7 @@ const EMPTY_WORKSPACE_RUNTIME: LinghuiWorkspaceRuntimeState = {
 };
 const WORKSPACE_SAVE_DEBOUNCE_MS = 2500;
 const workflowLogger = createLogger('LinghuiWorkflowExecution');
+const linghuiCanvasLogger = createLogger('LinghuiCanvas');
 const EXECUTION_LOG_ICON_BY_LEVEL: Record<LinghuiExecutionLogEntry['level'], LucideIcon> = {
   error: CircleAlert,
   warn: TriangleAlert,
@@ -166,6 +168,7 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
   const activeWorkspaceRef = useRef<LinghuiWorkspaceDocument | null>(null);
   const persistedWorkspaceRef = useRef<LinghuiWorkspaceDocument | null>(null);
   const workspaceRuntimeRef = useRef<LinghuiWorkspaceRuntimeState>(EMPTY_WORKSPACE_RUNTIME);
+  const canvasCrashedRef = useRef<boolean>(false);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -1224,6 +1227,31 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
   ) => {
     const current = activeWorkspaceRef.current;
     if (!current) return;
+
+    // 画布异常态下不再写盘，避免错误中产生的空白/半空快照覆盖磁盘上的最近一次保存。
+    if (canvasCrashedRef.current) {
+      linghuiCanvasLogger.warn('graphChange suppressed during canvas crash recovery', {
+        workspaceId: current.id,
+      });
+      return;
+    }
+
+    // Data-loss guard：当前画布有节点但本次快照变成 0 节点 0 边时，几乎只可能来自渲染崩溃或异常重置；
+    // 不允许写入磁盘，避免把上一份工作完整清空。用户显式删除最后一个节点会经过相同分支，
+    // 但当时 current.nodeCount 已是 1->0 的中间态，由 UI 历史栈兜底；这里仍保留一次性快照来源。
+    if (
+      current.graphData.nodes.length > 0 &&
+      graphData.nodes.length === 0 &&
+      graphData.edges.length === 0 &&
+      (graphData.groups?.length ?? 0) === 0
+    ) {
+      linghuiCanvasLogger.warn('graphChange suppressed: empty snapshot would overwrite non-empty workspace', {
+        workspaceId: current.id,
+        previousNodeCount: current.graphData.nodes.length,
+      });
+      return;
+    }
+
     const nextDraft = {
       ...current,
       graphData,
@@ -1280,6 +1308,46 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
     delete nextRuns[nodeId];
     updateWorkspaceExecution(nextRuns, currentLogs);
   }, [updateWorkspaceExecution]);
+
+  const handleCanvasCrash = useCallback((error: Error) => {
+    canvasCrashedRef.current = true;
+    if (saveTimerRef.current) {
+      window.clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    pendingSaveRef.current = null;
+    message.error({
+      content: `画布异常已暂停自动保存：${error.message || '未知错误'}`,
+      duration: 6,
+    });
+  }, [message]);
+
+  const handleCanvasRecover = useCallback(() => {
+    canvasCrashedRef.current = false;
+    message.success('已恢复画布自动保存');
+  }, [message]);
+
+  const handleCanvasReload = useCallback(() => {
+    const currentId = activeWorkspaceRef.current?.id;
+    canvasCrashedRef.current = false;
+    if (!currentId) {
+      message.info('当前没有可重新加载的工作区');
+      return;
+    }
+    void (async () => {
+      try {
+        const reloaded = await loadLinghuiWorkspace(currentId);
+        if (!reloaded) {
+          message.error('未找到工作区记录，无法重新加载');
+          return;
+        }
+        activateWorkspace(reloaded);
+        message.success('已从磁盘重新加载最近一次保存');
+      } catch (error: any) {
+        message.error(error?.message || '重新加载工作区失败');
+      }
+    })();
+  }, [activateWorkspace, message]);
 
   const handleRestoreNodeRuns = useCallback((nextRuns: Record<string, LinghuiNodeRunState>) => {
     const currentLogs = workspaceRuntimeRef.current.executionLogs;
@@ -1918,6 +1986,11 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
     <div className="linghuiPage">
       <div className="linghuiCanvasPanel">
         <div className="linghuiCanvasWorkspace">
+          <LinghuiCanvasErrorBoundary
+            onError={handleCanvasCrash}
+            onRecover={handleCanvasRecover}
+            onReload={handleCanvasReload}
+          >
           <LinghuiCanvas
             ref={canvasRef}
             workspace={activeWorkspace}
@@ -1941,6 +2014,7 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
             executionQueue={executionQueue}
             onOpenDrawer={handleOpenDrawerFromCanvas}
           />
+          </LinghuiCanvasErrorBoundary>
         </div>
       </div>
 

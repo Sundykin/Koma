@@ -4,11 +4,54 @@ import { useCallback } from 'react';
 import type { Dispatch, MutableRefObject, RefObject, SetStateAction } from 'react';
 import type { LinghuiCanvasSelection, LinghuiNodeData } from '../../../../types/linghui';
 import { resolveLinghuiWorkflowBlockLabel } from '../../../../constants/linghuiWorkflowBlock';
-import { isLinghuiConnectionValid } from '../../library/state/linghuiNodeDefs';
+import {
+  isLinghuiConnectionValid,
+  resolveLinghuiCompatibleInputSlot,
+} from '../../library/state/linghuiNodeDefs';
 import {
   clampNodePositionToParentBounds,
   type PendingConnectionCreateState,
 } from '../state/linghuiCanvasShared';
+
+/**
+ * 纯函数：根据连线松开时的 connectionState + 原生事件决定是否要打开 LibTV 风"引用该节点生成"面板。
+ *
+ * 规则（对齐 LibTV onConnectEnd）：
+ * - 没有 pending（onConnectStart 没记到源） → 不打开
+ * - 有效连接 isValid → 不打开（连接已经成立）
+ * - 命中下游节点 toNode → 不打开（连接将由 onConnect 处理）
+ * - pointer 缺失 + 事件坐标也都为 0 → 不打开（极端兼容性，避免左上角误弹）
+ * - 其他情况一律打开
+ *
+ * 故意不再检查 `releasedOnPane`：旧逻辑要求 event.target 闭包到 .react-flow__pane / __renderer，
+ * 但鼠标松开时 event.target 经常落到 .react-flow__edges / __nodes-overlay / 其他子层，
+ * 导致 quickCreate 永远不会被触发；LibTV 自己也没有这一层判断。
+ */
+export function resolveQuickCreateFromConnectEnd(
+  event: { clientX?: number; clientY?: number; changedTouches?: TouchList; touches?: TouchList },
+  connectionState: {
+    isValid: boolean | null;
+    toNode: Node | null;
+    pointer?: { x: number; y: number } | null;
+  },
+  pendingConnection: PendingConnectionCreateState | null,
+): { open: false } | { open: true; x: number; y: number; sourceConnection: PendingConnectionCreateState } {
+  if (!pendingConnection) return { open: false };
+  if (connectionState.isValid || connectionState.toNode) return { open: false };
+
+  const fallbackClientX = typeof event.clientX === 'number'
+    ? event.clientX
+    : event.changedTouches?.[0]?.clientX ?? event.touches?.[0]?.clientX ?? 0;
+  const fallbackClientY = typeof event.clientY === 'number'
+    ? event.clientY
+    : event.changedTouches?.[0]?.clientY ?? event.touches?.[0]?.clientY ?? 0;
+  const pointerX = connectionState.pointer?.x ?? fallbackClientX;
+  const pointerY = connectionState.pointer?.y ?? fallbackClientY;
+
+  if (!pointerX && !pointerY) return { open: false };
+
+  return { open: true, x: pointerX, y: pointerY, sourceConnection: pendingConnection };
+}
 
 interface UseLinghuiCanvasFlowBridgeParams {
   reactFlow: ReactFlowInstance;
@@ -181,6 +224,14 @@ export function useLinghuiCanvasFlowBridge({
       return;
     }
 
+    const sourceNode = allNodes.find(node => node.id === source);
+    const targetNode = allNodes.find(node => node.id === target);
+    const sourceSlot = (sourceNode?.data as unknown as LinghuiNodeData | undefined)?.outputs?.[0];
+    const targetNodeData = targetNode?.data as unknown as LinghuiNodeData | undefined;
+    const targetSlot = sourceSlot && targetNodeData
+      ? resolveLinghuiCompatibleInputSlot(targetNodeData.linghuiType, sourceSlot.dataType)?.slot
+      : null;
+
     setEdges((currentEdges) => {
       if (currentEdges.some(edge => edge.source === source && edge.target === target)) {
         return currentEdges;
@@ -192,6 +243,12 @@ export function useLinghuiCanvasFlowBridge({
         targetHandle: 'input-0',
         type: 'linghui-edge',
         id: `e-${nanoid(8)}`,
+        data: sourceSlot
+          ? {
+              sourceSlotType: sourceSlot.dataType,
+              targetSlotType: targetSlot?.dataType ?? sourceSlot.dataType,
+            }
+          : undefined,
       }, currentEdges);
     });
     scheduleSnapshot();
@@ -252,25 +309,20 @@ export function useLinghuiCanvasFlowBridge({
 
   const handleConnectEnd = useCallback((event: MouseEvent | TouchEvent, connectionState: FinalConnectionState) => {
     const pendingConnection = pendingConnectionCreateRef.current;
-    if (!pendingConnection) {
-      return;
-    }
-
     pendingConnectionCreateRef.current = null;
 
-    if (connectionState.isValid || connectionState.toNode || !connectionState.pointer) {
+    const decision = resolveQuickCreateFromConnectEnd(
+      event as unknown as { clientX?: number; clientY?: number; changedTouches?: TouchList; touches?: TouchList },
+      connectionState,
+      pendingConnection,
+    );
+
+    if (!decision.open) {
       return;
     }
 
-    const target = event.target as HTMLElement | null;
-    const releasedOnPane = Boolean(target?.closest('.react-flow__pane'))
-      || Boolean(target?.closest('.react-flow__renderer'));
-    if (!releasedOnPane) {
-      return;
-    }
-
-    openQuickCreateAt(connectionState.pointer.x, connectionState.pointer.y, {
-      sourceConnection: pendingConnection,
+    openQuickCreateAt(decision.x, decision.y, {
+      sourceConnection: decision.sourceConnection,
     });
   }, [openQuickCreateAt, pendingConnectionCreateRef]);
 

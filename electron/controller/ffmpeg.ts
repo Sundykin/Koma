@@ -5,7 +5,14 @@
 import { IpcMainInvokeEvent } from 'electron';
 import { services } from '../service';
 import { ensureServicesReady } from '../service';
-import type { ExtractFramesOptions, SplitGridImageOptions, WaveformOptions, ComposeVideoOptions } from '../service/ffmpeg';
+import type {
+  ExtractFramesOptions,
+  SplitGridImageOptions,
+  UpscaleImageOptions,
+  CropImageOptions,
+  WaveformOptions,
+  ComposeVideoOptions,
+} from '../service/ffmpeg';
 
 class FFmpegController {
   /**
@@ -38,6 +45,22 @@ class FFmpegController {
   async splitGridImage(args: SplitGridImageOptions, _event: IpcMainInvokeEvent) {
     await ensureServicesReady();
     return services.ffmpeg.splitGridImage(args);
+  }
+
+  /**
+   * 高清放大图片
+   */
+  async upscaleImage(args: UpscaleImageOptions, _event: IpcMainInvokeEvent) {
+    await ensureServicesReady();
+    return services.ffmpeg.upscaleImage(args);
+  }
+
+  /**
+   * 裁剪图片
+   */
+  async cropImage(args: CropImageOptions, _event: IpcMainInvokeEvent) {
+    await ensureServicesReady();
+    return services.ffmpeg.cropImage(args);
   }
 
   /**

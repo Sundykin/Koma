@@ -9,13 +9,17 @@ import type {
   LinghuiNodeCatalogItem,
   LinghuiNodeRunState,
   LinghuiNodeToolState,
-  LinghuiNodeType,
   LinghuiStoryboardFrame,
 } from '../../../../types/linghui';
 import type { LinghuiCanvasMenuState, QuickCreateState } from '../state/linghuiCanvasShared';
+import type {
+  LinghuiCanvasResultCopyKind,
+  LinghuiCanvasResultCopyState,
+} from '../state/linghuiCanvasResultActions';
 import type { CssVarStyle } from '../../../../theme/runtime';
 import { LinghuiCanvasPendingGroupOverlay } from './LinghuiCanvasPendingGroupOverlay';
 import { LinghuiCanvasQuickCreate } from './LinghuiCanvasQuickCreate';
+import { LinghuiCanvasQuickCreateGhostEdge } from './LinghuiCanvasQuickCreateGhostEdge';
 import { LinghuiCanvasContextMenu } from './LinghuiCanvasContextMenu';
 
 export interface LinghuiCanvasOverlaysProps {
@@ -39,9 +43,12 @@ export interface LinghuiCanvasOverlaysProps {
     multiAngle?: Partial<LinghuiMultiAngleConfig>;
     label?: string;
   }) => string | null;
+  onExecuteImageUpscale?: (nodeId: string, options?: { factor?: 2 | 4 }) => void;
+  onExecuteImageCrop?: (nodeId: string, options: { aspectRatio: string; label?: string }) => void;
   onGenerateImageFromController?: (controllerNodeId: string) => string | null;
   onExecuteMultiAngle?: (options?: LinghuiExecuteMultiAngleOptions) => void;
   onApplyImageToolPreset: (preset: {
+    label?: string;
     promptSnippet: string;
     properties?: Partial<LinghuiImageNodeProperties>;
   }) => void;
@@ -51,6 +58,8 @@ export interface LinghuiCanvasOverlaysProps {
   gridSplitUpscaleFactor: 2 | 4;
   onSetGridSplitUpscaleFactor: (factor: 2 | 4) => void;
   onRevertGridSplit: () => void;
+  /** 视频工具栏"音频分离 → 音视频分离"，按 nodeId 工作，非右键菜单专用。 */
+  onSeparateVideoAudio?: (nodeId: string) => void;
   pendingGroupFrameStyle: CssVarStyle | null;
   pendingGroupActionsStyle: CssVarStyle | null;
   pendingGroupCreatableIds: string[];
@@ -58,19 +67,45 @@ export interface LinghuiCanvasOverlaysProps {
   onDismissPendingGroup: () => void;
   quickCreate: QuickCreateState | null;
   quickCreateCatalog: LinghuiNodeCatalogItem[];
-  onAddNodeFromQuickCreate: (type: LinghuiNodeType) => void;
+  onAddNodeFromQuickCreate: (item: LinghuiNodeCatalogItem) => void;
   contextMenu: LinghuiCanvasMenuState | null;
   contextMenuNodeIsGroup: boolean;
+  contextMenuResultCopyState: LinghuiCanvasResultCopyState;
+  contextMenuMediaActionState: {
+    imageCount: number;
+    videoCount: number;
+    canOpenPanoramaPreview: boolean;
+    canCreateSubject: boolean;
+    canCopyPrimaryImage: boolean;
+    canSeparateVideoAudio: boolean;
+    canReturnToGenerator: boolean;
+    canExpandImages: boolean;
+    canDeleteOtherImages: boolean;
+    canExpandVideos: boolean;
+    canDeleteOtherVideos: boolean;
+  };
   contextMenuSelectionIds: string[];
   nodeCatalog: LinghuiNodeCatalogItem[];
   hasClipboardData: boolean;
   canUndo: boolean;
   canRedo: boolean;
-  onAddNodeFromMenu: (type: LinghuiNodeType) => void;
+  onAddNodeFromMenu: (item: LinghuiNodeCatalogItem) => void;
+  /** LibTV 空白右键菜单"添加节点"：打开 quickCreate 面板（与双击画布同效果）。 */
+  onOpenAddNodePanel: () => void;
   onCopyNodeSelection: () => void;
   onDuplicateNodeSelection: () => void;
   onOpenDownstreamQuickCreate: () => void;
   onCreateAssetFromNode: () => void;
+  onOpenPanoramaPreviewFromNode: () => void;
+  onCreateSubjectFromNode: () => void;
+  onCopyPrimaryImageFromNode: () => void;
+  onSeparateVideoAudioFromNode: () => void;
+  onReturnToGenerator: () => void;
+  onCopyCurrentNodeResult: (kind: LinghuiCanvasResultCopyKind) => void;
+  onExpandCurrentNodeImages: () => void;
+  onDeleteOtherCurrentNodeImages: () => void;
+  onExpandCurrentNodeVideos: () => void;
+  onDeleteOtherCurrentNodeVideos: () => void;
   onRunCurrentNode: () => void;
   onRunCurrentGroup: () => void;
   onExportCurrentSelection: () => void;
@@ -83,6 +118,8 @@ export interface LinghuiCanvasOverlaysProps {
   onUploadImages: () => void;
   onUploadVideos: () => void;
   onUploadAudios: () => void;
+  onFormatLayout: () => void;
+  onOpenShortcutPanel: () => void;
   onPaste: () => void;
   onUndo: () => void;
   onRedo: () => void;
@@ -106,16 +143,29 @@ export function LinghuiCanvasOverlays({
   onAddNodeFromQuickCreate,
   contextMenu,
   contextMenuNodeIsGroup,
+  contextMenuResultCopyState,
+  contextMenuMediaActionState,
   contextMenuSelectionIds,
   nodeCatalog,
   hasClipboardData,
   canUndo,
   canRedo,
   onAddNodeFromMenu,
+  onOpenAddNodePanel,
   onCopyNodeSelection,
   onDuplicateNodeSelection,
   onOpenDownstreamQuickCreate,
   onCreateAssetFromNode,
+  onOpenPanoramaPreviewFromNode,
+  onCreateSubjectFromNode,
+  onCopyPrimaryImageFromNode,
+  onSeparateVideoAudioFromNode,
+  onReturnToGenerator,
+  onCopyCurrentNodeResult,
+  onExpandCurrentNodeImages,
+  onDeleteOtherCurrentNodeImages,
+  onExpandCurrentNodeVideos,
+  onDeleteOtherCurrentNodeVideos,
   onRunCurrentNode,
   onRunCurrentGroup,
   onExportCurrentSelection,
@@ -128,6 +178,8 @@ export function LinghuiCanvasOverlays({
   onUploadImages,
   onUploadVideos,
   onUploadAudios,
+  onFormatLayout,
+  onOpenShortcutPanel,
   onPaste,
   onUndo,
   onRedo,
@@ -149,6 +201,8 @@ export function LinghuiCanvasOverlays({
         onDismiss={onDismissPendingGroup}
       />
 
+      <LinghuiCanvasQuickCreateGhostEdge quickCreate={quickCreate} />
+
       <LinghuiCanvasQuickCreate
         quickCreate={quickCreate}
         catalog={quickCreateCatalog}
@@ -158,16 +212,29 @@ export function LinghuiCanvasOverlays({
       <LinghuiCanvasContextMenu
         contextMenu={contextMenu}
         contextMenuNodeIsGroup={contextMenuNodeIsGroup}
+        contextMenuResultCopyState={contextMenuResultCopyState}
+        contextMenuMediaActionState={contextMenuMediaActionState}
         contextMenuSelectionIds={contextMenuSelectionIds}
         nodeCatalog={nodeCatalog}
         hasClipboardData={hasClipboardData}
         canUndo={canUndo}
         canRedo={canRedo}
         onAddNode={onAddNodeFromMenu}
+        onOpenAddNodePanel={onOpenAddNodePanel}
         onCopyNodeSelection={onCopyNodeSelection}
         onDuplicateNodeSelection={onDuplicateNodeSelection}
         onOpenDownstreamQuickCreate={onOpenDownstreamQuickCreate}
         onCreateAssetFromNode={onCreateAssetFromNode}
+        onOpenPanoramaPreviewFromNode={onOpenPanoramaPreviewFromNode}
+        onCreateSubjectFromNode={onCreateSubjectFromNode}
+        onCopyPrimaryImageFromNode={onCopyPrimaryImageFromNode}
+        onSeparateVideoAudioFromNode={onSeparateVideoAudioFromNode}
+        onReturnToGenerator={onReturnToGenerator}
+        onCopyCurrentNodeResult={onCopyCurrentNodeResult}
+        onExpandCurrentNodeImages={onExpandCurrentNodeImages}
+        onDeleteOtherCurrentNodeImages={onDeleteOtherCurrentNodeImages}
+        onExpandCurrentNodeVideos={onExpandCurrentNodeVideos}
+        onDeleteOtherCurrentNodeVideos={onDeleteOtherCurrentNodeVideos}
         onRunCurrentNode={onRunCurrentNode}
         onRunCurrentGroup={onRunCurrentGroup}
         onExportCurrentSelection={onExportCurrentSelection}
@@ -180,6 +247,8 @@ export function LinghuiCanvasOverlays({
         onUploadImages={onUploadImages}
         onUploadVideos={onUploadVideos}
         onUploadAudios={onUploadAudios}
+        onFormatLayout={onFormatLayout}
+        onOpenShortcutPanel={onOpenShortcutPanel}
         onPaste={onPaste}
         onUndo={onUndo}
         onRedo={onRedo}

@@ -139,6 +139,11 @@ export const VIDEO_TOOL_PRESETS: Record<LinghuiVideoToolKey, {
     videoCapability: LinghuiVideoCapability;
   }) => VideoToolPreset[];
 }> = {
+  clip: {
+    title: '剪辑',
+    description: '裁剪当前视频片段，输出新的本地视频节点。',
+    buildPresets: () => [],
+  },
   upscale: {
     title: '高清',
     description: '提升视频节点的画质预期与输出规格。',
@@ -156,6 +161,16 @@ export const VIDEO_TOOL_PRESETS: Record<LinghuiVideoToolKey, {
         properties: { resolution: '1080p' },
       },
     ],
+  },
+  'subtitle-remove': {
+    title: '智能去字幕',
+    description: 'AI 一键去除视频字幕，仅支持中英文字幕（待接入服务）。',
+    buildPresets: () => [],
+  },
+  'audio-separation': {
+    title: '音频分离',
+    description: '把音轨从视频中独立出来；提供"音视频分离"（本地）与"人声分离"（云端，待接入）。',
+    buildPresets: () => [],
   },
   analyze: {
     title: '解析',
@@ -176,36 +191,6 @@ export const VIDEO_TOOL_PRESETS: Record<LinghuiVideoToolKey, {
         label: '写入分镜节奏骨架',
         description: '更强调开场、推进和收束的镜头节奏。',
         promptSnippet: '镜头节奏清晰：开场建立环境，中段推进主体动作，结尾收束到视觉高潮，整体连贯不跳切。',
-      },
-    ],
-  },
-  compose: {
-    title: '合成',
-    description: '把图片、视频和音频输入重新编排成更明确的合成方式。',
-    buildPresets: () => [
-      {
-        label: '纯提示词推进',
-        description: '切到文生视频模式，只保留提示词驱动。',
-        promptSnippet: '仅依据提示词控制镜头运动、构图节奏和主体表演，不依赖明确的视觉参考图。',
-        properties: { videoCapability: 'video.text-to-video' },
-      },
-      {
-        label: '主图动起来',
-        description: '以第一张主图为核心生成动态镜头。',
-        promptSnippet: '以主图中的主体和构图为基础，让动作自然展开，镜头连贯稳定。',
-        properties: { videoCapability: 'video.image-to-video' },
-      },
-      {
-        label: '融合全部参考',
-        description: '优先整合所有视觉参考和音频氛围。',
-        promptSnippet: '融合全部参考输入，统一主体风格、镜头节奏与氛围细节，避免素材割裂。',
-        properties: { videoCapability: 'video.reference-to-video' },
-      },
-      {
-        label: '首尾帧过渡',
-        description: '以首帧到尾帧的方式组织镜头演化。',
-        promptSnippet: '以首帧到尾帧的明确变化来组织镜头推进，中间过程连贯自然，过渡平滑。',
-        properties: { videoCapability: 'video.start-end-to-video' },
       },
     ],
   },

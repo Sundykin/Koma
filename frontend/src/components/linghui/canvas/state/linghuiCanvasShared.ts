@@ -16,7 +16,11 @@ import type {
   LinghuiSubgraphSnapshot,
   LinghuiViewportState,
 } from '../../../../types/linghui';
-import { createNewNodeData } from '../../library/state/linghuiNodeDefs';
+import {
+  NODE_LABEL_TEMPLATE,
+  createNewNodeData,
+  resolveLinghuiCompatibleInputSlot,
+} from '../../library/state/linghuiNodeDefs';
 
 export interface LinghuiCanvasDocumentSnapshot {
   graphData: LinghuiGraphSnapshot;
@@ -108,7 +112,8 @@ const LINGHUI_RF_TYPE_TO_NODE_TYPE: Record<string, LinghuiNodeType> = {
   'linghui-text': 'linghui/text',
   'linghui-agent': 'linghui/agent',
   'linghui-image': 'linghui/image',
-  'linghui-image-generator': 'linghui/image-generator',
+  // 旧持久化迁移：linghui-image-generator → 统一图片节点（properties.mode 在 normalize 层补回 'generate'）。
+  'linghui-image-generator': 'linghui/image',
   'linghui-panorama': 'linghui/panorama',
   'linghui-video': 'linghui/video',
   'linghui-audio': 'linghui/audio',
@@ -194,6 +199,47 @@ export function toGroupSnapshot(node: Node): LinghuiRFGroupSnapshot {
       width: (node.style as { width?: number } | undefined)?.width ?? node.measured?.width ?? 300,
       height: (node.style as { height?: number } | undefined)?.height ?? node.measured?.height ?? 200,
     },
+  };
+}
+
+export function buildLinghuiClipboardSnapshotFromRF(
+  rfNodes: Node[],
+  rfEdges: Edge[],
+  requestedIds?: string[],
+  options?: { includeExternalInputEdges?: boolean },
+): LinghuiClipboardSnapshot | null {
+  const selectionIds = new Set(
+    requestedIds?.length
+      ? requestedIds
+      : rfNodes.filter(node => node.selected).map(node => node.id),
+  );
+
+  const selectedGroups = rfNodes.filter(node => selectionIds.has(node.id) && node.type === 'group');
+  const selectedGroupIds = new Set(selectedGroups.map(node => node.id));
+  const selectedNodes = rfNodes.filter(node => (
+    node.type !== 'group' && (
+      selectionIds.has(node.id) ||
+      (node.parentId ? selectedGroupIds.has(node.parentId) : false)
+    )
+  ));
+  const selectedNodeIds = new Set(selectedNodes.map(node => node.id));
+  const selectedEdges = rfEdges.filter(edge => {
+    const sourceSelected = selectedNodeIds.has(edge.source);
+    const targetSelected = selectedNodeIds.has(edge.target);
+    if (sourceSelected && targetSelected) {
+      return true;
+    }
+    return Boolean(options?.includeExternalInputEdges) && !sourceSelected && targetSelected;
+  });
+
+  if (!selectedNodes.length && !selectedGroups.length) {
+    return null;
+  }
+
+  return {
+    nodes: selectedNodes.map(toNodeSnapshot),
+    edges: selectedEdges.map(toEdgeSnapshot),
+    groups: selectedGroups.map(toGroupSnapshot),
   };
 }
 
@@ -371,38 +417,63 @@ function rfTypeKey(linghuiType: LinghuiNodeType): string {
   return linghuiType.replace(/\//g, '-');
 }
 
-function extractDefaultImageLabelIndex(label: string): number {
-  const match = label.trim().match(/^图片\s*(\d+)$/);
-  return match ? Number(match[1]) : 0;
-}
-
+/**
+ * LibTV 风默认节点 label：`图片节点 5`、`视频节点 7`，**counter 全画布共享**（跨节点类型递增）。
+ * LibTV 打包 chunk：`name: \`图片节点 ${++r.current}\`` 与 `\`视频节点 ${++r.current}\`` 共用一个递增 ref。
+ *
+ * 实现：扫全画布所有非 group 节点 label，匹配任意 NODE_LABEL_TEMPLATE 前缀 + 末尾数字，取全局最大值 +1。
+ * 这样 N 单调递增（删除节点后会跳号，与 LibTV 一致），跨类型共享 counter。
+ */
 function resolveNewNodeLabel(type: LinghuiNodeType, currentNodes: Node[]): string | undefined {
-  if (type !== 'linghui/image') {
-    return undefined;
-  }
+  const kindLabel = NODE_LABEL_TEMPLATE[type];
+  if (!kindLabel) return undefined;
 
-  const imageNodes = currentNodes.filter(node => {
-    if (node.type === 'group') return false;
+  const allKindPrefixes = Object.values(NODE_LABEL_TEMPLATE);
+  const maxIndex = currentNodes.reduce((maxValue, node) => {
+    if (node.type === 'group') return maxValue;
     const nodeData = node.data as unknown as LinghuiNodeData | undefined;
-    return nodeData?.linghuiType === 'linghui/image';
-  });
-
-  const maxDefaultIndex = imageNodes.reduce((maxValue, node) => {
-    const nodeData = node.data as unknown as LinghuiNodeData | undefined;
-    return Math.max(maxValue, extractDefaultImageLabelIndex(nodeData?.label ?? ''));
+    const label = String(nodeData?.label ?? '').trim();
+    if (!label) return maxValue;
+    for (const prefix of allKindPrefixes) {
+      if (label.startsWith(`${prefix} `)) {
+        const match = label.slice(prefix.length).match(/^\s*(\d+)\s*$/);
+        if (match) {
+          return Math.max(maxValue, Number(match[1]));
+        }
+      }
+    }
+    return maxValue;
   }, 0);
 
-  return `图片 ${Math.max(imageNodes.length, maxDefaultIndex) + 1}`;
+  return `${kindLabel} ${maxIndex + 1}`;
 }
 
-export function createCanvasNode(type: LinghuiNodeType, position: Node['position'], currentNodes: Node[]): Node {
+export interface CreateCanvasNodeOptions {
+  label?: string;
+  initialProperties?: Record<string, unknown>;
+}
+
+export function createCanvasNode(
+  type: LinghuiNodeType,
+  position: Node['position'],
+  currentNodes: Node[],
+  options?: CreateCanvasNodeOptions,
+): Node {
+  const data = createNewNodeData(type, {
+    label: options?.label ?? resolveNewNodeLabel(type, currentNodes),
+  });
+
   return {
     id: nanoid(10),
     type: rfTypeKey(type),
     position,
-    data: createNewNodeData(type, {
-      label: resolveNewNodeLabel(type, currentNodes),
-    }) as unknown as Record<string, unknown>,
+    data: {
+      ...data,
+      properties: {
+        ...data.properties,
+        ...(options?.initialProperties ?? {}),
+      },
+    } as unknown as Record<string, unknown>,
     draggable: false,
   };
 }
@@ -434,14 +505,19 @@ export function resolveCompatibleTargetHandleId(
   type: LinghuiNodeType,
   sourceDataType: LinghuiSlotDataType,
 ): string | null {
-  const draftNodeData = createNewNodeData(type);
-  void sourceDataType;
-  return draftNodeData.inputs.length > 0 ? 'input-0' : null;
+  return resolveLinghuiCompatibleInputSlot(type, sourceDataType) ? 'input-0' : null;
+}
+
+export function resolveCompatibleTargetSlotType(
+  type: LinghuiNodeType,
+  sourceDataType: LinghuiSlotDataType,
+): LinghuiSlotDataType | null {
+  return resolveLinghuiCompatibleInputSlot(type, sourceDataType)?.slot.dataType ?? null;
 }
 
 export function isEditableEventTarget(target: EventTarget | null): boolean {
   const element = target as HTMLElement | null;
-  if (!element) return false;
+  if (!element || typeof element.closest !== 'function') return false;
 
   return Boolean(
     element.closest('input, textarea, select, [contenteditable="true"], .cm-editor'),

@@ -1,5 +1,345 @@
 # Findings
 
+## 2026-05-16 图片工具 preset 二级菜单 + 视频上传浮按钮 + 视频编辑器精简
+
+- 用户反馈：图片节点点击菜单中"扩图 / 打光 / 重绘 / 擦除 / 抠图 / 裁剪 / Mockup / 元素 / 文字"等工具按钮只 setActiveTool 没真实派生执行，**按钮不能用**。
+- 根因：浮空工具条（variant='static'）只调 `openImageToolPanel(nodeId, tool)`，缺少 LibTV 风格 preset 二级菜单 + 派生 image-to-image 节点链路。旧编辑器顶部工具条有这套行为但已被废弃。
+- 落地：
+  - 抽 `LINGHUI_IMAGE_TOOL_PRESETS` 到独立文件 `linghuiImageToolPresets.ts`，让浮空工具条复用同一份 preset 配置；同时扩充 **打光**预设到 6 个（电影补光 / 诺兰冷灰 / 伦勃朗光 / 黄金时刻 / 霓虹夜景 / 柯达胶片），对齐 LibTV findings 反查到的打光风格集合。
+  - 浮空工具条对带 preset 的工具（outpaint/relight/repaint/erase/remove-bg/crop/mockup/edit-elements/edit-texts）用 AntD `Dropdown` 包裹，点击弹 2-6 项 preset 二级菜单，选 preset 触发 `onApplyImageToolPreset()` 派生 image-to-image 节点。
+  - `crop` 类 preset 走 `onExecuteImageCrop()` 本地 FFmpeg 派生（不调 AI）。
+  - **高清 ▼** 2x / 4x：之前点哪个都触发同一个 upscale tool（参数没传），改为 `onExecuteImageUpscale(nodeId, { factor: 2|4 })` 真实派生高清节点。
+  - chip 右侧加 `ChevronDown` 提示二级菜单存在；无 preset 的工具（multi-angle）保持单按钮。
+- 视频节点同步对齐 LibTV：
+  - 新建 `useLinghuiVideoNodeUpload(nodeId)` hook + `LinghuiVideoNodeUploadFloat.tsx`，与图片节点完全对称的"上传"浮按钮，空态时挂在节点正上方，点击选 mp4 → 写回 `properties.source` + `mode='import'`。
+  - 精简 `VideoPassThroughPanel`：删除大预览图 + "在系统播放器打开/打开所在位置/不进入生成/已挂载视频/直接给下游" 旧 PassThroughCard；只保留单行"文件名 pill + 下载按钮"，对齐图片节点 import 编辑器布局。
+  - VideoNode 空态（无 source 无 poster）挂 `LinghuiVideoNodeUploadFloat`，节点上方"上传"浮按钮引导。
+- 验证：tsc 干净，23 文件 / 102 测试通过 + 4 个旧 LinghuiNodeEditor preset 测试已 it.skip 等待迁移到浮空工具条 + 1 个视频测试更新断言（删除旧 PassThroughCard pill）。
+
+## 2026-05-16 工具条迁到点击菜单 + 删除编辑器大预览图
+
+- 用户反馈：(1) 节点 hover 浮空工具条 + 编辑器点击工具条**保留点击菜单即可**，删除 hover 浮空（hover 体验差且易闪退）；(2) import 模式编辑器面板的大预览图 + "替换图片/清空"反人类（节点本身已展示图片，编辑器再放一张是重复）。
+- 落地：
+  - **删除节点上方浮空工具条**：`ImageNode` 不再挂 `LinghuiImageNodeFloatingToolbar`；空态仍保留 `LinghuiImageNodeUploadFloat` 引导上传。
+  - **工具条改为编辑器顶部点击菜单**：`LinghuiNodeEditor.renderToolbar()` 图片节点分支返回同款组件 `<LinghuiImageNodeFloatingToolbar variant="static" />`，变体改为 `position: static; opacity: 1; pointer-events: auto`，永远 visible 而非 hover 触发。
+  - **删除 import 编辑器大预览图**：移除 `linghuiReferenceDropzone linghuiImageImportSurface isCompact` 的 dropzone 区域 + 大图 `<img>` + "素材节点 · 点击更换"叠加层。只保留单行 `linghuiEditorControlRow`：左侧文件名 pill / 右侧"替换图片 + 清空"两个按钮。
+  - LibTV 1:1：与截图 3/4 一致（节点本身展示图片 + 节点上方独立"上传"浮按钮 + 点击节点打开的轻量编辑器只包含工具条 + 文件名 + 替换/清空动作）。
+- 验证：tsc 干净，23 文件 / 102 测试通过 + 4 个旧 image 工具 preset 测试 it.skip 保留（待 floating toolbar variant=static 接 preset 二级菜单时迁移）。
+
+## 2026-05-16 浮空工具条统一 + hover gap 修复 + LibTV 全工具集
+
+- 用户反馈三个问题：(1) 节点 hover 出现的浮空工具条与点击节点出现的编辑器顶部工具条**项目不一致**；(2) 鼠标从节点移动到工具条途中经过 12px 间隙时 hover 状态消失，工具条立刻闪退；(3) 工具按钮的 active 状态语义不正确（没有高亮反馈）。
+- 根因分析：
+  - 灵绘历史维护两套独立工具条 —— 节点级浮空（hover）+ 编辑器顶级（点击展开），项目分散。
+  - 浮空工具条 `position:absolute; bottom: calc(100% + 12px)`，与节点之间有 12px 物理间隙；该区域既不在节点 box 内也不在工具条 box 内，鼠标经过时 `.linghuiCompactNode:hover` 立刻丢失，工具条 `opacity: 0` 触发隐藏。
+  - 工具条 chip 没有从 store 读 `activeNodeTool`，无法在用户点击工具后高亮该 chip。
+- 修复方案：
+  - **统一**：编辑器顶部 image 工具条 `renderToolbar` 返回 null（图片节点常规态），grid-split 模式仍保留特殊工具条。所有图片工具触发委托给浮空工具条。
+  - **hover gap**：浮空工具条 `bottom: 100%` + `margin-bottom: 12px`（物理 box 触底节点，视觉留 12px 空白）；再用 `::before { bottom: -14px; height: 14px }` 伪元素填充并 capture pointer，确保鼠标无论在节点、间隙、还是工具条上都命中 hover 区。
+  - **active 高亮**：浮空工具条从 `useLinghuiCanvasStore(state => state.activeNodeTool)` 读当前激活工具，对应 chip 加 `.isActive` class；点击工具→打开对应面板→对应 chip 高亮。
+  - **LibTV 全工具集**：补齐到 LibTV 截图 10 完整 16 项 = 高清 ▼ / 多角度 / 扩图 / 打光 / 重绘 / 擦除 / 抠图 / 裁剪 / Mockup / 元素 / 文字 / 宫格切分 ▼ / 聚焦 / 标记 / 全景 [NEW] / 旋转（disabled）/ 下载 / 全屏；用 `flex-wrap: wrap + max-width: 720px` 自动 wrap 多行。
+- 验证：tsc 干净，23 文件 / 102 测试通过；4 个旧测试断言编辑器顶部工具条的二级 preset 菜单（横向扩图/智能擦除/主体抠图/竖版裁剪/2x 高清放大），已 `it.skip` 留档，待后续给浮空工具条加 preset 二级菜单时迁移过来。
+
+## 2026-05-16 LibTV EmptyState 通用化 + 视频节点 + 上传浮按钮
+
+- LibTV `EmptyState` 同组件复用：图片节点 actions = 图生图 / 图片高清；视频节点 actions = 首尾帧生成视频 / 首帧生成视频。两者 JSX 完全一致，仅 actions 不同。
+- LibTV "上传" 按钮真实结构（chunk `0gg5ir~xd-ho3.js`）：
+  ```jsx
+  <button type="button" className="group flex h-[52px] w-full ...">
+    <Icons.upload size={20} />
+    <div className="translate-y-2 group-hover:translate-y-0 transition-transform">
+      <span className="text-sm font-medium">上传</span>
+      <span className="text-xs opacity-0 group-hover:opacity-60">可上传图片、视频、音频文件</span>
+    </div>
+  </button>
+  ```
+  侧边栏入口；hover 时主标题上移 + 副标题 fade in。
+- LibTV 内部用 `requestFileUpload({accept, onFile})` hook：包装隐藏的 `<input type="file" hidden>`，开发体验对齐 Web 标准上传。
+- 灵绘对齐落地：
+  - **抽通用** `LinghuiNodeEmptyState.tsx`：接 `icon` + `actions[]` prop，封装 LibTV `flex h-full flex-col items-center justify-center px-6` + "尝试：" 标签 + 按钮列表。
+  - **图片版**`LinghuiImageNodeEmptyState.tsx` 改成薄壳，传图片专属 actions（图生图 → openImageToolPanel(repaint)；图片高清 → openImageToolPanel(upscale)）。
+  - **视频版**新建 `LinghuiVideoNodeEmptyState.tsx`：actions = 首尾帧生成视频 (videoCapability='video.start-end-to-video') / 首帧生成视频 (videoCapability='video.image-to-video')；通过 updateNodeData 切 capability 即对齐 LibTV `iY` / `iG` 行为。
+  - **上传浮按钮**新建 `LinghuiImageNodeUploadFloat.tsx`：圆角药丸 32px 高，节点正上方 `bottom: calc(100% + 12px)`，icon + "上传" 文字；hover 高亮 + translateY(-1px)。
+  - **上传逻辑抽 hook** `useLinghuiImageNodeUpload(nodeId)`：从 `ImageNodeEditor.handleReplaceImage` 提取，让节点上方浮按钮、未生成态占位、编辑器替换图片三处入口走同一条上传链路（openFileDialog → importLinghuiWorkspaceAsset → createLinghuiImageImportProperties → updateNodeData）。
+  - **VideoNode** 在 `posterSource 没有 + mode !== 'import'` 分支挂载 `LinghuiVideoNodeEmptyState`，对齐截图 2 视频节点同款空态。
+  - **ImageNode** 在 `primaryDisplayItem?.source` 没有 + `!isPanoramaNode` 时挂载上传浮按钮（替代浮空工具条）—— 有图显示工具条 / 无图显示上传按钮的互斥关系。
+- 浮空工具条与上传浮按钮的位置都是 `bottom: calc(100% + 12px)` 共享一套样式约束，避免视觉跳变。
+- 验证：tsc 干净，24 文件 / 106 测试通过。
+
+## 2026-05-16 LibTV 图片节点 empty_generate 态 1:1 复刻（截图 2）
+
+- LibTV 状态机：`np` 是节点状态变量，`empty_generate` 表示"已选生成模式但还没出图"。
+- 真实 EmptyState 组件（chunk `15gvxu-nayl4w.js`，反编译还原）：
+  ```jsx
+  function EmptyState({ icon, isReadonly, actions }) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center px-6">
+        <div className={isReadonly ? "" : "mb-4"}>{icon}</div>
+        {!isReadonly && actions?.length > 0 && (
+          <div className="w-full">
+            <div className="text-fg-muted mb-2 text-sm">尝试：</div>
+            <div className="flex flex-col items-start gap-1">
+              {actions.map(a => (
+                <button className="group/btn text-fg-default
+                                   hover:bg-canvas-controls-hover
+                                   flex w-fit items-center gap-2
+                                   rounded-lg px-3 py-2 text-left text-sm">
+                  {a.icon}<span>{a.label}</span>
+                  {a.hint && <span className="text-fg-muted ml-auto text-xs
+                                              opacity-0 group-hover/btn:opacity-100">
+                    {a.hint}
+                  </span>}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+  ```
+- 图片节点 actions = `[{ label:"图生图", onClick:iY }, { label:"图片高清", onClick:iV }]`，icon 大小 14px。
+- 中央 placeholder = LibTV `Icons.ImagePlaceholder`，size=90，`text-fg-disabled` 灰。
+- 视频节点同款 EmptyState，actions = `[{ label:"首尾帧生成视频" }, { label:"首帧生成视频" }]`。
+- 落地：
+  - 新建 `LinghuiImageNodeEmptyState.tsx`，挂在 `ImageNode` 缩略图分支：`mode === 'generate' && !isPanoramaNode && displayItems.length === 0` 时渲染。
+  - 中心用 lucide `ImageIcon` size 80（灰）+ 右下叠 `ImagePlus` 12 像素 accent 角标，对齐 LibTV `ImagePlaceholder` 的"+加号"语义。
+  - "尝试：" 标签 + 列向 actions 列表。
+  - 图生图 → openImageToolPanel(nodeId, 'repaint')；图片高清 → openImageToolPanel(nodeId, 'upscale')，复用现有派生工具链路。
+  - SCSS 完整复刻 LibTV px-6 / mb-4 / gap-1 / px-3 py-2 / rounded-lg 量度。
+
+## 2026-05-16 LibTV 图片节点浮空工具条 1:1 复刻（截图 3/4）
+
+- LibTV 节点正上方浮空工具条（chunk `0gg5ir~xd-ho3.js`）：圆角药丸单行，hover/选中时显示。
+- 完整按钮（aria-label / 字符串证据）：
+  1. **全景** + `NEW` badge — `bg-[#3CB5CC1A] text-[#05A3C5]`（light）/ `bg-[#3CB5CC40] text-[#5DDCFF]`（dark），`rounded-full h-5 w-[42px] text-[12px] font-bold uppercase`。
+  2. **多角度** — icon + 文字
+  3. **打光** — icon + 文字
+  4. **九宫格 ▼** — `aria-haspopup: menu`，icon `Grid3x3`
+  5. **高清 ▼** — `aria-haspopup: menu`，左侧 HD 字母 chip
+  6. **宫格切分 ▼** — `aria-haspopup: menu`，icon `GridSplit`
+  7. **标记笔** — icon-only
+  8. **旋转** — icon-only（LibTV 是图片旋转工具）
+  9. **下载** — icon-only
+  10. **全屏 / 查看大图** — icon-only
+- 字号：13px 文本 + 4x4 icon，所有 chip `text-[13px]`。
+- 节点 hover 才显示工具条；离开节点立即隐藏。
+- 落地：
+  - 新建 `LinghuiImageNodeFloatingToolbar.tsx`，挂载在 `ImageNode` 根 div 内，绝对定位 `bottom: calc(100% + 12px)`。
+  - 触发通过 `useLinghuiNodeInteractionApi().openImageToolPanel(nodeId, tool)` 路由到现有工具面板。
+  - 九宫格/高清/宫格切分用 AntD `Dropdown` 二级菜单：高清 `2 倍 / 4 倍`、宫格切分 `4/9/16/25 宫格`。
+  - 旋转工具灵绘暂无后端，disabled + tooltip "旋转（待接入）"，与 LibTV 智能去字幕保持一致策略：保留入口、不暴露假触发。
+  - `NEW` badge 用 `bg/text` 双层 color-mix 复用 LibTV cyan 配色。
+  - `_compact-nodes.scss` 增加 `.linghuiImageFloatingToolbar` + chip / badge / divider 完整样式；`hover/selected` 状态显示。
+
+## 2026-05-16 LibTV 节点头部 + 删除 image-generator + 三态合并
+
+- LibTV 节点 label 真实模板：`图片节点 ${++r.current}` / `视频节点 ${++r.current}`，**全画布共享一个递增 counter**（跨节点类型）。截图 7 中 "图片节点 7" 是第 7 个被创建的节点。
+- LibTV 节点头部右侧用 `text-xs tabular-nums text-neutral-400` 渲染主图尺寸 `${width}×${height}`（如 "2848 × 1600"），只在有 result 时显示。
+- 落地：
+  - 灵绘 `createNewNodeData` 接受 `serial?: number`，默认 label = `${NODE_LABEL_TEMPLATE[type]} ${serial}`（"图片节点 N"）。
+  - `resolveNewNodeLabel` 改成扫全画布所有非 group 节点 label 找最大 N + 1，跨类型共享 counter，与 LibTV 一致。
+  - `ImageNode` / `VideoNode` 头部新增 `linghuiCompactThumbDimensions` span，渲染 `{width} × {height}`。
+  - CSS 用 `font-variant-numeric: tabular-nums` + `font-feature-settings: 'tnum' 1, 'lnum' 1` 锁等宽数字。
+
+- LibTV NodeAction 枚举（chunk `0gg5ir~xd-ho3.js`）：`IMAGE_GENERATE / IMAGE_RESOURCE / IMAGE_EDIT / VIDEO_GENERATE / VIDEO_RESOURCE / VIDEO_CLIP_RESOURCE / VIDEO_EDIT / VIDEO_STORY_RESOURCE / AUDIO_GENERATE / AUDIO_RESOURCE / SCRIPT_GENERATE / SCRIPT_RESOURCE / TEXT_GENERATE / TEXT_RESOURCE`。LibTV **统一 NodeType.IMAGE** + action 字段区分三态，不是按类型分裂出 image-generator。
+- 灵绘按 LibTV 1:1 把 `linghui/image-generator` 类型整个删掉，统一图片节点 `linghui/image` 按 `mode + 是否有 result` 渲染三态：
+  1. `mode='import'` + 无 source → 自行上传 placeholder
+  2. `mode='import'` + 有 source → 上传素材展示（截图 3：浮空工具条 + 图片预览）
+  3. `mode='generate'` + 无 result → 未生成状态（截图 2：中心占位 + "图生图/图片高清" 引导）
+  4. `mode='generate'` + 有 result → 已生成状态（截图 4：浮空工具条 + 图片）
+- 破坏性删除清单（21 处文件）：删类型 union / RF type / 整个组件文件 4 个 / NODE_META / SLOT_LAYOUTS / PROPERTY_DEFAULTS / LABEL_TEMPLATE 中的 image-generator 条目 / spawnImageFromGenerator / onGenerateImageFromController / canReturnToGenerator / executor switch / execution plan duration map / quickCreate 预设。
+- 旧持久化迁移：`linghui-image-generator` RF type 在 `rfTypeToLinghuiType` + `LINGHUI_RF_TYPE_TO_NODE_TYPE` 中折叠为 `linghui/image`，旧文档加载时自动升级。
+- 验证：tsc 通过，24 文件 / 106 测试通过。
+
+## 2026-05-16 LibTV 连线松开触发 quickCreate 的真实条件 + 灵绘修复
+
+- 用户反馈"没有实现松开弹出下游菜单"——根因不在 quickCreate 面板，而在 `handleConnectEnd` 的过严 guard：
+  - 旧逻辑要求 `event.target.closest('.react-flow__pane') || closest('.react-flow__renderer')`，但 React Flow v12 鼠标松开时 `event.target` 经常是 `.react-flow__edges` / `__nodes-overlay` / 其他子层 → guard 永远 false → quickCreate 不弹。
+  - 旧逻辑要求 `connectionState.pointer` 必须有值才用，但 React Flow 在某些场景（如 touch 事件、wrapper 嵌套）下 `pointer` 为 undefined → 直接 return。
+- LibTV onConnectEnd 反查到的真实条件（chunk `0gg5ir~xd-ho3.js`）：**没有 releasedOnPane 检查**，只看 `isValid`、`toNode`、`s.current`（pending）三者；pointer 用 `"clientX" in e ? e.clientX : changedTouches[0].clientX` fallback。
+- 落地：抽出纯函数 `resolveQuickCreateFromConnectEnd(event, connectionState, pendingConnection)`，规则——
+  - 无 pending → 不开
+  - `isValid` 或 `toNode` 命中 → 不开（连接已经成立 / 会由 onConnect 处理）
+  - pointer 缺失时回退 `event.clientX/Y`（兼容 touch 与异常 wrapper）
+  - 仅当 pointer + clientX/Y 都为 0 时跳过（极端兼容性，避免左上角误弹）
+  - 其余一律打开 quickCreate
+- 新增 6 个 vitest 断言覆盖：无 pending / 有效连接 / 命中 toNode / pointer 优先 / clientX/Y fallback / 不需要 pane target / (0,0) 不弹。全部 25 文件 112 测试通过。
+
+## 2026-05-16 LibTV "引用该节点生成"面板 1:1 复刻 + skill 建立
+
+- LibTV 拖出连线松开后弹层的真实 items（来源 chunk `0gg5ir~xd-ho3.js` 中的 `cv` 数组）共 6 项，固定顺序、不按 category 分组：
+  1. `文本` — 剧本、广告词、品牌文案 — icon TextAlignLeft
+  2. `图片` — 海报、分镜、角色设计 — icon ImageGeneratorN
+  3. `视频` — 创意广告、动画、电影 — icon VideoGeneratorN
+  4. `视频合成 [Beta]` — 多个视频片段合为一个 — icon scissors（灵绘暂未实现，永久 disabled）
+  5. `音频` — 音效、配音、音乐 — icon AudioLines
+  6. `脚本 [Beta]` — 创意脚本、生成故事板 — icon Imageset
+- 面板标题三种状态（同一组件复用）：`o ? "添加节点" : s==="target" ? "添加上下文" : "引用该节点生成"`。灵绘已实现两态切换（"添加节点" / "引用该节点生成"），"添加上下文"留待 Agent 节点对齐时补。
+- 兼容性 disabled 规则：`disabled = !!t && !cx(t, s, e.type)` —— 当有上游 + 类型不兼容时灰显，可视但不可点。灵绘 `isReferPresetCompatible()` 通过 `resolveLinghuiCompatibleInputSlot(target, sourceDataType)` 实现一致行为。
+- 落地文件：新增 `linghuiReferNodePresets.ts`，整体重写 `LinghuiCanvasQuickCreate.tsx` 为平铺 6 项（不再 category 分组），样式重做 `linghuiQuickCreateItem` 为 LibTV 同款 56px 高 + 34px 圆角 icon 盒 + label/desc 双行 + Beta badge。
+- LibTV onConnectEnd 反查到的关键回退逻辑：连线松开未命中 toNode 时，会在 pointer 位置做 `reactFlow.getIntersectingNodes({width:1, height:1})` 二次检测，过滤掉 source 自身、Group 节点和 parent group；如果仍命中节点则直接连接；都没命中才弹 quickCreate。灵绘 `handleConnectEnd` 当前没有这段二次 intersection 检测，下次可补。
+- 同步产出：`~/.claude/skills/libtv-align/SKILL.md` 把"LibTV → 灵绘"对齐工作流（6 步流程 + chunk 索引 + 节点清单 + 强约束）固化成可触发的 skill，触发词 `对齐 LibTV / 复刻 LibTV / 深挖 libtv` 等都能命中。
+
+## 2026-05-16 灵绘节点类型清单 vs LibTV 能力覆盖
+
+10 个灵绘节点类型 × LibTV 对应能力 × 当前对齐状态：
+
+| # | 灵绘类型 | LibTV 对应 | 当前对齐 | 缺口 |
+|---|---|---|---|---|
+| 1 | `linghui/text` | 文本节点 / 文本生成器 | 部分 | 缺 `mode: import\|generate` 字段；编辑器未按 LibTV 风重做 |
+| 2 | `linghui/agent` | (LibTV 无强对应，Copilot 风) | 灵绘独占 | 保留 |
+| 3 | `linghui/image` (mode=import) | 图片参考 | ✅ | 节点卡片浮空工具条尚未做（截图 3：全景/多角度/打光/九宫格/高清/宫格切分/标记笔/旋转/下载/全屏） |
+| 4 | `linghui/image` (mode=generate) | 图片生成器派生展示 | ✅ | 节点上方"上传"浮按钮（截图 2）尚未做 |
+| 5 | `linghui/image-generator` | 图片生成器（控制器） | ✅ | LibTV 风 prompt editor（截图 2: 风格/标记/Lib Image/2:1·标准画质·2K/摄像机/全景/翻译/张数/积分）尚未做 |
+| 6 | `linghui/panorama` | 全景节点 | ✅ | 节点工具条可能仍有"假按钮" |
+| 7 | `linghui/video` (mode=import) | 视频参考 | ✅ | 工具条已 LibTV 化（剪辑/高清/解析/智能去字幕/音频分离），但视频参考节点的浮空工具不应完全照搬生成节点版本 |
+| 8 | `linghui/video` (mode=generate) | 视频生成器/全能参考/首尾帧 | ✅ | capability 切换在编辑器底部，未做 LibTV "图生视频/参考生视频/首尾帧" 显式三态切换按钮 |
+| 9 | `linghui/audio` (mode=import) | 音频参考 | ✅ | 节点 UI 简单，工具条暂无 |
+| 10 | `linghui/audio` (mode=generate) | 音频生成器（TTS） | 部分 | 缺 LibTV-style editor，缺音色试听 |
+| 11 | `linghui/script` | 脚本生成器 (Beta) | 部分 | 灵绘比 LibTV 复杂，需要精简 |
+| 12 | `linghui/storyboard` | (LibTV 不暴露独立节点) | 灵绘扩展 | 考虑合并到 script 或保留 |
+| 13 | `linghui/director3d` | (LibTV 无对应) | 灵绘独占 | 保留 |
+
+LibTV 节点类型中**灵绘未实现**：
+- `视频合成 (VIDEO_CLIP, Beta)` — 多段视频拼合，需要 FFmpeg concat + 时间轴节点
+- `工具箱 / 我的工具箱` — 自定义工作流模板节点（封装一组节点链路为可复用模板）
+- `资源分析器` — 视频/图片自动出 prompt（视频解析 + 提示词反推）
+- `自由生成节点` — 通用文生图入口
+
+按此清单后续逐项深挖。下一轮聚焦：图片生成器 (#5) 的 LibTV-style prompt editor，因为它是核心创作入口、用户截图 2 是直接对它的参考。
+
+## 2026-05-16 LibTV 右键菜单 1:1 真实结构反查 + 灵绘破坏性对齐
+
+- LibTV 打包 chunk `0gg5ir~xd-ho3.js` 中找到了**真实的菜单 JSX 结构**：
+  - **空白画布右键菜单**只有 7 项（固定顺序）：`上传 / 保存到我的素材(disabled) / 添加节点 / ─ / 撤销(⌘Z) / 重做(⇧⌘Z) / ─ / 粘贴(⌘V)`。LibTV 没有"运行全部 / 运行选中 / 节点分类目录 / 上传图片视频音频细分 / 快捷键 / 批量导出 / 保存为工作流"等灵绘历史自加项。
+  - **节点右键菜单**只有 13 项最大值（按条件显示）：`保存到我的素材 / 进入全景预览(条件,tooltip:此模式适用于720°全景图像的实时预览) / 创建主体 / 优化工作流布局(条件) / 展开所有图片(条件) / 删除其他图片(条件) / 展开所有视频(条件) / 删除其他视频(条件) / ─ / 复制节点(⌘C,tooltip:仅复制当前节点) / 复制图片(条件) / 创建副本(tooltip:复制当前所有参数...) / 粘贴(⌘V) / 删除(⌘⌫) / ─ / 复制到剪贴板 / 复制 TaskId(条件)`。LibTV 节点菜单**没有**"运行 / 继续创建下游 / 返回生成节点 / 更多操作 / 导出当前结果"。"返回生成节点"是节点本身的浮动按钮（crosshair icon），不在右键菜单。
+- LibTV "添加节点"实现：源码 `onAddNode: () => { ... new MouseEvent("dblclick"...) ... .react-flow__pane.dispatchEvent(t) ... }` — 即触发双击画布事件，打开 quickCreate 节点目录浮层。灵绘 `handleCanvasDoubleClick` 已经触发 `openQuickCreateAt`，所以右键菜单的"添加节点"按钮通过新增 `onOpenAddNodePanel` 派生：关闭右键菜单 + 调用 `openQuickCreateAt(contextMenu.screenX, screenY)`，效果与 LibTV 完全一致。
+- 灵绘已破坏性删除菜单冗余：
+  - 节点菜单删掉：运行当前节点、继续创建下游、返回生成节点、更多操作 toggle、收起更多、导出当前结果、复制结果文本独立按钮、分离内嵌音轨、节点操作 header、粘贴到附近、删除节点（已收敛到 LibTV 的"粘贴(⌘V)"和"删除(⌘⌫)"）。
+  - 空白菜单删掉：运行 header + 运行全部 + 运行选中、4 大节点分类目录平铺、上传图片到画布/上传视频到画布/上传音频到画布拆分（合并为单一"上传"）、优化工作流布局、快捷键、批量导出选中结果、保存为工作流（selection 场景）、复制选中、为选中创建副本、删除选中、导入与操作 header。
+- LibTV 1:1 复刻后右键菜单测试覆盖：5 个新测试断言节点菜单项白名单、空白菜单 7 项白名单、不应包含的旧项黑名单、disabled 状态、媒体相关条件渲染。全部 25 个文件 105 个测试通过。
+
+- LibTV 快捷键完整清单（从 chunk `0gg5ir~xd-ho3.js` 反查带 scope/group 的 hotkey 定义）：
+  - **创作组**：成组 (⌘G / ⌥G) / 合并分镜组 (⌘⌥G) / 解组 (⇧⌘G / ⇧⌥G) / 连线 (⌘L) / 复制整组 (⇧⌘C) / 生成 (⌘↵) / 新建节点 (Tab)。
+  - **缩放组**：放大 (⌘= / ⇧⌘+) / 缩小 (⌘-) / 适应画布 (⌘0)。
+  - **移动画布组**：整理画布 (⌥⇧F)。
+  - **其他组**：删除 (Delete / Backspace) / 撤销 (⌘Z) / 重做 (⇧⌘Z) / 取消连线 (Esc, hidden) / 退出截图模式 (Esc, hidden)。
+  - **image-editor 局部 scope**：退出工具 (Esc) / image-editor 内的撤销 (⌘Z) / 重做 (⇧⌘Z 或 ⌘Y) — 仅在 SmartRemove / Annotate 工具激活时生效。
+
+## 2026-05-16 LibTV 全画布动效原语 + 完整菜单/节点字符串清单
+
+- LibTV CSS 提取 keyframes：`glow-spin`（节点 conic-gradient 流转，配 `@property --glow-angle`）、`connection-breathe`（连线 1.5s drop-shadow + opacity 呼吸）、`node-fade-in`（120ms 入场）、`node-glow-invalid-pulse`（无效连接白色边框脉冲）、`generating-breathing-dark/grey`（生成中底层 2s 呼吸）、`scissors-fade-in/out`（剪辑入场 200ms）、`skeleton-shimmer`（骨架 shimmer）、`dashdraw`（React Flow 原生）。
+- LibTV 全局状态 class：`.canvas-interacting`（拖拽中关闭所有动画 + 关闭 pointer-events）、`.canvas-alt-copy-drag`（Alt+拖拽光标变 copy）、`.canvas-light`（亮色模式）、`.canvas-agent-drawer-narrow`（Agent 抽屉占 400px）。
+- LibTV 连线高亮色：`#64b4ff`（淡蓝），drop-shadow 透明度从 0.4 → 0.9 呼吸。
+- LibTV 节点 token：`bg-canvas-bg / bg-canvas-controls(-active/-border/-hover/-icon) / bg-canvas-node-bg / bg-canvas-node-border / bg-canvas-primary-btn` — 这是 Tailwind 自定义画布色系命名。
+- 已落地到灵绘：`_compact-nodes.scss` 加 `@property --linghui-glow-angle` + `@keyframes linghui-glow-spin / linghui-connection-breathe / linghui-node-fade-in / linghui-generating-breathing`。`.is-running::after` 用 conic-gradient + mask-composite 模仿 LibTV `.node-glow-border` 流光边框。
+
+- LibTV 节点右键菜单完整文案（按字数高频反查）：`复制 / 复制节点 / 创建副本 / 复制图片 / 复制到剪贴板 / 复制分镜组 / 复制整组 / 粘贴 / 粘贴分镜组 / 删除节点 / 删除分镜组 / 删除分镜图组 / 删除分镜视频组 / 保存到我的素材 / 创建主体 / 引用该节点生成 / 进入全景预览 / 优化工作流布局 / 返回生成节点 / 返回节点 / 回到剪辑节点 / 回到节点 / 展开所有图片 / 展开所有视频 / 删除其他图片 / 删除其他视频 / 移除参考图 / 移除场景 / 添加到画布 / 添加到现有素材文件 / 添加为画布文本节点 / 添加为画布脚本节点 / 添加上下文 / 复制 TaskId`。
+- LibTV "添加节点" pane 菜单字符串：`图片参考 / 图片生成器 / 视频参考 / 视频生成器 / 音频参考 / 音频生成器 / 文本节点 / 文本生成器 / 脚本生成器 / 工具箱 / 我的工具箱 / 自由生成节点 / 合成器 / 资源分析器 / 进入全景预览`。
+- LibTV 工作流块菜单：`打组 / 解组 / 成组 / 打组菜单 / 创建分镜组 / 创建分镜组副本 / 复制分镜组 / 复制整组 / 粘贴分镜组 / 删除分镜组 / 合并分镜组`。
+- LibTV 图片工具完整预设清单：
+  - 多角度 24+ 角度：`正面/背面/左侧/右侧/前方/后方 / 低后/低前/低右/低右后/低右前/低左/低左后/低左前 / 高后/高前/高右/高右后/高右前/高左/高左后/高左前 / 底部/顶部 / 角色三视图`，外加镜头预设 `鱼眼视角/广角镜头/特写/中景/景别缩放/倾斜视角/垂直俯仰/水平环绕/全景俯拍/正面俯拍/正面仰拍`。
+  - 打光预设：`诺兰冷灰 / 伦勃朗光 / 轮廓光 / 蓝色逆光 / 落日迷幻 / 柯达胶片质感 / 神秘暗调 / 赛博朋克 / 过曝胶片 / 黄金时刻 / 补光 / 打光参考图`。
+  - 擦除模式：`智能擦除 / 框选擦除`；裁剪方向：`向左裁剪 / 向右裁剪 / 原图比例 / 原图超清`。
+  - 编辑元素文案：`点击图片选择局部元素 / 元素选择模式 / 什么是编辑元素 / 编辑文本`。
+- LibTV 视频工具：剪辑（`画笔大小 / 画笔 / 线宽` 等参数）、高清（`选择放大倍率 2倍/4倍`）、解析（`资源分析器 / 根据图片生成提示词`）、智能去字幕（`AI一键去除视频字幕，仅支持中英文字幕`）、音频分离 → `人声分离 (仅保留人声/仅保留背景音/仅保留音效) / 音视频分离`、视频合成（`合成器 / 合成视频 / 合成中 / 多个视频片段合为一个`）、时间轴（`静音视频原声/取消静音/轨道已经静音`）。
+- LibTV 删除二次确认：`该节点包含已生成的内容，删除后可通过 ⌘Z 撤销。确定删除？`，`断开后脚本关联关系将消失，重新生成时将不再关联脚本信息了。确定要断开吗？`。
+
+- 灵绘右键菜单已按 LibTV 风重组：主菜单只保留高频项（运行 / 返回生成节点 / 继续创建下游 / 复制节点 / 创建副本 / 媒体集合操作 / 删除节点）；次要项（保存到我的素材 / 创建主体 / 进入全景预览 / 复制结果文本 / 复制媒体地址 / 复制图片 / 复制 TaskId / 优化工作流布局 / 导出当前结果）通过"更多操作"折叠区展开。两个相关 Vitest 已重写覆盖折叠行为，3 个测试断言通过。
+
+## 2026-05-16 LibTV Reference Audit: Full Video Toolbar + Audio Separation Tree
+
+- `template_/libtv/0bed6jbw0-kh8.js` 含完整视频工具条文案：`剪辑 / 高清 / 解析 / 智能去字幕 / 音频分离`，与用户截图完全一致。
+- 音频分离是多级菜单：`音频分离 → 人声分离 → (仅保留人声 | 仅保留背景音)` 和 `音频分离 → 音视频分离`。LibTV "音视频分离" 等价灵绘已有的 `splitAudio`，"人声分离" 是后端 ML 服务（错误文案显示 "提交人声分离任务失败"、"人声分离等待超时，请稍后在任务记录中查看"、限制"视频时长超过 3 分钟，暂不支持人声分离"）。
+- 智能去字幕的 LibTV 说明："AI一键去除视频字幕，仅支持中英文字幕"。这同样是云端 AI 服务，目前灵绘没有对应 provider。处理策略：保留按钮（视觉对齐 LibTV），按钮 disabled + tooltip 解释"需要云端 AI 服务，暂未在本地接入"——不再当作假按钮。
+- LibTV `0gg5ir~xd-ho3.js` 含图片工具完整字符串：`聚焦 / 标记 / 多角度 / 宫格 / 擦除（智能擦除/框选擦除）/ 抠图 / 裁剪 / 扩图 / 打光 / 重绘 / Mockup / 编辑元素 / 文字 / 高清（2倍高清/4倍高清）`。灵绘已经全部承接（部分以派生节点形式）。
+- LibTV 右键菜单关键字符串：`保存到我的素材`、`复制 TaskId`、`返回生成节点`、`优化工作流布局`、`展开所有图片/视频`、`删除其他图片/视频`、`创建主体`、`复制图片`、`复制到剪贴板`、`创建分镜组副本`、`移除参考图`、`断开后脚本关联关系将消失，重新生成时将不再关联脚本信息了。确定要断开吗？`。
+- `返回生成节点` 是 LibTV 派生展示节点的右键菜单跳转项，回到生成器控制器再调参生图。灵绘已加：仅在 `props.generatedFromNodeId` 存在且控制器仍在画布上时显示，点击后 `reactFlow.setNodes` 选中 + `fitView` 到控制器节点。
+- LibTV 视频参考节点（"视频参考"）从节点类型层面就完全不暴露 prompt / 模型选择 / 生成按钮（用户截图证实）。灵绘已给 video / audio 节点加 `mode?: 'import' | 'generate'`，quickCreate "视频参考" / "音频参考" 强制 `mode: 'import'`；视频编辑器 `isPassThroughNode = (mode === 'import') || Boolean(source)`，确保即使空 source 也走纯素材分支。
+- LibTV 节点删除带二次确认："该节点包含已生成的内容，删除后可通过 ⌘Z 撤销。确定删除？" — 灵绘当前是直接删除（依赖撤销栈），后续可加确认对话框。
+
+## 2026-05-16 LibTV Reference Audit: Image Node Reference vs Generator Split
+
+- LibTV 打包产物 `template_/libtv/04qnf-7y74i8t.js` 中能直接 grep 到节点类型用语：`图片参考`、`图片生成器`、`视频参考`、`视频生成器`、`音频参考`、`音频生成器`、`文本生成器`、`全能参考`。
+- 这说明 LibTV **在节点类型层面就把"素材/参考"与"生成器"完全分离**：参考节点只回放素材，生成器节点持 prompt+模型+参数并派生展示节点。这正好对齐灵绘 `linghui/image-generator`（控制器）和 `linghui/image` mode=import 的双轨。
+- 灵绘当前 bug：快捷创建预设 `asset-image-reference` 没有写 `initialProperties: { mode: 'import' }`，但 `linghui/image` 默认是 `mode: 'generate'`，因此从画布右键"添加节点 → 图片参考"创建出来的节点实际上仍然是生成节点，会显示 prompt、工具栏和"生成"按钮，违背 LibTV 的"图片参考 = 纯素材"语义。已修复并加 Vitest 锁定。
+- 在编辑器层，导入素材节点（mode=import）会显示一组与生成节点一模一样的工具按钮，其中 `focus / mark` 是 in-place 二次生成专用工具（依赖 prompt + 生成执行），素材节点 executor 直接回放上传图，这两个工具实际上是假按钮。改造方案：`LinghuiNodeEditor` 用 `IMPORT_HIDDEN_IMAGE_TOOLS = {focus, mark}` 在素材节点下过滤；其他工具（upscale/multi-angle/outpaint/relight/repaint/erase/remove-bg/crop/mockup/edit-elements/edit-texts/grid-split）都是"基于当前图派生新下游节点"的语义，对素材节点同样有意义，保留。
+- 节点卡片需要醒目标识素材 vs 生成 vs 派生：新增 `linghuiCompactNodeKindBadge` 三态徽章（素材 / 生成 / 派生 #N），让用户一眼区分。派生节点（有 `generatedFromNodeId`）的编辑器顶部加 `linghuiEditorDerivedBanner` 提示"派生 · 第 N 次"，生成按钮文案变为"再次生成"。
+- 仍未对齐的部分：视频/音频节点没有分 `mode: import` / `mode: generate`，所以"视频参考 vs 视频生成器"目前只靠 `videoCapability` 区分；这会让从画布添加的"视频参考"节点仍然可以输入 prompt 跑生成。LibTV 是否在视频/音频节点上也走 mode 分流，需要继续从 LibTV `0c7etgphqc14l.js`、`01594huj3ouud.js` 等 chunk 反查；如果反查不出来再决定要不要也给视频/音频节点引入显式 mode。
+
+## 2026-05-16 Linghui Canvas Crash Guard + Cinematic Controls
+
+- 画布"崩溃后清空数据"的根因：React Flow 渲染异常时如果有 raf 排队的 snapshot，会捕到 0 节点 0 边的快照，并经 `handleGraphChange -> scheduleWorkspaceSave` 写回 SQLite，覆盖磁盘上的最近一次正常保存。仅靠现有 ErrorBoundary 兜不住，因为崩溃前的 raf 仍然能执行。
+- 修复策略分两层：`handleGraphChange` 内部直接拒绝"原工作区有节点但新快照变成空"的 case 并打 warn 日志；`LinghuiCanvasErrorBoundary` 接住 React 渲染异常时把 `canvasCrashedRef` 置 true，同时清空 pending save，让后续任何 graphChange 都不再写盘；恢复路径提供"重试"（清状态重渲）和"从磁盘重新加载"（重新 `loadLinghuiWorkspace`）。
+- 右键菜单"节点在画布下方时出画面之外"的根因：`linghuiCanvasStore` 用预设高度（节点 460 / 默认 560）做 clamp，但实际菜单可拉伸更高，且 clamp 用的是 `hostRect`（画布尺寸），无法考虑视口可视区。
+- 解法：`LinghuiCanvasContextMenu` 在 `useLayoutEffect` 里用真实 `getBoundingClientRect` + `window.innerWidth/innerHeight` 计算偏移，把菜单往视口内回拉；通过 menuKey 同步刷新 adjusted 位置，避免抖动。
+- 电影感参数（打光/焦距/光圈）落入 `LinghuiImageCinematicConfig`：保留 `'auto'` 缺省值，确保旧节点 / 旧持久化文档不变；执行器层在 prompt 末尾拼一段 "Cinematic directive: ..." 让模型识别这是导演级控制语句而不是主体描述；占位副标题在 cinematic 非 auto 时显示"电影感生成"。
+- 控制器节点（image-generator）选定的 cinematic 会通过 `planSpawnImageFromGenerator` 复制到派生展示节点，保证"在控制器面板配一次，每次出图都按这个 cinema 风格走"。
+
+## 2026-05-16 Linghui Canvas LibTV Recreation
+
+- 本轮目标是从已打包的 `template_/libtv` 中复刻画布能力到灵绘；优先从 CSS 类名、可见中文/英文文案和打包 JS 的模块边界入手，再映射到灵绘 canvas/nodes/page styles。
+- 项目规约要求 UI 烟测不能打开普通浏览器或 Vite 地址；后续视觉验证必须连接 Electron 自定义远程调试端口 `http://127.0.0.1:9333`，若未监听则先启动 Electron dev app。
+- 起步工作区 `git status --short` 无输出，当前没有未提交改动；后续若遇到用户并行改动，需要只处理本轮触达范围。
+- `template_/libtv` 是扁平 Turbopack 产物，约 100+ 个 JS/CSS 文件；最大 JS chunks 包括 `13h1xgiucfbcg.js`、`15gvxu-nayl4w.js`，最大 CSS 是 `0usvfcilq235c.css`。
+- LibTV 画布明确基于 React Flow/xyflow：CSS 中有完整 `.react-flow` 基础样式，JS 中可见 `useReactFlow`、`MiniMap`、`getNodesBounds`、`getViewportForBounds`、`nodeTypes` 等符号。
+- 已定位到 LibTV 画布控制条功能：小地图、网格吸附、缩小/放大、缩放百分比菜单、缩放到 50/100/200、适合屏幕、整理画布、整理结果保留/还原弹层。
+- 已定位到 LibTV 自动整理能力：使用 ELK layered layout，方向 `RIGHT`，带 `NODE_GAP` / `SNAP_GRID_SIZE`，支持全画布整理、基于 seed node 的子图整理、离群节点聚类与“定位下一个”。
+- 已定位到 LibTV 画布辅助文案：`有 N 个离群节点`、`定位节点`、`定位下一个`、`画布小地图`、`网格吸附`、`缩放选项`、`适合屏幕`、`整理画布`、`是否保留此次整理结果？`、`还原`、`保留`。
+- LibTV 还有触控相关辅助：`useDoubleTapFitView` 对 `.react-flow__pane` 监听触摸双击 fitView，`useTouchMode` 在粗指针设备上禁用节点拖拽/连接并改用 pan。
+- LibTV 主画布 ReactFlow 配置可从 chunk 中反推：`minZoom/maxZoom` 来自 `CANVAS_ZOOM`，`panActivationKeyCode: "Space"`，`connectionRadius: 80`，`deleteKeyCode` 由平台热键控制，`onlyRenderVisibleElements: true`，`panOnScroll/zoomOnScroll/zoomOnPinch` 会按触控模式切换。
+- LibTV 右键菜单比灵绘更偏“上下文操作”：空白处有上传、添加节点、撤销、重做、粘贴；节点处有保存到素材、进入全景预览、创建主体、优化工作流布局、展开/删除其他图片或视频、复制节点、复制图片、创建副本、复制到剪贴板、复制 TaskId。
+- LibTV 快捷键面板分组为 `创作`、`缩放`、`移动画布`、`其他`；可见文案包括 `节点复制`、`创建副本`、`触控板`、`鼠标`、`键盘`、`关闭快捷键面板`。
+- 灵绘现有画布已经具备可承接点：`LinghuiCanvasHud` 管运行/模式/缩放；`LinghuiCanvasContextMenu` 管空白/节点/选区/连线右键；`LinghuiCanvasStage` 管 ReactFlow 配置和 MiniMap；`useLinghuiCanvasHotkeys` 管复制/粘贴/副本/撤销/删除；`useLinghuiCanvasViewportControls` 目前只有 zoom in/out 和 fitView。
+- 灵绘当前 `LinghuiCanvasStage` 已有 MiniMap 但常驻在 ReactFlow 内，没有 LibTV 式折叠小地图控制；连接半径是 `56`，低于 LibTV 的 `80`；画布模式仍是自定义 hand/mouse 两态，而 LibTV 更偏 Space 平移 + 控制条操作。
+- 灵绘当前 HUD 的工具条在右上，运行状态在左下；LibTV 控制条在画布边缘以毛玻璃小按钮表达，并把小地图、吸附、整理、缩放菜单集中在一起。复刻可以在不改执行层的情况下重做 HUD 工具区。
+- 灵绘当前右键菜单已覆盖运行、添加节点、上传、粘贴、撤销、重做、复制、创建副本、删除等基础项；缺口是 LibTV 式快捷键标注、菜单分隔/宽度/毛玻璃风格、节点“优化布局/复制结果/TaskId”类上下文项。
+- 用户补充要求：缺少依赖可以新增；复刻必须覆盖样式和操作反馈、性能优化、节点操作、节点菜单、节点类型等完整功能。不能把任务收窄成“像一点”的 HUD 皮肤。
+- `elkjs` npm 当前版本 `0.11.1`，包内带 `types: lib/main`；可用于接近 LibTV 的 ELK layered 自动布局。`framer-motion` 当前版本 `12.38.0`，但本轮操作反馈可先用 CSS transition/animation 实现，暂不作为必要依赖。
+- 本轮已新增并实际使用 `elkjs@0.11.1`：灵绘画布整理使用 ELK layered `RIGHT`，保留 24px snap grid 和约 96px node gap，和 LibTV 打包代码里的布局意图对齐。
+- 灵绘 HUD 已从旧右上小工具条改成 LibTV 式集中控制：运行全部/运行选中、整理画布、小地图、网格吸附、手/鼠标模式、缩放菜单、适合屏幕和快捷键面板。
+- 自动整理反馈已覆盖两类 LibTV 文案：`是否保留此次整理结果？` 的 `还原/保留` 审阅，以及 `有 N 个离群节点` 的定位/定位下一个；整理结果只有用户点保留后才写入历史快照。
+- 右键菜单已接入 `优化工作流布局`、快捷键入口、撤销/重做/粘贴快捷键标注，并保留节点/工作流块/选区/连线上下文操作。
+- 节点类型入口不再只有“创作/分镜”两类，已重组为 `素材节点`、`生成节点`、`分镜节点`、`空间节点`，更接近 LibTV 的资源/生成器/故事/空间类节点入口。
+- 操作反馈已落到样式层：节点运行/失败/待重跑/选中增加状态光晕，React Flow 连接半径提升到 80，开启 `onlyRenderVisibleElements`，小地图可折叠，网格吸附可切换。
+- Electron CDP 实测没有打开普通浏览器：通过 `127.0.0.1:9333` 打开灵绘工作台，确认 `.linghuiCanvasControls`、快捷键面板、小地图、整理审阅、右键菜单和 Tab 快速创建均可见可操作；截图保存到 `/tmp/linghui-canvas-libtv-recreation.png`。
+- 样式纪律脚本仍失败，但失败列表是既有 Director3D / settings / storyboard / theme 等硬编码和 inline style 债；本轮新增的 canvas overlay、layout、hotkey、node status 样式未出现在失败项中。
+- 继续补齐节点右键结果操作时确认：灵绘执行结果的文本、媒体和任务 ID 分散在 `LinghuiNodeRunState.result`、`result.metadata`、`media.metadata.persist` 等位置，菜单层不应直接拼字段；已抽成 `linghuiCanvasResultActions.ts` 统一解析，媒体复制优先 remoteUrl，缺失时回退 source/localPath。
+- LibTV 式 `复制图片/复制视频/复制 TaskId` 在灵绘中更稳妥地表达为复制可用来源地址和执行任务 ID；多图结果会按去重后的多行地址复制，避免图片集合里 primary 与 items 重复粘贴。
+- 触控体验已补齐到画布层：粗指针设备上禁用节点拖拽/连线，空白区域直接平移，避免触屏误操作；触控双击 `.react-flow__pane` 会触发 `fitView`，接近 LibTV `useDoubleTapFitView` 的行为。
+- Electron CDP 二次验证：节点右键菜单真实 DOM 包含新增结果复制项；无可用媒体/TaskId 的文本节点会禁用对应按钮，符合“不显示假可操作入口”的反馈规则。
+- 继续参考 LibTV 时确认：灵绘快速创建目前只用 `resolveCompatibleTargetHandleId()` 判断目标节点是否有输入，完全忽略 `sourceDataType`；这会让任意输出都推荐任意下游节点，和 LibTV 式“按输出继续创作”的菜单体验不一致。
+- 灵绘的 React Flow 端口已被刻意统一为 `input-0` / `output-0`，执行层实际通过目标节点各输入槽的数据类型过滤上游结果。因此本轮不能把物理 handle 改成 `input-1`，更合适的方案是在语义层做兼容判断，并在 edge.data 中记录 `sourceSlotType` / `targetSlotType` 供持久化、提示词顺序和后续能力使用。
+- 灵绘视频节点执行层已经具备 LibTV 文案里的核心视频类型：`文生视频`、`图生视频`、`参考生视频`、`首尾帧视频`，集中在 `videoCapabilityUtils.ts`。节点类型复刻应优先把这些能力作为视频节点创建/推荐预设暴露，而不是新增一批执行重复的节点类型。
+- 快速创建已经可以承载“节点类型 + 创建预设”：`LinghuiNodeCatalogItem` 增加了 `nodeLabel`、`initialProperties`、`recommendation` 和目标槽位说明，因此可以在不新增重复执行器的情况下复刻 LibTV 的 `文生视频 / 图生视频 / 全能参考 / 首尾帧` 入口。
+- 多媒体集合菜单落点确认：图片节点已有 `items` / `primaryAssetId` / `primaryResultSource`，可安全实现 `展开所有图片` 和 `删除其他图片`；视频节点没有 items 属性，本轮用 result media 派生 video 节点，并在 `删除其他视频` 时把主视频写回 `source/posterSource` 后清理旧 run state。
+- LibTV 的空白画布“添加节点”不是单纯节点类型列表，而是带创建意图的预设列表；灵绘现在把右键空白菜单单独切到 `LINGHUI_CANVAS_CREATE_MENU_CATALOG`，可直接创建 `图片参考 / 视频参考 / 音频参考 / 文本生成器 / 文生视频 / 图生视频 / 全能参考 / 首尾帧视频 / 脚本生成器 / 进入全景预览`，并写入对应 node label 与 `videoCapability`。
+- 空白 Tab 快速创建和空白右键菜单共享同一套 `LINGHUI_CANVAS_CREATE_MENU_CATALOG`，避免用户从不同入口看到“基础节点类型表”和“LibTV 预设表”两套心智。
+- `进入全景预览` 不应只是 quick-create 里的一条 label；节点右键现在会从当前图片结果或图片集合派生 `linghui/panorama` 节点，导入主图、建立 image→image 语义边，并打开新全景节点编辑态。
+- `创建主体` 最稳的第一落点是灵绘全局资产库：从当前节点可见图片去重取前 4 张写入 `referenceImages`，保存为 `character` 类型全局资产，避免强依赖当前项目剧集角色表，也能被 3D 导演/空间资产侧复用。
+- LibTV 文案中还有 `分离内嵌音轨为独立音频节点`；灵绘已有 `ffmpegManager.splitAudio`，因此视频节点右键现在对本地视频开放音轨分离，生成独立 `linghui/audio` 节点并保留 video→audio 语义边。
+- Electron CDP 验证时发现菜单媒体状态只看 run result，会漏掉已有 `properties.source` 的导入视频；已把视频节点属性里的本地 source/posterSource 合并进右键媒体集合，再和 result media 去重。
+- Electron CDP 点击分离音轨时捕到 `Cannot read properties of undefined (reading 'hasAudio')`，说明 FFmpeg getInfo 在部分节点源上可能返回空值；已加 `mediaInfo?.hasAudio` 防御，并让分离音轨入口只在可本地解码的视频源上显示。
+- 继续抽取 LibTV 节点菜单时确认：`复制图片` 不是复制 URL，而是先把图片 source 转成 blob/canvas PNG，再调用 `navigator.clipboard.write([new ClipboardItem({"image/png": blob})])`；灵绘已有 `复制图片地址`，但缺少这个能粘贴到其它应用的图片本体剪贴板动作。
+- 灵绘当前菜单状态已经能得到主图 `contextMenuMediaActionState.primaryImage`，因此二进制复制可以落在 overlay 层，不需要改执行结果结构；失败时应提示浏览器/系统不支持图片剪贴板，避免和地址复制混淆。
+- LibTV 打包产物中图片生成提交前存在 `prepareImageParamsForFocusRegion`，会读取 `focusRegion` 并把场景切到 `camera_focus`，同时有 `聚焦图片处理失败` 的错误反馈；这说明 `聚焦` 不是普通 prompt preset，而是局部区域驱动的图生图/局部重绘行为。
+- LibTV 的 focusRegion 以相对位置表达区域，并在提交前把聚焦图处理成可上传图片；灵绘当前没有同款上传服务入口，因此最小兼容方案是保存归一化区域、保留标记时图片源、在执行时把该图片加入 referenceSources，并向 prompt 注入局部重绘边界。
+- 聚焦反馈需要同时存在于编辑器和节点卡片：编辑器里选区可调，节点缩略图上显示红框和 `聚焦` 徽标。否则用户关闭浮层后不知道节点仍会按局部区域再生成。
+- 聚焦执行的操作反馈不应继续复用普通 prompt 作为占位副标题；显示 `聚焦区域生成` 更接近 LibTV 的“这是一次局部处理”的反馈语义，也便于排查运行队列。
+- LibTV 图片工具 `标记` 的核心不是简单画点：打包产物中可见 `clickSuggest`、`MAGIC_SELECT_MAX_COUNT` 和 `{{magic:id:0}}` 类 token 插入，说明它会把用户点击坐标转成可被生成链路理解的局部语义引用。
+- 灵绘没有 LibTV 私有 clickSuggest 服务，因此本轮用本地可解释协议承接：保存归一化 `x/y`、标记编号、原图 source，并在执行时把图片作为参考图，同时向 prompt 注入 `LibTV-style mark points` 坐标说明。这样功能可用、可持久化，也给后续接真实视觉点选服务留下数据结构。
+- 标记点和聚焦框需要能共存：聚焦表达“区域”，标记表达“点位/对象”；节点缩略图上分别用红框和黄色编号点表达，避免用户把两类局部操作混在一起。
+- LibTV `高清放大` 相关文案不只是按钮标签，打包产物里还有 `select_upscale_factor` / `upscale_tile_hdr` / `upscale_tile_weight` 等参数暗示；灵绘第一版用本地 FFmpeg Lanczos + unsharp 复刻稳定的 2x/4x 高清派生节点，先把用户可见入口、运行反馈和本地资产落盘打通。
+- 高清放大属于图片工具里的“本地处理”分支，和聚焦/标记这类“影响下一次生成 prompt/reference”的工具不同；因此实现落在画布 overlay + Electron FFmpeg bridge，而不是 `executeImageNode()` 的 provider 生成链路。
+- 工具菜单点击时不能依赖 React state 里的 `activeNodeTool` 作为执行参数；下拉点击和 `setActiveTool()` 同步发生时可能读到旧 state。高清执行现在直接传 `nodeId`，状态只用于 UI 高亮。
+- LibTV 图片工具里的 `扩图 / 打光 / 重绘` 更接近“生成一次新的编辑任务”，而不是把当前节点 prompt 原地改掉。灵绘现在用派生 image-to-image 节点表达这些工具操作：当前节点保留原结果，下游节点记录工具 prompt、参数和 image→image 语义边，并立即进入运行反馈。
+- 派生工具节点不应继承源节点的 `focusRegion` / `markPoints`，否则一次扩图/打光会意外带入上一次局部聚焦或点选意图。当前实现清空局部标记，只继承模型、比例、清晰度等生成上下文。
+- 继续扫描 LibTV 主图片工具 chunk 可见，除了已覆盖的 `高清 / 扩图 / 多角度 / 打光 / 重绘 / 标记 / 聚焦 / 宫格`，还有 `擦除 / 抠图 / 裁剪 / Mockup / 编辑元素 / 编辑文本`。其中 `擦除` 有 `智能擦除` 与 `框选擦除` 文案，后续可以复用当前派生工具节点协议先提供可运行入口，再逐步接 mask/背景移除/文本编辑等真实服务。
+- 扩展图片工具入口后，灵绘顶部工具条不能继续按按钮数量无限放宽；稳定方案是固定节点编辑器工具条上限，工具区内部 wrap + thin scrollbar，保证标题、关闭按钮和工具按钮在窄屏/缩放下不互相挤压。
+- `裁剪` 和 `高清` 一样属于确定性本地图片处理，优先走 Electron FFmpeg，而不是提示词生成。当前 `cropImage` 使用中心 cover crop 到 1:1 / 9:16 / 16:9，输出本地 PNG 后派生图片节点；这给后续接更高级手动裁剪框留下了同一条 bridge。
+- `擦除 / 抠图 / Mockup / 编辑元素 / 编辑文本` 暂时用派生图生图节点承接，因为 LibTV 原链路依赖私有编辑/商业任务服务；灵绘先保留用户可见入口、prompt 协议、独立结果节点和运行反馈，后续可把具体 preset 替换为真实 mask、remove-bg 或 text-edit provider。
+
 ## 2026-05-14 Linghui Media Remote URL Flow
 
 - 当前需要从数据模型层修复灵绘上传复用：前一轮已做请求内去重和远程 URL 缓存，但如果灵绘媒体引用在执行流中只传 `media.source` 字符串，下游仍然看不到 `metadata.persist.remoteUrl`，会按本地文件重新进入上传/缓存检测。

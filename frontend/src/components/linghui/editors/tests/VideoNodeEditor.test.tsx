@@ -97,7 +97,7 @@ function createVideoNodeData(overrides?: Partial<LinghuiNodeData['properties']>)
 function renderEditor(
   nodeData: LinghuiNodeData,
   options?: {
-    activeTool?: 'upscale' | 'analyze' | 'compose' | null;
+    activeTool?: 'clip' | 'upscale' | 'analyze' | 'subtitle-remove' | 'audio-separation' | null;
     onToolChange?: (tool: any) => void;
     nodeRun?: LinghuiNodeRunState;
     onRun?: () => void;
@@ -150,7 +150,7 @@ describe('VideoNodeEditor', () => {
         source: '/tmp/imported-cat.mp4',
       }),
       {
-        activeTool: 'compose',
+        activeTool: 'upscale',
         onToolChange,
       },
     );
@@ -159,14 +159,17 @@ describe('VideoNodeEditor', () => {
       expect(onToolChange).toHaveBeenCalledWith(null);
     });
 
-    expect(screen.getAllByText('透传输出').length).toBeGreaterThan(0);
-    expect(screen.getByText('不进入生成')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '在系统播放器打开' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '打开所在位置' })).toBeInTheDocument();
-    expect(screen.getByText('/tmp/imported-cat.mp4')).toBeInTheDocument();
+    // LibTV 1:1：视频参考节点编辑器面板精简为文件名 pill + 下载按钮（取消大预览图重复）。
+    expect(screen.getByText('imported-cat.mp4')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /下载/ })).toBeInTheDocument();
     expect(screen.queryByText('提示词')).not.toBeInTheDocument();
     expect(screen.queryByText('模型与参数')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '生成' })).not.toBeInTheDocument();
+    // 节点 subtitle "透传输出" 仍保留（说明该节点是参考素材态），但旧 PassThroughCard 里的
+    // "不进入生成 / 在系统播放器打开 / 打开所在位置 / 大预览图" 全部已删，避免重复展示。
+    expect(screen.queryByText('不进入生成')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '在系统播放器打开' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '打开所在位置' })).not.toBeInTheDocument();
   });
 
   it('生成态视频节点改成摘要式模型与参数控件且不再渲染结果预览', async () => {

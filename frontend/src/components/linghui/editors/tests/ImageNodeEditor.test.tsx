@@ -84,8 +84,9 @@ function createImageNodeData(overrides?: Partial<LinghuiNodeData['properties']>)
 function renderEditor(
   nodeData: LinghuiNodeData,
   options?: {
-    activeTool?: 'multi-angle' | null;
+    activeTool?: 'focus' | 'mark' | 'multi-angle' | null;
     nodeRun?: LinghuiNodeRunState;
+    onToolChange?: (tool: any) => void;
     onRun?: () => void;
   },
 ) {
@@ -98,7 +99,7 @@ function renderEditor(
         referenceImages={[]}
         promptReferences={[]}
         activeTool={options?.activeTool ?? null}
-        onToolChange={vi.fn()}
+        onToolChange={options?.onToolChange ?? vi.fn()}
         onRun={options?.onRun ?? vi.fn()}
       />
     </App>,
@@ -186,5 +187,86 @@ describe('ImageNodeEditor', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: '3:4 · auto · 4张' })).toBeInTheDocument();
     });
+  });
+
+  it('聚焦工具会显示选区面板并把标记区域写入节点属性', async () => {
+    renderEditor(createImageNodeData({
+      source: 'https://cdn.example.com/original.png',
+      primaryResultSource: 'https://cdn.example.com/original.png',
+      focusRegion: {
+        enabled: true,
+        x: 0.2,
+        y: 0.15,
+        width: 0.3,
+        height: 0.25,
+        source: 'https://cdn.example.com/original.png',
+      },
+    }), {
+      activeTool: 'focus',
+    });
+
+    expect(await screen.findByText('红框区域会作为下一次局部补全重点')).toBeInTheDocument();
+    expect(screen.getByText('30% × 25%')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '脸部' }));
+
+    expect(updateNodeDataMock).toHaveBeenCalledTimes(1);
+    const updater = updateNodeDataMock.mock.calls[0]?.[1];
+    expect(typeof updater).toBe('function');
+    const next = updater(createImageNodeData({
+      source: 'https://cdn.example.com/original.png',
+    }));
+    expect(next.properties).toEqual(expect.objectContaining({
+      focusRegion: expect.objectContaining({
+        enabled: true,
+        x: 0.32,
+        y: 0.12,
+        width: 0.36,
+        height: 0.32,
+        source: 'https://cdn.example.com/original.png',
+      }),
+    }));
+  });
+
+  it('标记工具会在图片点击位置写入归一化焦点点位', async () => {
+    renderEditor(createImageNodeData({
+      source: 'https://cdn.example.com/original.png',
+      primaryResultSource: 'https://cdn.example.com/original.png',
+    }), {
+      activeTool: 'mark',
+    });
+
+    const markStage = await screen.findByRole('button', { name: '添加标记点' });
+    Object.defineProperty(markStage, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => ({
+        left: 10,
+        top: 20,
+        width: 200,
+        height: 100,
+        right: 210,
+        bottom: 120,
+        x: 10,
+        y: 20,
+        toJSON: () => ({}),
+      }),
+    });
+
+    fireEvent.click(markStage, { clientX: 60, clientY: 45 });
+
+    expect(updateNodeDataMock).toHaveBeenCalledTimes(1);
+    const updater = updateNodeDataMock.mock.calls[0]?.[1];
+    expect(typeof updater).toBe('function');
+    const next = updater(createImageNodeData({
+      source: 'https://cdn.example.com/original.png',
+    }));
+    expect(next.properties.markPoints).toHaveLength(1);
+    expect(next.properties.markPoints?.[0]).toEqual(expect.objectContaining({
+      enabled: true,
+      x: 0.25,
+      y: 0.25,
+      source: 'https://cdn.example.com/original.png',
+      label: '标记 1',
+    }));
   });
 });

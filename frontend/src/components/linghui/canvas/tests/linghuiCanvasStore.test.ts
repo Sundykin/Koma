@@ -27,7 +27,7 @@ describe('linghuiCanvasStore', () => {
     useLinghuiCanvasStore.getState().setActiveNodeTool({
       kind: 'image',
       nodeId: 'node-a',
-      tool: 'multi-angle',
+      tool: 'focus',
     });
     useLinghuiCanvasStore.getState().setActiveNodeTool({
       kind: 'image',
@@ -44,9 +44,24 @@ describe('linghuiCanvasStore', () => {
     expect(useLinghuiCanvasStore.getState().activeNodeTool).toEqual({
       kind: 'image',
       nodeId: 'node-a',
-      tool: 'multi-angle',
+      tool: 'focus',
     });
     expect(useLinghuiCanvasStore.getState().gridSplitSelectedCells).toEqual([]);
+  });
+
+  it('treats focus as a normal image tool without touching grid split memory', () => {
+    useLinghuiCanvasStore.getState().setActiveNodeTool({
+      kind: 'image',
+      nodeId: 'node-a',
+      tool: 'focus',
+    });
+
+    expect(useLinghuiCanvasStore.getState().activeNodeTool).toEqual({
+      kind: 'image',
+      nodeId: 'node-a',
+      tool: 'focus',
+    });
+    expect(useLinghuiCanvasStore.getState().previousGridSplitTool).toBeNull();
   });
 
   it('resetCanvasUiState clears transient editor and group state but preserves mode settings', () => {

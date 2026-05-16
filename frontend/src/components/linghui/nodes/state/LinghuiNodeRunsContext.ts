@@ -194,8 +194,11 @@ export interface LinghuiNodeEditorApi {
     multiAngle?: Partial<LinghuiMultiAngleConfig>;
     label?: string;
   }) => string | null;
+  onExecuteImageUpscale?: (nodeId: string, options?: { factor?: 2 | 4 }) => void;
+  onExecuteImageCrop?: (nodeId: string, options: { aspectRatio: string; label?: string }) => void;
   onExecuteMultiAngle?: (options?: LinghuiExecuteMultiAngleOptions) => void;
   onApplyImageToolPreset?: (preset: {
+    label?: string;
     promptSnippet: string;
     properties?: Partial<LinghuiImageNodeProperties>;
   }) => void;
@@ -205,6 +208,11 @@ export interface LinghuiNodeEditorApi {
   gridSplitUpscaleFactor: 2 | 4;
   onSetGridSplitUpscaleFactor?: (factor: 2 | 4) => void;
   onRevertGridSplit?: () => void;
+  /**
+   * 视频工具：把当前视频节点的内嵌音轨分离成独立 audio 节点。
+   * 对齐 LibTV "音频分离 → 音视频分离"，复用现有 FFmpeg splitAudio 链路。
+   */
+  onSeparateVideoAudio?: (nodeId: string) => void;
 }
 
 const noopNodeEditorApi: LinghuiNodeEditorApi = {

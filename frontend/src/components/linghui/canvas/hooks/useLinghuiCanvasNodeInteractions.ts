@@ -26,6 +26,11 @@ interface UseLinghuiCanvasNodeInteractionsParams {
   setPendingGroupFrame: Dispatch<SetStateAction<LinghuiPendingGroupFrame | null>>;
   closeContextMenu: () => void;
   closeQuickCreate: () => void;
+  /**
+   * Pane click 专用 quickCreate 关闭入口：250ms 抑制窗口内 paneClick 不会关闭刚开的"引用该节点生成"面板。
+   * 来源：连线松开同帧 React Flow 会触发 onPaneClick，旧逻辑直接调 closeQuickCreate 立即关掉面板。
+   */
+  closeQuickCreateFromPane: () => void;
   openContextMenuAt: (
     clientX: number,
     clientY: number,
@@ -45,6 +50,7 @@ export function useLinghuiCanvasNodeInteractions({
   setPendingGroupFrame,
   closeContextMenu,
   closeQuickCreate,
+  closeQuickCreateFromPane,
   openContextMenuAt,
   emitSnapshot,
   onNodeDragStart,
@@ -89,7 +95,6 @@ export function useLinghuiCanvasNodeInteractions({
       nodeData.linghuiType !== 'linghui/text' &&
       nodeData.linghuiType !== 'linghui/agent' &&
       nodeData.linghuiType !== 'linghui/image' &&
-      nodeData.linghuiType !== 'linghui/image-generator' &&
       nodeData.linghuiType !== 'linghui/panorama' &&
       nodeData.linghuiType !== 'linghui/video' &&
       nodeData.linghuiType !== 'linghui/audio' &&
@@ -388,10 +393,11 @@ export function useLinghuiCanvasNodeInteractions({
     setActiveNodeTool(null);
     setPendingGroupFrame(null);
     closeContextMenu();
-    closeQuickCreate();
+    // 用 paneClick 专用入口：250ms 抑制窗口内（连线松开同帧）不关 quickCreate，避免"引用该节点生成"面板瞬关。
+    closeQuickCreateFromPane();
   }, [
     closeContextMenu,
-    closeQuickCreate,
+    closeQuickCreateFromPane,
     setActiveNodeTool,
     setEditorSelection,
     setPendingGroupFrame,

@@ -128,6 +128,181 @@
   }
 }
 
+.linghuiImageFocus {
+  &Panel {
+    gap: 10px;
+  }
+
+  &Header {
+    @include lh-inline(10px, nowrap, flex-start, space-between);
+  }
+
+  &Hint {
+    @include lh-text($lh-text-muted, 11px, 1.5);
+
+    margin-top: 3px;
+  }
+
+  &Stage {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    min-height: 168px;
+    border-radius: 14px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: color-mix(in srgb, var(--token-bg-app) 88%, transparent);
+    color: $lh-text-muted;
+    contain: paint;
+
+    img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+  }
+
+  &Box {
+    position: absolute;
+    left: var(--linghui-focus-x, 28%);
+    top: var(--linghui-focus-y, 22%);
+    width: var(--linghui-focus-w, 44%);
+    height: var(--linghui-focus-h, 42%);
+    border: 2px solid color-mix(in srgb, var(--token-status-error) 94%, white 6%);
+    border-radius: 10px;
+    box-shadow:
+      0 0 0 999px color-mix(in srgb, var(--token-bg-app) 42%, transparent),
+      0 0 0 1px color-mix(in srgb, var(--token-bg-card) 62%, transparent),
+      0 10px 28px color-mix(in srgb, var(--token-status-error) 22%, transparent);
+    pointer-events: none;
+  }
+
+  &PresetRow {
+    @include lh-inline(6px);
+  }
+
+  &PresetButton {
+    @include lh-chip-button(28px, 0 12px);
+  }
+
+  &Controls {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 12px;
+  }
+
+  &Slider {
+    @include lh-stack(6px);
+    @include lh-text($lh-text-muted, 11px, 1.4, 700);
+
+    min-width: 0;
+
+    input {
+      width: 100%;
+      accent-color: var(--token-status-error);
+    }
+
+    strong {
+      @include lh-text($lh-text-secondary, 11px, 1.4, 700);
+    }
+  }
+
+  &Actions {
+    @include lh-inline(8px, wrap, center, flex-end);
+  }
+}
+
+.linghuiImageMark {
+  &Panel {
+    gap: 10px;
+  }
+
+  &Stage {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    min-height: 168px;
+    border-radius: 14px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: color-mix(in srgb, var(--token-bg-app) 88%, transparent);
+    color: $lh-text-muted;
+    cursor: crosshair;
+    contain: paint;
+
+    img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      pointer-events: none;
+    }
+  }
+
+  &Point {
+    position: absolute;
+    left: var(--linghui-mark-x, 50%);
+    top: var(--linghui-mark-y, 50%);
+    width: 24px;
+    height: 24px;
+    border-radius: $lh-radius-pill;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transform: translate(-50%, -50%);
+    border: 2px solid color-mix(in srgb, var(--token-bg-app) 78%, transparent);
+    background: color-mix(in srgb, var(--token-status-warning) 88%, transparent);
+    color: $lh-text-primary;
+    font-size: 11px;
+    font-weight: 900;
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--token-status-warning) 54%, transparent),
+      0 8px 18px color-mix(in srgb, var(--token-bg-app) 36%, transparent);
+    pointer-events: none;
+  }
+
+  &List {
+    @include lh-stack(6px);
+  }
+
+  &ListItem {
+    @include lh-inline(8px, nowrap, center, space-between);
+
+    min-height: 30px;
+    padding: 0 8px 0 10px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--token-bg-app) 64%, transparent);
+    color: $lh-text-secondary;
+    font-size: 12px;
+
+    span {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    strong {
+      color: $lh-text-muted;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    button {
+      @include lh-chip-button(22px, 0 8px);
+
+      flex: 0 0 auto;
+      color: $lh-text-danger;
+    }
+  }
+}
+
 .linghuiPanorama {
   &Modal {
     .ant-modal-body {
@@ -646,5 +821,9 @@
 
   .linghuiMultiAngleStage {
     min-height: 420px;
+  }
+
+  .linghuiImageFocusControls {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

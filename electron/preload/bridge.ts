@@ -121,6 +121,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'controller/linghui/deleteGlobalAsset',
   'controller/ffmpeg/isAvailable', 'controller/ffmpeg/getInfo',
   'controller/ffmpeg/extractFrames', 'controller/ffmpeg/splitGridImage',
+  'controller/ffmpeg/upscaleImage', 'controller/ffmpeg/cropImage',
   'controller/ffmpeg/waveform',
   'controller/ffmpeg/splitAudio', 'controller/ffmpeg/composeVideo',
   'controller/ffmpeg/getCacheDir', 'controller/ffmpeg/getTempDir',
@@ -377,6 +378,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     splitAudio: (input: string, output: string) =>
       invokeMain('controller/ffmpeg/splitAudio', { input, output }),
     upscaleImage: (options: any) => invokeMain('controller/ffmpeg/upscaleImage', options),
+    cropImage: (options: any) => invokeMain('controller/ffmpeg/cropImage', options),
     composeVideo: (options: any) => invokeMain('controller/ffmpeg/composeVideo', options),
     getCacheDir: (subDir?: string) => invokeMain('controller/ffmpeg/getCacheDir', { subDir }),
     getTempDir: () => invokeMain('controller/ffmpeg/getTempDir', {}),

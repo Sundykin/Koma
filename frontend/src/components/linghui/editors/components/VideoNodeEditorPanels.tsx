@@ -216,24 +216,28 @@ export function VideoPassThroughPanel({
   posterSource,
   onDownload,
 }: VideoPassThroughPanelProps) {
-  return (
-    <div className="linghuiEditorSection">
-      <div className="linghuiEditorSectionHeader">
-        <TooltipLabel
-          label="透传输出"
-          tooltip="该节点直接输出导入到画布的视频，不参与模型生成，也不需要执行。"
-        />
-      </div>
+  // LibTV 1:1：视频参考节点本身已经在画布上显示视频 + 节点上方"上传"浮按钮，
+  // 编辑器面板不再重复渲染大预览图（反人类的"上下两张视频"）。
+  // 只保留轻量的"在播放器打开 / 打开所在位置 / 下载"单行操作，
+  // 复用 VideoAccessCard 但通过 emptyDescription 把 placeholder 收成 24px icon。
+  const sourceLabel = source.split(/[\\/]/).pop() || '视频文件';
 
-      <div className="linghuiEditorPassThroughCard">
-        <VideoAccessCard
-          source={source}
-          posterSource={posterSource}
-          emptyDescription="当前没有可展示的封面"
-          pills={['已挂载视频', '直接给下游', '不进入生成']}
-          onDownload={onDownload}
-        />
+  return (
+    <div className="linghuiEditorSection linghuiEditorSection--passThroughCompact">
+      <div className="linghuiEditorControlRow">
+        <span className="linghuiEditorSummaryPill" title={source}>
+          {sourceLabel}
+        </span>
+        {onDownload ? (
+          <div className="linghuiEditorActionGroup">
+            <Button size="small" onClick={onDownload} icon={<Download size={14} />}>
+              下载
+            </Button>
+          </div>
+        ) : null}
       </div>
+      {/* posterSource 暂时不渲染——节点缩略图已经能看到首帧。 */}
+      {posterSource ? null : null}
     </div>
   );
 }

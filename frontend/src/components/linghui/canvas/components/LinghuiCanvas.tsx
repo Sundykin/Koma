@@ -16,7 +16,7 @@ import {
   useViewport,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import type { LinghuiCanvasSelection } from '../../../../types/linghui';
+import type { LinghuiCanvasSelection, LinghuiImageToolKey, LinghuiVideoToolKey } from '../../../../types/linghui';
 import { EMPTY_LINGHUI_NODE_RUNS } from '../../../../types/linghui';
 import { LinghuiCanvasProviders } from './LinghuiCanvasProviders';
 import { LinghuiCanvasSurface } from './LinghuiCanvasSurface';
@@ -34,8 +34,22 @@ import { useLinghuiCanvasFlowBridge } from '../hooks/useLinghuiCanvasFlowBridge'
 import { useLinghuiCanvasOverlayProps } from '../hooks/useLinghuiCanvasOverlayProps';
 import { useLinghuiCanvasUiState } from '../hooks/useLinghuiCanvasUiState';
 import { useLinghuiCanvasViewportControls } from '../hooks/useLinghuiCanvasViewportControls';
+import { useLinghuiCanvasDoubleTapFitView } from '../hooks/useLinghuiCanvasDoubleTapFitView';
 import { type PendingConnectionCreateState } from '../state/linghuiCanvasShared';
+import {
+  computeLinghuiCanvasElkLayout,
+  type LinghuiCanvasOutlierNode,
+} from '../state/linghuiCanvasLayout';
 import type { LinghuiCanvasHandle, LinghuiCanvasProps } from '../state/linghuiCanvasTypes';
+
+interface LayoutReviewState {
+  previousPositions: Record<string, { x: number; y: number }>;
+}
+
+interface OutlierNoticeState {
+  nodes: LinghuiCanvasOutlierNode[];
+  currentIndex: number;
+}
 const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(function LinghuiCanvasInner(
   {
     workspace,
@@ -66,6 +80,12 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [canvasInteractionVersion, setCanvasInteractionVersion] = useState(0);
+  const [showMiniMap, setShowMiniMap] = useState(false);
+  const [snapToGrid, setSnapToGrid] = useState(true);
+  const [shortcutPanelOpen, setShortcutPanelOpen] = useState(false);
+  const [layoutReview, setLayoutReview] = useState<LayoutReviewState | null>(null);
+  const [isLayouting, setIsLayouting] = useState(false);
+  const [outlierNotice, setOutlierNotice] = useState<OutlierNoticeState | null>(null);
   const reactFlow = useReactFlow();
 
   const viewport = useViewport();
@@ -128,6 +148,7 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     pendingGroupActionsStyle,
     closeContextMenu,
     closeQuickCreate,
+    closeQuickCreateFromPane,
     openContextMenuAt,
     openQuickCreateAt,
   } = useLinghuiCanvasOverlayState({
@@ -182,8 +203,11 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     deriveStoryboardVideosFromScript,
     createGroupFromSelection,
     createDerivedImageNodesFromNode,
+    createDerivedVideoNodesFromNode,
+    createDerivedPanoramaNodeFromNode,
+    createDerivedAudioNodeFromVideo,
     createDerivedMultiAngleImageNodeFromNode,
-    spawnImageFromGenerator,
+    createDerivedImageToolNodeFromNode,
     clearPendingGroupFrame,
   } = useLinghuiCanvasDocumentOps({
     reactFlow,
@@ -231,6 +255,115 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     nodeRuns,
   });
 
+  const { zoomIn, zoomOut, focusContent, zoomToPreset } = useLinghuiCanvasViewportControls(reactFlow);
+  useLinghuiCanvasDoubleTapFitView({
+    hostRef,
+    onFitView: focusContent,
+  });
+
+  const openQuickCreateAtCenter = useCallback(() => {
+    const rect = hostRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    openQuickCreateAt(rect.left + rect.width / 2, rect.top + rect.height / 2);
+  }, [hostRef, openQuickCreateAt]);
+
+  const handleRunHotkey = useCallback(() => {
+    if (selectedNodeIds.length > 0 && onRunSelection) {
+      onRunSelection();
+      return;
+    }
+    onRunAll?.();
+  }, [onRunAll, onRunSelection, selectedNodeIds.length]);
+
+  const handleFormatLayout = useCallback(async () => {
+    if (isLayouting) return;
+    const currentNodes = reactFlow.getNodes();
+    if (currentNodes.length <= 1) {
+      focusContent();
+      return;
+    }
+
+    setIsLayouting(true);
+    try {
+      const result = await computeLinghuiCanvasElkLayout(currentNodes, reactFlow.getEdges());
+      const updateMap = new Map(result.updates.map(update => [update.id, update.position]));
+      setOutlierNotice(result.outlierNodes.length > 0
+        ? { nodes: result.outlierNodes, currentIndex: 0 }
+        : null);
+
+      if (updateMap.size === 0) {
+        message.info('画布布局已整齐');
+        focusContent();
+        return;
+      }
+
+      const previousPositions: LayoutReviewState['previousPositions'] = {};
+      for (const node of currentNodes) {
+        if (updateMap.has(node.id)) {
+          previousPositions[node.id] = { x: node.position.x, y: node.position.y };
+        }
+      }
+
+      setNodes(existingNodes => existingNodes.map(node => {
+        const nextPosition = updateMap.get(node.id);
+        return nextPosition ? { ...node, position: nextPosition } : node;
+      }));
+      setLayoutReview({ previousPositions });
+      setCanvasInteractionVersion(version => version + 1);
+      requestAnimationFrame(() => {
+        focusContent();
+      });
+    } catch (error) {
+      console.error('[LinghuiCanvas] format layout failed', error);
+      message.error('整理画布失败，请稍后重试');
+    } finally {
+      setIsLayouting(false);
+    }
+  }, [focusContent, isLayouting, message, reactFlow, setNodes]);
+
+  const handleRestoreLayout = useCallback(() => {
+    if (!layoutReview) return;
+    const previousPositions = layoutReview.previousPositions;
+    setNodes(existingNodes => existingNodes.map(node => {
+      const previousPosition = previousPositions[node.id];
+      return previousPosition ? { ...node, position: previousPosition } : node;
+    }));
+    setLayoutReview(null);
+    setCanvasInteractionVersion(version => version + 1);
+    requestAnimationFrame(() => {
+      scheduleSnapshot({ force: true });
+      focusContent();
+    });
+  }, [focusContent, layoutReview, scheduleSnapshot, setNodes]);
+
+  const handleKeepLayout = useCallback(() => {
+    setLayoutReview(null);
+    requestAnimationFrame(() => {
+      scheduleSnapshot({ force: true });
+    });
+  }, [scheduleSnapshot]);
+
+  const handleNavigateToOutlier = useCallback(() => {
+    setOutlierNotice(current => {
+      if (!current || current.nodes.length === 0) return current;
+      const target = current.nodes[current.currentIndex] ?? current.nodes[0];
+      reactFlow.setCenter(target.cx, target.cy, {
+        duration: 280,
+        zoom: Math.max(reactFlow.getViewport().zoom, 0.75),
+      });
+      return {
+        ...current,
+        currentIndex: current.nodes.length > 1
+          ? (current.currentIndex + 1) % current.nodes.length
+          : current.currentIndex,
+      };
+    });
+  }, [reactFlow]);
+
+  const handleDismissOutliers = useCallback(() => {
+    setOutlierNotice(null);
+  }, []);
+
   useLinghuiCanvasHotkeys({
     canUndo,
     canRedo,
@@ -246,6 +379,13 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     closeContextMenu,
     closeQuickCreate,
     clearPendingGroupFrame,
+    onRunRequested: handleRunHotkey,
+    onOpenQuickCreate: openQuickCreateAtCenter,
+    onFormatLayout: handleFormatLayout,
+    onFocusContent: focusContent,
+    onZoomIn: zoomIn,
+    onZoomOut: zoomOut,
+    onToggleShortcutPanel: () => setShortcutPanelOpen(open => !open),
     selectedEdgeIds,
   });
   const {
@@ -327,6 +467,7 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     setPendingGroupFrame,
     closeContextMenu,
     closeQuickCreate,
+    closeQuickCreateFromPane,
     openContextMenuAt,
     emitSnapshot,
     onNodeDragStart: handleNodeDragStart,
@@ -337,10 +478,10 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     bindNodeSurface,
     openNodeContextMenu,
     openNodeEditor,
-    openImageToolPanel(nodeId: string, tool: 'multi-angle' | 'outpaint' | 'relight' | 'repaint' | 'grid-split') {
+    openImageToolPanel(nodeId: string, tool: LinghuiImageToolKey) {
       openNodeToolPanel({ kind: 'image', nodeId, tool });
     },
-    openVideoToolPanel(nodeId: string, tool: 'upscale' | 'analyze' | 'compose') {
+    openVideoToolPanel(nodeId: string, tool: LinghuiVideoToolKey) {
       openNodeToolPanel({ kind: 'video', nodeId, tool });
     },
   }), [bindNodeSurface, openNodeContextMenu, openNodeEditor, openNodeToolPanel]);
@@ -353,8 +494,6 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     updateNodeData: updateLinghuiNodeData,
     clearNodeRunState,
   }), [clearNodeRunState, updateLinghuiNodeData]);
-
-  const { zoomIn, zoomOut, focusContent } = useLinghuiCanvasViewportControls(reactFlow);
 
   const selectSingleEdge = useCallback((edgeId: string) => {
     setEdges(currentEdges => currentEdges.map(edge => ({
@@ -397,6 +536,7 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     executionQueue,
     workspaceId: workspace?.id ?? null,
     updateNodeData: updateLinghuiNodeData,
+    onClearNodeRunState,
     canvasRect,
     gridSplitType,
     setGridSplitType,
@@ -424,6 +564,8 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     onRunSelection,
     onRunAll,
     onExportSelection,
+    onFormatLayout: handleFormatLayout,
+    onOpenShortcutPanel: () => setShortcutPanelOpen(open => !open),
     onRunSingleNodeRef,
     openQuickCreateAt,
     closeContextMenu,
@@ -432,8 +574,11 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     deriveStoryboardImagesFromScript,
     deriveStoryboardVideosFromScript,
     createDerivedImageNodesFromNode,
+    createDerivedVideoNodesFromNode,
+    createDerivedPanoramaNodeFromNode,
+    createDerivedAudioNodeFromVideo,
     createDerivedMultiAngleImageNodeFromNode,
-    spawnImageFromGenerator,
+    createDerivedImageToolNodeFromNode,
     copySelectionToClipboard,
     duplicateSelection,
     pasteClipboardSnapshot,
@@ -507,14 +652,33 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
         onRunAll,
         onRunSelection,
         onSetCanvasMode: setCanvasMode,
+        showMiniMap,
+        snapToGrid,
+        shortcutPanelOpen,
+        layoutReviewPending: Boolean(layoutReview),
+        isLayouting,
+        outlierNotice: outlierNotice
+          ? { count: outlierNotice.nodes.length, currentIndex: outlierNotice.currentIndex }
+          : null,
+        onToggleMiniMap: () => setShowMiniMap(open => !open),
+        onToggleSnapToGrid: () => setSnapToGrid(enabled => !enabled),
+        onFormatLayout: handleFormatLayout,
+        onRestoreLayout: handleRestoreLayout,
+        onKeepLayout: handleKeepLayout,
+        onNavigateToOutlier: handleNavigateToOutlier,
+        onDismissOutliers: handleDismissOutliers,
+        onToggleShortcutPanel: () => setShortcutPanelOpen(open => !open),
         onZoomOut: zoomOut,
         onFocusContent: focusContent,
         onZoomIn: zoomIn,
+        onZoomToPreset: zoomToPreset,
       }}
       stageProps={{
         nodes,
         edges,
         canvasMode,
+        showMiniMap,
+        snapToGrid,
         onNodesChange: handleNodesChange,
         onEdgesChange: handleEdgesChange,
         onConnect: handleConnect,
