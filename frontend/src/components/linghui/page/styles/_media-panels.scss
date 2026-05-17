@@ -986,11 +986,61 @@
 
 .linghuiImageLibTVOutpaintStage {
   min-height: 230px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background:
     linear-gradient(90deg, color-mix(in srgb, var(--token-text-primary) 8%, transparent) 1px, transparent 1px),
     linear-gradient(0deg, color-mix(in srgb, var(--token-text-primary) 8%, transparent) 1px, transparent 1px),
     color-mix(in srgb, var(--token-bg-card) 54%, transparent);
   background-size: 22px 22px;
+}
+
+// LibTV 扩图预览：白色虚线边框包裹"原图 + 4 向扩展区"，扩展区随 outpaintRatio 实时变化。
+.linghuiImageToolOutpaintPreview {
+  position: relative;
+  display: inline-block;
+  padding-top: var(--linghui-outpaint-top, 0);
+  padding-right: var(--linghui-outpaint-right, 0);
+  padding-bottom: var(--linghui-outpaint-bottom, 0);
+  padding-left: var(--linghui-outpaint-left, 0);
+  border: 1px dashed color-mix(in srgb, var(--token-accent-base) 70%, transparent);
+  background: color-mix(in srgb, var(--token-accent-base) 8%, transparent);
+  border-radius: 6px;
+  transition: padding 160ms ease;
+}
+
+// LibTV 扩图 4 向滑块
+.linghuiImageLibTVOutpaintSliders {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.linghuiImageLibTVOutpaintSliderRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+
+  input[type=range] {
+    flex: 1;
+    height: 18px;
+  }
+}
+
+.linghuiImageLibTVOutpaintSliderLabel {
+  width: 18px;
+  text-align: center;
+  color: color-mix(in srgb, var(--token-text-primary) 70%, transparent);
+}
+
+.linghuiImageLibTVOutpaintSliderValue {
+  width: 40px;
+  text-align: right;
+  color: color-mix(in srgb, var(--token-text-primary) 80%, transparent);
+  font-variant-numeric: tabular-nums;
 }
 
 .linghuiImageLibTVPanelFooter {

@@ -21,6 +21,10 @@ const LINGHUI_SNAP_GRID: [number, number] = [
   LINGHUI_CANVAS_SNAP_GRID_SIZE,
   LINGHUI_CANVAS_SNAP_GRID_SIZE,
 ];
+// LibTV bY：跨平台多选修饰键（Mac=Meta，Win/Linux=Control）
+const LINGHUI_MULTI_SELECTION_KEY_CODE = ['Meta', 'Control'];
+// LibTV fitView：300ms 动画（0gg5ir:76587）
+const LINGHUI_FIT_VIEW_OPTIONS = { padding: 0.12, duration: 300 } as const;
 
 interface LinghuiCanvasStageProps {
   nodes: ReactFlowComponentProps['nodes'];
@@ -123,6 +127,7 @@ export function LinghuiCanvasStage({
       minZoom={0.25}
       maxZoom={2.5}
       deleteKeyCode={null}
+      multiSelectionKeyCode={LINGHUI_MULTI_SELECTION_KEY_CODE}
       nodesDraggable={!isTouchMode}
       nodesConnectable={!isTouchMode}
       // ComfyUI 风格：滚轮始终只做缩放（不平移）。
@@ -146,6 +151,7 @@ export function LinghuiCanvasStage({
       proOptions={REACT_FLOW_PRO_OPTIONS}
       colorMode={theme.meta.mode}
       fitView
+      fitViewOptions={LINGHUI_FIT_VIEW_OPTIONS}
     >
       <Background
         id="linghui-grid-major"

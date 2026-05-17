@@ -170,11 +170,32 @@ function PanoramaSphereBand({ texture }: { texture: THREE.Texture }) {
   );
 }
 
+/**
+ * 等距柱状投影（equirectangular）完整球面渲染。
+ *
+ * 严格参考 `template_/720/未命名` demo 的关键算法点：
+ *   1. 内表面渲染：scale(-1,1,1) 翻转面 + side=BackSide，相机站在球心朝内看
+ *   2. MeshBasicMaterial（无光照）：直接显示贴图原色，与 LibTV WASM 输出一致
+ *   3. 几何高细分（96×48 vs demo 60×40）：更光滑的极点过渡
+ *   4. anisotropy 最大化：在球面边缘大幅拉伸时显著改善纹理清晰度
+ *
+ * 与 demo 等效。Demo 用 OrbitControls(camera, dom)；灵绘用自定义 yaw/pitch + lerp(0.18)
+ * 让多种 viewer 模式（band / cylinder / flat）共享一套指针交互，不强依赖 OrbitControls。
+ */
 function PanoramaSphereFull({ texture }: { texture: THREE.Texture }) {
   const args = useMemo<[number, number, number, number, number, number, number]>(
     () => [SPHERE_RADIUS, 96, 48, 0, Math.PI * 2, SPHERE_FULL_THETA_START, SPHERE_FULL_THETA_LENGTH],
     [],
   );
+  // 提升纹理在大斜面采样的清晰度（demo 默认未设；高分辨率全景图差异肉眼可见）。
+  const { gl } = useThree();
+  useEffect(() => {
+    const maxAnisotropy = gl?.capabilities?.getMaxAnisotropy?.() ?? 0;
+    if (maxAnisotropy > 0 && texture.anisotropy !== maxAnisotropy) {
+      texture.anisotropy = maxAnisotropy;
+      texture.needsUpdate = true;
+    }
+  }, [gl, texture]);
   return (
     <mesh scale={[-1, 1, 1]}>
       <sphereGeometry args={args} />
@@ -331,6 +352,11 @@ export interface PanoramaViewportProps {
   viewerMode?: PanoramaViewerMode;
   /** 出图比例字符串（"21:9" / "16:9" / "2:1"），帮助比例兜底。 */
   ratioString?: string;
+  /**
+   * 当前视角变化时实时回调（用于父组件拿到 yaw/pitch/fov 调 panoramaPerspectiveExtractor）。
+   * 仅在用户停拖 + FOV 改变时触发。
+   */
+  onCurrentViewChange?: (view: { yaw: number; pitch: number; fovDeg: number }) => void;
 }
 
 /**
@@ -346,6 +372,7 @@ export const PanoramaViewport: React.FC<PanoramaViewportProps> = ({
   projectionMode,
   viewerMode: viewerModeOverride,
   ratioString,
+  onCurrentViewChange,
 }) => {
   const yawTargetRef = useRef(0);
   const pitchTargetRef = useRef(0);
@@ -418,24 +445,36 @@ export const PanoramaViewport: React.FC<PanoramaViewportProps> = ({
     lastPointer.current = null;
     isDraggingRef.current = false;
     setIsDragging(false);
-  }, []);
+    onCurrentViewChange?.({
+      yaw: yawTargetRef.current,
+      pitch: pitchTargetRef.current,
+      fovDeg: fovRef.current,
+    });
+  }, [onCurrentViewChange]);
 
   const onWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
     const next = fovRef.current + (e.deltaY > 0 ? 2 : -2);
     fovRef.current = Math.max(FOV_MIN, Math.min(FOV_MAX, next));
     autoRotateUntilRef.current = 0;
     if (showFovHint) forceFovTick((n) => n + 1); // 仅当显示 hint 时才触发 re-render
-  }, [showFovHint]);
+    onCurrentViewChange?.({
+      yaw: yawTargetRef.current,
+      pitch: pitchTargetRef.current,
+      fovDeg: fovRef.current,
+    });
+  }, [onCurrentViewChange, showFovHint]);
 
   return (
     <div
-      className={`linghuiPanoramaViewport ${imageUrl ? 'hasImage' : ''} ${isDragging ? 'isDragging' : ''}`}
-      onPointerDown={imageUrl ? onPointerDown : undefined}
-      onPointerMove={imageUrl ? onPointerMove : undefined}
-      onPointerUp={imageUrl ? onPointerUp : undefined}
-      onPointerCancel={imageUrl ? onPointerUp : undefined}
-      onPointerLeave={imageUrl ? onPointerUp : undefined}
-      onWheel={imageUrl ? onWheel : undefined}
+      // ReactFlow 在节点内嵌时通过 `.nodrag .nopan .nowheel` 跳过节点拖拽/平移/缩放劫持；
+      // 全屏 Modal 场景下也加上，避免事件冒泡穿透到底层画布。
+      className={`linghuiPanoramaViewport nodrag nopan nowheel ${imageUrl ? 'hasImage' : ''} ${isDragging ? 'isDragging' : ''}`}
+      onPointerDown={imageUrl ? (event) => { event.stopPropagation(); onPointerDown(event); } : undefined}
+      onPointerMove={imageUrl ? (event) => { event.stopPropagation(); onPointerMove(event); } : undefined}
+      onPointerUp={imageUrl ? (event) => { event.stopPropagation(); onPointerUp(); } : undefined}
+      onPointerCancel={imageUrl ? (event) => { event.stopPropagation(); onPointerUp(); } : undefined}
+      onPointerLeave={imageUrl ? () => onPointerUp() : undefined}
+      onWheel={imageUrl ? (event) => { event.stopPropagation(); onWheel(event); } : undefined}
     >
       {imageUrl && mountReady && textureState.status === 'ready' && textureState.texture ? (
         <div className="linghuiPanoramaCanvasShell">
@@ -507,6 +546,12 @@ interface PanoramaViewerProps {
   projectionMode?: PanoramaProjectionMode;
   viewerMode?: PanoramaViewerMode;
   ratioString?: string;
+  /**
+   * 用户点击"应用此视角"时调用：父组件接到当前视角参数（yaw/pitch/fovDeg），
+   * 调 panoramaPerspectiveExtractor 抽出 perspective 图，再派生为下游 image 节点。
+   * 不传时不显示该按钮。
+   */
+  onApplyPerspective?: (view: { yaw: number; pitch: number; fovDeg: number }) => Promise<void> | void;
 }
 
 export const PanoramaViewer: React.FC<PanoramaViewerProps> = ({
@@ -517,6 +562,7 @@ export const PanoramaViewer: React.FC<PanoramaViewerProps> = ({
   projectionMode,
   viewerMode,
   ratioString,
+  onApplyPerspective,
 }) => {
   // mountReady 由 antd Modal 的 afterOpenChange 驱动 —— 动画结束后才挂 Canvas，
   // 避免 r3f 用动画中途的小尺寸初始化 GL buffer 导致右下黑边
@@ -524,6 +570,20 @@ export const PanoramaViewer: React.FC<PanoramaViewerProps> = ({
   const handleAfterOpenChange = useCallback((nextOpen: boolean) => {
     setMountReady((prev) => (prev === nextOpen ? prev : nextOpen));
   }, []);
+
+  // 跟踪当前视角，供"应用此视角"按钮 snapshot 用
+  const currentViewRef = useRef<{ yaw: number; pitch: number; fovDeg: number }>({ yaw: 0, pitch: 0, fovDeg: 75 });
+  const [applying, setApplying] = useState(false);
+  const handleApply = useCallback(async () => {
+    if (!onApplyPerspective || applying) return;
+    setApplying(true);
+    try {
+      await onApplyPerspective({ ...currentViewRef.current });
+      onClose();  // 派生成功后关闭全屏
+    } finally {
+      setApplying(false);
+    }
+  }, [applying, onApplyPerspective, onClose]);
 
   return (
     <Modal
@@ -545,7 +605,19 @@ export const PanoramaViewer: React.FC<PanoramaViewerProps> = ({
           projectionMode={projectionMode}
           viewerMode={viewerMode}
           ratioString={ratioString}
+          onCurrentViewChange={(view) => { currentViewRef.current = view; }}
         />
+        {onApplyPerspective ? (
+          <button
+            type="button"
+            className="linghuiPanoramaApplyButton"
+            onClick={(event) => { event.stopPropagation(); void handleApply(); }}
+            disabled={applying}
+            title="把当前视角抽成 perspective 图，派生为下游图片节点"
+          >
+            {applying ? '生成中…' : '应用此视角到图片节点'}
+          </button>
+        ) : null}
       </div>
     </Modal>
   );

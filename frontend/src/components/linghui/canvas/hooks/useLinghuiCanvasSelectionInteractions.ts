@@ -66,17 +66,15 @@ export function useLinghuiCanvasSelectionInteractions({
     openContextMenuAt(event.clientX, event.clientY, 'pane');
   }, [openContextMenuAt, pendingGroupFrame, selectedNodeIds]);
 
+  // 双击画布不再弹出 quickCreate（用户要求去掉），保留 selection / pendingGroup 清理但不开菜单。
+  // 入口仍可通过空白右键 → "添加节点" 或从节点拖出连线后松开触发，与 LibTV 一致。
+  // openQuickCreateAt 仍在 hook 入参中保留，便于将来其它交互（如双击空白节点 placeholder）复用。
   const handleCanvasDoubleClick = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement | null;
-    if (!target?.closest('.react-flow__pane')) {
-      return;
-    }
-    event.preventDefault();
-    event.stopPropagation();
+    if (!target?.closest('.react-flow__pane')) return;
     setEditorSelection(null);
     setPendingGroupFrame(null);
-    openQuickCreateAt(event.clientX, event.clientY);
-  }, [openQuickCreateAt, setEditorSelection, setPendingGroupFrame]);
+  }, [setEditorSelection, setPendingGroupFrame]);
 
   const handleSelectionStart = useCallback((event: ReactMouseEvent) => {
     if (canvasMode !== 'mouse') return;

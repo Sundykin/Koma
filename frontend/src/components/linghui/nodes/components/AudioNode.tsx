@@ -2,6 +2,7 @@ import React, { memo } from 'react';
 import { type NodeProps } from '@xyflow/react';
 import { getLinghuiResultPrimaryMedia, type LinghuiNodeData, type LinghuiRunStatus } from '../../../../types/linghui';
 import { useNodeRunState, useLinghuiNodeInteraction, useLinghuiNodeEditorVisibility } from '../state/LinghuiNodeRunsContext';
+import { useLinghuiConnectTarget } from '../state/useLinghuiConnectTarget';
 import { LinghuiNodeEditor } from '../../editors/components/LinghuiNodeEditor';
 import { EditableCompactNodeLabel } from './EditableCompactNodeLabel';
 import { resolveLinghuiNodeViewMode } from '../../editors/state/linghuiNodeViewMode';
@@ -55,10 +56,11 @@ function AudioNodeInner({ id, data, selected }: NodeProps) {
       : '待配置';
   const viewMode = resolveLinghuiNodeViewMode(nodeData.viewMode);
   const isEditorVisible = useLinghuiNodeEditorVisibility(id, 'linghui/audio');
+  const isConnectTarget = useLinghuiConnectTarget(id);
 
   return (
     <div
-      className={`linghuiCompactNode nopan is-${status} ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''} ${isEditorVisible ? 'hasInlineEditor' : ''}`}
+      className={`linghuiCompactNode nopan is-${status} ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''} ${isEditorVisible ? 'hasInlineEditor' : ''} ${isConnectTarget ? 'isConnectTarget' : ''}`}
       data-view-mode={viewMode}
       style={nodeStyle}
       {...interactionHandlers}

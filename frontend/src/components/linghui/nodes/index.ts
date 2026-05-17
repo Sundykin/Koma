@@ -7,6 +7,8 @@ import { AudioNode } from './components/AudioNode';
 import { ScriptNode } from './components/ScriptNode';
 import { Director3DNode } from './components/Director3DNode';
 import { CanvasGroupNode } from './components/CanvasGroupNode';
+import { GridSliceNode } from './components/GridSliceNode';
+import { VideoClipNode } from './components/VideoClipNode';
 
 export const linghuiNodeTypes: NodeTypes = {
   group: CanvasGroupNode,
@@ -23,6 +25,8 @@ export const linghuiNodeTypes: NodeTypes = {
   // 编辑器/执行器侧通过 linghuiType === 'linghui/storyboard' 分支区分。
   'linghui-storyboard': ScriptNode,
   'linghui-director3d': Director3DNode,
+  'linghui-image-grid-slice': GridSliceNode,
+  'linghui-video-clip': VideoClipNode,
 };
 
 export {

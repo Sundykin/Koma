@@ -72,6 +72,362 @@
   }
 }
 
+// 上传进度蒙层：节点 JSX 直接渲染 .linghuiCompactUploadOverlay，与 React state 严格一致。
+@keyframes linghui-upload-spinner {
+  to { transform: rotate(360deg); }
+}
+
+.linghuiCompactUploadOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: color-mix(in srgb, var(--token-bg-app) 70%, transparent);
+  backdrop-filter: blur(2px);
+  border-radius: inherit;
+  pointer-events: none;
+  color: var(--token-text-primary);
+  font-size: 12px;
+
+  span {
+    padding: 6px 14px;
+    background: color-mix(in srgb, var(--token-accent-base) 22%, transparent);
+    border: 1px solid color-mix(in srgb, var(--token-accent-base) 50%, transparent);
+    border-radius: 999px;
+  }
+
+  &.isError span {
+    color: white;
+    background: var(--token-status-error);
+    border-color: var(--token-status-error);
+  }
+}
+
+.linghuiCompactUploadSpinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid color-mix(in srgb, var(--token-accent-base) 30%, transparent);
+  border-top-color: var(--token-accent-base);
+  border-radius: 50%;
+  animation: linghui-upload-spinner 0.7s linear infinite;
+}
+
+// LibTV `node-target-shake`：连线状态下，鼠标 hover 到目标节点时的轻微抖动反馈。
+// 360ms 横向小幅抖动循环，强提示"这里能落"。connectionState 离开节点立即停止。
+@keyframes linghui-node-target-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-2.5px); }
+  40% { transform: translateX(2.5px); }
+  60% { transform: translateX(-2px); }
+  80% { transform: translateX(2px); }
+}
+
+.linghuiCompactNode.isConnectTarget,
+.linghuiRFNode.isConnectTarget {
+  animation: linghui-node-target-shake 360ms ease-in-out infinite;
+  // 抖动期间边框高亮，强调"可落"
+  --linghui-node-border: var(--token-accent-base);
+}
+
+// 宫格切分中间节点：N×N 槽位网格 + 删除按钮 + "彻底切分" footer。
+.linghuiGridSliceNode {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--token-bg-card);
+  border: 1px solid var(--token-border-base);
+  border-radius: 10px;
+  width: var(--linghui-node-width, 320px);
+}
+
+.linghuiGridSliceGrid {
+  display: grid;
+  grid-template-columns: repeat(var(--grid-cols, 3), 1fr);
+  grid-template-rows: repeat(var(--grid-rows, 3), 1fr);
+  gap: 4px;
+  aspect-ratio: 1 / 1;
+  background: color-mix(in srgb, var(--token-bg-app) 90%, transparent);
+  border-radius: 6px;
+  padding: 3px;
+}
+
+.linghuiGridSliceCell {
+  position: relative;
+  background: color-mix(in srgb, var(--token-bg-elevated) 60%, transparent);
+  border-radius: 3px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &.isEmpty {
+    color: color-mix(in srgb, var(--token-text-primary) 30%, transparent);
+  }
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+}
+
+.linghuiGridSliceCellClear {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.5);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms;
+
+  .linghuiGridSliceCell:hover & {
+    opacity: 1;
+  }
+}
+
+.linghuiGridSliceFooter {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.linghuiGridSliceFooterButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--token-accent-base) 50%, transparent);
+  background: color-mix(in srgb, var(--token-accent-base) 12%, transparent);
+  color: var(--token-text-primary);
+  cursor: pointer;
+  transition: background 120ms;
+
+  &:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--token-accent-base) 25%, transparent);
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+}
+
+// 视频合成节点：片段列表 + 合成按钮
+.linghuiVideoClipNode {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--token-bg-card);
+  border: 1px solid var(--token-border-base);
+  border-radius: 10px;
+  width: var(--linghui-node-width, 320px);
+  min-height: 200px;
+}
+
+.linghuiVideoClipEmptyHint {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px 12px;
+  color: color-mix(in srgb, var(--token-text-primary) 40%, transparent);
+  font-size: 12px;
+  text-align: center;
+}
+
+.linghuiVideoClipList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.linghuiVideoClipListItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--token-bg-elevated) 50%, transparent);
+  font-size: 12px;
+
+  &:hover {
+    background: color-mix(in srgb, var(--token-bg-elevated) 80%, transparent);
+  }
+}
+
+.linghuiVideoClipListIndex {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  background: color-mix(in srgb, var(--token-accent-base) 18%, transparent);
+  border-radius: 50%;
+  font-size: 10px;
+  color: var(--token-text-primary);
+}
+
+.linghuiVideoClipListLabel {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.linghuiVideoClipListDuration {
+  color: color-mix(in srgb, var(--token-text-primary) 60%, transparent);
+  font-variant-numeric: tabular-nums;
+  min-width: 38px;
+  text-align: right;
+}
+
+.linghuiVideoClipListClear,
+.linghuiVideoClipListMove {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: color-mix(in srgb, var(--token-text-primary) 50%, transparent);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  &:hover:not(:disabled) {
+    color: var(--token-text-primary);
+  }
+
+  &:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+}
+
+.linghuiVideoClipListClear:hover {
+  color: var(--token-status-error);
+}
+
+.linghuiVideoClipFooter {
+  gap: 8px;
+}
+
+.linghuiVideoClipEditorBody {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.linghuiVideoClipEditorRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+
+  label {
+    min-width: 160px;
+    color: color-mix(in srgb, var(--token-text-primary) 80%, transparent);
+  }
+
+  input, select {
+    flex: 1;
+    padding: 6px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--token-border-base);
+    background: var(--token-bg-elevated);
+    color: var(--token-text-primary);
+  }
+}
+
+.linghuiVideoClipEditorClipsHeader {
+  margin-top: 8px;
+  font-size: 12px;
+  color: color-mix(in srgb, var(--token-text-primary) 70%, transparent);
+}
+
+.linghuiVideoClipEditorList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+
+  li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--token-bg-elevated) 60%, transparent);
+    font-size: 12px;
+  }
+}
+
+.linghuiVideoClipFooter {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.linghuiVideoClipFooterButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  font-size: 12px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--token-accent-base) 50%, transparent);
+  background: color-mix(in srgb, var(--token-accent-base) 12%, transparent);
+  color: var(--token-text-primary);
+  cursor: pointer;
+  transition: background 120ms;
+
+  &:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--token-accent-base) 25%, transparent);
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+}
+
+// LibTV `.canvas-interacting`：节点/框选拖拽过程中，让画布内所有持续动画 paused。
+// 目的不是关掉光晕状态，而是避免拖拽时 GPU 还在为后台的 conic-gradient / drop-shadow / 背景插值反复
+// 重绘，导致拖动卡顿。松手后 setInteracting(false)，动画自动恢复。
+.canvas-interacting {
+  .linghui-connection-breathe,
+  .react-flow__edge-path,
+  .linghuiCompactNode,
+  .linghuiRFNode,
+  .linghuiCompactNode *,
+  .linghuiRFNode * {
+    animation-play-state: paused !important;
+  }
+}
+
 .linghuiCompactNode,
 .linghuiRFNode {
   isolation: isolate;
@@ -929,6 +1285,16 @@
 
 // LibTV 节点 empty_generate 态：中心灰色 placeholder + "尝试：" 提示行 + 建议按钮列表。
 // 图片节点和视频节点共用结构（视频侧 actions = 首尾帧 / 首帧生成视频）。
+// LibTV TextNode pending 态：居中 Text2Icon size=90，无任何文字（15gvxu:55676-55683）。
+.linghuiTextNodePendingState {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+  color: color-mix(in srgb, var(--token-text-primary) 18%, transparent);
+}
+
 .linghuiNodeEmptyState {
   display: flex;
   flex-direction: column;

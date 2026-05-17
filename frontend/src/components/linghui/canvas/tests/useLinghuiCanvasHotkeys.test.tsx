@@ -74,4 +74,67 @@ describe('useLinghuiCanvasHotkeys', () => {
 
     expect(onOpenQuickCreate).not.toHaveBeenCalled();
   });
+
+  it('Esc 优先取消正在拖拽的连线（返回 true 即吞掉 Esc，不再走 closeContextMenu）', () => {
+    const onCancelPendingConnection = vi.fn().mockReturnValue(true);
+    const closeContextMenu = vi.fn();
+    const closeQuickCreate = vi.fn();
+    const clearPendingGroupFrame = vi.fn();
+
+    render(
+      <Harness
+        onCancelPendingConnection={onCancelPendingConnection}
+        closeContextMenu={closeContextMenu}
+        closeQuickCreate={closeQuickCreate}
+        clearPendingGroupFrame={clearPendingGroupFrame}
+      />,
+    );
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+
+    expect(onCancelPendingConnection).toHaveBeenCalledTimes(1);
+    expect(closeContextMenu).not.toHaveBeenCalled();
+    expect(closeQuickCreate).not.toHaveBeenCalled();
+    expect(clearPendingGroupFrame).not.toHaveBeenCalled();
+  });
+
+  it('Esc 在无连线拖拽时仍走 closeContextMenu / closeQuickCreate 链路', () => {
+    const onCancelPendingConnection = vi.fn().mockReturnValue(false);
+    const closeContextMenu = vi.fn();
+    const closeQuickCreate = vi.fn();
+    const clearPendingGroupFrame = vi.fn();
+
+    render(
+      <Harness
+        onCancelPendingConnection={onCancelPendingConnection}
+        closeContextMenu={closeContextMenu}
+        closeQuickCreate={closeQuickCreate}
+        clearPendingGroupFrame={clearPendingGroupFrame}
+      />,
+    );
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+
+    expect(closeContextMenu).toHaveBeenCalledTimes(1);
+    expect(closeQuickCreate).toHaveBeenCalledTimes(1);
+    expect(clearPendingGroupFrame).toHaveBeenCalledTimes(1);
+  });
+
+  it('Delete 键删除节点时走 confirmDeleteNodes（如有提供），不直接 deleteNodesByIds', () => {
+    const confirmDeleteNodes = vi.fn();
+    const deleteNodesByIds = vi.fn();
+
+    render(
+      <Harness
+        selectedNodeIds={['n1', 'n2']}
+        confirmDeleteNodes={confirmDeleteNodes}
+        deleteNodesByIds={deleteNodesByIds}
+      />,
+    );
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete' }));
+
+    expect(confirmDeleteNodes).toHaveBeenCalledWith(['n1', 'n2']);
+    expect(deleteNodesByIds).not.toHaveBeenCalled();
+  });
 });

@@ -21,6 +21,9 @@ vi.mock('@xyflow/react', () => ({
     Left: 'left',
     Right: 'right',
   },
+  // VideoNode 用 useStore 订阅 edges 算 hasIncomingEdge（LibTV selectHasIncomingEdge）；
+  // 测试场景默认 edges 为空 → hasIncomingEdge=false → pending 永远不触发，按 source/import 走 resource。
+  useStore: (selector: (state: { edges: unknown[] }) => unknown) => selector({ edges: [] }),
 }));
 
 vi.mock('../state/LinghuiNodeRunsContext', () => ({

@@ -20,6 +20,8 @@ import {
 } from 'lucide-react';
 import { Dropdown } from 'antd';
 import type { MenuProps } from 'antd';
+import { LinghuiGridSplitStoryComposer } from './LinghuiGridSplitStoryComposer';
+import type { LinghuiImageNineGridPresetDef } from '../../editors/state/linghuiImageToolPresets';
 import type {
   LinghuiImageToolKey,
   LinghuiNodeToolState,
@@ -173,14 +175,22 @@ export const LinghuiImageNodeFloatingToolbar: React.FC<LinghuiImageNodeFloatingT
       },
     }));
 
-  const fireNineGridPreset = (preset: typeof LINGHUI_IMAGE_NINE_GRID_PRESETS[number]) => {
-    onApplyImageToolPreset?.({
-      label: preset.label,
-      promptSnippet: preset.promptSnippet,
-      properties: preset.properties,
-    });
+  // 宫格切分前的剧情编辑（用户要求）：preset 不再直接派生，先开 Modal 让用户补充剧情，
+  // 确认后再用合并的 promptSnippet 走 onApplyImageToolPreset。
+  const [pendingGridPreset, setPendingGridPreset] = useState<LinghuiImageNineGridPresetDef | null>(null);
+  const openGridStoryComposer = (preset: LinghuiImageNineGridPresetDef) => {
+    setPendingGridPreset(preset);
     setOpenDropdown(null);
   };
+  const handleConfirmGridStory = (preset: LinghuiImageNineGridPresetDef, mergedPromptSnippet: string) => {
+    onApplyImageToolPreset?.({
+      label: preset.label,
+      promptSnippet: mergedPromptSnippet,
+      properties: preset.properties,
+    });
+    setPendingGridPreset(null);
+  };
+  const handleCancelGridStory = () => setPendingGridPreset(null);
 
   const openGridSplit = (gridType: '2x2' | '3x3' | '4x4' | '5x5') => {
     onSetGridSplitType?.(gridType);
@@ -232,7 +242,7 @@ export const LinghuiImageNodeFloatingToolbar: React.FC<LinghuiImageNodeFloatingT
     label: <span className="linghuiImageToolbarMenuItem"><Layers size={18} />{preset.label}</span>,
     onClick: ({ domEvent }) => {
       domEvent.stopPropagation();
-      fireNineGridPreset(preset);
+      openGridStoryComposer(preset);
     },
   }));
 
@@ -247,26 +257,37 @@ export const LinghuiImageNodeFloatingToolbar: React.FC<LinghuiImageNodeFloatingT
       label: <span className="linghuiImageToolbarMenuItem"><Repeat size={18} />重绘</span>,
       onClick: ({ domEvent }) => { domEvent.stopPropagation(); fireImageTool('repaint'); },
     },
+    // 擦除 / 抠图 / 裁剪 改为打开 ImageNodeEditor 内的可视化面板（与扩图/重绘一致），
+    // 不再走"点击二级 preset 直接派生"绕过预览的旧路径。
     {
       key: 'erase',
       label: <span className="linghuiImageToolbarMenuItem"><Eraser size={18} />擦除</span>,
-      children: buildToolPresetsMenu('erase'),
-      popupClassName: TOOLBAR_SUBMENU_POPUP_CLASS,
-      popupOffset: [4, 0],
+      onClick: ({ domEvent }) => { domEvent.stopPropagation(); fireImageTool('erase'); },
     },
     {
       key: 'remove-bg',
       label: <span className="linghuiImageToolbarMenuItem"><Scissors size={18} />抠图</span>,
-      children: buildToolPresetsMenu('remove-bg'),
-      popupClassName: TOOLBAR_SUBMENU_POPUP_CLASS,
-      popupOffset: [4, 0],
+      onClick: ({ domEvent }) => { domEvent.stopPropagation(); fireImageTool('remove-bg'); },
     },
     {
       key: 'crop',
       label: <span className="linghuiImageToolbarMenuItem"><Crop size={18} />裁剪</span>,
-      children: buildToolPresetsMenu('crop'),
-      popupClassName: TOOLBAR_SUBMENU_POPUP_CLASS,
-      popupOffset: [4, 0],
+      onClick: ({ domEvent }) => { domEvent.stopPropagation(); fireImageTool('crop'); },
+    },
+    {
+      key: 'mockup',
+      label: <span className="linghuiImageToolbarMenuItem"><Scan size={18} />Mockup</span>,
+      onClick: ({ domEvent }) => { domEvent.stopPropagation(); fireImageTool('mockup'); },
+    },
+    {
+      key: 'edit-elements',
+      label: <span className="linghuiImageToolbarMenuItem"><ImageIcon size={18} />元素</span>,
+      onClick: ({ domEvent }) => { domEvent.stopPropagation(); fireImageTool('edit-elements'); },
+    },
+    {
+      key: 'edit-texts',
+      label: <span className="linghuiImageToolbarMenuItem"><Pencil size={18} />文字</span>,
+      onClick: ({ domEvent }) => { domEvent.stopPropagation(); fireImageTool('edit-texts'); },
     },
   ];
 
@@ -312,6 +333,12 @@ export const LinghuiImageNodeFloatingToolbar: React.FC<LinghuiImageNodeFloatingT
   ];
 
   return (
+    <>
+    <LinghuiGridSplitStoryComposer
+      preset={pendingGridPreset}
+      onConfirm={handleConfirmGridStory}
+      onCancel={handleCancelGridStory}
+    />
     <div
       className={`linghuiImageFloatingToolbar nodrag nopan nowheel ${variant === 'static' ? 'isStatic' : ''}`}
       onPointerDown={stopBubble}
@@ -520,5 +547,6 @@ export const LinghuiImageNodeFloatingToolbar: React.FC<LinghuiImageNodeFloatingT
       </button>
 
     </div>
+    </>
   );
 };

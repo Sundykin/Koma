@@ -1,6 +1,6 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { App } from 'antd';
-import { type NodeProps, useUpdateNodeInternals } from '@xyflow/react';
+import { type NodeProps, useStore, useUpdateNodeInternals } from '@xyflow/react';
 import { Download, Image as ImageIcon } from 'lucide-react';
 import type {
   LinghuiImageNodeMode,
@@ -8,14 +8,21 @@ import type {
   LinghuiNodeData,
   LinghuiRunStatus,
 } from '../../../../types/linghui';
-import { normalizeLinghuiImageFocusRegion, normalizeLinghuiImageMarkPoints } from '../../../../types/linghui';
+import {
+  normalizeLinghuiImageFocusRegion,
+  normalizeLinghuiImageMarkPoints,
+  resolveLinghuiImageNodeViewState,
+} from '../../../../types/linghui';
 import {
   useNodeRunState,
   useLinghuiNodeMutation,
   useLinghuiNodeInteraction,
   useLinghuiGridSplitOverlay,
+  useLinghuiNodeEditorApi,
   useLinghuiNodeEditorVisibility,
 } from '../state/LinghuiNodeRunsContext';
+import { useLinghuiConnectTarget } from '../state/useLinghuiConnectTarget';
+import { extractPerspectiveView } from '../../panorama/panoramaPerspectiveExtractor';
 import { LinghuiNodeEditor } from '../../editors/components/LinghuiNodeEditor';
 import { PanoramaViewer, PanoramaViewport } from '../../panorama/PanoramaViewer';
 import { resolvePanoramaProjectionMode } from '../../panorama/panoramaProjection';
@@ -315,6 +322,24 @@ function ImageNodeInner({ id, data, selected }: NodeProps) {
   const panoramaRatioString = isPanoramaNode ? String(props.aspectRatio ?? '') : undefined;
 
   const collection = resolveLinghuiImageCollection(props, runState?.result);
+
+  // LibTV selectHasIncomingEdge(id)：派生 ImageNode pending 视图态用。
+  const hasIncomingEdge = useStore(state => state.edges.some(edge => edge.target === id));
+  // LibTV 连线 hover 抖动：用户从其它节点拖线到本节点时触发。
+  const isConnectTarget = useLinghuiConnectTarget(id);
+  const editorApi = useLinghuiNodeEditorApi();
+  // 注意：全景"应用此视角" handler 依赖 primaryDisplayItem，必须放在 primaryDisplayItem 声明之后；
+  // 见本文件后面的 panoramaApplyPerspectiveHandler 声明。
+  // LibTV ImageNode 5 状态机视图态（与 Text/Video 节点统一）。
+  // 详见 docs/libtv-imagenode-state-machine.md §2-3。
+  const imageViewState = useMemo(() => resolveLinghuiImageNodeViewState({
+    properties: props,
+    result: runState?.result,
+    runStatus: status,
+    hasIncomingEdge,
+    hasCollectionItems: collection.items.length > 0,
+  }), [props, runState?.result, status, hasIncomingEdge, collection.items.length]);
+
   const importItems = useMemo(() => getLinghuiImageImportItems(props), [props]);
   const importSource = mode === 'import' ? String(props.source ?? '').trim() : '';
   const stackedItems = collection.primary
@@ -349,6 +374,41 @@ function ImageNodeInner({ id, data, selected }: NodeProps) {
   const primaryDisplayItem = useMemo(() => (
     displayItems.find(item => item.isPrimary) ?? displayItems[0] ?? null
   ), [displayItems]);
+
+  // 全景节点"应用此视角"：把当前预览的 yaw/pitch/fovDeg 抽成 perspective 图，
+  // 派生为下游 linghui/image (mode='import') 节点。仅在全景节点上生效。
+  //
+  // ⚠ 坐标系适配（关键 — 两边约定不一致）：
+  //  - PanoramaViewer 相机 lookAt(sin*cos, sin, +cos*cos)：panorama 中心朝 +Z，pitch>0=朝上
+  //  - extractor 约定 dz=-cos*cos：panorama 中心朝 -Z（OpenGL 视图前向），
+  //    且 v=(pitchSph+π/2)/π 让 pitch>0 映射到 panorama 底部
+  //  → viewer 的 yaw 需 +π 翻面、pitch 需取反，extractor 才会抽到 viewer 实际看到的画面（不上下颠倒、不指反向）。
+  const panoramaApplyPerspectiveHandler = useCallback(async (view: { yaw: number; pitch: number; fovDeg: number }) => {
+    if (!isPanoramaNode || !primaryDisplayItem?.preview) return;
+    try {
+      const result = await extractPerspectiveView(primaryDisplayItem.preview, {
+        yaw: view.yaw + Math.PI,    // panorama 中心方向差 180°
+        pitch: -view.pitch,          // y 轴方向反置（extractor v 公式让 pitch>0 落到底部）
+        fovDeg: view.fovDeg,
+        width: 1024,
+        height: 768,
+        projectionMode: panoramaProjectionMode ?? 'ar720-band',
+      });
+      editorApi.onCreateDerivedImportImages?.(id, [{
+        id: `pano-perspective-${Date.now()}`,
+        source: result.dataUrl,
+        label: `${nodeData.label || '全景'} · 视角`,
+        // 显式宽高让派生 image 节点按 4:3 横屏卡片渲染（否则用 properties 默认 3:4 竖屏导致比例不对）
+        width: result.width,
+        height: result.height,
+        aspectRatio: `${result.width}:${result.height}`,
+      }]);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[Panorama] 抽取视角失败', err);
+    }
+  }, [editorApi, id, isPanoramaNode, nodeData.label, panoramaProjectionMode, primaryDisplayItem?.preview]);
+
   const activeFocusRegion = useMemo(() => {
     const region = normalizeLinghuiImageFocusRegion(props.focusRegion);
     return region?.enabled ? region : null;
@@ -558,21 +618,40 @@ function ImageNodeInner({ id, data, selected }: NodeProps) {
     event.stopPropagation();
   }, []);
 
+  // LibTV `hideTargetHandle = isResourceAction(action)`：import 模式的纯素材节点不需上游输入。
+  // 全景节点暂保留 handle（其编辑器支持上游 prompt 上下文）。
+  const portInputs = mode === 'import' && !isPanoramaNode ? [] : nodeData.inputs;
+
   return (
     <div
       ref={rootRef}
-      className={`linghuiCompactNode nopan is-${status} ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''} ${displayItems.length > 1 ? 'isMultiImage' : ''} ${isExpanded ? 'isImageExpanded' : ''} ${isEditorVisible ? 'hasInlineEditor' : ''}`}
+      className={`linghuiCompactNode nopan is-${status} ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''} ${displayItems.length > 1 ? 'isMultiImage' : ''} ${isExpanded ? 'isImageExpanded' : ''} ${isEditorVisible ? 'hasInlineEditor' : ''} ${isConnectTarget ? 'isConnectTarget' : ''}`}
+      data-upload-pending={(props as unknown as { _uploadPending?: boolean })._uploadPending ? 'true' : undefined}
+      data-upload-error={(props as unknown as { _uploadError?: string })._uploadError || undefined}
       data-view-mode={viewMode}
+      data-image-view={imageViewState}
       data-expanded={isExpanded ? 'true' : undefined}
       style={nodeStyle}
       {...interactionHandlers}
     >
+      {/* 上传进度蒙层：内嵌 JSX 渲染确保 setNodes 后立即反映状态变化 */}
+      {(props as unknown as { _uploadPending?: boolean })._uploadPending ? (
+        <div className="linghuiCompactUploadOverlay" aria-label="上传中">
+          <div className="linghuiCompactUploadSpinner" aria-hidden="true" />
+          <span>上传中…</span>
+        </div>
+      ) : null}
+      {(props as unknown as { _uploadError?: string })._uploadError ? (
+        <div className="linghuiCompactUploadOverlay isError">
+          <span>上传失败：{(props as unknown as { _uploadError?: string })._uploadError}</span>
+        </div>
+      ) : null}
       {/* LibTV 1:1：节点上方 hover 浮空工具条已废弃，所有工具操作改由点击节点打开的编辑器顶部工具条承载，
           避免两套工具条项目不一致 + hover 闪退体验问题。仅保留"上传"独立浮按钮——空态时引导上传。 */}
-      {!primaryDisplayItem?.source && !isPanoramaNode ? (
+      {imageViewState === 'empty_generate' && !isPanoramaNode ? (
         <LinghuiImageNodeUploadFloat nodeId={id} />
       ) : null}
-      <LinghuiNodePorts accent={nodeData.accent} inputs={nodeData.inputs} outputs={nodeData.outputs} />
+      <LinghuiNodePorts accent={nodeData.accent} inputs={portInputs} outputs={nodeData.outputs} />
 
       {/* 缩略图 */}
       <div className="linghuiCompactThumb">
@@ -657,9 +736,18 @@ function ImageNodeInner({ id, data, selected }: NodeProps) {
               );
             })}
           </div>
-        ) : mode === 'generate' && !isPanoramaNode ? (
-          // LibTV "empty_generate" 态：mode='generate' 且无图时显示中心 placeholder + "尝试：图生图 / 图片高清" 引导。
+        ) : imageViewState === 'empty_generate' && !isPanoramaNode ? (
+          // LibTV "empty_generate" 态：mode='generate' 且无图 + 无上游时显示中心 placeholder + "尝试：图生图 / 图片高清"
           <LinghuiImageNodeEmptyState nodeId={id} />
+        ) : imageViewState === 'pending' ? (
+          // LibTV "pending" 态：generate + 无图 + 已有上游连入 → 居中 placeholder，无文字（与 Text/Video 节点一致）
+          <div className="linghuiTextNodePendingState" aria-label="等待上游产出">
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none">
+              <rect x="3" y="3" width="18" height="18" rx="3" stroke={nodeData.accent} strokeWidth="1.5" strokeOpacity="0.5" />
+              <circle cx="8.5" cy="8.5" r="2" stroke={nodeData.accent} strokeWidth="1.5" strokeOpacity="0.5" />
+              <path d="M3 16l5-5 4 4 3-3 6 6" stroke={nodeData.accent} strokeWidth="1.5" strokeOpacity="0.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
         ) : (
           <div className="linghuiCompactThumbEmpty">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
@@ -792,6 +880,7 @@ function ImageNodeInner({ id, data, selected }: NodeProps) {
           onClose={() => setIsPanoramaFullscreen(false)}
           projectionMode={panoramaProjectionMode}
           ratioString={panoramaRatioString}
+          onApplyPerspective={panoramaApplyPerspectiveHandler}
         />
       )}
     </div>

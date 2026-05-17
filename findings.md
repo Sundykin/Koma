@@ -1,5 +1,46 @@
 # Findings
 
+## 2026-05-17 Phase 34 反查结论：LibTV VideoNode 深度反编（状态机 + 工具条 + 8 mode generator）
+
+- 完整深度文档落到 `template_/docs/libtv-video-node-deep-dive.md`；配套源 `/tmp/libtv-15gvxu-formatted.js` 行 191333-194000、`/tmp/libtv-0bed6jbw0.formatted.js` 行 8789-9300、`/tmp/libtv-157843.formatted.js` 行 144-336、`/tmp/libtv-105a.formatted.js` 行 391-700、`/tmp/libtv-0gg5ir.beautified.js` 行 37521-37592。
+- VideoNode 是**单组件 6 状态机**（`generating / generating_with_content / failed / resource / pending / empty_generate`，比 TextNode 多一个 `generating_with_content` 因为视频可在生成中带 poster/snapshot 渲染）；状态由 `t0 = tw ? (t$ ? 'generating_with_content' : 'generating') : tI ? 'failed' : ty ? 'resource' : r ? 'pending' : 'empty_generate'` 派生。
+- EmptyState 2 actions（`首尾帧生成视频` layers / `首帧生成视频` sparkles），**每个都派生子图**：
+  - `iG → iU 首帧`：在 video 左侧 `-imgWidth-NODE_GAP` 派生 1 个 ImageNode (IMAGE_RESOURCE + VIDEO_PRESETS.firstFrame.imageUrl)，建 image→video 边，写 `params.prompt = firstFrame.prompt`，**focus 留在 video**（与 TextNode focus 切到新节点不同）
+  - `ij → iO 首尾帧`：左侧并列派生 **TWO ImageNode**（首帧 + 尾帧，使用 firstLastFrame.firstImageUrl/lastImageUrl，垂直分布于 video 中线上下各 20px），建 2 条 image→video 边，写默认 prompt，focus 留在 video
+- VideoNode 默认 label 是 `i?.name || i?.label || "视频"`（单字）；高清节点动态变 "高清（2K）"/"高清（4 倍）"，由 generatorType===ENHANCE + params.resolution/scale 派生。
+- `hideTargetHandle = isResourceAction(action)`、`hideSourceHandle = (url starts with blob:|data:)`、`shouldShowGenerator = useShouldShowGenerator && !clipping && !subtitleErase && (!isResource || hasAssetVideoAssetId)`、`afterContent` 在 resource+剪辑模式 = `VideoClipBar`、ENHANCE/SUBTITLE_ERASE 模式 = 专用面板 `eG`。这 4 处 hook/prop 都是灵绘当前 VideoNode 缺失的关键控制位。
+- "pending" 态分 3 子分支文案：ENHANCE → "配置参数生成高清视频"、SUBTITLE_ERASE → mode==='Text' ? "框选区域生成去字幕视频" : "点击生成自动去除字幕"、默认 → 居中 PlayIcon size=64 无文字。
+- "empty_generate / pending" 且 !r 时，**顶部工具条整体替换为单一"上传"按钮**（`<Portal>` + ghost 6px h "Upload 14 + 上传"）。灵绘当前不区分，需切。
+- 顶部工具条 `VideoNodeToolbar`（chunk 0bed6jbw0:8789-9100）7 按钮顺序：剪辑 (scissors) → 高清 (Hd，showEnhance && nodeWidth≤600) → 解析 (grid2x2 / spinner，disabled when isParsing) → 智能去字幕 ▼ (TextClear, 子菜单：智能擦除 / 框选擦除) → 音频分离 ▼ (VocalSeparation, 子菜单：人声分离→仅保留人声/仅保留背景音 + 音视频分离) → 分隔线 → 下载 (download 32×32) → 全屏 (BroadPicture 32×32)。
+- 内置 `VideoPlayerBar`（chunk 0bed6jbw0:9087-9300）：80px 渐变遮罩、7×7 播放按钮、tabular-nums 时间显示、立式音量、**截图子菜单（首帧/尾帧/当前帧截图）** → 派生 ImageNode（canvas drawImage + dataURL）。
+- 用户截图底部"4 tab + 模型 + 16:9·720P·5s + 翻译/数量/闪电/发送" **不属于 VideoNode**：是通用节点包装器 `eD.default` 的 `shouldShowGenerator` 挂载的 generator 条；复刻归 **#17 通用 generator 条**（必须先反编 GenerateButton 提交流程 + 8 mode 动态过滤 + 视频参数 popup）。
+- 视频生成 **8 mode**：`text2video / singleImage2video / frames2video / image2video / video2video / videoEdit2video / audio2video / mixed2video`（chunk 157843:144-176）；可见 tab 由 `p(node, incomingData)` 根据 model.modeType.items 的 [min,max] 范围 + 已连接媒体计数 + 排除集合 (excludeModeTypes) + 媒体组合校验 (mixed2videoConfig / videoEdit2videoConfig 的 videoMax/imageMax/audioMax/imageMaxWithVideo) 动态过滤；frames2video 在 modeType[1] < 2 时 label 动态切到"首帧"。
+- 视频参数 popup `dY`（chunk 0gg5ir:37521-37592）：344×156 浮层，标题"视频参数"，仅 2 行：**帧率 30帧/秒 写死**（无 select）+ 分辨率 480P/720P/1080P 三选一（受 maxResolutionPreset 限制）。截图 "16:9 · 720P · 5s" 中的 aspectRatio 与 duration 由 model schema 决定，在胶囊外层统一展示。
+- GenerateButton（chunk 105a:391-700）：通用 `{type, taskType, nodeId, params, disabled, disabledReason, onGenerate}`；提交流程 = markNodeSubmitting → updateTaskInfo({loading,taskId:''}) → onGenerate 用户确认 → ensureMediaListOrder → validateGenerateParams → portrait model 时把 imageList/videoList/audioList 转 `asset://` → digitalHuman model 时强制 modeType=singleImage2video + 取首项 image+audio → buildRequestData → submitGenerationTask → 成功写 taskId / 失败 rumCustomReport。
+- 翻译按钮（chunk 0d5xogq03ij.3.js）与 PowerDisplay 闪电（chunk 15gvxu:7320-7380）灵绘已在 Phase 33 标注：翻译按钮通用件可复用；积分体系**永不复刻**。
+- Mention badge（chunk 157843:621-700）：7 种类型 `Image/Portrait/Video/Audio/Mixed/Element/CameraPreset`，中文 `图片/图片/视频/音频/参考/主体/运镜`；frames2video 与 videoEdit2video 模式下 CameraPreset 被静音 (opacity-50 cursor-not-allowed + tooltip "当前模式不支持预设运镜")。截图里看到的"运镜"badge 就是这类 mention。
+- 改造点清单（9 项必做 + 4 项可做 + 5 项归 #17 + 1 项永不复刻）见 deep-dive 文档 §8。
+
+## 2026-05-16 Phase 33 反查结论：LibTV TextNode 深度反编（含 EmptyState + 翻译按钮）
+
+- 完整深度文档落到 `template_/docs/libtv-text-node-deep-dive.md`，配套源 `/tmp/libtv-15gvxu-formatted.js` 行 54992-55753 + `/tmp/libtv-0d5xogq03ij.formatted.js` 行 1-67。
+- TextNode 是**单组件 5 状态机**（`generating / failed / resource / pending / empty_generate`），而不是灵绘当前按 `mode='import'\|'generate'` 分卡片渲染的模型；下一步 TextNode 改造必须收拢为单组件。
+- EmptyState 4 actions（自己编写内容 / 文生视频 / 图片反推提示词 / 文字生音乐）**每一个都派生完整子图**：
+  - `eJ 自己编写内容`：仅切到 `TEXT_RESOURCE` + 立刻进入编辑态，**不**派生新节点
+  - `eY 文生视频`：当前节点切到 `TEXT_GENERATE` + 写入 `pickRandom(TEXT_PRESETS.textToVideo.prompts)`；在右侧 `+NODE_WIDTH+NODE_GAP` 派生 `VideoNode (VIDEO_GENERATE, params.prompt=textToVideo.videoPrompt)`；建 text→video 边；focus 到新视频
+  - `eV 图片反推提示词`：在左侧 `-NODE_WIDTH-NODE_GAP` 派生 `ImageNode (IMAGE_RESOURCE, url=imageToPrompt.imageUrl)`；建 **image→text** 边（反向）；当前节点改 `TEXT_GENERATE` + `params.prompt=imageToPrompt.prompt`；focus 到新图片
+  - `eW 文字生音乐`：当前节点写入 `[TEXT_PRESETS.textToMusic.prompt]` + `TEXT_GENERATE`；右侧派生 `AudioNode (AUDIO_GENERATE, params.scene="Music")`；建 text→audio 边；focus 到新音频
+- TextNode 默认 label 是 `l?.name || l?.label || "文字"`（单字），灵绘当前 "文本节点 N" 是项目侧扩展，保留即可。
+- `M = shouldShowGenerator && action !== TEXT_RESOURCE` —— 资源态**不显示**底部 generator 条；灵绘当前一直开 generator 设置面板，需切。
+- `hideTargetHandle = isResourceAction(action)` —— 资源态隐藏左 target handle。
+- "resource" 渲染分支：双击 wrapper div 进入编辑（`ec.current=true; Z(true)`），文档级 mousedown outside `eo.current` 退出。`iN`（Tiptap）editable 由 `$` 控制；onUpdate 写 `content:[t]` + 防抖 250ms 后 `markDownstreamStale(e)`。
+- 浮动工具栏 `e8`：(a) `eq` 时显示 download；(b) 选中 + resource + 有 editor 实例 时显示 `iO` MarkdownToolbar（绝对定位 `bottom: calc(100% + (24 + 8/zoom)px)`，跟缩放保持 24px 视觉距离），onCopy 走 markdown 序列化 + clipboard；onExpand 打开 `NodeFullScreenOverlay`（max-w-3xl + sticky toolbar）。
+- "pending" 态只是居中 `Text2Icon size=90`，**无任何文字**；灵绘当前 "等待上游…" 文案与 LibTV 不一致。
+- 用户截图底部"模型胶囊 + 翻译/闪电/重置/发送" **不属于 TextNode** —— 它是通用节点包装器 `eD.default` 当 `shouldShowGenerator` 为真时挂的生成器条；归到 #15/#17 通用 generator 任务。
+- 翻译按钮（chunk `0d5xogq03ij.3.js` 模块 757251）：32×32 圆角，hover-bg；handler 自动检测语言互译（中→英 或 英→中）；正则保留节点引用 `{{Image N}}/{{Portrait N}}/{{Video N}}/{{Audio N}}/{{Mixed N}}/{{Element N}}/{{magic:xx:N}}/<#N#>` 和 `FILLER_WORDS`(嗯/啊/这个…) 不参与翻译；空 prompt 时 `Notify.message("提示词为空…")`；上报 `libtv.canvas.image_generator.translate.click`。
+- 闪电图标 `Icons.LightningF (6×10)` + 数字 在 LibTV 是**积分/Power 显示**（chunk `15gvxu:7320-7380` PowerDisplay），灵绘无积分体系，**不复刻**；用户截图中 ⚡120 直接删除，不要换成"扩写"等假按钮。
+- 改造点清单（10 项必做 + 4 项可做 + 4 项暂不做）见 deep-dive 文档 §10。
+
 ## 2026-05-16 Phase 32 反查结论：添加节点空间入口 / LibTV 全景 slash 默认值
 
 - 当前灵绘 `LINGHUI_CANVAS_CREATE_MENU_CATALOG` 已经有 `spatial-panorama` 和 `spatial-director3d`；`resolveLinghuiQuickCreateCatalog()` 空白场景返回的也是完整创建目录，不是数据源缺失。

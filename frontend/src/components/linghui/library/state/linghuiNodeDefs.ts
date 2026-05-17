@@ -50,6 +50,8 @@ export const NODE_LABEL_TEMPLATE: Record<LinghuiNodeType, string> = {
   'linghui/script': '脚本节点',
   'linghui/storyboard': '故事板节点',
   'linghui/director3d': '3D 导演工作台',
+  'linghui/image-grid-slice': '宫格切分',
+  'linghui/video-clip': '视频合成',
 };
 
 const LINGHUI_NODE_BACKGROUND = 'var(--token-bg-card)';
@@ -155,6 +157,28 @@ export const NODE_META: Record<LinghuiNodeType, LinghuiNodeMeta> = {
     accent: LINGHUI_NODE_COLORS.director3d,
     background: LINGHUI_NODE_BACKGROUND,
   },
+  // 宫格切分中间节点：作为"切分流程"的中间步骤，不出现在 quickCreate 主菜单，仅由 grid-split 工具派生。
+  'linghui/image-grid-slice': {
+    type: 'linghui/image-grid-slice',
+    title: '宫格切分',
+    desc: '把上游图切成 N 个槽位，每个槽位可独立派生为图节点',
+    catalogCategory: 'asset',
+    catalogLabel: '宫格切分',
+    catalogDescription: '上游主图本地切成 N 槽，每槽位可独立"彻底切分"派生为图节点',
+    accent: LINGHUI_NODE_COLORS.image,
+    background: LINGHUI_NODE_BACKGROUND,
+  },
+  // 视频合成节点：把多个 video / image 片段拼合为单一视频；点详情进"最终剪辑"工具。
+  'linghui/video-clip': {
+    type: 'linghui/video-clip',
+    title: '视频合成',
+    desc: '把多个视频/图片片段拼合为单一视频',
+    catalogCategory: 'generation',
+    catalogLabel: '视频合成',
+    catalogDescription: '本地 FFmpeg concat 多个 video/image 片段（image 转 N 秒静帧），输出最终 mp4',
+    accent: LINGHUI_NODE_COLORS.video,
+    background: LINGHUI_NODE_BACKGROUND,
+  },
 };
 
 export const SLOT_TYPE_LABELS: Record<LinghuiSlotDataType, string> = {
@@ -248,11 +272,27 @@ export const NODE_SLOT_LAYOUTS: Record<LinghuiNodeType, { inputs: LinghuiSlotDef
       { name: 'text', dataType: 'text' },
     ],
   },
+  // 宫格切分节点：单图入，多图出（每个槽位一张图，下游可挑选派生）
+  'linghui/image-grid-slice': {
+    inputs: [{ name: '主图', dataType: 'image' }],
+    outputs: [{ name: 'slots', dataType: 'images' }],
+  },
+  // 视频合成节点：多输入（视频 + 图片），单视频出
+  'linghui/video-clip': {
+    inputs: [
+      { name: '视频片段', dataType: 'video' },
+      { name: '图片片段', dataType: 'image' },
+    ],
+    outputs: [{ name: 'video', dataType: 'video' }],
+  },
 };
 
 export const NODE_PROPERTY_DEFAULTS: Record<LinghuiNodeType, Record<string, unknown>> = {
+  // LibTV TextNode 默认无 action，UI 渲染走 empty_generate 视图态（15gvxu:55066-55074）。
+  // 灵绘类型要求 mode 必填 → 默认 'generate' 让新节点显示 EmptyState 4 actions；
+  // 用户点"自己编写内容"后再切到 'manual'。
   'linghui/text': {
-    mode: 'manual',
+    mode: 'generate',
     content: '',
     prompt: '',
     systemPrompt: '',
@@ -344,6 +384,22 @@ export const NODE_PROPERTY_DEFAULTS: Record<LinghuiNodeType, Record<string, unkn
   'linghui/director3d': {
     prompt: '',
     scene: createDefaultDirector3DScene(),
+  },
+  // 宫格切分中间节点：派生时由 documentOps 显式给 slots 充值；空 source 时显示"等待上游"占位。
+  'linghui/image-grid-slice': {
+    source: '',
+    gridType: '3x3',
+    slots: [],
+  },
+  // 视频合成节点：默认空 clips 列表 + 1080p/30fps/3s 静帧时长；执行器读取 clips 调 FFmpeg concat。
+  'linghui/video-clip': {
+    clips: [],
+    resolution: '1080p',
+    fps: 30,
+    imageDurationSec: 3,
+    source: '',
+    posterSource: '',
+    status: 'idle',
   },
 };
 

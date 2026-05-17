@@ -444,6 +444,27 @@ interface UseLinghuiCanvasOverlayPropsParams {
     prompt: string;
     properties?: Partial<LinghuiImageNodeProperties>;
   }) => string | null;
+  /**
+   * LibTV TextNode EmptyState 4 actions —— 派生 video / image / audio 子图。
+   * 详见 docs/libtv-text-node-deep-dive.md §3 + useLinghuiCanvasDocumentOps.applyTextEmptyAction。
+   */
+  applyTextEmptyAction: (
+    sourceNodeId: string,
+    action: 'edit' | 'video' | 'image-prompt' | 'music',
+  ) => string | null;
+  /**
+   * LibTV VideoNode EmptyState 2 actions —— 派生 1/2 个上游 ImageNode + 自动连线。
+   * 详见 docs/libtv-video-node-deep-dive.md §3 + useLinghuiCanvasDocumentOps.applyVideoEmptyAction。
+   */
+  applyVideoEmptyAction: (
+    sourceNodeId: string,
+    action: 'first-frame' | 'first-last-frame',
+  ) => string | null;
+  /** LibTV AudioNode EmptyState "音频生视频"：派生 video + image + 2 条连线。 */
+  applyAudioEmptyAction: (
+    sourceNodeId: string,
+    action: 'audio-to-video',
+  ) => string | null;
   copySelectionToClipboard: (requestedIds?: string[]) => boolean;
   duplicateSelection: (
     requestedIds?: string[],
@@ -513,6 +534,9 @@ export function useLinghuiCanvasOverlayProps({
   createDerivedAudioNodeFromVideo,
   createDerivedMultiAngleImageNodeFromNode,
   createDerivedImageToolNodeFromNode,
+  applyTextEmptyAction,
+  applyVideoEmptyAction,
+  applyAudioEmptyAction,
   copySelectionToClipboard,
   duplicateSelection,
   pasteClipboardSnapshot,
@@ -1500,6 +1524,9 @@ export function useLinghuiCanvasOverlayProps({
       executeMultiAngle(options);
     },
     onApplyImageToolPreset: applyImageToolPreset,
+    onApplyTextEmptyAction: applyTextEmptyAction,
+    onApplyVideoEmptyAction: applyVideoEmptyAction,
+    onApplyAudioEmptyAction: applyAudioEmptyAction,
     onSetGridSplitType(type) {
       setGridSplitType(type);
       setGridSplitSelectedCells([]);

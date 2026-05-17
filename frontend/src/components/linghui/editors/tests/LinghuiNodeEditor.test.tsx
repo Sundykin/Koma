@@ -277,7 +277,7 @@ describe('LinghuiNodeEditor', () => {
     });
   });
 
-  it('LibTV 九宫格菜单提交内置分镜生成 preset，不直接进入宫格切分', async () => {
+  it('LibTV 九宫格菜单 → 弹剧情编辑 Modal，确认后提交带用户剧情的合并 preset', async () => {
     render(
       <App>
         <LinghuiNodeEditor nodeId="image-node-1" nodeType="linghui/image" />
@@ -288,9 +288,22 @@ describe('LinghuiNodeEditor', () => {
     fireEvent.mouseEnter(await screen.findByRole('menuitem', { name: /九\s*宫\s*格/ }));
     fireEvent.click(await screen.findByText('剧情推演九宫格'));
 
+    // 点击 preset 后应先弹剧情编辑 Modal，不直接派生
+    const composerHeading = await screen.findByText(/编辑剧情 · 剧情推演九宫格/);
+    expect(composerHeading).toBeInTheDocument();
+    expect(onApplyImageToolPresetMock).not.toHaveBeenCalled();
+
+    // 输入用户补充剧情
+    const textarea = screen.getAllByRole('textbox').find(el => el.tagName.toLowerCase() === 'textarea') as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: '主角第一次面对宿敌时心理动摇，最终决定背水一战。' } });
+
+    // 确认提交
+    fireEvent.click(screen.getByRole('button', { name: /生成宫格/ }));
+
     await waitFor(() => {
       expect(onApplyImageToolPresetMock).toHaveBeenCalledWith(expect.objectContaining({
         label: '剧情推演九宫格',
+        // 合并 promptSnippet 仍包含 LibTV 同源基础提示，且追加了用户剧情
         promptSnippet: expect.stringContaining('生成一张单张完整的宫格分镜图，而不是切分原图'),
         properties: expect.objectContaining({
           aspectRatio: '1:1',
@@ -298,6 +311,10 @@ describe('LinghuiNodeEditor', () => {
         }),
       }));
     });
+    // 确认 promptSnippet 末尾包含用户补充剧情
+    const callArg = onApplyImageToolPresetMock.mock.calls[0][0] as { promptSnippet: string };
+    expect(callArg.promptSnippet).toContain('用户补充剧情：主角第一次面对宿敌时心理动摇');
+
     expect(onSetGridSplitTypeMock).not.toHaveBeenCalled();
     expect(onClearGridSplitCellsMock).not.toHaveBeenCalled();
     expect(setActiveToolMock).not.toHaveBeenCalledWith('image-node-1', 'grid-split');

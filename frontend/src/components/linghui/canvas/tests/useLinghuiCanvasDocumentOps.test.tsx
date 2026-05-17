@@ -2,12 +2,21 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { act, render, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { Edge, Node, ReactFlowInstance } from '@xyflow/react';
-import type { LinghuiCanvasSelection, LinghuiImageNodeProperties, LinghuiNodeData } from '../../../../types/linghui';
+import type {
+  LinghuiAudioNodeProperties,
+  LinghuiCanvasSelection,
+  LinghuiImageNodeProperties,
+  LinghuiNodeData,
+  LinghuiTextNodeProperties,
+  LinghuiVideoNodeProperties,
+} from '../../../../types/linghui';
 import { createNewNodeData } from '../../library/state/linghuiNodeDefs';
 import { useLinghuiCanvasDocumentOps } from '../hooks/useLinghuiCanvasDocumentOps';
 
 interface DocumentOpsHarnessHandle {
   createDerivedImageToolNodeFromNode: ReturnType<typeof useLinghuiCanvasDocumentOps>['createDerivedImageToolNodeFromNode'];
+  applyTextEmptyAction: ReturnType<typeof useLinghuiCanvasDocumentOps>['applyTextEmptyAction'];
+  applyVideoEmptyAction: ReturnType<typeof useLinghuiCanvasDocumentOps>['applyVideoEmptyAction'];
   getNodes: () => Node[];
   getEdges: () => Edge[];
   getEditorSelection: () => LinghuiCanvasSelection;
@@ -51,21 +60,49 @@ function createSourceImageNode(): Node {
   };
 }
 
+function createSourceTextNode(): Node {
+  const data = createNewNodeData('linghui/text', { label: '文本节点' });
+  return {
+    id: 'source-text',
+    type: 'linghui-text',
+    position: { x: 200, y: 120 },
+    width: 280,
+    selected: true,
+    data: data as unknown as Record<string, unknown>,
+  };
+}
+
+function createSourceVideoNode(): Node {
+  const data = createNewNodeData('linghui/video', { label: '视频节点' });
+  return {
+    id: 'source-video',
+    type: 'linghui-video',
+    position: { x: 400, y: 200 },
+    width: 320,
+    selected: true,
+    data: data as unknown as Record<string, unknown>,
+  };
+}
+
 function DocumentOpsHarness({
   onReady,
   scheduleSnapshot,
-}: {
-  onReady: (handle: DocumentOpsHarnessHandle) => void;
-  scheduleSnapshot: () => void;
-}) {
-  const [nodes, setNodes] = useState<Node[]>([createSourceImageNode()]);
-  const [edges, setEdges] = useState<Edge[]>([]);
-  const [editorSelection, setEditorSelection] = useState<LinghuiCanvasSelection>({
+  initialNodes = [createSourceImageNode()],
+  initialSelection = {
     kind: 'node',
     nodeId: 'source-image',
     nodeType: 'linghui/image',
     label: '原图',
-  });
+  } as LinghuiCanvasSelection,
+}: {
+  onReady: (handle: DocumentOpsHarnessHandle) => void;
+  scheduleSnapshot: () => void;
+  initialNodes?: Node[];
+  initialSelection?: LinghuiCanvasSelection;
+}) {
+  const [nodes, setNodes] = useState<Node[]>(initialNodes);
+  const [edges, setEdges] = useState<Edge[]>([]);
+  const [editorSelection, setEditorSelection] = useState<LinghuiCanvasSelection>(initialSelection);
   const nodesRef = useRef(nodes);
   const edgesRef = useRef(edges);
   const editorSelectionRef = useRef(editorSelection);
@@ -106,11 +143,13 @@ function DocumentOpsHarness({
   useEffect(() => {
     onReady({
       createDerivedImageToolNodeFromNode: ops.createDerivedImageToolNodeFromNode,
+      applyTextEmptyAction: ops.applyTextEmptyAction,
+      applyVideoEmptyAction: ops.applyVideoEmptyAction,
       getNodes: () => nodesRef.current,
       getEdges: () => edgesRef.current,
       getEditorSelection: () => editorSelectionRef.current,
     });
-  }, [onReady, ops.createDerivedImageToolNodeFromNode]);
+  }, [onReady, ops.createDerivedImageToolNodeFromNode, ops.applyTextEmptyAction, ops.applyVideoEmptyAction]);
 
   return <div ref={hostRef} />;
 }
@@ -188,5 +227,291 @@ describe('useLinghuiCanvasDocumentOps', () => {
     }));
     expect(handle!.getEditorSelection()).toBeNull();
     expect(scheduleSnapshot).toHaveBeenCalledTimes(1);
+  });
+
+  // ============================================================
+  // LibTV TextNode EmptyState 4 actions（15gvxu:55145-55256 eJ/eY/eV/eW）
+  // 详见 docs/libtv-text-node-deep-dive.md §3
+  // ============================================================
+  describe('applyTextEmptyAction (LibTV TextNode EmptyState)', () => {
+    function renderTextHarness(scheduleSnapshot: () => void) {
+      let handle: DocumentOpsHarnessHandle | null = null;
+      render(
+        <DocumentOpsHarness
+          scheduleSnapshot={scheduleSnapshot}
+          initialNodes={[createSourceTextNode()]}
+          initialSelection={{ kind: 'node', nodeId: 'source-text', nodeType: 'linghui/text', label: '文本节点' }}
+          onReady={next => { handle = next; }}
+        />,
+      );
+      return () => handle!;
+    }
+
+    it("'edit' 切到 manual 模式 + 清空 content，不派生新节点", async () => {
+      const scheduleSnapshot = vi.fn();
+      const getHandle = renderTextHarness(scheduleSnapshot);
+      await waitFor(() => expect(getHandle().getNodes()).toHaveLength(1));
+
+      let resultId: string | null = null;
+      act(() => {
+        resultId = getHandle().applyTextEmptyAction('source-text', 'edit');
+      });
+
+      expect(resultId).toBe('source-text');
+      const node = getHandle().getNodes().find(n => n.id === 'source-text');
+      const props = (node?.data as unknown as LinghuiNodeData).properties as unknown as LinghuiTextNodeProperties;
+      expect(props.mode).toBe('manual');
+      expect(props.content).toBe('');
+      expect(getHandle().getNodes()).toHaveLength(1);
+      expect(getHandle().getEdges()).toHaveLength(0);
+    });
+
+    it("'video' 右侧派生 VideoNode + text→video 连线 + 选中新视频", async () => {
+      const scheduleSnapshot = vi.fn();
+      const getHandle = renderTextHarness(scheduleSnapshot);
+      await waitFor(() => expect(getHandle().getNodes()).toHaveLength(1));
+
+      let videoId: string | null = null;
+      act(() => {
+        videoId = getHandle().applyTextEmptyAction('source-text', 'video');
+      });
+
+      await waitFor(() => expect(getHandle().getNodes()).toHaveLength(2));
+      expect(videoId).toBeTruthy();
+
+      const videoNode = getHandle().getNodes().find(n => n.id === videoId);
+      const textNode = getHandle().getNodes().find(n => n.id === 'source-text');
+      expect(videoNode?.type).toBe('linghui-video');
+      expect(videoNode?.selected).toBe(true);
+      expect(textNode?.selected).toBe(false);
+      // 右侧：x 大于源
+      expect((videoNode!.position.x)).toBeGreaterThan((textNode!.position.x));
+
+      // 当前文本节点切到 generate + 预填示例文本
+      const textProps = (textNode?.data as unknown as LinghuiNodeData).properties as unknown as LinghuiTextNodeProperties;
+      expect(textProps.mode).toBe('generate');
+      expect(textProps.content.length).toBeGreaterThan(0);
+
+      // VideoNode params.prompt 预填了 textToVideo.videoPrompt
+      const videoProps = (videoNode?.data as unknown as LinghuiNodeData).properties as unknown as LinghuiVideoNodeProperties;
+      expect(String(videoProps.prompt || '')).toContain('运镜');
+
+      // 边方向 text → video
+      const edges = getHandle().getEdges();
+      expect(edges).toHaveLength(1);
+      expect(edges[0]).toEqual(expect.objectContaining({
+        source: 'source-text',
+        target: videoId,
+        type: 'linghui-edge',
+      }));
+    });
+
+    it("'image-prompt' 左侧派生 ImageNode + 反向 image→text 连线 + 当前节点写反推 prompt", async () => {
+      const scheduleSnapshot = vi.fn();
+      const getHandle = renderTextHarness(scheduleSnapshot);
+      await waitFor(() => expect(getHandle().getNodes()).toHaveLength(1));
+
+      let imageId: string | null = null;
+      act(() => {
+        imageId = getHandle().applyTextEmptyAction('source-text', 'image-prompt');
+      });
+
+      await waitFor(() => expect(getHandle().getNodes()).toHaveLength(2));
+      expect(imageId).toBeTruthy();
+
+      const imageNode = getHandle().getNodes().find(n => n.id === imageId);
+      const textNode = getHandle().getNodes().find(n => n.id === 'source-text');
+      expect(imageNode?.type).toBe('linghui-image');
+      // 左侧：x 小于源
+      expect((imageNode!.position.x)).toBeLessThan((textNode!.position.x));
+
+      // ImageNode 是 import 模式（对齐 LibTV IMAGE_RESOURCE）
+      const imageProps = (imageNode?.data as unknown as LinghuiNodeData).properties as unknown as LinghuiImageNodeProperties;
+      expect(imageProps.mode).toBe('import');
+
+      // 文本节点切到 generate + 写反推图片描述 prompt
+      const textProps = (textNode?.data as unknown as LinghuiNodeData).properties as unknown as LinghuiTextNodeProperties;
+      expect(textProps.mode).toBe('generate');
+      expect(textProps.prompt).toContain('请仔细观察输入图片');
+
+      // ⚠ 边方向反向：image → text
+      const edges = getHandle().getEdges();
+      expect(edges).toHaveLength(1);
+      expect(edges[0]).toEqual(expect.objectContaining({
+        source: imageId,
+        target: 'source-text',
+      }));
+    });
+
+    it("'music' 右侧派生 AudioNode + text→audio 连线 + 当前节点写音乐 prompt", async () => {
+      const scheduleSnapshot = vi.fn();
+      const getHandle = renderTextHarness(scheduleSnapshot);
+      await waitFor(() => expect(getHandle().getNodes()).toHaveLength(1));
+
+      let audioId: string | null = null;
+      act(() => {
+        audioId = getHandle().applyTextEmptyAction('source-text', 'music');
+      });
+
+      await waitFor(() => expect(getHandle().getNodes()).toHaveLength(2));
+      expect(audioId).toBeTruthy();
+
+      const audioNode = getHandle().getNodes().find(n => n.id === audioId);
+      const textNode = getHandle().getNodes().find(n => n.id === 'source-text');
+      expect(audioNode?.type).toBe('linghui-audio');
+      expect((audioNode!.position.x)).toBeGreaterThan((textNode!.position.x));
+
+      // 文本写音乐 prompt
+      const textProps = (textNode?.data as unknown as LinghuiNodeData).properties as unknown as LinghuiTextNodeProperties;
+      expect(textProps.content).toContain('钢琴');
+
+      // AudioNode prompt 透传 music prompt
+      const audioProps = (audioNode?.data as unknown as LinghuiNodeData).properties as unknown as LinghuiAudioNodeProperties;
+      expect(String(audioProps.prompt || '')).toContain('钢琴');
+
+      const edges = getHandle().getEdges();
+      expect(edges[0]).toEqual(expect.objectContaining({
+        source: 'source-text',
+        target: audioId,
+      }));
+    });
+
+    it('非文本节点调用 → 返回 null，不修改图', async () => {
+      const scheduleSnapshot = vi.fn();
+      let handle: DocumentOpsHarnessHandle | null = null;
+      render(
+        <DocumentOpsHarness
+          scheduleSnapshot={scheduleSnapshot}
+          onReady={next => { handle = next; }}
+        />,
+      );
+      await waitFor(() => expect(handle?.getNodes()).toHaveLength(1));
+
+      let result: string | null = null;
+      act(() => {
+        result = handle!.applyTextEmptyAction('source-image', 'video');
+      });
+      expect(result).toBeNull();
+      expect(handle!.getNodes()).toHaveLength(1);
+      expect(handle!.getEdges()).toHaveLength(0);
+    });
+  });
+
+  // ============================================================
+  // LibTV VideoNode EmptyState 2 actions（15gvxu:192400-192509 iU/iO）
+  // 详见 docs/libtv-video-node-deep-dive.md §3
+  // ============================================================
+  describe('applyVideoEmptyAction (LibTV VideoNode EmptyState)', () => {
+    function renderVideoHarness(scheduleSnapshot: () => void) {
+      let handle: DocumentOpsHarnessHandle | null = null;
+      render(
+        <DocumentOpsHarness
+          scheduleSnapshot={scheduleSnapshot}
+          initialNodes={[createSourceVideoNode()]}
+          initialSelection={{ kind: 'node', nodeId: 'source-video', nodeType: 'linghui/video', label: '视频节点' }}
+          onReady={next => { handle = next; }}
+        />,
+      );
+      return () => handle!;
+    }
+
+    it("'first-frame' 左侧派生 1 个 ImageNode + image→video 边 + 写 image-to-video capability", async () => {
+      const scheduleSnapshot = vi.fn();
+      const getHandle = renderVideoHarness(scheduleSnapshot);
+      await waitFor(() => expect(getHandle().getNodes()).toHaveLength(1));
+
+      let imageId: string | null = null;
+      act(() => {
+        imageId = getHandle().applyVideoEmptyAction('source-video', 'first-frame');
+      });
+
+      await waitFor(() => expect(getHandle().getNodes()).toHaveLength(2));
+      expect(imageId).toBeTruthy();
+
+      const imageNode = getHandle().getNodes().find(n => n.id === imageId);
+      const videoNode = getHandle().getNodes().find(n => n.id === 'source-video');
+      expect(imageNode?.type).toBe('linghui-image');
+      // 左侧：x 小于 video
+      expect((imageNode!.position.x)).toBeLessThan((videoNode!.position.x));
+      // focus 留在 video（LibTV 一致）
+      expect(videoNode?.selected).toBe(true);
+
+      // ImageNode 是 import 模式
+      const imageProps = (imageNode?.data as unknown as LinghuiNodeData).properties as unknown as LinghuiImageNodeProperties;
+      expect(imageProps.mode).toBe('import');
+
+      // VideoNode 写默认 prompt + capability='video.image-to-video'
+      const videoProps = (videoNode?.data as unknown as LinghuiNodeData).properties as unknown as LinghuiVideoNodeProperties;
+      expect(videoProps.videoCapability).toBe('video.image-to-video');
+      expect(videoProps.prompt).toContain('上游首帧');
+
+      // 边方向 image → video
+      const edges = getHandle().getEdges();
+      expect(edges).toHaveLength(1);
+      expect(edges[0]).toEqual(expect.objectContaining({
+        source: imageId,
+        target: 'source-video',
+        type: 'linghui-edge',
+      }));
+    });
+
+    it("'first-last-frame' 左侧派生 2 个 ImageNode（首帧+尾帧，垂直分布）+ 2 条 image→video 边", async () => {
+      const scheduleSnapshot = vi.fn();
+      const getHandle = renderVideoHarness(scheduleSnapshot);
+      await waitFor(() => expect(getHandle().getNodes()).toHaveLength(1));
+
+      let firstId: string | null = null;
+      act(() => {
+        firstId = getHandle().applyVideoEmptyAction('source-video', 'first-last-frame');
+      });
+
+      await waitFor(() => expect(getHandle().getNodes()).toHaveLength(3));
+      expect(firstId).toBeTruthy();
+
+      const allNodes = getHandle().getNodes();
+      const videoNode = allNodes.find(n => n.id === 'source-video');
+      const newImageNodes = allNodes.filter(n => n.id !== 'source-video');
+      expect(newImageNodes).toHaveLength(2);
+      expect(newImageNodes.every(n => n.type === 'linghui-image')).toBe(true);
+
+      // 两张图都在 video 左侧
+      newImageNodes.forEach(n => {
+        expect(n.position.x).toBeLessThan(videoNode!.position.x);
+      });
+      // 垂直分布：一张高于 video，一张低于 video
+      const ys = newImageNodes.map(n => n.position.y).sort((a, b) => a - b);
+      expect(ys[0]).toBeLessThan(videoNode!.position.y);
+      expect(ys[1]).toBeGreaterThan(videoNode!.position.y);
+
+      // VideoNode capability='video.start-end-to-video'
+      const videoProps = (videoNode?.data as unknown as LinghuiNodeData).properties as unknown as LinghuiVideoNodeProperties;
+      expect(videoProps.videoCapability).toBe('video.start-end-to-video');
+      expect(videoProps.prompt).toContain('首帧');
+
+      // 2 条边都指向 video
+      const edges = getHandle().getEdges();
+      expect(edges).toHaveLength(2);
+      expect(edges.every(e => e.target === 'source-video')).toBe(true);
+    });
+
+    it('非视频节点调用 → 返回 null，不修改图', async () => {
+      const scheduleSnapshot = vi.fn();
+      let handle: DocumentOpsHarnessHandle | null = null;
+      render(
+        <DocumentOpsHarness
+          scheduleSnapshot={scheduleSnapshot}
+          onReady={next => { handle = next; }}
+        />,
+      );
+      await waitFor(() => expect(handle?.getNodes()).toHaveLength(1));
+
+      let result: string | null = null;
+      act(() => {
+        result = handle!.applyVideoEmptyAction('source-image', 'first-frame');
+      });
+      expect(result).toBeNull();
+      expect(handle!.getNodes()).toHaveLength(1);
+      expect(handle!.getEdges()).toHaveLength(0);
+    });
   });
 });

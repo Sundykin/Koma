@@ -21,6 +21,10 @@ const DEFAULT_NODE_DURATION_SEC: Record<LinghuiNodeType, number> = {
   'linghui/storyboard': 14,
   // 3D 导演节点本地导出 lineart，几乎瞬时完成
   'linghui/director3d': 2,
+  // 宫格切分中间节点纯本地 canvas 切片，瞬时
+  'linghui/image-grid-slice': 1,
+  // 视频合成节点：本地 FFmpeg concat，按片段总数估时（典型 5 段 ~10s）
+  'linghui/video-clip': 12,
 };
 
 export type LinghuiExecutionPlanCostStatus = 'available' | 'unavailable';

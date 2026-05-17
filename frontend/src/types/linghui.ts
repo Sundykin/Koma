@@ -18,7 +18,11 @@ export type LinghuiNodeType =
   | 'linghui/audio'
   | 'linghui/script'
   | 'linghui/storyboard'
-  | 'linghui/director3d';
+  | 'linghui/director3d'
+  // 宫格切分中间节点：上游单张图被切成 N 个槽位，每个槽位可独立"彻底切分"派生为独立图节点
+  | 'linghui/image-grid-slice'
+  // 视频合成节点：多个视频/图片片段拼合为单一视频；详情打开"最终剪辑"工具
+  | 'linghui/video-clip';
 
 export type LinghuiRFNodeTypeKey =
   | 'linghui-text'
@@ -29,7 +33,9 @@ export type LinghuiRFNodeTypeKey =
   | 'linghui-audio'
   | 'linghui-script'
   | 'linghui-storyboard'
-  | 'linghui-director3d';
+  | 'linghui-director3d'
+  | 'linghui-image-grid-slice'
+  | 'linghui-video-clip';
 
 export type LinghuiNodeCategory = 'asset' | 'generation' | 'storyboard' | 'spatial';
 export type LinghuiSlotDataType = 'image' | 'text' | 'video' | 'audio' | 'images' | 'shot' | 'storyboard';
@@ -37,6 +43,22 @@ export type LinghuiRunStatus = 'idle' | 'running' | 'succeeded' | 'failed' | 'st
 export type LinghuiResultKind = 'image' | 'text' | 'video' | 'audio' | 'grid' | 'images' | 'shot' | 'storyboard';
 export type LinghuiCanvasMode = 'mouse' | 'hand';
 export type LinghuiImageNodeMode = 'import' | 'generate';
+
+/**
+ * LibTV ImageNode 视图状态机（对齐 docs/libtv-imagenode-state-machine.md）。
+ * 与 Text/Video 节点同模板：
+ *   generating / failed / resource / pending / empty_generate
+ * - import 模式：始终 resource（纯素材节点）
+ * - 有 collection / source / result 图：resource
+ * - generate 模式 + 无图 + 有上游：pending
+ * - 否则：empty_generate（显示"图生图 / 图片高清"建议）
+ */
+export type LinghuiImageNodeViewState =
+  | 'generating'
+  | 'failed'
+  | 'resource'
+  | 'pending'
+  | 'empty_generate';
 export type LinghuiImageToolKey =
   | 'focus'
   | 'mark'
@@ -116,6 +138,22 @@ export type LinghuiNodeToolState =
 // --- 图片节点 ---
 
 export type LinghuiTextNodeMode = 'manual' | 'generate';
+
+/**
+ * LibTV TextNode 5 状态机派生视图（15gvxu:55066-55074）：
+ *   generating / failed / resource / pending / empty_generate
+ * - generating：taskInfo.loading → 渲染生成中视图
+ * - failed：taskInfo 失败 → 渲染失败视图
+ * - resource：有 content 或 mode='manual'（对齐 LibTV TEXT_RESOURCE 永远是 resource）→ 渲染编辑器/文本预览
+ * - pending：当前 mode='generate' 且没有 content，但已有上游连入 → 等待上游产出
+ * - empty_generate：默认（generate 模式 + 无 content + 无上游）→ 显示 4 actions EmptyState
+ */
+export type LinghuiTextNodeViewState =
+  | 'generating'
+  | 'failed'
+  | 'resource'
+  | 'pending'
+  | 'empty_generate';
 export type LinghuiScriptNodeMode = 'manual' | 'generate';
 export type LinghuiScriptNodeViewMode = 'cards' | 'table';
 export type LinghuiScriptDerivationKind = 'text' | 'image' | 'video-image' | 'video';
@@ -277,6 +315,16 @@ export interface LinghuiImageNodeProperties extends LinghuiScriptDerivedProperti
   /** 电影感参数（打光/焦距/光圈），任意非 auto 字段会拼到 prompt 末尾。可选，保持旧节点兼容。 */
   cinematic?: LinghuiImageCinematicConfig;
   /**
+   * LibTV 扩图比例：4 个方向相对原图的扩展量（0-1 区间）。仅在 outpaint 工具中使用，
+   * 由扩图面板的 4 向滑块写入。最终 prompt 会拼接方向描述（"向 X 方向各扩 Y%"）。
+   */
+  outpaintRatio?: { top: number; right: number; bottom: number; left: number };
+  /**
+   * LibTV `_outpaintPads`：扩图生成成功后，记录原图相对于新画布的位置（像素偏移）。
+   * 由 outpaint 提交链路写入，用于后续"再次扩图"或"还原"操作。
+   */
+  _outpaintPads?: { top: number; right: number; bottom: number; left: number };
+  /**
    * 该展示节点是由哪个 image-generator 控制器派生而来。
    * 仅记录来源，便于控制器维护生成历史；展示节点本身仍是独立 image 节点，
    * 用户可以单独删除 / 再跑 / 改 prompt。
@@ -284,6 +332,41 @@ export interface LinghuiImageNodeProperties extends LinghuiScriptDerivedProperti
   generatedFromNodeId?: string;
   /** 第几次生成（从 1 开始），用于自动 label */
   generatedSequence?: number;
+}
+
+/**
+ * 宫格切分中间节点属性：上游单张图被本地 canvas 切成 N 个槽位，每个槽位独立可派生为图节点。
+ * 槽位 source 可以是空（用户手动从外部拖入/清空）或本地 dataUrl（切分时填充）。
+ */
+export interface LinghuiImageGridSliceNodeProperties {
+  /** 上游主图（切分源）；空时显示"等待上游"提示 */
+  source: string;
+  /** 切分类型：2x2=4 槽 / 3x3=9 槽 / 4x4=16 槽 / 5x5=25 槽 */
+  gridType: '2x2' | '3x3' | '4x4' | '5x5';
+  /** N 个槽位，长度 = gridType 对应槽数（4/9/16/25）；source 空表示槽位已被清空 */
+  slots: Array<{ id: string; source: string; label?: string }>;
+}
+
+/**
+ * 视频合成节点属性：把多个视频 / 图片片段拼合为单一视频。
+ *  - clips：片段列表（每项 kind 区分 video / image，image 片段会本地 FFmpeg 转为 N 秒静帧视频后再 concat）
+ *  - resolution / fps：导出参数，默认 1080p / 30fps
+ *  - source：合成完成后的本地或 OSS URL（暂未合成时为空）
+ *  - posterSource：合成完成后的封面
+ *  - durationSec：合成结果总时长（来自 FFmpeg 输出）
+ *  - status：'idle' | 'composing' | 'ready' | 'failed'
+ */
+export interface LinghuiVideoClipNodeProperties {
+  clips: Array<{ id: string; kind: 'video' | 'image'; source: string; durationSec?: number; label?: string }>;
+  resolution: '720p' | '1080p' | '4K';
+  fps: 24 | 30 | 60;
+  /** 每张图片片段默认时长（秒），仅 kind='image' 时生效；缺省 3s */
+  imageDurationSec: number;
+  source: string;
+  posterSource: string;
+  durationSec?: number;
+  status?: 'idle' | 'composing' | 'ready' | 'failed';
+  errorMessage?: string;
 }
 
 /**
@@ -409,6 +492,25 @@ export type LinghuiVideoCapability = VideoGenerationCapability;
  * 缺省（旧节点）仍按"有 source 就当 pass-through"兼容。
  */
 export type LinghuiVideoNodeMode = 'import' | 'generate';
+
+/**
+ * LibTV VideoNode 6 状态机派生视图（chunk 15gvxu:191642-191652）：
+ *   generating / generating_with_content / failed / resource / pending / empty_generate
+ * - generating(_with_content)：taskInfo.loading；有 poster/snapshot 时走 _with_content
+ * - failed：taskInfo 失败
+ * - resource：有 url[0]（已有视频）
+ * - pending：generate 模式、无 url、但已有上游连入，等待上游产出
+ * - empty_generate：默认（无 url + 无上游 + 非 import）
+ *
+ * 灵绘合并 generating 与 generating_with_content 为单一 generating（已有 poster 走 poster
+ * 不闪屏的逻辑由组件内部处理）。
+ */
+export type LinghuiVideoNodeViewState =
+  | 'generating'
+  | 'failed'
+  | 'resource'
+  | 'pending'
+  | 'empty_generate';
 
 export interface LinghuiVideoNodeProperties extends LinghuiScriptDerivedProperties {
   prompt: string;
@@ -774,6 +876,41 @@ export interface LinghuiAudioNodeProperties {
   mode?: LinghuiAudioNodeMode;
 }
 
+/**
+ * LibTV AudioNode 5 状态机派生视图（chunk 15gvxu:8505-8513）：
+ *   generating / failed / resource / pending / empty_generate
+ * 与 Text/Image/Video 节点完全同模板。
+ */
+export type LinghuiAudioNodeViewState =
+  | 'generating'
+  | 'failed'
+  | 'resource'
+  | 'pending'
+  | 'empty_generate';
+
+/**
+ * 对齐 LibTV AudioNode 状态机（chunk 15gvxu:8505-8513）。
+ * - 优先级 generating > failed > resource > pending > empty_generate
+ * - resource：import 模式 / 有 source / 有 result 主音频
+ * - pending：generate + 无音频 + 有上游
+ */
+export function resolveLinghuiAudioNodeViewState(args: {
+  properties: LinghuiAudioNodeProperties;
+  result?: LinghuiNodeResult;
+  runStatus?: LinghuiRunStatus;
+  hasIncomingEdge: boolean;
+}): LinghuiAudioNodeViewState {
+  const { properties, result, runStatus, hasIncomingEdge } = args;
+  if (runStatus === 'running') return 'generating';
+  if (runStatus === 'failed') return 'failed';
+  const sourceLen = String(properties.source ?? '').trim().length;
+  const primary = getLinghuiResultPrimaryMedia(result);
+  const resultSourceLen = String(primary?.source ?? '').trim().length;
+  if (properties.mode === 'import' || sourceLen > 0 || resultSourceLen > 0) return 'resource';
+  if (hasIncomingEdge) return 'pending';
+  return 'empty_generate';
+}
+
 // --- 通用 ---
 
 export interface LinghuiSlotDef {
@@ -992,6 +1129,79 @@ export function getLinghuiResultItemCount(result?: LinghuiNodeResult): number {
   return isLinghuiImageCollectionResult(result) ? result.items.length : 0;
 }
 
+/**
+ * 对齐 LibTV ImageNode 状态机（docs/libtv-imagenode-state-machine.md §2-3）。
+ * - 优先级 generating > failed > resource > pending > empty_generate
+ * - resource 判定：import 模式 / 有 source / 有 result 主图 / collection 任意 item
+ * - pending：generate + 无图 + 已有上游连入
+ */
+export function resolveLinghuiImageNodeViewState(args: {
+  properties: LinghuiImageNodeProperties;
+  result?: LinghuiNodeResult;
+  runStatus?: LinghuiRunStatus;
+  hasIncomingEdge: boolean;
+  /** 派生标记：collection.items 是否非空（由 caller 用 resolveLinghuiImageCollection 算好传入，避免 types 模块反向依赖）。 */
+  hasCollectionItems?: boolean;
+}): LinghuiImageNodeViewState {
+  const { properties, result, runStatus, hasIncomingEdge, hasCollectionItems } = args;
+  if (runStatus === 'running') return 'generating';
+  if (runStatus === 'failed') return 'failed';
+  const sourceLen = String(properties.source ?? '').trim().length;
+  const primary = getLinghuiResultPrimaryMedia(result);
+  const resultSourceLen = String(primary?.source ?? '').trim().length;
+  if (properties.mode === 'import' || sourceLen > 0 || resultSourceLen > 0 || hasCollectionItems) {
+    return 'resource';
+  }
+  if (hasIncomingEdge) return 'pending';
+  return 'empty_generate';
+}
+
+/**
+ * 对齐 LibTV VideoNode 状态机（chunk 15gvxu:191642-191652）。
+ * - 优先级 generating > failed > resource > pending > empty_generate
+ * - import 模式直接走 resource（与 LibTV VIDEO_RESOURCE 一致；纯参考节点不会进 empty/pending）
+ * - resource 判定：有 source / 有 result primary 媒体 / mode==='import'
+ * - pending：generate 模式 + 无 content + 已有上游连入
+ */
+export function resolveLinghuiVideoNodeViewState(args: {
+  properties: LinghuiVideoNodeProperties;
+  result?: LinghuiNodeResult;
+  runStatus?: LinghuiRunStatus;
+  hasIncomingEdge: boolean;
+}): LinghuiVideoNodeViewState {
+  const { properties, result, runStatus, hasIncomingEdge } = args;
+  if (runStatus === 'running') return 'generating';
+  if (runStatus === 'failed') return 'failed';
+  const sourceLen = String(properties.source ?? '').trim().length;
+  const primary = getLinghuiResultPrimaryMedia(result);
+  const resultSourceLen = String(primary?.source ?? '').trim().length;
+  if (properties.mode === 'import' || sourceLen > 0 || resultSourceLen > 0) return 'resource';
+  if (hasIncomingEdge) return 'pending';
+  return 'empty_generate';
+}
+
+/**
+ * 对齐 LibTV TextNode 状态机（15gvxu:55066-55074）。
+ * - 优先级 generating > failed > resource > pending > empty_generate
+ * - resource 同时覆盖 LibTV `TEXT_RESOURCE` action（mode='manual'）：即使无 content 也走 resource，让"请编写内容"占位显示
+ * - pending：generate 模式下、无 content 但已经有上游连入，等待上游产出
+ */
+export function resolveLinghuiTextNodeViewState(args: {
+  properties: LinghuiTextNodeProperties;
+  result?: LinghuiNodeResult;
+  runStatus?: LinghuiRunStatus;
+  hasIncomingEdge: boolean;
+}): LinghuiTextNodeViewState {
+  const { properties, result, runStatus, hasIncomingEdge } = args;
+  if (runStatus === 'running') return 'generating';
+  if (runStatus === 'failed') return 'failed';
+  const contentLen = (properties.content ?? '').trim().length;
+  const resultText = (getLinghuiResultText(result) ?? '').trim();
+  if (properties.mode === 'manual' || contentLen > 0 || resultText.length > 0) return 'resource';
+  if (hasIncomingEdge) return 'pending';
+  return 'empty_generate';
+}
+
 export interface LinghuiNodeRunState {
   status: LinghuiRunStatus;
   message?: string;
@@ -1168,6 +1378,8 @@ const LINGHUI_TYPE_TO_RF_TYPE_MAP: Record<LinghuiNodeType, LinghuiRFNodeTypeKey>
   'linghui/script': 'linghui-script',
   'linghui/storyboard': 'linghui-storyboard',
   'linghui/director3d': 'linghui-director3d',
+  'linghui/image-grid-slice': 'linghui-image-grid-slice',
+  'linghui/video-clip': 'linghui-video-clip',
 };
 
 const RF_TYPE_TO_LINGHUI_TYPE_MAP: Record<LinghuiRFNodeTypeKey, LinghuiNodeType> = {
@@ -1180,6 +1392,8 @@ const RF_TYPE_TO_LINGHUI_TYPE_MAP: Record<LinghuiRFNodeTypeKey, LinghuiNodeType>
   'linghui-script': 'linghui/script',
   'linghui-storyboard': 'linghui/storyboard',
   'linghui-director3d': 'linghui/director3d',
+  'linghui-image-grid-slice': 'linghui/image-grid-slice',
+  'linghui-video-clip': 'linghui/video-clip',
 };
 
 /** 旧持久化迁移：linghui-image-generator → linghui-image (mode=generate)。下游 normalize 时同步处理 properties.mode。 */
