@@ -1,21 +1,24 @@
-import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
-import { type NodeProps } from '@xyflow/react';
-import { LoaderCircle, Pause, Play } from 'lucide-react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type NodeProps, useStore } from '@xyflow/react';
+import { LoaderCircle, Pause, Play, Video as VideoIcon } from 'lucide-react';
 import type {
   LinghuiNodeData,
   LinghuiRunStatus,
   LinghuiVideoNodeProperties,
 } from '../../../../types/linghui';
-import { getLinghuiResultPrimaryMedia } from '../../../../types/linghui';
+import { getLinghuiResultPrimaryMedia, resolveLinghuiVideoNodeViewState } from '../../../../types/linghui';
 import {
   useNodeRunState,
   useLinghuiNodeInteraction,
   useLinghuiNodeEditorVisibility,
 } from '../state/LinghuiNodeRunsContext';
+import { useLinghuiConnectTarget } from '../state/useLinghuiConnectTarget';
 import { LinghuiNodeEditor } from '../../editors/components/LinghuiNodeEditor';
 import { toFileSystemDisplayUrl } from '../../../../services/fileSystemPort';
 import { fromKomaLocalUrl } from '../../../../utils/urlUtils';
 import { EditableCompactNodeLabel } from './EditableCompactNodeLabel';
+import { LinghuiVideoNodeEmptyState } from './LinghuiVideoNodeEmptyState';
+import { LinghuiVideoNodeUploadFloat } from './LinghuiVideoNodeUploadFloat';
 import { resolveLinghuiNodeViewMode } from '../../editors/state/linghuiNodeViewMode';
 import { resolveMediaCardSize } from '../state/linghuiNodeCardSizing';
 import { getVideoCapabilityDescriptor } from '../../editors/state/videoCapabilityUtils';
@@ -153,6 +156,20 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
   const interactionHandlers = useLinghuiNodeInteraction(id);
   const status = runState?.status ?? 'idle';
   const statusColor = STATUS_COLORS[status] ?? STATUS_COLORS.idle;
+
+  // LibTV selectHasIncomingEdge(id)：用于派生 pending 视图态（generate 模式 + 无 content + 已连入上游）。
+  const hasIncomingEdge = useStore(state => state.edges.some(edge => edge.target === id));
+  // LibTV 连线 hover 抖动：用户从其它节点拖线到本节点时触发。
+  const isConnectTarget = useLinghuiConnectTarget(id);
+
+  // LibTV 6 状态机派生（generating / failed / resource / pending / empty_generate）。
+  // 见 docs/libtv-video-node-deep-dive.md §2。
+  const viewState = useMemo(() => resolveLinghuiVideoNodeViewState({
+    properties: props,
+    result: runState?.result,
+    runStatus: status,
+    hasIncomingEdge,
+  }), [props, runState?.result, status, hasIncomingEdge]);
   const viewMode = resolveLinghuiNodeViewMode(nodeData.viewMode);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -334,17 +351,57 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
     setHasRenderableFrame(false);
   }, []);
 
+  // LibTV `hideTargetHandle = isResourceAction(action)`：mode==='import' 的纯参考视频不需要上游输入，
+  // 隐藏 target handle 避免误连。
+  // LibTV `hideSourceHandle = videoUrl.startsWith('blob:'|'data:')`：本地 blob/data URL 视频不可作
+  // 为下游引用源（CDN 上不可寻址），隐藏右 handle。
+  const isLocalBlobSource = Boolean(rawVideoSource && (rawVideoSource.startsWith('blob:') || rawVideoSource.startsWith('data:')));
+  const portInputs = props.mode === 'import' ? [] : nodeData.inputs;
+  const portOutputs = isLocalBlobSource ? [] : nodeData.outputs;
+
+  // LibTV pending 态：generatorType 不同走不同提示。灵绘暂未实现 enhance/subtitle-erase
+  // 子类型，全部走默认"PlayIcon + 无文字"占位；保留分支接口以便后续接入。
+  const renderPendingPlaceholder = () => (
+    <div className="linghuiTextNodePendingState" aria-label="等待上游产出">
+      <VideoIcon size={64} strokeWidth={1.2} aria-hidden="true" />
+    </div>
+  );
+
   return (
     <div
-      className={`linghuiCompactNode nopan ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''} ${isEditorVisible ? 'hasInlineEditor' : ''}`}
+      className={`linghuiCompactNode nopan is-${status} ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''} ${isEditorVisible ? 'hasInlineEditor' : ''} ${isConnectTarget ? 'isConnectTarget' : ''}`}
       data-view-mode={viewMode}
+      data-video-view={viewState}
+      data-upload-pending={(props as unknown as { _uploadPending?: boolean })._uploadPending ? 'true' : undefined}
+      data-upload-error={(props as unknown as { _uploadError?: string })._uploadError || undefined}
       style={nodeStyle}
       {...interactionHandlers}
     >
-      <LinghuiNodePorts accent={nodeData.accent} inputs={nodeData.inputs} outputs={nodeData.outputs} />
+      {/* 上传进度蒙层：内嵌 JSX 渲染 */}
+      {(props as unknown as { _uploadPending?: boolean })._uploadPending ? (
+        <div className="linghuiCompactUploadOverlay" aria-label="上传中">
+          <div className="linghuiCompactUploadSpinner" aria-hidden="true" />
+          <span>上传中…</span>
+        </div>
+      ) : null}
+      {(props as unknown as { _uploadError?: string })._uploadError ? (
+        <div className="linghuiCompactUploadOverlay isError">
+          <span>上传失败：{(props as unknown as { _uploadError?: string })._uploadError}</span>
+        </div>
+      ) : null}
+      {/* LibTV 1:1：empty_generate / pending（无上游）时，节点上方独立"上传"浮按钮。 */}
+      {viewState === 'empty_generate' ? (
+        <LinghuiVideoNodeUploadFloat nodeId={id} />
+      ) : null}
+      <LinghuiNodePorts accent={nodeData.accent} inputs={portInputs} outputs={portOutputs} />
 
       <div className="linghuiCompactThumb">
-        {videoSource ? (
+        {viewState === 'empty_generate' ? (
+          // LibTV "empty_generate" 态：中心 EmptyState + "尝试：首尾帧生成视频 / 首帧生成视频"
+          <LinghuiVideoNodeEmptyState nodeId={id} />
+        ) : viewState === 'pending' ? (
+          renderPendingPlaceholder()
+        ) : videoSource ? (
           <div className="linghuiCompactVideoStage">
             <video
               ref={videoRef}
@@ -402,8 +459,10 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
             </div>
           </div>
         ) : posterSource ? (
+          // resource / generating 态：有封面 / poster 时显示静态封面
           <img src={posterSource} alt="preview" draggable={false} />
         ) : (
+          // resource / generating / failed 态但既无 videoSource 也无 posterSource：占位框
           <div className="linghuiCompactThumbEmpty">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
               <rect x="3" y="3" width="18" height="18" rx="3" stroke={nodeData.accent} strokeWidth="1.5" strokeOpacity="0.6" />
@@ -417,6 +476,12 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
             label={nodeData.label}
             fallbackLabel="视频"
           />
+          {/* LibTV 节点头部尾部：tabular-nums 等宽灰色尺寸显示，仅在视频结果带尺寸时显示。 */}
+          {primaryVideo?.width && primaryVideo?.height ? (
+            <span className="linghuiCompactThumbDimensions">
+              {primaryVideo.width} × {primaryVideo.height}
+            </span>
+          ) : null}
           <div className="linghuiCompactVideoIndicator">
             <svg width="12" height="12" viewBox="0 0 12 12" fill="white">
               <polygon points="3,1 10,6 3,11" />

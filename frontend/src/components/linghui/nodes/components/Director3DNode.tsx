@@ -75,7 +75,7 @@ function Director3DNodeInner({ id, data, selected }: NodeProps) {
 
   return (
     <div
-      className={`linghuiCompactNode linghuiDirector3DNode nopan ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''}`}
+      className={`linghuiCompactNode linghuiDirector3DNode nopan is-${status} ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''}`}
       data-node-preview-area="true"
       data-view-mode={viewMode}
       style={nodeStyle}

@@ -27,6 +27,8 @@ import { LinghuiCanvasStage } from './LinghuiCanvasStage';
 interface LinghuiCanvasSurfaceProps {
   hostRef: RefObject<HTMLDivElement | null>;
   canvasMode: LinghuiCanvasMode;
+  /** LibTV interacting：节点/框选拖拽中，根节点挂 .canvas-interacting 暂停节点动画。 */
+  interacting: boolean;
   canvasZoom: number;
   nodeInteraction: LinghuiNodeInteractionApi;
   nodeMutation: LinghuiNodeMutationApi;
@@ -47,6 +49,7 @@ interface LinghuiCanvasSurfaceProps {
 export function LinghuiCanvasSurface({
   hostRef,
   canvasMode,
+  interacting,
   canvasZoom,
   nodeInteraction,
   nodeMutation,
@@ -75,15 +78,22 @@ export function LinghuiCanvasSurface({
     onGenerateScriptVideos: overlayProps.onGenerateScriptVideos,
     onCreateDerivedImportImages: overlayProps.onCreateDerivedImportImages,
     onCreateDerivedMultiAngleImage: overlayProps.onCreateDerivedMultiAngleImage,
+    onExecuteImageUpscale: overlayProps.onExecuteImageUpscale,
+    onExecuteImageCrop: overlayProps.onExecuteImageCrop,
+    onCreatePanoramaPreview: overlayProps.onCreatePanoramaPreview,
     onGenerateImageFromController: overlayProps.onGenerateImageFromController,
     onExecuteMultiAngle: overlayProps.onExecuteMultiAngle,
     onApplyImageToolPreset: overlayProps.onApplyImageToolPreset,
+    onApplyTextEmptyAction: overlayProps.onApplyTextEmptyAction,
+    onApplyVideoEmptyAction: overlayProps.onApplyVideoEmptyAction,
+    onApplyAudioEmptyAction: overlayProps.onApplyAudioEmptyAction,
     onSetGridSplitType: overlayProps.onSetGridSplitType,
     onClearGridSplitCells: overlayProps.onClearGridSplitCells,
     onExecuteGridSplit: overlayProps.onExecuteGridSplit,
     gridSplitUpscaleFactor: overlayProps.gridSplitUpscaleFactor,
     onSetGridSplitUpscaleFactor: overlayProps.onSetGridSplitUpscaleFactor,
     onRevertGridSplit: overlayProps.onRevertGridSplit,
+    onSeparateVideoAudio: overlayProps.onSeparateVideoAudio,
   }), [canvasInteractionVersion, overlayProps]);
 
   return (
@@ -97,7 +107,11 @@ export function LinghuiCanvasSurface({
                   <LinghuiNodeEditorContext.Provider value={nodeEditor}>
                     <div
                       ref={hostRef}
-                      className={`linghuiCanvasRoot ${canvasMode === 'hand' ? 'isHandMode' : 'isMouseMode'}`}
+                      className={[
+                        'linghuiCanvasRoot',
+                        canvasMode === 'hand' ? 'isHandMode' : 'isMouseMode',
+                        interacting ? 'canvas-interacting' : '',
+                      ].filter(Boolean).join(' ')}
                       onDragOver={rootHandlers.onDragOver}
                       onDrop={rootHandlers.onDrop}
                       onDoubleClick={rootHandlers.onDoubleClick}

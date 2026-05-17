@@ -194,8 +194,12 @@ export interface LinghuiNodeEditorApi {
     multiAngle?: Partial<LinghuiMultiAngleConfig>;
     label?: string;
   }) => string | null;
+  onExecuteImageUpscale?: (nodeId: string, options?: { factor?: 2 | 4 }) => void;
+  onExecuteImageCrop?: (nodeId: string, options: { aspectRatio: string; label?: string }) => void;
+  onCreatePanoramaPreview?: (nodeId: string) => void;
   onExecuteMultiAngle?: (options?: LinghuiExecuteMultiAngleOptions) => void;
   onApplyImageToolPreset?: (preset: {
+    label?: string;
     promptSnippet: string;
     properties?: Partial<LinghuiImageNodeProperties>;
   }) => void;
@@ -205,6 +209,32 @@ export interface LinghuiNodeEditorApi {
   gridSplitUpscaleFactor: 2 | 4;
   onSetGridSplitUpscaleFactor?: (factor: 2 | 4) => void;
   onRevertGridSplit?: () => void;
+  /**
+   * 视频工具：把当前视频节点的内嵌音轨分离成独立 audio 节点。
+   * 对齐 LibTV "音频分离 → 音视频分离"，复用现有 FFmpeg splitAudio 链路。
+   */
+  onSeparateVideoAudio?: (nodeId: string) => void;
+
+  /**
+   * LibTV TextNode EmptyState 4 actions（15gvxu:55145-55256 eJ/eY/eV/eW）。
+   * 在 TextNode "empty_generate" 视图态点击 4 个按钮时调用，派生上下游子图。
+   * 详见 docs/libtv-text-node-deep-dive.md §3 与 useLinghuiCanvasDocumentOps.applyTextEmptyAction。
+   */
+  onApplyTextEmptyAction?: (nodeId: string, action: 'edit' | 'video' | 'image-prompt' | 'music') => string | null;
+
+  /**
+   * LibTV VideoNode EmptyState 2 actions（15gvxu:192400-192509 iU/iO）。
+   * - 'first-frame'      派生 1 个 ImageNode（首帧）+ 自动连线 + 写 image-to-video capability
+   * - 'first-last-frame' 派生 2 个 ImageNode（首帧 + 尾帧）+ 2 条连线 + 写 start-end-to-video capability
+   * 详见 docs/libtv-video-node-deep-dive.md §3 与 useLinghuiCanvasDocumentOps.applyVideoEmptyAction。
+   */
+  onApplyVideoEmptyAction?: (nodeId: string, action: 'first-frame' | 'first-last-frame') => string | null;
+
+  /**
+   * LibTV AudioNode EmptyState 1 action（15gvxu:8668-8728 eH "音频生视频"）。
+   * 派生右侧 VideoNode + 下方 ImageNode + 2 条边（audio→video + image→video），focus 切到新视频。
+   */
+  onApplyAudioEmptyAction?: (nodeId: string, action: 'audio-to-video') => string | null;
 }
 
 const noopNodeEditorApi: LinghuiNodeEditorApi = {

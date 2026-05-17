@@ -12,6 +12,7 @@ import { registerLLMCompleteHandler } from '../service/tasks/handlers/llmComplet
 import { registerAnalysisHandlers } from '../service/tasks/handlers/analysisRunner';
 import { registerBuiltinLLMProviders } from '../service/chat/providers';
 import { initUpdaterService } from '../service/updater';
+import { runVersionMigrationIfNeeded } from '../service/updater/versionMigration';
 import { initPluginMarketplaceService } from '../service/marketplace';
 
 function preload(): void {
@@ -39,6 +40,15 @@ function preload(): void {
         );
       } catch (err) {
         logger.error('[preload] tasks reconcile/gc failed:', err);
+      }
+
+      // 版本变更迁移：必须在 initUpdaterService() 之前调用，
+      // 因为 UpdaterService 启动会立刻把当前版本写入 updater-last-installed-version，
+      // 之后再读就检测不到差异了。
+      try {
+        runVersionMigrationIfNeeded();
+      } catch (err) {
+        logger.warn('[preload] version migration failed:', err);
       }
 
       // updater / marketplace 必须在 taskService 初始化之后启动

@@ -7,7 +7,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { App as AntApp } from 'antd';
+import { App as AntApp, Modal } from 'antd';
 import {
   type Edge,
   useNodesState,
@@ -16,7 +16,7 @@ import {
   useViewport,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import type { LinghuiCanvasSelection } from '../../../../types/linghui';
+import type { LinghuiCanvasSelection, LinghuiImageToolKey, LinghuiVideoToolKey } from '../../../../types/linghui';
 import { EMPTY_LINGHUI_NODE_RUNS } from '../../../../types/linghui';
 import { LinghuiCanvasProviders } from './LinghuiCanvasProviders';
 import { LinghuiCanvasSurface } from './LinghuiCanvasSurface';
@@ -33,9 +33,24 @@ import { useLinghuiCanvasCallbackRefs } from '../hooks/useLinghuiCanvasCallbackR
 import { useLinghuiCanvasFlowBridge } from '../hooks/useLinghuiCanvasFlowBridge';
 import { useLinghuiCanvasOverlayProps } from '../hooks/useLinghuiCanvasOverlayProps';
 import { useLinghuiCanvasUiState } from '../hooks/useLinghuiCanvasUiState';
+import { useLinghuiCanvasStore } from '../state/linghuiCanvasStore';
 import { useLinghuiCanvasViewportControls } from '../hooks/useLinghuiCanvasViewportControls';
+import { useLinghuiCanvasDoubleTapFitView } from '../hooks/useLinghuiCanvasDoubleTapFitView';
 import { type PendingConnectionCreateState } from '../state/linghuiCanvasShared';
+import {
+  computeLinghuiCanvasElkLayout,
+  type LinghuiCanvasOutlierNode,
+} from '../state/linghuiCanvasLayout';
 import type { LinghuiCanvasHandle, LinghuiCanvasProps } from '../state/linghuiCanvasTypes';
+
+interface LayoutReviewState {
+  previousPositions: Record<string, { x: number; y: number }>;
+}
+
+interface OutlierNoticeState {
+  nodes: LinghuiCanvasOutlierNode[];
+  currentIndex: number;
+}
 const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(function LinghuiCanvasInner(
   {
     workspace,
@@ -66,6 +81,12 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [canvasInteractionVersion, setCanvasInteractionVersion] = useState(0);
+  const [showMiniMap, setShowMiniMap] = useState(false);
+  const [snapToGrid, setSnapToGrid] = useState(true);
+  const [shortcutPanelOpen, setShortcutPanelOpen] = useState(false);
+  const [layoutReview, setLayoutReview] = useState<LayoutReviewState | null>(null);
+  const [isLayouting, setIsLayouting] = useState(false);
+  const [outlierNotice, setOutlierNotice] = useState<OutlierNoticeState | null>(null);
   const reactFlow = useReactFlow();
 
   const viewport = useViewport();
@@ -128,6 +149,7 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     pendingGroupActionsStyle,
     closeContextMenu,
     closeQuickCreate,
+    closeQuickCreateFromPane,
     openContextMenuAt,
     openQuickCreateAt,
   } = useLinghuiCanvasOverlayState({
@@ -182,8 +204,14 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     deriveStoryboardVideosFromScript,
     createGroupFromSelection,
     createDerivedImageNodesFromNode,
+    createDerivedVideoNodesFromNode,
+    createDerivedPanoramaNodeFromNode,
+    createDerivedAudioNodeFromVideo,
     createDerivedMultiAngleImageNodeFromNode,
-    spawnImageFromGenerator,
+    createDerivedImageToolNodeFromNode,
+    applyTextEmptyAction,
+    applyVideoEmptyAction,
+    applyAudioEmptyAction,
     clearPendingGroupFrame,
   } = useLinghuiCanvasDocumentOps({
     reactFlow,
@@ -231,6 +259,149 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     nodeRuns,
   });
 
+  const { zoomIn, zoomOut, focusContent, zoomToPreset } = useLinghuiCanvasViewportControls(reactFlow);
+  useLinghuiCanvasDoubleTapFitView({
+    hostRef,
+    onFitView: focusContent,
+  });
+
+  const openQuickCreateAtCenter = useCallback(() => {
+    const rect = hostRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    openQuickCreateAt(rect.left + rect.width / 2, rect.top + rect.height / 2);
+  }, [hostRef, openQuickCreateAt]);
+
+  const handleRunHotkey = useCallback(() => {
+    if (selectedNodeIds.length > 0 && onRunSelection) {
+      onRunSelection();
+      return;
+    }
+    onRunAll?.();
+  }, [onRunAll, onRunSelection, selectedNodeIds.length]);
+
+  const handleFormatLayout = useCallback(async () => {
+    if (isLayouting) return;
+    const currentNodes = reactFlow.getNodes();
+    if (currentNodes.length <= 1) {
+      focusContent();
+      return;
+    }
+
+    setIsLayouting(true);
+    try {
+      const result = await computeLinghuiCanvasElkLayout(currentNodes, reactFlow.getEdges());
+      const updateMap = new Map(result.updates.map(update => [update.id, update.position]));
+      setOutlierNotice(result.outlierNodes.length > 0
+        ? { nodes: result.outlierNodes, currentIndex: 0 }
+        : null);
+
+      if (updateMap.size === 0) {
+        message.info('画布布局已整齐');
+        focusContent();
+        return;
+      }
+
+      const previousPositions: LayoutReviewState['previousPositions'] = {};
+      for (const node of currentNodes) {
+        if (updateMap.has(node.id)) {
+          previousPositions[node.id] = { x: node.position.x, y: node.position.y };
+        }
+      }
+
+      setNodes(existingNodes => existingNodes.map(node => {
+        const nextPosition = updateMap.get(node.id);
+        return nextPosition ? { ...node, position: nextPosition } : node;
+      }));
+      setLayoutReview({ previousPositions });
+      setCanvasInteractionVersion(version => version + 1);
+      requestAnimationFrame(() => {
+        focusContent();
+      });
+    } catch (error) {
+      console.error('[LinghuiCanvas] format layout failed', error);
+      message.error('整理画布失败，请稍后重试');
+    } finally {
+      setIsLayouting(false);
+    }
+  }, [focusContent, isLayouting, message, reactFlow, setNodes]);
+
+  const handleRestoreLayout = useCallback(() => {
+    if (!layoutReview) return;
+    const previousPositions = layoutReview.previousPositions;
+    setNodes(existingNodes => existingNodes.map(node => {
+      const previousPosition = previousPositions[node.id];
+      return previousPosition ? { ...node, position: previousPosition } : node;
+    }));
+    setLayoutReview(null);
+    setCanvasInteractionVersion(version => version + 1);
+    requestAnimationFrame(() => {
+      scheduleSnapshot({ force: true });
+      focusContent();
+    });
+  }, [focusContent, layoutReview, scheduleSnapshot, setNodes]);
+
+  const handleKeepLayout = useCallback(() => {
+    setLayoutReview(null);
+    requestAnimationFrame(() => {
+      scheduleSnapshot({ force: true });
+    });
+  }, [scheduleSnapshot]);
+
+  const handleNavigateToOutlier = useCallback(() => {
+    setOutlierNotice(current => {
+      if (!current || current.nodes.length === 0) return current;
+      const target = current.nodes[current.currentIndex] ?? current.nodes[0];
+      reactFlow.setCenter(target.cx, target.cy, {
+        duration: 280,
+        zoom: Math.max(reactFlow.getViewport().zoom, 0.75),
+      });
+      return {
+        ...current,
+        currentIndex: current.nodes.length > 1
+          ? (current.currentIndex + 1) % current.nodes.length
+          : current.currentIndex,
+      };
+    });
+  }, [reactFlow]);
+
+  const handleDismissOutliers = useCallback(() => {
+    setOutlierNotice(null);
+  }, []);
+
+  // LibTV canvas:cancel-connect：Esc 取消正在拖拽的连线，避免松手时仍弹 quickCreate。
+  // 清空 pendingConnectionCreateRef 后让 handleConnectEnd 的 resolveQuickCreateFromConnectEnd
+  // 因 pendingConnection 为 null 自动返回 {open:false}；再发 pointerup 终结 React Flow 内部 drag。
+  const cancelPendingConnection = useCallback(() => {
+    if (!pendingConnectionCreateRef.current) return false;
+    pendingConnectionCreateRef.current = null;
+    if (typeof window !== 'undefined') {
+      const evt = new PointerEvent('pointerup', { bubbles: true, cancelable: true });
+      window.dispatchEvent(evt);
+    }
+    return true;
+  }, []);
+
+  // LibTV nO（onBeforeDelete）：键盘删除节点前，如果节点已有生成结果就弹二次确认；空节点直接删。
+  const confirmDeleteNodes = useCallback((nodeIds: string[]) => {
+    if (!nodeIds.length) return;
+    const hasContent = nodeIds.some(id => {
+      const run = nodeRuns[id];
+      return run?.status === 'succeeded' || run?.status === 'failed' || run?.status === 'stale';
+    });
+    if (!hasContent) {
+      deleteNodesByIds(nodeIds);
+      return;
+    }
+    Modal.confirm({
+      title: nodeIds.length > 1 ? `删除 ${nodeIds.length} 个节点` : '删除节点',
+      content: '所选节点包含已生成的内容，删除后可通过 ⌘Z 撤销。确定删除？',
+      okText: '确定删除',
+      cancelText: '取消',
+      okButtonProps: { danger: true },
+      onOk: () => deleteNodesByIds(nodeIds),
+    });
+  }, [deleteNodesByIds, nodeRuns]);
+
   useLinghuiCanvasHotkeys({
     canUndo,
     canRedo,
@@ -246,6 +417,15 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     closeContextMenu,
     closeQuickCreate,
     clearPendingGroupFrame,
+    onRunRequested: handleRunHotkey,
+    onOpenQuickCreate: openQuickCreateAtCenter,
+    onFormatLayout: handleFormatLayout,
+    onFocusContent: focusContent,
+    onZoomIn: zoomIn,
+    onZoomOut: zoomOut,
+    onToggleShortcutPanel: () => setShortcutPanelOpen(open => !open),
+    onCancelPendingConnection: cancelPendingConnection,
+    confirmDeleteNodes,
     selectedEdgeIds,
   });
   const {
@@ -281,8 +461,8 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     handlePaneContextMenu,
     handleCanvasDoubleClick,
     handleSelectionStart,
-    handleSelectionDragStart,
-    handleSelectionDragStop,
+    handleSelectionDragStart: handleSelectionDragStartBase,
+    handleSelectionDragStop: handleSelectionDragStopBase,
     handleSelectionContextMenu,
     handleSelectionEnd,
   } = useLinghuiCanvasSelectionInteractions({
@@ -300,16 +480,38 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     closeContextMenu,
   });
 
+  // LibTV interacting：节点/框选拖拽过程中通过 .canvas-interacting 暂停 glow/breathe/shimmer 动画。
+  const setInteracting = useLinghuiCanvasStore(state => state.setInteracting);
+  const interacting = useLinghuiCanvasStore(state => state.interacting);
+
+  const handleSelectionDragStart = useCallback<NonNullable<typeof handleSelectionDragStartBase>>(
+    (...args) => {
+      setInteracting(true);
+      return handleSelectionDragStartBase(...args);
+    },
+    [handleSelectionDragStartBase, setInteracting],
+  );
+
+  const handleSelectionDragStop = useCallback<NonNullable<typeof handleSelectionDragStopBase>>(
+    (...args) => {
+      setInteracting(false);
+      return handleSelectionDragStopBase(...args);
+    },
+    [handleSelectionDragStopBase, setInteracting],
+  );
+
   const handleNodeDragStart = useCallback(() => {
     closeContextMenu();
     closeQuickCreate();
     setActiveNodeTool(null);
+    setInteracting(true);
     setCanvasInteractionVersion(version => version + 1);
-  }, [closeContextMenu, closeQuickCreate, setActiveNodeTool]);
+  }, [closeContextMenu, closeQuickCreate, setActiveNodeTool, setInteracting]);
 
   const handleNodeDragStop = useCallback(() => {
+    setInteracting(false);
     setCanvasInteractionVersion(version => version + 1);
-  }, []);
+  }, [setInteracting]);
 
   const {
     bindNodeSurface,
@@ -327,6 +529,7 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     setPendingGroupFrame,
     closeContextMenu,
     closeQuickCreate,
+    closeQuickCreateFromPane,
     openContextMenuAt,
     emitSnapshot,
     onNodeDragStart: handleNodeDragStart,
@@ -337,10 +540,10 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     bindNodeSurface,
     openNodeContextMenu,
     openNodeEditor,
-    openImageToolPanel(nodeId: string, tool: 'multi-angle' | 'outpaint' | 'relight' | 'repaint' | 'grid-split') {
+    openImageToolPanel(nodeId: string, tool: LinghuiImageToolKey) {
       openNodeToolPanel({ kind: 'image', nodeId, tool });
     },
-    openVideoToolPanel(nodeId: string, tool: 'upscale' | 'analyze' | 'compose') {
+    openVideoToolPanel(nodeId: string, tool: LinghuiVideoToolKey) {
       openNodeToolPanel({ kind: 'video', nodeId, tool });
     },
   }), [bindNodeSurface, openNodeContextMenu, openNodeEditor, openNodeToolPanel]);
@@ -353,8 +556,6 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     updateNodeData: updateLinghuiNodeData,
     clearNodeRunState,
   }), [clearNodeRunState, updateLinghuiNodeData]);
-
-  const { zoomIn, zoomOut, focusContent } = useLinghuiCanvasViewportControls(reactFlow);
 
   const selectSingleEdge = useCallback((edgeId: string) => {
     setEdges(currentEdges => currentEdges.map(edge => ({
@@ -397,6 +598,7 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     executionQueue,
     workspaceId: workspace?.id ?? null,
     updateNodeData: updateLinghuiNodeData,
+    onClearNodeRunState,
     canvasRect,
     gridSplitType,
     setGridSplitType,
@@ -424,6 +626,8 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     onRunSelection,
     onRunAll,
     onExportSelection,
+    onFormatLayout: handleFormatLayout,
+    onOpenShortcutPanel: () => setShortcutPanelOpen(open => !open),
     onRunSingleNodeRef,
     openQuickCreateAt,
     closeContextMenu,
@@ -432,8 +636,14 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     deriveStoryboardImagesFromScript,
     deriveStoryboardVideosFromScript,
     createDerivedImageNodesFromNode,
+    createDerivedVideoNodesFromNode,
+    createDerivedPanoramaNodeFromNode,
+    createDerivedAudioNodeFromVideo,
     createDerivedMultiAngleImageNodeFromNode,
-    spawnImageFromGenerator,
+    createDerivedImageToolNodeFromNode,
+    applyTextEmptyAction,
+    applyVideoEmptyAction,
+    applyAudioEmptyAction,
     copySelectionToClipboard,
     duplicateSelection,
     pasteClipboardSnapshot,
@@ -466,6 +676,7 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     <LinghuiCanvasSurface
       hostRef={hostRef}
       canvasMode={canvasMode}
+      interacting={interacting}
       canvasZoom={viewport.zoom}
       nodeInteraction={nodeInteractionApi}
       nodeMutation={nodeMutationApi}
@@ -507,14 +718,33 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
         onRunAll,
         onRunSelection,
         onSetCanvasMode: setCanvasMode,
+        showMiniMap,
+        snapToGrid,
+        shortcutPanelOpen,
+        layoutReviewPending: Boolean(layoutReview),
+        isLayouting,
+        outlierNotice: outlierNotice
+          ? { count: outlierNotice.nodes.length, currentIndex: outlierNotice.currentIndex }
+          : null,
+        onToggleMiniMap: () => setShowMiniMap(open => !open),
+        onToggleSnapToGrid: () => setSnapToGrid(enabled => !enabled),
+        onFormatLayout: handleFormatLayout,
+        onRestoreLayout: handleRestoreLayout,
+        onKeepLayout: handleKeepLayout,
+        onNavigateToOutlier: handleNavigateToOutlier,
+        onDismissOutliers: handleDismissOutliers,
+        onToggleShortcutPanel: () => setShortcutPanelOpen(open => !open),
         onZoomOut: zoomOut,
         onFocusContent: focusContent,
         onZoomIn: zoomIn,
+        onZoomToPreset: zoomToPreset,
       }}
       stageProps={{
         nodes,
         edges,
         canvasMode,
+        showMiniMap,
+        snapToGrid,
         onNodesChange: handleNodesChange,
         onEdgesChange: handleEdgesChange,
         onConnect: handleConnect,

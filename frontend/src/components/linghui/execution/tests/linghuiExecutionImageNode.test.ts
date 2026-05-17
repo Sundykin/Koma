@@ -29,12 +29,14 @@ function createNode(
     prompt?: string;
     inputImages?: ReturnType<ExecutionNodeView['getAllInputImages']>;
     promptReferences?: ReturnType<ExecutionNodeView['getPromptReferences']>;
+    properties?: Record<string, unknown>;
   } = {},
 ): ExecutionNodeView {
   const {
     prompt = '主提示词',
     inputImages = [],
     promptReferences = [],
+    properties = {},
   } = options;
 
   return {
@@ -47,6 +49,7 @@ function createNode(
       prompt,
       ttiSelection: 'channel-image::model-image',
       batchCount,
+      ...properties,
     },
     getAllInputResults() {
       return [];
@@ -515,6 +518,103 @@ describe('executeImageNode', () => {
       kind: 'image',
       primary: expect.objectContaining({ source: 'https://cdn.example.com/single.png' }),
       metadata: expect.objectContaining({ mode: 'generate' }),
+    }));
+  });
+
+  it('聚焦区域会把标记图片作为参考并追加局部重绘约束', async () => {
+    const { executeImageNode } = await import('../state/linghuiExecutionNodeExecutors');
+    const executionProviders = await import('../state/linghuiExecutionProviders');
+
+    vi.mocked(executionProviders.generateImageWithProvider).mockResolvedValue(
+      { kind: 'image', source: 'https://cdn.example.com/focus.png' } as any,
+    );
+
+    const result = await executeImageNode(createNode(1, {
+      properties: {
+        focusRegion: {
+          enabled: true,
+          x: 0.2,
+          y: 0.15,
+          width: 0.3,
+          height: 0.25,
+          source: 'https://cdn.example.com/original.png',
+          label: '脸部',
+        },
+      },
+    }));
+
+    expect(executionProviders.generateImageWithProvider).toHaveBeenCalledTimes(1);
+    const call = vi.mocked(executionProviders.generateImageWithProvider).mock.calls[0]?.[0];
+    expect(call).toEqual(expect.objectContaining({
+      referenceSources: ['https://cdn.example.com/original.png'],
+      placeholderSubtitle: '聚焦区域生成',
+    }));
+    expect(call?.prompt).toContain('主提示词');
+    expect(call?.prompt).toContain('LibTV-style focus region (脸部)');
+    expect(call?.prompt).toContain('left 20%, top 15%, right 50%, bottom 40%');
+    expect(call?.prompt).toContain('Preserve the original image outside this box');
+    expect(result).toEqual(expect.objectContaining({
+      kind: 'image',
+      metadata: expect.objectContaining({
+        mode: 'generate',
+        focusRegion: expect.objectContaining({
+          enabled: true,
+          x: 0.2,
+          y: 0.15,
+          width: 0.3,
+          height: 0.25,
+          source: 'https://cdn.example.com/original.png',
+        }),
+      }),
+    }));
+  });
+
+  it('标记点会把标记图片作为参考并追加坐标锚点约束', async () => {
+    const { executeImageNode } = await import('../state/linghuiExecutionNodeExecutors');
+    const executionProviders = await import('../state/linghuiExecutionProviders');
+
+    vi.mocked(executionProviders.generateImageWithProvider).mockResolvedValue(
+      { kind: 'image', source: 'https://cdn.example.com/marked.png' } as any,
+    );
+
+    const result = await executeImageNode(createNode(1, {
+      properties: {
+        markPoints: [
+          {
+            id: 'mark-face',
+            enabled: true,
+            x: 0.25,
+            y: 0.6,
+            source: 'https://cdn.example.com/original.png',
+            label: '脸部',
+            prompt: '保持人物脸部身份一致。',
+          },
+        ],
+      },
+    }));
+
+    expect(executionProviders.generateImageWithProvider).toHaveBeenCalledTimes(1);
+    const call = vi.mocked(executionProviders.generateImageWithProvider).mock.calls[0]?.[0];
+    expect(call).toEqual(expect.objectContaining({
+      referenceSources: ['https://cdn.example.com/original.png'],
+    }));
+    expect(call?.prompt).toContain('LibTV-style mark points');
+    expect(call?.prompt).toContain('Mark 1 (脸部) at x 25%, y 60%');
+    expect(call?.prompt).toContain('保持人物脸部身份一致');
+    expect(call?.prompt).toContain('do not render visible UI pins');
+    expect(result).toEqual(expect.objectContaining({
+      kind: 'image',
+      metadata: expect.objectContaining({
+        mode: 'generate',
+        markPoints: [
+          expect.objectContaining({
+            id: 'mark-face',
+            x: 0.25,
+            y: 0.6,
+            source: 'https://cdn.example.com/original.png',
+          }),
+        ],
+      }),
     }));
   });
 

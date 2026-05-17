@@ -184,3 +184,30 @@ base64 -i private.pem
 #    密钥轮换**必然伴随一次手动升级**，请在 changelog 里说明。
 ```
 
+---
+
+## macOS 代码签名（暂未启用）
+
+**当前 mac 渠道为"未签名 + 引导式更新"**：点更新→后台下载→Finder 弹出 dmg→用户手动拖到 Applications。
+这是 Apple Gatekeeper 限制下的最优方案，不花钱不签合同。
+
+### 何时启用 Apple Developer 签名
+
+触发条件（任一满足时考虑）：
+- mac 用户数 > 50（手动拖体验损耗 > 签名维护成本）
+- 出现"应用已损坏"投诉（未签名包随 Gatekeeper 收紧可能被标记）
+- 用户对"未知开发者"提示有疑虑
+
+### 启用步骤摘要（实际执行时展开）
+
+1. 注册 Apple Developer Program（$99/年，个人 1–2 天审核 / 公司需 DUNS 邓白氏码 3–7 天）
+2. 钥匙串生成 CSR，去 developer.apple.com 申请 **Developer ID Application** 证书
+3. 生成 App-Specific Password（用于公证 notarytool）
+4. KomaBuild 仓加 5 个 secrets：
+   `APPLE_ID` / `APPLE_TEAM_ID` / `APPLE_APP_PASSWORD` / `MAC_CERTS`（.p12 base64）/ `MAC_CERTS_PASSWORD`
+5. 改 `cmd/builder-mac*.json`：`hardenedRuntime: true` + `notarize: true` + `entitlements`
+6. 新建 `build/entitlements.mac.plist`（必须含 `allow-jit` / `allow-unsigned-executable-memory`，否则 Electron 启动失败）
+7. 改 `KomaBuild/.github/workflows/build.yml`：build-macos job 加 `Import Apple certificate` step + 把 `APPLE_*` / `CSC_*` env 注入到 build 步骤
+8. 改 `electron/service/updater/platformStrategy.ts` 的 mac 分支为 `useElectronUpdater: true`
+
+完成后 mac 行为与 Windows NSIS 一致：点更新→后台下载→自动重启安装。

@@ -17,6 +17,23 @@ interface UseLinghuiCanvasHotkeysParams {
   closeContextMenu: () => void;
   closeQuickCreate: () => void;
   clearPendingGroupFrame: () => void;
+  onRunRequested?: () => void;
+  onOpenQuickCreate?: () => void;
+  onFormatLayout?: () => void;
+  onFocusContent?: () => void;
+  onZoomIn?: () => void;
+  onZoomOut?: () => void;
+  onToggleShortcutPanel?: () => void;
+  /**
+   * LibTV canvas:cancel-connect scope。Esc 时若处于连线拖拽中先终止连线，
+   * 返回 true 表示已消费 Esc，本次不再走 closeContextMenu/closeQuickCreate 链路。
+   */
+  onCancelPendingConnection?: () => boolean;
+  /**
+   * LibTV nO（onBeforeDelete）：键盘 Delete/Backspace 删除节点前可弹二次确认。
+   * 不传时直接走 deleteNodesByIds。
+   */
+  confirmDeleteNodes?: (nodeIds: string[]) => void;
 }
 
 export function useLinghuiCanvasHotkeys(params: UseLinghuiCanvasHotkeysParams) {
@@ -43,10 +60,25 @@ export function useLinghuiCanvasHotkeys(params: UseLinghuiCanvasHotkeysParams) {
         closeContextMenu,
         closeQuickCreate,
         clearPendingGroupFrame,
+        onRunRequested,
+        onOpenQuickCreate,
+        onFormatLayout,
+        onFocusContent,
+        onZoomIn,
+        onZoomOut,
+        onToggleShortcutPanel,
+        onCancelPendingConnection,
+        confirmDeleteNodes,
       } = paramsRef.current;
 
       const modifierPressed = event.metaKey || event.ctrlKey;
       const normalizedKey = event.key.toLowerCase();
+
+      if (modifierPressed && event.key === 'Enter' && onRunRequested) {
+        event.preventDefault();
+        onRunRequested();
+        return;
+      }
 
       if (modifierPressed && normalizedKey === 'c') {
         const copied = copySelectionToClipboard(pendingGroupFrame?.selectionIds ?? selectedNodeIds);
@@ -91,10 +123,51 @@ export function useLinghuiCanvasHotkeys(params: UseLinghuiCanvasHotkeysParams) {
         return;
       }
 
+      if (modifierPressed && (normalizedKey === '+' || normalizedKey === '=')) {
+        event.preventDefault();
+        onZoomIn?.();
+        return;
+      }
+
+      if (modifierPressed && (normalizedKey === '-' || normalizedKey === '_')) {
+        event.preventDefault();
+        onZoomOut?.();
+        return;
+      }
+
+      if (event.shiftKey && normalizedKey === '1' && onFocusContent) {
+        event.preventDefault();
+        onFocusContent();
+        return;
+      }
+
+      if (event.altKey && event.shiftKey && normalizedKey === 'f' && onFormatLayout) {
+        event.preventDefault();
+        onFormatLayout();
+        return;
+      }
+
+      if (!modifierPressed && !event.altKey && !event.ctrlKey && !event.shiftKey && normalizedKey === 'tab' && onOpenQuickCreate) {
+        event.preventDefault();
+        onOpenQuickCreate();
+        return;
+      }
+
+      if (!modifierPressed && !event.altKey && (normalizedKey === '?' || (event.shiftKey && normalizedKey === '/'))) {
+        event.preventDefault();
+        onToggleShortcutPanel?.();
+        return;
+      }
+
       if (event.key === 'Backspace' || event.key === 'Delete') {
         if (selectedNodeIds.length || pendingGroupFrame) {
           event.preventDefault();
-          deleteNodesByIds(pendingGroupFrame?.selectionIds ?? selectedNodeIds);
+          const targetIds = pendingGroupFrame?.selectionIds ?? selectedNodeIds;
+          if (confirmDeleteNodes) {
+            confirmDeleteNodes(targetIds);
+          } else {
+            deleteNodesByIds(targetIds);
+          }
           return;
         }
 
@@ -106,6 +179,11 @@ export function useLinghuiCanvasHotkeys(params: UseLinghuiCanvasHotkeysParams) {
       }
 
       if (event.key === 'Escape') {
+        // LibTV canvas:cancel-connect：先尝试取消正在拖拽的连线，吞掉本次 Esc。
+        if (onCancelPendingConnection?.()) {
+          event.preventDefault();
+          return;
+        }
         closeContextMenu();
         closeQuickCreate();
         clearPendingGroupFrame();

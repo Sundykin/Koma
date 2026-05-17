@@ -13,7 +13,9 @@ import type {
   LinghuiMultiAngleAzimuth,
   LinghuiMultiAngleDistance,
   LinghuiMultiAngleElevation,
+  LinghuiMultiAngleMode,
   LinghuiMultiAnglePromptProtocol,
+  LinghuiMultiAnglePresetKey,
 } from '../../types/linghui';
 
 export interface ImageResultMetadata extends Record<string, unknown> {
@@ -50,6 +52,14 @@ export interface TTIOptions {
 export interface MultiAngleTTIRequest {
   endpointPath?: string;
   promptProtocol: LinghuiMultiAnglePromptProtocol;
+  mode?: LinghuiMultiAngleMode;
+  rotation?: number;
+  tilt?: number;
+  scale?: number;
+  isWideAngle?: boolean;
+  presetKey?: LinghuiMultiAnglePresetKey;
+  prompt?: string;
+  promptEnabled?: boolean;
   azimuth: LinghuiMultiAngleAzimuth;
   elevation: LinghuiMultiAngleElevation;
   distance: LinghuiMultiAngleDistance;

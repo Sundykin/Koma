@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ExecutionNodeView } from '../state/linghuiExecutionShared';
+import * as executionProviders from '../state/linghuiExecutionProviders';
 
 vi.mock('../state/linghuiExecutionProviders', () => ({
   generateAudioWithProvider: vi.fn(),
@@ -41,11 +42,17 @@ function buildPanoramaNodeView(properties: Record<string, unknown>): ExecutionNo
       source: '',
       prompt: '夜晚星空下的小镇',
       ttiSelection: 'channel-image::model-image',
-      aspectRatio: '21:9',
+      aspectRatio: '2:1',
       resolution: 'auto',
       gridType: 'none',
       batchCount: 1,
       panoramaTemplate: 'auto',
+      projectionMode: 'equirectangular-2to1',
+      panoramaSlashScene: '720_panoramic',
+      panoramaWithPromptScene: '720_panoramic_with_prompt',
+      panoramaSlashLabel: '720°全景图',
+      panoramaModelKey: 'lib-image-2',
+      panoramaQuality: 'medium',
       ...properties,
     },
     getAllInputResults: () => [],
@@ -59,6 +66,7 @@ describe('executePanoramaNode detailCrops 合并 + 落盘', () => {
   beforeEach(async () => {
     const persistenceMod = await import('../../../../services/mediaPersistenceService');
     vi.mocked(persistenceMod.persistMediaAsset).mockReset();
+    vi.mocked(executionProviders.generateImageWithProvider).mockClear();
   });
 
   it('properties.detailCrops 为空时，仍保持单图 kind，不调 persistMediaAsset', async () => {
@@ -68,6 +76,33 @@ describe('executePanoramaNode detailCrops 合并 + 落盘', () => {
     expect(result.kind).toBe('image');
     expect(result.metadata?.detailCropCount).toBe(0);
     expect(persistenceMod.persistMediaAsset).not.toHaveBeenCalled();
+  });
+
+  it('全景生图带上 LibTV 720° slash 默认比例、质量和场景元数据', async () => {
+    const { executePanoramaNode } = await import('../state/linghuiExecutionNodeExecutors');
+    const result = await executePanoramaNode(buildPanoramaNodeView({
+      prompt: '雨夜赛博城市天台',
+    }));
+
+    expect(executionProviders.generateImageWithProvider).toHaveBeenCalledWith(expect.objectContaining({
+      aspectRatio: '2:1',
+      resolution: 'auto',
+      prompt: expect.stringContaining('雨夜赛博城市天台'),
+    }));
+    const call = vi.mocked(executionProviders.generateImageWithProvider).mock.calls[0]?.[0];
+    expect(call?.prompt).toContain('true 2:1 equirectangular panorama');
+    expect(call?.prompt).toContain('雨夜赛博城市天台');
+    expect(result.metadata).toEqual(expect.objectContaining({
+      mode: 'panorama',
+      panoramaProjection: 'equirectangular-2to1',
+      panoramaSlashScene: '720_panoramic',
+      panoramaWithPromptScene: '720_panoramic_with_prompt',
+      panoramaSlashLabel: '720°全景图',
+      panoramaModelKey: 'lib-image-2',
+      panoramaQuality: 'medium',
+      panoramaRatio: '2:1',
+      originalPrompt: '雨夜赛博城市天台',
+    }));
   });
 
   it('有 detailCrops 时合并为 images kind，每张 crop 都被落盘成 koma-local URL', async () => {

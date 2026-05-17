@@ -53,6 +53,25 @@ export interface SplitGridImageOptions {
   format?: 'png' | 'jpg' | 'webp';
 }
 
+// 图片高清放大选项
+export interface UpscaleImageOptions {
+  input: string;
+  output: string;
+  // 放大倍率，默认 2。当前 UI 暴露 2x / 4x。
+  factor?: number;
+  // 锐化强度（0~2），默认 0.9
+  sharpenAmount?: number;
+}
+
+// 图片裁剪选项
+export interface CropImageOptions {
+  input: string;
+  output: string;
+  // 目标比例，如 1:1 / 9:16 / 16:9；默认从中心做 cover crop。
+  aspectRatio: string;
+  sharpenAmount?: number;
+}
+
 // 波形生成选项
 export interface WaveformOptions {
   input: string;
@@ -87,7 +106,7 @@ export interface ComposeVideoOptions {
 }
 
 // 任务类型
-type TaskType = 'getInfo' | 'extractFrames' | 'splitGridImage' | 'waveform' | 'splitAudio' | 'export' | 'composeVideo';
+type TaskType = 'getInfo' | 'extractFrames' | 'splitGridImage' | 'upscaleImage' | 'cropImage' | 'waveform' | 'splitAudio' | 'export' | 'composeVideo';
 
 // 任务定义
 interface Task {
@@ -269,6 +288,20 @@ export class FFmpegService {
   }
 
   /**
+   * 高清放大图片
+   */
+  async upscaleImage(options: UpscaleImageOptions): Promise<string> {
+    return this.queueTask<string>('upscaleImage', options);
+  }
+
+  /**
+   * 中心裁剪图片到指定比例。
+   */
+  async cropImage(options: CropImageOptions): Promise<string> {
+    return this.queueTask<string>('cropImage', options);
+  }
+
+  /**
    * 生成音频波形图
    */
   async generateWaveform(options: WaveformOptions): Promise<string> {
@@ -328,6 +361,12 @@ export class FFmpegService {
           break;
         case 'splitGridImage':
           result = await this.doSplitGridImage(task.args);
+          break;
+        case 'upscaleImage':
+          result = await this.doUpscaleImage(task.args);
+          break;
+        case 'cropImage':
+          result = await this.doCropImage(task.args);
           break;
         case 'waveform':
           result = await this.doGenerateWaveform(task.args);
@@ -582,6 +621,94 @@ export class FFmpegService {
 
     await this.runFFmpeg(args);
     return outputPaths;
+  }
+
+  /**
+   * 高清放大图片：高质量 lanczos 插值 + 轻锐化，输出单张图片。
+   */
+  private async doUpscaleImage(options: UpscaleImageOptions): Promise<string> {
+    if (!this.ffmpegPath) {
+      throw new Error('FFmpeg not available');
+    }
+
+    const input = String(options.input ?? '').trim();
+    const output = String(options.output ?? '').trim();
+    if (!input) {
+      throw new Error('Missing upscale input image');
+    }
+    if (!output) {
+      throw new Error('Missing upscale output image');
+    }
+
+    const factor = Math.max(1, Math.min(8, Number.isFinite(options.factor) ? Number(options.factor) : 2));
+    const sharpenAmount = Math.max(0, Math.min(2, Number.isFinite(options.sharpenAmount) ? Number(options.sharpenAmount) : 0.9));
+
+    await fs.promises.mkdir(path.dirname(output), { recursive: true });
+
+    const args = [
+      '-i', input,
+      '-vf', `scale=iw*${factor}:ih*${factor}:flags=lanczos,unsharp=5:5:${sharpenAmount}:3:3:0.0`,
+      '-frames:v', '1',
+      '-y',
+      output,
+    ];
+
+    await this.runFFmpeg(args);
+    return output;
+  }
+
+  private parseAspectRatioValue(aspectRatio: string): number {
+    const normalized = String(aspectRatio ?? '').trim();
+    const matched = normalized.match(/^(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)$/);
+    if (matched) {
+      const width = Number(matched[1]);
+      const height = Number(matched[2]);
+      if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
+        return width / height;
+      }
+    }
+    const numeric = Number(normalized);
+    return Number.isFinite(numeric) && numeric > 0 ? numeric : 1;
+  }
+
+  /**
+   * 中心 cover crop 到指定比例，保留原始分辨率范围内最大画面。
+   */
+  private async doCropImage(options: CropImageOptions): Promise<string> {
+    if (!this.ffmpegPath) {
+      throw new Error('FFmpeg not available');
+    }
+
+    const input = String(options.input ?? '').trim();
+    const output = String(options.output ?? '').trim();
+    if (!input) {
+      throw new Error('Missing crop input image');
+    }
+    if (!output) {
+      throw new Error('Missing crop output image');
+    }
+
+    const targetRatio = this.parseAspectRatioValue(options.aspectRatio);
+    const sharpenAmount = Math.max(0, Math.min(2, Number.isFinite(options.sharpenAmount) ? Number(options.sharpenAmount) : 0.4));
+    await fs.promises.mkdir(path.dirname(output), { recursive: true });
+
+    const cropExpression = `crop='if(gt(iw/ih,${targetRatio}),ih*${targetRatio},iw)':'if(gt(iw/ih,${targetRatio}),ih,iw/${targetRatio})':'(iw-ow)/2':'(ih-oh)/2'`;
+    const filters = [
+      cropExpression,
+      'setsar=1',
+      `unsharp=5:5:${sharpenAmount}:3:3:0.0`,
+    ];
+
+    const args = [
+      '-i', input,
+      '-vf', filters.join(','),
+      '-frames:v', '1',
+      '-y',
+      output,
+    ];
+
+    await this.runFFmpeg(args);
+    return output;
   }
 
   /**

@@ -62,7 +62,7 @@ export const LinghuiNodeShell: React.FC<PropsWithChildren<LinghuiNodeShellProps>
 
   return (
     <div
-      className={`linghuiRFNode nopan ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''}`}
+      className={`linghuiRFNode nopan is-${status} ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''}`}
       data-view-mode={viewMode}
       style={nodeStyle}
       {...interactionHandlers}

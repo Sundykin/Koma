@@ -14,9 +14,14 @@ export function useLinghuiCanvasViewportControls(reactFlow: ReactFlowInstance) {
     reactFlow.fitView({ padding: 0.12, duration: 240 });
   }, [reactFlow]);
 
+  const zoomToPreset = useCallback((zoom: number) => {
+    reactFlow.zoomTo(zoom, { duration: 220 });
+  }, [reactFlow]);
+
   return {
     zoomIn,
     zoomOut,
     focusContent,
+    zoomToPreset,
   };
 }

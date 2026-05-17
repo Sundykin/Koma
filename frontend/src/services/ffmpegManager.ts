@@ -48,6 +48,20 @@ export interface SplitGridImageOptions {
   format?: 'png' | 'jpg' | 'webp';
 }
 
+export interface UpscaleImageOptions {
+  input: string;
+  output: string;
+  factor?: number;
+  sharpenAmount?: number;
+}
+
+export interface CropImageOptions {
+  input: string;
+  output: string;
+  aspectRatio: string;
+  sharpenAmount?: number;
+}
+
 // 波形生成选项
 export interface WaveformOptions {
   input: string;
@@ -198,6 +212,42 @@ class FFmpegManager {
     }
 
     return await api.splitGridImage(options);
+  }
+
+  /**
+   * 高清放大图片
+   */
+  async upscaleImage(options: UpscaleImageOptions): Promise<string> {
+    await this.init();
+    const api = getFFmpegAPI();
+    if (!api) {
+      throw new Error('FFmpeg 不可用');
+    }
+
+    const available = await this.isAvailable();
+    if (!available) {
+      throw new Error('FFmpeg 不可用');
+    }
+
+    return await api.upscaleImage(options);
+  }
+
+  /**
+   * 裁剪图片到指定比例
+   */
+  async cropImage(options: CropImageOptions): Promise<string> {
+    await this.init();
+    const api = getFFmpegAPI();
+    if (!api) {
+      throw new Error('FFmpeg 不可用');
+    }
+
+    const available = await this.isAvailable();
+    if (!available) {
+      throw new Error('FFmpeg 不可用');
+    }
+
+    return await api.cropImage(options);
   }
 
   /**

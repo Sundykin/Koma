@@ -104,6 +104,59 @@
       transform: translateY(-1px);
       border-color: color-mix(in srgb, var(--token-accent-base) 54%, transparent);
     }
+
+    &.isOutpaint {
+      padding: 16px;
+      background:
+        linear-gradient(90deg, color-mix(in srgb, var(--token-accent-base) 10%, transparent) 1px, transparent 1px),
+        linear-gradient(0deg, color-mix(in srgb, var(--token-accent-base) 10%, transparent) 1px, transparent 1px),
+        color-mix(in srgb, var(--token-bg-app) 88%, transparent);
+      background-size: 18px 18px;
+    }
+  }
+}
+
+.linghuiImageToolOutpaintFrame {
+  position: relative;
+  width: min(74%, 240px);
+  aspect-ratio: 4 / 3;
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: $lh-text-muted;
+  background: color-mix(in srgb, var(--token-bg-card) 70%, transparent);
+  box-shadow:
+    0 0 0 14px color-mix(in srgb, var(--token-accent-base) 12%, transparent),
+    0 0 0 15px color-mix(in srgb, var(--token-accent-base) 35%, transparent),
+    0 14px 34px color-mix(in srgb, var(--token-bg-app) 42%, transparent);
+
+  &.isWide {
+    width: min(62%, 220px);
+    aspect-ratio: 1 / 1;
+    box-shadow:
+      -38px 0 0 color-mix(in srgb, var(--token-accent-base) 12%, transparent),
+      38px 0 0 color-mix(in srgb, var(--token-accent-base) 12%, transparent),
+      0 0 0 1px color-mix(in srgb, var(--token-accent-base) 35%, transparent),
+      0 14px 34px color-mix(in srgb, var(--token-bg-app) 42%, transparent);
+  }
+
+  &.isTall {
+    width: min(44%, 150px);
+    aspect-ratio: 3 / 4;
+    box-shadow:
+      0 -26px 0 color-mix(in srgb, var(--token-accent-base) 12%, transparent),
+      0 26px 0 color-mix(in srgb, var(--token-accent-base) 12%, transparent),
+      0 0 0 1px color-mix(in srgb, var(--token-accent-base) 35%, transparent),
+      0 14px 34px color-mix(in srgb, var(--token-bg-app) 42%, transparent);
+  }
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
   }
 }
 
@@ -125,6 +178,990 @@
     display: block;
     width: 100% !important;
     height: 100% !important;
+  }
+}
+
+.linghuiImageFocus {
+  &Panel {
+    gap: 10px;
+  }
+
+  &Header {
+    @include lh-inline(10px, nowrap, flex-start, space-between);
+  }
+
+  &Hint {
+    @include lh-text($lh-text-muted, 11px, 1.5);
+
+    margin-top: 3px;
+  }
+
+  &Stage {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    min-height: 168px;
+    border-radius: 14px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: color-mix(in srgb, var(--token-bg-app) 88%, transparent);
+    color: $lh-text-muted;
+    contain: paint;
+
+    img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+  }
+
+  &Box {
+    position: absolute;
+    left: var(--linghui-focus-x, 28%);
+    top: var(--linghui-focus-y, 22%);
+    width: var(--linghui-focus-w, 44%);
+    height: var(--linghui-focus-h, 42%);
+    border: 2px solid color-mix(in srgb, var(--token-status-error) 94%, white 6%);
+    border-radius: 10px;
+    box-shadow:
+      0 0 0 999px color-mix(in srgb, var(--token-bg-app) 42%, transparent),
+      0 0 0 1px color-mix(in srgb, var(--token-bg-card) 62%, transparent),
+      0 10px 28px color-mix(in srgb, var(--token-status-error) 22%, transparent);
+    pointer-events: none;
+  }
+
+  &PresetRow {
+    @include lh-inline(6px);
+  }
+
+  &PresetButton {
+    @include lh-chip-button(28px, 0 12px);
+  }
+
+  &Controls {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 12px;
+  }
+
+  &Slider {
+    @include lh-stack(6px);
+    @include lh-text($lh-text-muted, 11px, 1.4, 700);
+
+    min-width: 0;
+
+    input {
+      width: 100%;
+      accent-color: var(--token-status-error);
+    }
+
+    strong {
+      @include lh-text($lh-text-secondary, 11px, 1.4, 700);
+    }
+  }
+
+  &Actions {
+    @include lh-inline(8px, wrap, center, flex-end);
+  }
+}
+
+.linghuiImageMark {
+  &Panel {
+    gap: 10px;
+  }
+
+  &Stage {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    min-height: 168px;
+    border-radius: 14px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: color-mix(in srgb, var(--token-bg-app) 88%, transparent);
+    color: $lh-text-muted;
+    cursor: crosshair;
+    contain: paint;
+
+    img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      pointer-events: none;
+    }
+  }
+
+  &Point {
+    position: absolute;
+    left: var(--linghui-mark-x, 50%);
+    top: var(--linghui-mark-y, 50%);
+    width: 24px;
+    height: 24px;
+    border-radius: $lh-radius-pill;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transform: translate(-50%, -50%);
+    border: 2px solid color-mix(in srgb, var(--token-bg-app) 78%, transparent);
+    background: color-mix(in srgb, var(--token-status-warning) 88%, transparent);
+    color: $lh-text-primary;
+    font-size: 11px;
+    font-weight: 900;
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--token-status-warning) 54%, transparent),
+      0 8px 18px color-mix(in srgb, var(--token-bg-app) 36%, transparent);
+    pointer-events: none;
+  }
+
+  &List {
+    @include lh-stack(6px);
+  }
+
+  &ListItem {
+    @include lh-inline(8px, nowrap, center, space-between);
+
+    min-height: 30px;
+    padding: 0 8px 0 10px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--token-bg-app) 64%, transparent);
+    color: $lh-text-secondary;
+    font-size: 12px;
+
+    span {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    strong {
+      color: $lh-text-muted;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    button {
+      @include lh-chip-button(22px, 0 8px);
+
+      flex: 0 0 auto;
+      color: $lh-text-danger;
+    }
+  }
+}
+
+.linghuiImageToolPanel {
+  gap: 12px;
+
+  &Header {
+    @include lh-inline(10px, nowrap, flex-start, space-between);
+  }
+
+  &Hint {
+    @include lh-text($lh-text-muted, 11px, 1.5);
+
+    margin-top: 3px;
+  }
+
+  &Stage {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    min-height: 168px;
+    border-radius: 14px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: color-mix(in srgb, var(--token-bg-app) 88%, transparent);
+    color: $lh-text-muted;
+    contain: paint;
+
+    img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+  }
+
+  &LightSweep {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(circle at 22% 18%, color-mix(in srgb, var(--token-status-warning) 38%, transparent), transparent 32%),
+      linear-gradient(115deg, transparent 24%, color-mix(in srgb, var(--token-bg-card) 18%, transparent) 48%, transparent 70%);
+    mix-blend-mode: screen;
+  }
+
+  &Block {
+    @include lh-stack(7px);
+  }
+
+  &Label {
+    @include lh-text($lh-text-muted, 11px, 1.4, 700);
+  }
+
+  &Actions {
+    @include lh-inline(8px, wrap, center, flex-end);
+  }
+}
+
+.linghuiImageToolPresetGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.linghuiImageLibTVPanel {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  padding: 12px 12px 8px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--token-border-base) 62%, transparent);
+  background: color-mix(in srgb, var(--token-bg-app) 90%, transparent);
+  box-shadow: 0 16px 42px color-mix(in srgb, var(--token-bg-app) 38%, transparent);
+  backdrop-filter: blur(20px);
+
+  &.isRelight {
+    padding-inline: 12px;
+  }
+
+  &.isCompactTool {
+    padding-inline: 12px;
+  }
+}
+
+.linghuiImageLibTVPanelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+
+  h3 {
+    margin: 0;
+    color: $lh-text-primary;
+    font-size: 14px;
+    line-height: 1.2;
+    font-weight: 650;
+    letter-spacing: 0;
+  }
+}
+
+.linghuiImageLibTVCloseButton {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  padding: 0;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: color-mix(in srgb, var(--token-text-primary) 62%, transparent);
+  cursor: pointer;
+
+  &:hover {
+    background: color-mix(in srgb, var(--token-text-primary) 8%, transparent);
+    color: $lh-text-primary;
+  }
+}
+
+.linghuiImageLibTVTabRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 8px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+
+  button {
+    height: 28px;
+    padding: 0 10px;
+    border: 1px solid color-mix(in srgb, var(--token-border-base) 60%, transparent);
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--token-bg-card) 26%, transparent);
+    color: color-mix(in srgb, var(--token-text-primary) 58%, transparent);
+    font-size: 12px;
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+
+    &.isActive,
+    &:hover {
+      background: color-mix(in srgb, var(--token-bg-elevated) 76%, transparent);
+      color: $lh-text-primary;
+    }
+  }
+}
+
+.linghuiImageLibTVPanelBody {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+
+  &.isTwoColumn {
+    grid-template-columns: minmax(220px, 240px) minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  &.isRelightGrid {
+    grid-template-columns: 188px 204px 204px;
+    gap: 8px;
+    align-items: start;
+  }
+}
+
+.linghuiImageLibTVOrbitStage,
+.linghuiImageLibTVLightingStage,
+.linghuiImageLibTVOutpaintStage,
+.linghuiImageLibTVPreviewStage {
+  position: relative;
+  min-height: 200px;
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--token-bg-card) 70%, transparent);
+  color: $lh-text-muted;
+}
+
+.linghuiImageLibTVOrbitStage {
+  min-height: 220px;
+
+  canvas {
+    border-radius: 12px;
+  }
+}
+
+.linghuiImageLibTVPreviewStage {
+  min-height: 200px;
+
+  img {
+    max-width: 74%;
+    max-height: 74%;
+    border-radius: 12px;
+    object-fit: contain;
+    box-shadow: 0 16px 36px color-mix(in srgb, var(--token-bg-app) 46%, transparent);
+  }
+}
+
+.linghuiImageLibTVLightingStage {
+  min-height: 226px;
+  padding: 0;
+  flex-direction: column;
+  gap: 0;
+  background: color-mix(in srgb, var(--token-bg-card) 48%, transparent);
+}
+
+.linghuiImageLibTVPreviewStage.isLightingSphere {
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.linghuiImageLibTVPreviewStage.isMultiAngleScene {
+  min-height: 220px;
+  background: color-mix(in srgb, var(--token-bg-elevated) 86%, transparent);
+}
+
+.linghuiImageLibTVSegmented {
+  width: min(100%, 128px);
+  height: 26px;
+  padding: 3px;
+  border-radius: 8px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  background: color-mix(in srgb, var(--token-bg-app) 54%, transparent);
+  border: 1px solid color-mix(in srgb, var(--token-border-base) 44%, transparent);
+
+  button {
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: color-mix(in srgb, var(--token-text-primary) 52%, transparent);
+    font-size: 11px;
+    cursor: pointer;
+
+    &.isActive {
+      color: $lh-text-primary;
+      background: color-mix(in srgb, var(--token-bg-elevated) 66%, transparent);
+    }
+  }
+}
+
+.linghuiLightingSpherePreview {
+  position: relative;
+  width: min(100%, 188px);
+  min-height: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  justify-content: flex-start;
+  padding-top: 8px;
+}
+
+.linghuiLightingSphereCanvas {
+  position: relative;
+  width: 188px;
+  max-width: 100%;
+  height: 188px;
+  min-height: 188px;
+  aspect-ratio: 1 / 1;
+  flex: 0 0 188px;
+  overflow: hidden;
+  border-radius: 12px;
+  cursor: crosshair;
+  background:
+    radial-gradient(circle at 50% 44%, color-mix(in srgb, var(--token-text-primary) 10%, transparent), transparent 58%),
+    color-mix(in srgb, var(--token-bg-app) 42%, transparent);
+
+  canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+  }
+}
+
+.linghuiMultiAngle3DHint {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  max-width: calc(100% - 20px);
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 9999px;
+  display: inline-flex;
+  align-items: center;
+  background: color-mix(in srgb, var(--token-bg-app) 68%, transparent);
+  color: color-mix(in srgb, var(--token-text-primary) 68%, transparent);
+  font-size: 10px;
+  font-weight: 700;
+  pointer-events: none;
+  backdrop-filter: blur(10px);
+}
+
+.linghuiMultiAngleDirectionPad {
+  position: absolute;
+  inset: 8px;
+  pointer-events: none;
+
+  button {
+    position: absolute;
+    width: 28px;
+    height: 28px;
+    border: 0;
+    padding: 0;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: color-mix(in srgb, var(--token-bg-app) 48%, transparent);
+    color: color-mix(in srgb, var(--token-text-primary) 68%, transparent);
+    cursor: pointer;
+    pointer-events: auto;
+    backdrop-filter: blur(10px);
+    transition: background $lh-transition-base, color $lh-transition-base, transform $lh-transition-base;
+
+    &:hover {
+      color: $lh-text-primary;
+      background: color-mix(in srgb, var(--token-bg-elevated) 78%, transparent);
+      transform: translateY(-1px);
+    }
+  }
+
+  .isUp,
+  .isDown {
+    left: 50%;
+    transform: translateX(-50%);
+
+    &:hover {
+      transform: translateX(-50%) translateY(-1px);
+    }
+  }
+
+  .isUp {
+    top: 0;
+  }
+
+  .isDown {
+    bottom: 0;
+  }
+
+  .isLeft,
+  .isRight {
+    top: 50%;
+    transform: translateY(-50%);
+
+    &:hover {
+      transform: translateY(-50%) translateY(-1px);
+    }
+  }
+
+  .isLeft {
+    left: 0;
+  }
+
+  .isRight {
+    right: 0;
+  }
+}
+
+.linghuiImageLibTVModeSwitcher {
+  height: 28px;
+  padding: 3px;
+  border-radius: 8px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  background: color-mix(in srgb, var(--token-bg-app) 52%, transparent);
+  border: 1px solid color-mix(in srgb, var(--token-border-base) 42%, transparent);
+
+  button {
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: color-mix(in srgb, var(--token-text-primary) 52%, transparent);
+    font-size: 11px;
+    cursor: pointer;
+
+    &.isActive {
+      color: $lh-text-primary;
+      background: color-mix(in srgb, var(--token-bg-elevated) 68%, transparent);
+    }
+  }
+}
+
+.linghuiImageLibTVControlStack,
+.linghuiImageLibTVPresetColumn {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.linghuiImageLibTVSectionTitle {
+  color: color-mix(in srgb, var(--token-text-primary) 64%, transparent);
+  font-size: 12px;
+  line-height: 1.2;
+  font-weight: 700;
+}
+
+.linghuiImageLibTVSliderRow,
+.linghuiImageLibTVColorRow,
+.linghuiImageLibTVSwitchRow,
+.linghuiImageLibTVSmartHeader {
+  display: grid;
+  grid-template-columns: 60px minmax(92px, 1fr) 44px;
+  align-items: center;
+  gap: 8px;
+  color: color-mix(in srgb, var(--token-text-primary) 62%, transparent);
+  font-size: 12px;
+
+  input[type='range'] {
+    width: 100%;
+    accent-color: color-mix(in srgb, var(--token-accent-base) 92%, var(--token-status-info));
+  }
+
+  strong {
+    justify-self: end;
+    color: $lh-text-primary;
+    font-weight: 500;
+  }
+}
+
+.linghuiImageLibTVColorRow {
+  grid-template-columns: 60px auto 1fr;
+
+  input[type='color'] {
+    width: 44px;
+    height: 22px;
+    padding: 0;
+    border-radius: 6px;
+    border: 1px solid color-mix(in srgb, var(--token-border-base) 72%, transparent);
+    background: transparent;
+  }
+}
+
+.linghuiImageLibTVSwitchRow,
+.linghuiImageLibTVSmartHeader {
+  grid-template-columns: auto max-content;
+  justify-content: space-between;
+
+  button {
+    width: 30px;
+    height: 16px;
+    border: 0;
+    border-radius: 9999px;
+    background: color-mix(in srgb, var(--token-text-primary) 18%, transparent);
+    cursor: pointer;
+    position: relative;
+
+    &::after {
+      content: '';
+      position: absolute;
+      top: 4px;
+      left: 4px;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--token-text-primary);
+      transition: transform $lh-transition-base;
+    }
+
+    &.isOn {
+      background: color-mix(in srgb, var(--token-text-primary) 86%, transparent);
+
+      &::after {
+        transform: translateX(14px);
+        background: var(--token-bg-app);
+      }
+    }
+  }
+}
+
+.linghuiImageLibTVActiveMark {
+  min-width: 42px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 9999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--token-text-primary) 9%, transparent);
+  color: color-mix(in srgb, var(--token-text-primary) 54%, transparent);
+  font-size: 10px;
+  font-weight: 700;
+
+  &.isActive {
+    color: var(--token-status-success);
+    background: color-mix(in srgb, var(--token-status-success) 18%, transparent);
+  }
+}
+
+.linghuiImageLibTVButtonGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+
+  button {
+    height: 30px;
+    border-radius: 7px;
+    border: 1px solid color-mix(in srgb, var(--token-border-base) 60%, transparent);
+    background: color-mix(in srgb, var(--token-bg-card) 28%, transparent);
+    color: color-mix(in srgb, var(--token-text-primary) 58%, transparent);
+    font-size: 12px;
+    cursor: pointer;
+
+    &.isActive,
+    &:hover {
+      border-color: color-mix(in srgb, var(--token-text-primary) 38%, transparent);
+      background: color-mix(in srgb, var(--token-bg-elevated) 68%, transparent);
+      color: $lh-text-primary;
+    }
+  }
+}
+
+.linghuiImageLibTVPromptBox {
+  width: 100%;
+  min-height: 56px;
+  resize: vertical;
+  box-sizing: border-box;
+  padding: 8px 9px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--token-border-base) 58%, transparent);
+  background: color-mix(in srgb, var(--token-bg-app) 34%, transparent);
+  color: $lh-text-primary;
+  font-size: 12px;
+  line-height: 1.5;
+  outline: none;
+}
+
+.linghuiImageLibTVPresetGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+  gap: 6px;
+
+  button {
+    position: relative;
+    min-height: 44px;
+    border: 0;
+    border-radius: 10px;
+    overflow: hidden;
+    background:
+      linear-gradient(145deg, color-mix(in srgb, var(--token-accent-base) 34%, transparent), transparent 58%),
+      color-mix(in srgb, var(--token-bg-elevated) 76%, transparent);
+    color: $lh-text-primary;
+    font-size: 11px;
+    font-weight: 700;
+    text-align: left;
+    padding: 7px;
+    cursor: pointer;
+
+    &.isActive,
+    &:hover {
+      box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--token-text-primary) 54%, transparent);
+    }
+  }
+}
+
+.linghuiImageLibTVReferencePreview {
+  display: grid;
+  grid-template-columns: 40px 1fr;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--token-bg-card) 36%, transparent);
+  border: 1px solid color-mix(in srgb, var(--token-border-base) 46%, transparent);
+
+  img {
+    width: 40px;
+    height: 32px;
+    border-radius: 6px;
+    object-fit: cover;
+  }
+
+  button {
+    justify-self: end;
+    min-height: 24px;
+    padding: 0 7px;
+    border-radius: 7px;
+    border: 0;
+    background: color-mix(in srgb, var(--token-text-primary) 10%, transparent);
+    color: color-mix(in srgb, var(--token-text-primary) 70%, transparent);
+    font-size: 12px;
+    cursor: pointer;
+  }
+}
+
+.linghuiImageLibTVReferenceButton {
+  min-height: 30px;
+  border-radius: 8px;
+  border: 1px dashed color-mix(in srgb, var(--token-border-base) 60%, transparent);
+  background: color-mix(in srgb, var(--token-bg-card) 26%, transparent);
+  color: color-mix(in srgb, var(--token-text-primary) 64%, transparent);
+  font-size: 12px;
+  cursor: pointer;
+
+  &:hover {
+    color: $lh-text-primary;
+    border-color: color-mix(in srgb, var(--token-accent-base) 46%, transparent);
+  }
+}
+
+.linghuiImageLibTVPresetButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+
+  button {
+    min-height: 28px;
+    padding: 0 10px;
+    border-radius: 7px;
+    border: 1px solid color-mix(in srgb, var(--token-border-base) 54%, transparent);
+    background: color-mix(in srgb, var(--token-bg-card) 32%, transparent);
+    color: color-mix(in srgb, var(--token-text-primary) 64%, transparent);
+    font-size: 12px;
+    cursor: pointer;
+
+    &.isActive,
+    &:hover {
+      background: color-mix(in srgb, var(--token-bg-elevated) 72%, transparent);
+      color: $lh-text-primary;
+    }
+  }
+}
+
+.linghuiImageLibTVOutpaintStage {
+  min-height: 230px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--token-text-primary) 8%, transparent) 1px, transparent 1px),
+    linear-gradient(0deg, color-mix(in srgb, var(--token-text-primary) 8%, transparent) 1px, transparent 1px),
+    color-mix(in srgb, var(--token-bg-card) 54%, transparent);
+  background-size: 22px 22px;
+}
+
+// LibTV 扩图预览：白色虚线边框包裹"原图 + 4 向扩展区"，扩展区随 outpaintRatio 实时变化。
+.linghuiImageToolOutpaintPreview {
+  position: relative;
+  display: inline-block;
+  padding-top: var(--linghui-outpaint-top, 0);
+  padding-right: var(--linghui-outpaint-right, 0);
+  padding-bottom: var(--linghui-outpaint-bottom, 0);
+  padding-left: var(--linghui-outpaint-left, 0);
+  border: 1px dashed color-mix(in srgb, var(--token-accent-base) 70%, transparent);
+  background: color-mix(in srgb, var(--token-accent-base) 8%, transparent);
+  border-radius: 6px;
+  transition: padding 160ms ease;
+}
+
+// LibTV 扩图 4 向滑块
+.linghuiImageLibTVOutpaintSliders {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.linghuiImageLibTVOutpaintSliderRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+
+  input[type=range] {
+    flex: 1;
+    height: 18px;
+  }
+}
+
+.linghuiImageLibTVOutpaintSliderLabel {
+  width: 18px;
+  text-align: center;
+  color: color-mix(in srgb, var(--token-text-primary) 70%, transparent);
+}
+
+.linghuiImageLibTVOutpaintSliderValue {
+  width: 40px;
+  text-align: right;
+  color: color-mix(in srgb, var(--token-text-primary) 80%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+
+.linghuiImageLibTVPanelFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.linghuiImageLibTVResetButton {
+  height: 28px;
+  padding: 0;
+  border: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  color: color-mix(in srgb, var(--token-text-primary) 56%, transparent);
+  font-size: 12px;
+  cursor: pointer;
+
+  &:hover {
+    color: $lh-text-primary;
+  }
+}
+
+.linghuiImageLibTVFooterRight {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.linghuiImageLibTVGenerateButton {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  padding: 0;
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--token-text-primary);
+  color: var(--token-bg-app);
+  cursor: pointer;
+  transition: transform $lh-transition-base, opacity $lh-transition-base;
+
+  &:hover:not(:disabled) {
+    transform: translateY(-1px);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  svg {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+.linghuiImageToolPresetCard {
+  @include lh-stack(3px);
+
+  min-width: 0;
+  padding: 9px 10px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--token-border-base) 58%, transparent);
+  background: color-mix(in srgb, var(--token-bg-app) 58%, transparent);
+  color: $lh-text-primary;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color $lh-transition-base, background $lh-transition-base;
+
+  span {
+    @include lh-text($lh-text-primary, 12px, 1.35, 700);
+  }
+
+  small {
+    @include lh-text($lh-text-muted, 11px, 1.35);
+  }
+
+  &:hover,
+  &.isActive {
+    border-color: color-mix(in srgb, var(--token-accent-base) 72%, transparent);
+    background: color-mix(in srgb, var(--token-accent-base) 13%, transparent);
+  }
+}
+
+.linghuiImageToolOptionRow {
+  @include lh-inline(6px, wrap);
+}
+
+.linghuiImageToolOptionButton {
+  @include lh-chip-button(28px, 0 11px);
+
+  &.isActive {
+    color: var(--token-accent-base);
+    border-color: color-mix(in srgb, var(--token-accent-base) 58%, transparent);
+    background: color-mix(in srgb, var(--token-accent-base) 14%, transparent);
+  }
+}
+
+.linghuiImageToolPromptTextarea {
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+  box-sizing: border-box;
+  padding: 9px 10px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--token-border-base) 58%, transparent);
+  background: color-mix(in srgb, var(--token-bg-app) 66%, transparent);
+  color: $lh-text-primary;
+  font-size: 12px;
+  line-height: 1.5;
+  outline: none;
+
+  &:focus {
+    border-color: color-mix(in srgb, var(--token-accent-base) 68%, transparent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--token-accent-base) 14%, transparent);
   }
 }
 
@@ -646,5 +1683,9 @@
 
   .linghuiMultiAngleStage {
     min-height: 420px;
+  }
+
+  .linghuiImageFocusControls {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

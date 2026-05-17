@@ -14,7 +14,6 @@ const CURRENT_LINGHUI_TYPES: readonly LinghuiNodeType[] = [
   'linghui/text',
   'linghui/agent',
   'linghui/image',
-  'linghui/image-generator',
   'linghui/panorama',
   'linghui/video',
   'linghui/audio',
@@ -27,7 +26,6 @@ const CURRENT_RF_TYPES: readonly LinghuiRFNodeTypeKey[] = [
   'linghui-text',
   'linghui-agent',
   'linghui-image',
-  'linghui-image-generator',
   'linghui-panorama',
   'linghui-video',
   'linghui-audio',
@@ -56,27 +54,41 @@ const LINGHUI_TYPE_TO_RF_TYPE_MAP: Record<LinghuiNodeType, LinghuiRFNodeTypeKey>
   'linghui/text': 'linghui-text',
   'linghui/agent': 'linghui-agent',
   'linghui/image': 'linghui-image',
-  'linghui/image-generator': 'linghui-image-generator',
   'linghui/panorama': 'linghui-panorama',
   'linghui/video': 'linghui-video',
   'linghui/audio': 'linghui-audio',
   'linghui/script': 'linghui-script',
   'linghui/storyboard': 'linghui-storyboard',
   'linghui/director3d': 'linghui-director3d',
+  'linghui/image-grid-slice': 'linghui-image-grid-slice',
+  'linghui/video-clip': 'linghui-video-clip',
 };
 
 const RF_TYPE_TO_LINGHUI_TYPE_MAP: Record<LinghuiRFNodeTypeKey, LinghuiNodeType> = {
   'linghui-text': 'linghui/text',
   'linghui-agent': 'linghui/agent',
   'linghui-image': 'linghui/image',
-  'linghui-image-generator': 'linghui/image-generator',
   'linghui-panorama': 'linghui/panorama',
   'linghui-video': 'linghui/video',
   'linghui-audio': 'linghui/audio',
   'linghui-script': 'linghui/script',
   'linghui-storyboard': 'linghui/storyboard',
   'linghui-director3d': 'linghui/director3d',
+  'linghui-image-grid-slice': 'linghui/image-grid-slice',
+  'linghui-video-clip': 'linghui/video-clip',
 };
+
+// 旧持久化迁移：linghui-image-generator → linghui-image (mode='generate')。
+// document normalize 时把不在 CURRENT_RF_TYPES 中的旧 type 映射到 linghui-image。
+const LEGACY_RF_TYPE_MIGRATION: Record<string, LinghuiRFNodeTypeKey> = {
+  'linghui-image-generator': 'linghui-image',
+};
+const LEGACY_LINGHUI_TYPE_MIGRATION: Record<string, LinghuiNodeType> = {
+  'linghui/image-generator': 'linghui/image',
+};
+// 抑制未使用警告（迁移映射可能在未来添加更多 case）。
+void LEGACY_RF_TYPE_MIGRATION;
+void LEGACY_LINGHUI_TYPE_MIGRATION;
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value));

@@ -27,7 +27,7 @@ describe('linghuiCanvasStore', () => {
     useLinghuiCanvasStore.getState().setActiveNodeTool({
       kind: 'image',
       nodeId: 'node-a',
-      tool: 'multi-angle',
+      tool: 'focus',
     });
     useLinghuiCanvasStore.getState().setActiveNodeTool({
       kind: 'image',
@@ -44,9 +44,24 @@ describe('linghuiCanvasStore', () => {
     expect(useLinghuiCanvasStore.getState().activeNodeTool).toEqual({
       kind: 'image',
       nodeId: 'node-a',
-      tool: 'multi-angle',
+      tool: 'focus',
     });
     expect(useLinghuiCanvasStore.getState().gridSplitSelectedCells).toEqual([]);
+  });
+
+  it('treats focus as a normal image tool without touching grid split memory', () => {
+    useLinghuiCanvasStore.getState().setActiveNodeTool({
+      kind: 'image',
+      nodeId: 'node-a',
+      tool: 'focus',
+    });
+
+    expect(useLinghuiCanvasStore.getState().activeNodeTool).toEqual({
+      kind: 'image',
+      nodeId: 'node-a',
+      tool: 'focus',
+    });
+    expect(useLinghuiCanvasStore.getState().previousGridSplitTool).toBeNull();
   });
 
   it('resetCanvasUiState clears transient editor and group state but preserves mode settings', () => {
@@ -108,6 +123,21 @@ describe('linghuiCanvasStore', () => {
     expect(state.canvasMode).toBe('hand');
     expect(state.gridSplitType).toBe('4x4');
     expect(state.activeDrawer).toBe('asset');
+  });
+
+  it('setInteracting 切换 .canvas-interacting 用的拖拽态，相同值不会重新触发 set', () => {
+    expect(useLinghuiCanvasStore.getState().interacting).toBe(false);
+
+    useLinghuiCanvasStore.getState().setInteracting(true);
+    expect(useLinghuiCanvasStore.getState().interacting).toBe(true);
+
+    const snapshotBefore = useLinghuiCanvasStore.getState();
+    useLinghuiCanvasStore.getState().setInteracting(true);
+    // 同值时直接返回原 state，避免触发不必要的订阅重渲染
+    expect(useLinghuiCanvasStore.getState()).toBe(snapshotBefore);
+
+    useLinghuiCanvasStore.getState().setInteracting(false);
+    expect(useLinghuiCanvasStore.getState().interacting).toBe(false);
   });
 
   it('keeps context menu and quick create mutually exclusive', () => {

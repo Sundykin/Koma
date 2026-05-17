@@ -9,9 +9,13 @@ interface LinghuiNodeLibraryProps {
 }
 
 const CATEGORY_TITLES: Record<LinghuiNodeCategory, string> = {
-  creation: '创作节点',
+  asset: '素材节点',
+  generation: '生成节点',
   storyboard: '分镜节点',
+  spatial: '空间节点',
 };
+
+const CATEGORY_ORDER: LinghuiNodeCategory[] = ['asset', 'generation', 'storyboard', 'spatial'];
 
 export const LinghuiNodeLibrary: React.FC<LinghuiNodeLibraryProps> = ({
   onAddNode,
@@ -29,7 +33,7 @@ export const LinghuiNodeLibrary: React.FC<LinghuiNodeLibraryProps> = ({
   }, [keyword]);
 
   const groups = useMemo(() => {
-    return (['creation', 'storyboard'] as LinghuiNodeCategory[]).map(category => ({
+    return CATEGORY_ORDER.map(category => ({
       category,
       items: filteredCatalog.filter(item => item.category === category),
     }));

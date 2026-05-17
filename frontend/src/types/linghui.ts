@@ -1,43 +1,135 @@
 import type { AppSettings } from '../types';
 import type { VideoGenerationCapability } from './media';
 
+/**
+ * LibTV 1:1：所有图片节点统一为 'linghui/image'，按 properties.mode + 是否有 result 渲染三态：
+ *  1) mode='import' + 无 source → 自行上传图片占位（截图：上传 placeholder）
+ *  2) mode='import' + 有 source → 上传素材展示（截图 3：浮空工具条 + 图片预览 + 文件名 + WxH）
+ *  3) mode='generate' + 无 result → 未生成状态（截图 2：中心占位 + "图生图/图片高清" 引导 + 底部编辑器）
+ *  4) mode='generate' + 有 result → 已生成状态（截图 4：浮空工具条 + 图片 + 底部编辑器）
+ * 历史的 'linghui/image-generator' 类型已废弃；旧节点恢复时按 'linghui/image' + mode='generate' 处理。
+ */
 export type LinghuiNodeType =
   | 'linghui/text'
   | 'linghui/agent'
   | 'linghui/image'
-  | 'linghui/image-generator'
   | 'linghui/panorama'
   | 'linghui/video'
   | 'linghui/audio'
   | 'linghui/script'
   | 'linghui/storyboard'
-  | 'linghui/director3d';
+  | 'linghui/director3d'
+  // 宫格切分中间节点：上游单张图被切成 N 个槽位，每个槽位可独立"彻底切分"派生为独立图节点
+  | 'linghui/image-grid-slice'
+  // 视频合成节点：多个视频/图片片段拼合为单一视频；详情打开"最终剪辑"工具
+  | 'linghui/video-clip';
 
 export type LinghuiRFNodeTypeKey =
   | 'linghui-text'
   | 'linghui-agent'
   | 'linghui-image'
-  | 'linghui-image-generator'
   | 'linghui-panorama'
   | 'linghui-video'
   | 'linghui-audio'
   | 'linghui-script'
   | 'linghui-storyboard'
-  | 'linghui-director3d';
+  | 'linghui-director3d'
+  | 'linghui-image-grid-slice'
+  | 'linghui-video-clip';
 
-export type LinghuiNodeCategory = 'creation' | 'storyboard';
+export type LinghuiNodeCategory = 'asset' | 'generation' | 'storyboard' | 'spatial';
 export type LinghuiSlotDataType = 'image' | 'text' | 'video' | 'audio' | 'images' | 'shot' | 'storyboard';
 export type LinghuiRunStatus = 'idle' | 'running' | 'succeeded' | 'failed' | 'stale';
 export type LinghuiResultKind = 'image' | 'text' | 'video' | 'audio' | 'grid' | 'images' | 'shot' | 'storyboard';
 export type LinghuiCanvasMode = 'mouse' | 'hand';
 export type LinghuiImageNodeMode = 'import' | 'generate';
-export type LinghuiImageToolKey = 'multi-angle' | 'outpaint' | 'relight' | 'repaint' | 'grid-split';
-export type LinghuiVideoToolKey = 'upscale' | 'analyze' | 'compose';
+
+/**
+ * LibTV ImageNode 视图状态机（对齐 docs/libtv-imagenode-state-machine.md）。
+ * 与 Text/Video 节点同模板：
+ *   generating / failed / resource / pending / empty_generate
+ * - import 模式：始终 resource（纯素材节点）
+ * - 有 collection / source / result 图：resource
+ * - generate 模式 + 无图 + 有上游：pending
+ * - 否则：empty_generate（显示"图生图 / 图片高清"建议）
+ */
+export type LinghuiImageNodeViewState =
+  | 'generating'
+  | 'failed'
+  | 'resource'
+  | 'pending'
+  | 'empty_generate';
+export type LinghuiImageToolKey =
+  | 'focus'
+  | 'mark'
+  | 'upscale'
+  | 'multi-angle'
+  | 'outpaint'
+  | 'relight'
+  | 'repaint'
+  | 'erase'
+  | 'remove-bg'
+  | 'crop'
+  | 'mockup'
+  | 'edit-elements'
+  | 'edit-texts'
+  | 'grid-split';
+/**
+ * 视频节点工具。对齐 LibTV 截图工具条：剪辑 / 高清 / 解析 / 智能去字幕 / 音频分离。
+ * - clip               剪辑：本地 FFmpeg trim 派生新视频节点
+ * - upscale            高清：FFmpeg 倍率放大派生
+ * - analyze            解析：把视频转写为提示词/分镜文本
+ * - subtitle-remove    智能去字幕（LibTV: "AI一键去除视频字幕，仅支持中英文字幕"，后端服务待接入）
+ * - audio-separation   音频分离（一级菜单容器，下挂"音视频分离"和"人声分离"二级）
+ * - 'compose' 已废弃，原因：与 LibTV 模式重合且功能模糊，并入解析。
+ */
+export type LinghuiVideoToolKey =
+  | 'clip'
+  | 'upscale'
+  | 'analyze'
+  | 'subtitle-remove'
+  | 'audio-separation';
 export type LinghuiNodeViewMode = 'collapsed' | 'light' | 'immersive';
 export type LinghuiMultiAngleAzimuth = 0 | 45 | 90 | 135 | 180 | 225 | 270 | 315;
 export type LinghuiMultiAngleElevation = -30 | 0 | 30 | 60;
 export type LinghuiMultiAngleDistance = 0.6 | 1 | 1.8;
 export type LinghuiMultiAnglePromptProtocol = 'sks-camera-v1' | 'descriptor-only-v1';
+export type LinghuiMultiAngleMode = 'object' | 'camera';
+export type LinghuiMultiAnglePresetKey =
+  | 'custom'
+  | 'fisheye'
+  | 'tilted'
+  | 'front-down'
+  | 'front-up'
+  | 'panoramic-down'
+  | 'back';
+export type LinghuiRelightDirection =
+  | 'front'
+  | 'front-right'
+  | 'right'
+  | 'back-right'
+  | 'back'
+  | 'back-left'
+  | 'left'
+  | 'front-left'
+  | 'high-front'
+  | 'high-front-right'
+  | 'high-right'
+  | 'high-back-right'
+  | 'high-back'
+  | 'high-back-left'
+  | 'high-left'
+  | 'high-front-left'
+  | 'low-front'
+  | 'low-front-right'
+  | 'low-right'
+  | 'low-back-right'
+  | 'low-back'
+  | 'low-back-left'
+  | 'low-left'
+  | 'low-front-left'
+  | 'top'
+  | 'bottom';
 export type LinghuiNodeToolState =
   | { kind: 'image'; nodeId: string; tool: LinghuiImageToolKey }
   | { kind: 'video'; nodeId: string; tool: LinghuiVideoToolKey }
@@ -46,6 +138,22 @@ export type LinghuiNodeToolState =
 // --- 图片节点 ---
 
 export type LinghuiTextNodeMode = 'manual' | 'generate';
+
+/**
+ * LibTV TextNode 5 状态机派生视图（15gvxu:55066-55074）：
+ *   generating / failed / resource / pending / empty_generate
+ * - generating：taskInfo.loading → 渲染生成中视图
+ * - failed：taskInfo 失败 → 渲染失败视图
+ * - resource：有 content 或 mode='manual'（对齐 LibTV TEXT_RESOURCE 永远是 resource）→ 渲染编辑器/文本预览
+ * - pending：当前 mode='generate' 且没有 content，但已有上游连入 → 等待上游产出
+ * - empty_generate：默认（generate 模式 + 无 content + 无上游）→ 显示 4 actions EmptyState
+ */
+export type LinghuiTextNodeViewState =
+  | 'generating'
+  | 'failed'
+  | 'resource'
+  | 'pending'
+  | 'empty_generate';
 export type LinghuiScriptNodeMode = 'manual' | 'generate';
 export type LinghuiScriptNodeViewMode = 'cards' | 'table';
 export type LinghuiScriptDerivationKind = 'text' | 'image' | 'video-image' | 'video';
@@ -112,6 +220,82 @@ export interface LinghuiImageAssetItem {
   aspectRatio?: string;
 }
 
+export interface LinghuiImageFocusRegion {
+  enabled: boolean;
+  /** Normalized left position in the source image, range [0, 1]. */
+  x: number;
+  /** Normalized top position in the source image, range [0, 1]. */
+  y: number;
+  /** Normalized width in the source image, range [0, 1]. */
+  width: number;
+  /** Normalized height in the source image, range [0, 1]. */
+  height: number;
+  /** Image source captured when the region was marked, used as image-to-image reference on rerun. */
+  source?: string;
+  label?: string;
+  updatedAt?: number;
+}
+
+export interface LinghuiImageMarkPoint {
+  id: string;
+  enabled: boolean;
+  /** Normalized x position in the source image, range [0, 1]. */
+  x: number;
+  /** Normalized y position in the source image, range [0, 1]. */
+  y: number;
+  /** Image source captured when the point was marked. */
+  source?: string;
+  label?: string;
+  prompt?: string;
+  updatedAt?: number;
+}
+
+/**
+ * 电影感参数：把"打光 / 焦距 / 光圈"从隐式提示词词条改成结构化字段。
+ * - lighting：光线类型（自然/柔光/伦勃朗/边缘光/逆光/低调/高调/霓虹/黄金/蓝调）
+ * - focalLength：焦距档（24mm 广角 / 50mm 标头 / 85mm 人像中长焦 / 135mm 长焦 / 微距）
+ * - aperture：光圈/景深（浅 f1.4 / 中 f2.8 / 深 f8）
+ * 所有值缺省时不会注入到 prompt，保证旧节点行为不变；任意字段非默认时执行器会拼接成英文导演短语。
+ */
+export type LinghuiImageLightingPreset =
+  | 'auto'
+  | 'natural'
+  | 'softbox'
+  | 'rembrandt'
+  | 'rim'
+  | 'backlight'
+  | 'low-key'
+  | 'high-key'
+  | 'neon'
+  | 'golden-hour'
+  | 'blue-hour';
+
+export type LinghuiImageFocalLengthPreset =
+  | 'auto'
+  | 'wide-24mm'
+  | 'standard-50mm'
+  | 'portrait-85mm'
+  | 'tele-135mm'
+  | 'macro';
+
+export type LinghuiImageAperturePreset =
+  | 'auto'
+  | 'shallow-f14'
+  | 'medium-f28'
+  | 'deep-f8';
+
+export interface LinghuiImageCinematicConfig {
+  lighting: LinghuiImageLightingPreset;
+  focalLength: LinghuiImageFocalLengthPreset;
+  aperture: LinghuiImageAperturePreset;
+}
+
+export const DEFAULT_LINGHUI_IMAGE_CINEMATIC_CONFIG: LinghuiImageCinematicConfig = {
+  lighting: 'auto',
+  focalLength: 'auto',
+  aperture: 'auto',
+};
+
 export interface LinghuiImageNodeProperties extends LinghuiScriptDerivedProperties {
   mode: LinghuiImageNodeMode;
   source: string;
@@ -125,6 +309,21 @@ export interface LinghuiImageNodeProperties extends LinghuiScriptDerivedProperti
   gridType: LinghuiGridType;
   batchCount: number;
   multiAngle?: LinghuiMultiAngleConfig;
+  relight?: LinghuiImageRelightConfig;
+  focusRegion?: LinghuiImageFocusRegion | null;
+  markPoints?: LinghuiImageMarkPoint[];
+  /** 电影感参数（打光/焦距/光圈），任意非 auto 字段会拼到 prompt 末尾。可选，保持旧节点兼容。 */
+  cinematic?: LinghuiImageCinematicConfig;
+  /**
+   * LibTV 扩图比例：4 个方向相对原图的扩展量（0-1 区间）。仅在 outpaint 工具中使用，
+   * 由扩图面板的 4 向滑块写入。最终 prompt 会拼接方向描述（"向 X 方向各扩 Y%"）。
+   */
+  outpaintRatio?: { top: number; right: number; bottom: number; left: number };
+  /**
+   * LibTV `_outpaintPads`：扩图生成成功后，记录原图相对于新画布的位置（像素偏移）。
+   * 由 outpaint 提交链路写入，用于后续"再次扩图"或"还原"操作。
+   */
+  _outpaintPads?: { top: number; right: number; bottom: number; left: number };
   /**
    * 该展示节点是由哪个 image-generator 控制器派生而来。
    * 仅记录来源，便于控制器维护生成历史；展示节点本身仍是独立 image 节点，
@@ -133,6 +332,41 @@ export interface LinghuiImageNodeProperties extends LinghuiScriptDerivedProperti
   generatedFromNodeId?: string;
   /** 第几次生成（从 1 开始），用于自动 label */
   generatedSequence?: number;
+}
+
+/**
+ * 宫格切分中间节点属性：上游单张图被本地 canvas 切成 N 个槽位，每个槽位独立可派生为图节点。
+ * 槽位 source 可以是空（用户手动从外部拖入/清空）或本地 dataUrl（切分时填充）。
+ */
+export interface LinghuiImageGridSliceNodeProperties {
+  /** 上游主图（切分源）；空时显示"等待上游"提示 */
+  source: string;
+  /** 切分类型：2x2=4 槽 / 3x3=9 槽 / 4x4=16 槽 / 5x5=25 槽 */
+  gridType: '2x2' | '3x3' | '4x4' | '5x5';
+  /** N 个槽位，长度 = gridType 对应槽数（4/9/16/25）；source 空表示槽位已被清空 */
+  slots: Array<{ id: string; source: string; label?: string }>;
+}
+
+/**
+ * 视频合成节点属性：把多个视频 / 图片片段拼合为单一视频。
+ *  - clips：片段列表（每项 kind 区分 video / image，image 片段会本地 FFmpeg 转为 N 秒静帧视频后再 concat）
+ *  - resolution / fps：导出参数，默认 1080p / 30fps
+ *  - source：合成完成后的本地或 OSS URL（暂未合成时为空）
+ *  - posterSource：合成完成后的封面
+ *  - durationSec：合成结果总时长（来自 FFmpeg 输出）
+ *  - status：'idle' | 'composing' | 'ready' | 'failed'
+ */
+export interface LinghuiVideoClipNodeProperties {
+  clips: Array<{ id: string; kind: 'video' | 'image'; source: string; durationSec?: number; label?: string }>;
+  resolution: '720p' | '1080p' | '4K';
+  fps: 24 | 30 | 60;
+  /** 每张图片片段默认时长（秒），仅 kind='image' 时生效；缺省 3s */
+  imageDurationSec: number;
+  source: string;
+  posterSource: string;
+  durationSec?: number;
+  status?: 'idle' | 'composing' | 'ready' | 'failed';
+  errorMessage?: string;
 }
 
 /**
@@ -153,13 +387,24 @@ export interface LinghuiImageGeneratorNodeProperties {
   generatedImageNodeIds?: string[];
   /** 累计生成次数（即使后面手动删了某个展示节点也只增不减），决定下一次 label 序号 */
   generationCount?: number;
+  /** 电影感参数（打光/焦距/光圈）会随每次派生注入到 image 节点 prompt */
+  cinematic?: LinghuiImageCinematicConfig;
 }
 
 export interface LinghuiPanoramaNodeProperties extends LinghuiImageNodeProperties {
   panoramaTemplate: LinghuiPanoramaTemplateKind;
+  /** LibTV slash 场景名。默认 720_panoramic；带用户 prompt 的模式对应 720_panoramic_with_prompt。 */
+  panoramaSlashScene?: string;
+  panoramaWithPromptScene?: string;
+  panoramaSlashLabel?: string;
+  /** LibTV 全景 slash 默认提交模型 key。灵绘仍通过 ttiSelection 选择真实渠道，这里用于默认比例和元数据。 */
+  panoramaModelKey?: string;
+  /** LibTV mergeSettingsForPanoramicSlashScene 默认 quality。 */
+  panoramaQuality?: string;
   /**
-   * 投影契约：决定提示词、出图比例、展示几何。缺省 'ar720-band'，等同于产品里的"全景"。
-   * 'equirectangular-2to1' 仅在用户主动切到「真 360°×180° 球面」时启用。
+   * 投影契约：决定提示词、出图比例、展示几何。新建节点默认按 LibTV `720_panoramic`
+   * 走 'equirectangular-2to1'；老节点缺字段时仍由 resolver 回退为 'ar720-band' 保持兼容。
+   * 'equirectangular-2to1' 表示真 360°×180° 球面。
    * 'flat-wide' 是兜底，模型不支持环绕全景时把它当宽幅图。
    */
   projectionMode?: LinghuiPanoramaProjectionMode;
@@ -194,12 +439,40 @@ export interface LinghuiPanoramaPerspectiveView {
 
 export interface LinghuiMultiAngleConfig {
   enabled: boolean;
+  /** LibTV p9/pX: object/camera 两种编辑模式。 */
+  mode: LinghuiMultiAngleMode;
+  /** LibTV p8/pV/pK: 水平旋转，camera 模式按 45° 吸附，object 模式支持连续角度。 */
+  rotation: number;
+  /** LibTV p8/pV/pK: 垂直俯仰/物体倾斜。 */
+  tilt: number;
+  /** LibTV p8/pV/pK: 0=全景，50=中景，100=特写。 */
+  scale: number;
+  /** LibTV object/camera preview 的广角镜头开关。 */
+  isWideAngle: boolean;
+  presetKey: LinghuiMultiAnglePresetKey;
+  prompt: string;
+  promptEnabled: boolean;
+  /** 旧版灵绘字段，保留用于持久化兼容和现有 provider 编译。 */
   azimuth: LinghuiMultiAngleAzimuth;
   elevation: LinghuiMultiAngleElevation;
   distance: LinghuiMultiAngleDistance;
   ttiSelection: string;
   promptProtocol: LinghuiMultiAnglePromptProtocol;
   endpointPath: string;
+}
+
+export interface LinghuiImageRelightConfig {
+  direction: LinghuiRelightDirection;
+  brightness: number;
+  lightColor: string;
+  rimLight: boolean;
+  smartMode: boolean;
+  prompt: string;
+  referenceImage?: string | null;
+  presetId?: string;
+  sceneActive?: boolean;
+  brightnessActive?: boolean;
+  colorActive?: boolean;
 }
 
 export interface LinghuiExecuteMultiAngleOptions {
@@ -212,6 +485,33 @@ export interface LinghuiExecuteMultiAngleOptions {
 
 export type LinghuiVideoCapability = VideoGenerationCapability;
 
+/**
+ * 视频节点模式：对齐 LibTV 节点分流。
+ * - 'import'  → 视频参考节点：只回放上传的视频，不暴露 prompt / 模型 / 生成按钮。
+ * - 'generate' → 视频生成器节点：走 itvSelection + capability + prompt 链路。
+ * 缺省（旧节点）仍按"有 source 就当 pass-through"兼容。
+ */
+export type LinghuiVideoNodeMode = 'import' | 'generate';
+
+/**
+ * LibTV VideoNode 6 状态机派生视图（chunk 15gvxu:191642-191652）：
+ *   generating / generating_with_content / failed / resource / pending / empty_generate
+ * - generating(_with_content)：taskInfo.loading；有 poster/snapshot 时走 _with_content
+ * - failed：taskInfo 失败
+ * - resource：有 url[0]（已有视频）
+ * - pending：generate 模式、无 url、但已有上游连入，等待上游产出
+ * - empty_generate：默认（无 url + 无上游 + 非 import）
+ *
+ * 灵绘合并 generating 与 generating_with_content 为单一 generating（已有 poster 走 poster
+ * 不闪屏的逻辑由组件内部处理）。
+ */
+export type LinghuiVideoNodeViewState =
+  | 'generating'
+  | 'failed'
+  | 'resource'
+  | 'pending'
+  | 'empty_generate';
+
 export interface LinghuiVideoNodeProperties extends LinghuiScriptDerivedProperties {
   prompt: string;
   itvSelection: string;
@@ -221,6 +521,8 @@ export interface LinghuiVideoNodeProperties extends LinghuiScriptDerivedProperti
   aspectRatio: string;
   resolution: string;
   duration: number;
+  /** 'import' 时视频节点是纯参考素材；'generate'（默认）才暴露 prompt + 生成按钮。 */
+  mode?: LinghuiVideoNodeMode;
 }
 
 // --- 3D 导演工作台节点 ---
@@ -558,11 +860,55 @@ export interface LinghuiDirector3DNodeProperties {
 
 // --- 音频节点 ---
 
+/**
+ * 音频节点模式：与视频节点对齐。
+ * - 'import'  → 音频参考节点：只承载上传的音频文件，不暴露 prompt / 模型 / 生成按钮。
+ * - 'generate' → 音频生成器节点：走 ttsSelection + voiceId + prompt 链路。
+ */
+export type LinghuiAudioNodeMode = 'import' | 'generate';
+
 export interface LinghuiAudioNodeProperties {
   source: string;
   prompt: string;
   ttsSelection: string;
   voiceId: string;
+  /** 'import' 时音频节点是纯参考素材；缺省（旧节点）按 generate 处理。 */
+  mode?: LinghuiAudioNodeMode;
+}
+
+/**
+ * LibTV AudioNode 5 状态机派生视图（chunk 15gvxu:8505-8513）：
+ *   generating / failed / resource / pending / empty_generate
+ * 与 Text/Image/Video 节点完全同模板。
+ */
+export type LinghuiAudioNodeViewState =
+  | 'generating'
+  | 'failed'
+  | 'resource'
+  | 'pending'
+  | 'empty_generate';
+
+/**
+ * 对齐 LibTV AudioNode 状态机（chunk 15gvxu:8505-8513）。
+ * - 优先级 generating > failed > resource > pending > empty_generate
+ * - resource：import 模式 / 有 source / 有 result 主音频
+ * - pending：generate + 无音频 + 有上游
+ */
+export function resolveLinghuiAudioNodeViewState(args: {
+  properties: LinghuiAudioNodeProperties;
+  result?: LinghuiNodeResult;
+  runStatus?: LinghuiRunStatus;
+  hasIncomingEdge: boolean;
+}): LinghuiAudioNodeViewState {
+  const { properties, result, runStatus, hasIncomingEdge } = args;
+  if (runStatus === 'running') return 'generating';
+  if (runStatus === 'failed') return 'failed';
+  const sourceLen = String(properties.source ?? '').trim().length;
+  const primary = getLinghuiResultPrimaryMedia(result);
+  const resultSourceLen = String(primary?.source ?? '').trim().length;
+  if (properties.mode === 'import' || sourceLen > 0 || resultSourceLen > 0) return 'resource';
+  if (hasIncomingEdge) return 'pending';
+  return 'empty_generate';
 }
 
 // --- 通用 ---
@@ -783,6 +1129,79 @@ export function getLinghuiResultItemCount(result?: LinghuiNodeResult): number {
   return isLinghuiImageCollectionResult(result) ? result.items.length : 0;
 }
 
+/**
+ * 对齐 LibTV ImageNode 状态机（docs/libtv-imagenode-state-machine.md §2-3）。
+ * - 优先级 generating > failed > resource > pending > empty_generate
+ * - resource 判定：import 模式 / 有 source / 有 result 主图 / collection 任意 item
+ * - pending：generate + 无图 + 已有上游连入
+ */
+export function resolveLinghuiImageNodeViewState(args: {
+  properties: LinghuiImageNodeProperties;
+  result?: LinghuiNodeResult;
+  runStatus?: LinghuiRunStatus;
+  hasIncomingEdge: boolean;
+  /** 派生标记：collection.items 是否非空（由 caller 用 resolveLinghuiImageCollection 算好传入，避免 types 模块反向依赖）。 */
+  hasCollectionItems?: boolean;
+}): LinghuiImageNodeViewState {
+  const { properties, result, runStatus, hasIncomingEdge, hasCollectionItems } = args;
+  if (runStatus === 'running') return 'generating';
+  if (runStatus === 'failed') return 'failed';
+  const sourceLen = String(properties.source ?? '').trim().length;
+  const primary = getLinghuiResultPrimaryMedia(result);
+  const resultSourceLen = String(primary?.source ?? '').trim().length;
+  if (properties.mode === 'import' || sourceLen > 0 || resultSourceLen > 0 || hasCollectionItems) {
+    return 'resource';
+  }
+  if (hasIncomingEdge) return 'pending';
+  return 'empty_generate';
+}
+
+/**
+ * 对齐 LibTV VideoNode 状态机（chunk 15gvxu:191642-191652）。
+ * - 优先级 generating > failed > resource > pending > empty_generate
+ * - import 模式直接走 resource（与 LibTV VIDEO_RESOURCE 一致；纯参考节点不会进 empty/pending）
+ * - resource 判定：有 source / 有 result primary 媒体 / mode==='import'
+ * - pending：generate 模式 + 无 content + 已有上游连入
+ */
+export function resolveLinghuiVideoNodeViewState(args: {
+  properties: LinghuiVideoNodeProperties;
+  result?: LinghuiNodeResult;
+  runStatus?: LinghuiRunStatus;
+  hasIncomingEdge: boolean;
+}): LinghuiVideoNodeViewState {
+  const { properties, result, runStatus, hasIncomingEdge } = args;
+  if (runStatus === 'running') return 'generating';
+  if (runStatus === 'failed') return 'failed';
+  const sourceLen = String(properties.source ?? '').trim().length;
+  const primary = getLinghuiResultPrimaryMedia(result);
+  const resultSourceLen = String(primary?.source ?? '').trim().length;
+  if (properties.mode === 'import' || sourceLen > 0 || resultSourceLen > 0) return 'resource';
+  if (hasIncomingEdge) return 'pending';
+  return 'empty_generate';
+}
+
+/**
+ * 对齐 LibTV TextNode 状态机（15gvxu:55066-55074）。
+ * - 优先级 generating > failed > resource > pending > empty_generate
+ * - resource 同时覆盖 LibTV `TEXT_RESOURCE` action（mode='manual'）：即使无 content 也走 resource，让"请编写内容"占位显示
+ * - pending：generate 模式下、无 content 但已经有上游连入，等待上游产出
+ */
+export function resolveLinghuiTextNodeViewState(args: {
+  properties: LinghuiTextNodeProperties;
+  result?: LinghuiNodeResult;
+  runStatus?: LinghuiRunStatus;
+  hasIncomingEdge: boolean;
+}): LinghuiTextNodeViewState {
+  const { properties, result, runStatus, hasIncomingEdge } = args;
+  if (runStatus === 'running') return 'generating';
+  if (runStatus === 'failed') return 'failed';
+  const contentLen = (properties.content ?? '').trim().length;
+  const resultText = (getLinghuiResultText(result) ?? '').trim();
+  if (properties.mode === 'manual' || contentLen > 0 || resultText.length > 0) return 'resource';
+  if (hasIncomingEdge) return 'pending';
+  return 'empty_generate';
+}
+
 export interface LinghuiNodeRunState {
   status: LinghuiRunStatus;
   message?: string;
@@ -906,11 +1325,17 @@ export interface LinghuiWorkspaceDocument extends LinghuiWorkspaceMeta {
 }
 
 export interface LinghuiNodeCatalogItem {
+  id?: string;
   type: LinghuiNodeType;
   label: string;
   description: string;
   category: LinghuiNodeCategory;
   accent: string;
+  nodeLabel?: string;
+  initialProperties?: Record<string, unknown>;
+  recommendation?: string;
+  targetSlotName?: string;
+  targetSlotType?: LinghuiSlotDataType;
 }
 
 export interface LinghuiExecutionContext {
@@ -947,26 +1372,33 @@ const LINGHUI_TYPE_TO_RF_TYPE_MAP: Record<LinghuiNodeType, LinghuiRFNodeTypeKey>
   'linghui/text': 'linghui-text',
   'linghui/agent': 'linghui-agent',
   'linghui/image': 'linghui-image',
-  'linghui/image-generator': 'linghui-image-generator',
   'linghui/panorama': 'linghui-panorama',
   'linghui/video': 'linghui-video',
   'linghui/audio': 'linghui-audio',
   'linghui/script': 'linghui-script',
   'linghui/storyboard': 'linghui-storyboard',
   'linghui/director3d': 'linghui-director3d',
+  'linghui/image-grid-slice': 'linghui-image-grid-slice',
+  'linghui/video-clip': 'linghui-video-clip',
 };
 
 const RF_TYPE_TO_LINGHUI_TYPE_MAP: Record<LinghuiRFNodeTypeKey, LinghuiNodeType> = {
   'linghui-text': 'linghui/text',
   'linghui-agent': 'linghui/agent',
   'linghui-image': 'linghui/image',
-  'linghui-image-generator': 'linghui/image-generator',
   'linghui-panorama': 'linghui/panorama',
   'linghui-video': 'linghui/video',
   'linghui-audio': 'linghui/audio',
   'linghui-script': 'linghui/script',
   'linghui-storyboard': 'linghui/storyboard',
   'linghui-director3d': 'linghui/director3d',
+  'linghui-image-grid-slice': 'linghui/image-grid-slice',
+  'linghui-video-clip': 'linghui/video-clip',
+};
+
+/** 旧持久化迁移：linghui-image-generator → linghui-image (mode=generate)。下游 normalize 时同步处理 properties.mode。 */
+const LEGACY_RF_TYPE_MIGRATION: Record<string, LinghuiNodeType> = {
+  'linghui-image-generator': 'linghui/image',
 };
 
 export function linghuiTypeToRFType(type: LinghuiNodeType): LinghuiRFNodeTypeKey {
@@ -974,7 +1406,9 @@ export function linghuiTypeToRFType(type: LinghuiNodeType): LinghuiRFNodeTypeKey
 }
 
 export function rfTypeToLinghuiType(rfType: string): LinghuiNodeType {
-  return RF_TYPE_TO_LINGHUI_TYPE_MAP[rfType as LinghuiRFNodeTypeKey] ?? 'linghui/text';
+  return RF_TYPE_TO_LINGHUI_TYPE_MAP[rfType as LinghuiRFNodeTypeKey]
+    ?? LEGACY_RF_TYPE_MIGRATION[rfType]
+    ?? 'linghui/text';
 }
 
 // 宫格尺寸映射
@@ -1014,6 +1448,195 @@ export const GRID_TYPES: Array<{ label: string; value: LinghuiGridType }> = [
 
 export const LINGHUI_IMAGE_BATCH_COUNTS = [1, 2, 3, 4] as const;
 export const DEFAULT_LINGHUI_MULTI_ANGLE_ENDPOINT = '/v1/images/multi-angle';
+
+export const DEFAULT_LINGHUI_IMAGE_FOCUS_REGION: LinghuiImageFocusRegion = {
+  enabled: true,
+  x: 0.28,
+  y: 0.22,
+  width: 0.44,
+  height: 0.42,
+};
+
+function clampLinghuiFocusUnit(value: unknown, fallback: number): number {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return fallback;
+  }
+  return Math.max(0, Math.min(1, numeric));
+}
+
+export function normalizeLinghuiImageFocusRegion(
+  region?: Partial<LinghuiImageFocusRegion> | null,
+): LinghuiImageFocusRegion | null {
+  if (!region || typeof region !== 'object') {
+    return null;
+  }
+
+  const fallback = DEFAULT_LINGHUI_IMAGE_FOCUS_REGION;
+  const width = Math.max(0.08, Math.min(1, clampLinghuiFocusUnit(region.width, fallback.width)));
+  const height = Math.max(0.08, Math.min(1, clampLinghuiFocusUnit(region.height, fallback.height)));
+  const x = Math.max(0, Math.min(1 - width, clampLinghuiFocusUnit(region.x, fallback.x)));
+  const y = Math.max(0, Math.min(1 - height, clampLinghuiFocusUnit(region.y, fallback.y)));
+  const source = String(region.source ?? '').trim();
+  const label = String(region.label ?? '').trim();
+  const updatedAt = Number(region.updatedAt);
+
+  return {
+    enabled: region.enabled !== false,
+    x,
+    y,
+    width,
+    height,
+    ...(source ? { source } : {}),
+    ...(label ? { label } : {}),
+    ...(Number.isFinite(updatedAt) && updatedAt > 0 ? { updatedAt } : {}),
+  };
+}
+
+export const LINGHUI_IMAGE_MARK_POINT_LIMIT = 6;
+
+function clampLinghuiMarkUnit(value: unknown, fallback: number): number {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return fallback;
+  }
+  return Math.max(0, Math.min(1, numeric));
+}
+
+export function normalizeLinghuiImageMarkPoint(
+  point?: Partial<LinghuiImageMarkPoint> | null,
+  index = 0,
+): LinghuiImageMarkPoint | null {
+  if (!point || typeof point !== 'object') {
+    return null;
+  }
+
+  const id = String(point.id ?? '').trim() || `mark-${index + 1}`;
+  const source = String(point.source ?? '').trim();
+  const label = String(point.label ?? '').trim();
+  const prompt = String(point.prompt ?? '').trim();
+  const updatedAt = Number(point.updatedAt);
+
+  return {
+    id,
+    enabled: point.enabled !== false,
+    x: clampLinghuiMarkUnit(point.x, 0.5),
+    y: clampLinghuiMarkUnit(point.y, 0.5),
+    ...(source ? { source } : {}),
+    ...(label ? { label } : {}),
+    ...(prompt ? { prompt } : {}),
+    ...(Number.isFinite(updatedAt) && updatedAt > 0 ? { updatedAt } : {}),
+  };
+}
+
+export const LINGHUI_IMAGE_LIGHTING_PRESETS: Array<{
+  value: LinghuiImageLightingPreset;
+  label: string;
+  prompt: string;
+}> = [
+  { value: 'auto', label: '自动', prompt: '' },
+  { value: 'natural', label: '自然光', prompt: 'soft natural daylight' },
+  { value: 'softbox', label: '柔光', prompt: 'studio softbox lighting, even diffused light' },
+  { value: 'rembrandt', label: '伦勃朗', prompt: 'rembrandt lighting, dramatic triangular cheek light' },
+  { value: 'rim', label: '边缘光', prompt: 'rim light hugging the silhouette, separation from background' },
+  { value: 'backlight', label: '逆光', prompt: 'strong backlight, silhouette with luminous edge' },
+  { value: 'low-key', label: '低调暗调', prompt: 'low-key lighting, deep shadows, single hard key light' },
+  { value: 'high-key', label: '高调亮调', prompt: 'high-key lighting, soft shadows, airy bright tones' },
+  { value: 'neon', label: '霓虹', prompt: 'neon-lit cyberpunk lighting, magenta and cyan reflections' },
+  { value: 'golden-hour', label: '黄金时刻', prompt: 'golden hour warm directional light, long shadows' },
+  { value: 'blue-hour', label: '蓝调', prompt: 'blue hour dusk lighting, cool gradient sky' },
+];
+
+export const LINGHUI_IMAGE_FOCAL_LENGTH_PRESETS: Array<{
+  value: LinghuiImageFocalLengthPreset;
+  label: string;
+  prompt: string;
+}> = [
+  { value: 'auto', label: '自动', prompt: '' },
+  { value: 'wide-24mm', label: '广角 24mm', prompt: '24mm wide angle perspective, expansive framing' },
+  { value: 'standard-50mm', label: '标头 50mm', prompt: '50mm standard lens, natural perspective' },
+  { value: 'portrait-85mm', label: '人像 85mm', prompt: '85mm portrait lens, slight background compression' },
+  { value: 'tele-135mm', label: '长焦 135mm', prompt: '135mm telephoto compression, isolated subject' },
+  { value: 'macro', label: '微距', prompt: 'macro close-up, ultra fine surface detail' },
+];
+
+export const LINGHUI_IMAGE_APERTURE_PRESETS: Array<{
+  value: LinghuiImageAperturePreset;
+  label: string;
+  prompt: string;
+}> = [
+  { value: 'auto', label: '自动', prompt: '' },
+  { value: 'shallow-f14', label: '浅景深 f/1.4', prompt: 'shallow depth of field f/1.4, creamy bokeh background' },
+  { value: 'medium-f28', label: '中景深 f/2.8', prompt: 'moderate depth of field f/2.8, gently blurred background' },
+  { value: 'deep-f8', label: '深景深 f/8', prompt: 'deep depth of field f/8, foreground to background sharp' },
+];
+
+export function normalizeLinghuiImageCinematicConfig(
+  config?: Partial<LinghuiImageCinematicConfig> | null,
+): LinghuiImageCinematicConfig {
+  if (!config || typeof config !== 'object') {
+    return { ...DEFAULT_LINGHUI_IMAGE_CINEMATIC_CONFIG };
+  }
+  const lightingValues = new Set(LINGHUI_IMAGE_LIGHTING_PRESETS.map(item => item.value));
+  const focalValues = new Set(LINGHUI_IMAGE_FOCAL_LENGTH_PRESETS.map(item => item.value));
+  const apertureValues = new Set(LINGHUI_IMAGE_APERTURE_PRESETS.map(item => item.value));
+  return {
+    lighting: lightingValues.has(config.lighting as LinghuiImageLightingPreset)
+      ? (config.lighting as LinghuiImageLightingPreset)
+      : 'auto',
+    focalLength: focalValues.has(config.focalLength as LinghuiImageFocalLengthPreset)
+      ? (config.focalLength as LinghuiImageFocalLengthPreset)
+      : 'auto',
+    aperture: apertureValues.has(config.aperture as LinghuiImageAperturePreset)
+      ? (config.aperture as LinghuiImageAperturePreset)
+      : 'auto',
+  };
+}
+
+/**
+ * 把电影感配置编译成英文短语，便于 provider/模型识别。
+ * 全部为 'auto' 时返回空串；调用方决定是否拼到 prompt 末尾。
+ */
+export function buildLinghuiImageCinematicPromptFragment(
+  config?: Partial<LinghuiImageCinematicConfig> | null,
+): string {
+  const normalized = normalizeLinghuiImageCinematicConfig(config);
+  const parts: string[] = [];
+  const lightingPreset = LINGHUI_IMAGE_LIGHTING_PRESETS.find(item => item.value === normalized.lighting);
+  if (lightingPreset && lightingPreset.value !== 'auto' && lightingPreset.prompt) {
+    parts.push(lightingPreset.prompt);
+  }
+  const focalPreset = LINGHUI_IMAGE_FOCAL_LENGTH_PRESETS.find(item => item.value === normalized.focalLength);
+  if (focalPreset && focalPreset.value !== 'auto' && focalPreset.prompt) {
+    parts.push(focalPreset.prompt);
+  }
+  const aperturePreset = LINGHUI_IMAGE_APERTURE_PRESETS.find(item => item.value === normalized.aperture);
+  if (aperturePreset && aperturePreset.value !== 'auto' && aperturePreset.prompt) {
+    parts.push(aperturePreset.prompt);
+  }
+  return parts.join(', ');
+}
+
+export function normalizeLinghuiImageMarkPoints(
+  points?: Array<Partial<LinghuiImageMarkPoint> | null> | null,
+): LinghuiImageMarkPoint[] {
+  if (!Array.isArray(points)) {
+    return [];
+  }
+
+  const seen = new Set<string>();
+  const normalized: LinghuiImageMarkPoint[] = [];
+  points.forEach((point, index) => {
+    const nextPoint = normalizeLinghuiImageMarkPoint(point, index);
+    if (!nextPoint || seen.has(nextPoint.id)) {
+      return;
+    }
+    seen.add(nextPoint.id);
+    normalized.push(nextPoint);
+  });
+
+  return normalized.slice(0, LINGHUI_IMAGE_MARK_POINT_LIMIT);
+}
 
 export const LINGHUI_MULTI_ANGLE_AZIMUTHS: Array<{
   value: LinghuiMultiAngleAzimuth;
@@ -1061,12 +1684,34 @@ export const LINGHUI_MULTI_ANGLE_PROMPT_PROTOCOLS: Array<{
 
 export const DEFAULT_LINGHUI_MULTI_ANGLE_CONFIG: LinghuiMultiAngleConfig = {
   enabled: false,
+  mode: 'object',
+  rotation: 0,
+  tilt: 0,
+  scale: 50,
+  isWideAngle: false,
+  presetKey: 'custom',
+  prompt: '',
+  promptEnabled: false,
   azimuth: 0,
   elevation: 0,
   distance: 1,
   ttiSelection: '',
   promptProtocol: 'sks-camera-v1',
   endpointPath: DEFAULT_LINGHUI_MULTI_ANGLE_ENDPOINT,
+};
+
+export const DEFAULT_LINGHUI_IMAGE_RELIGHT_CONFIG: LinghuiImageRelightConfig = {
+  direction: 'front',
+  brightness: 50,
+  lightColor: '#ffffff',
+  rimLight: false,
+  smartMode: false,
+  prompt: '',
+  referenceImage: null,
+  presetId: undefined,
+  sceneActive: false,
+  brightnessActive: false,
+  colorActive: false,
 };
 
 function normalizeAzimuth(value: unknown): LinghuiMultiAngleAzimuth {
@@ -1088,17 +1733,120 @@ function normalizePromptProtocol(value: unknown): LinghuiMultiAnglePromptProtoco
   );
 }
 
+function normalizeMultiAngleMode(value: unknown): LinghuiMultiAngleMode {
+  return value === 'camera' || value === 'object'
+    ? value
+    : DEFAULT_LINGHUI_MULTI_ANGLE_CONFIG.mode;
+}
+
+function normalizeMultiAnglePresetKey(value: unknown): LinghuiMultiAnglePresetKey {
+  return (
+    value === 'fisheye'
+    || value === 'tilted'
+    || value === 'front-down'
+    || value === 'front-up'
+    || value === 'panoramic-down'
+    || value === 'back'
+    || value === 'custom'
+  )
+    ? value
+    : 'custom';
+}
+
+function clampNumber(value: unknown, fallback: number, min: number, max: number): number {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.max(min, Math.min(max, numeric));
+}
+
+function rotationToAzimuth(value: number): LinghuiMultiAngleAzimuth {
+  const normalized = ((Math.round(value / 45) * 45) % 360 + 360) % 360;
+  return normalizeAzimuth(normalized);
+}
+
+function tiltToElevation(value: number): LinghuiMultiAngleElevation {
+  const snapped = Math.max(-30, Math.min(60, Math.round(value / 30) * 30));
+  return normalizeElevation(snapped);
+}
+
+function scaleToDistance(value: number): LinghuiMultiAngleDistance {
+  if (value <= 25) return 1.8;
+  if (value >= 75) return 0.6;
+  return 1;
+}
+
+function distanceToScale(value: LinghuiMultiAngleDistance): number {
+  if (value === 0.6) return 100;
+  if (value === 1.8) return 0;
+  return 50;
+}
+
 export function normalizeLinghuiMultiAngleConfig(
   value: Partial<LinghuiMultiAngleConfig> | null | undefined,
 ): LinghuiMultiAngleConfig {
+  const hasRotation = typeof value?.rotation === 'number';
+  const hasTilt = typeof value?.tilt === 'number';
+  const hasScale = typeof value?.scale === 'number';
+  const azimuth = normalizeAzimuth(value?.azimuth);
+  const elevation = normalizeElevation(value?.elevation);
+  const distance = normalizeDistance(value?.distance);
+  const rotation = clampNumber(
+    hasRotation ? value?.rotation : azimuth,
+    DEFAULT_LINGHUI_MULTI_ANGLE_CONFIG.rotation,
+    -360,
+    360,
+  );
+  const tilt = clampNumber(
+    hasTilt ? value?.tilt : elevation,
+    DEFAULT_LINGHUI_MULTI_ANGLE_CONFIG.tilt,
+    -90,
+    90,
+  );
+  const scale = clampNumber(
+    hasScale ? value?.scale : distanceToScale(distance),
+    DEFAULT_LINGHUI_MULTI_ANGLE_CONFIG.scale,
+    0,
+    100,
+  );
+
   return {
     enabled: value?.enabled === true,
-    azimuth: normalizeAzimuth(value?.azimuth),
-    elevation: normalizeElevation(value?.elevation),
-    distance: normalizeDistance(value?.distance),
+    mode: normalizeMultiAngleMode(value?.mode),
+    rotation,
+    tilt,
+    scale,
+    isWideAngle: value?.isWideAngle === true,
+    presetKey: normalizeMultiAnglePresetKey(value?.presetKey),
+    prompt: String(value?.prompt ?? '').trim(),
+    promptEnabled: value?.promptEnabled === true,
+    azimuth: hasRotation ? rotationToAzimuth(rotation) : azimuth,
+    elevation: hasTilt ? tiltToElevation(tilt) : elevation,
+    distance: hasScale ? scaleToDistance(scale) : distance,
     ttiSelection: String(value?.ttiSelection ?? '').trim(),
     promptProtocol: normalizePromptProtocol(value?.promptProtocol),
     endpointPath: String(value?.endpointPath ?? DEFAULT_LINGHUI_MULTI_ANGLE_ENDPOINT).trim() || DEFAULT_LINGHUI_MULTI_ANGLE_ENDPOINT,
+  };
+}
+
+export function normalizeLinghuiImageRelightConfig(
+  value: Partial<LinghuiImageRelightConfig> | null | undefined,
+): LinghuiImageRelightConfig {
+  const direction = typeof value?.direction === 'string'
+    ? value.direction as LinghuiRelightDirection
+    : DEFAULT_LINGHUI_IMAGE_RELIGHT_CONFIG.direction;
+  const lightColor = String(value?.lightColor ?? DEFAULT_LINGHUI_IMAGE_RELIGHT_CONFIG.lightColor).trim();
+  return {
+    direction,
+    brightness: clampNumber(value?.brightness, DEFAULT_LINGHUI_IMAGE_RELIGHT_CONFIG.brightness, 0, 100),
+    lightColor: /^#[0-9a-f]{6}$/i.test(lightColor) ? lightColor : DEFAULT_LINGHUI_IMAGE_RELIGHT_CONFIG.lightColor,
+    rimLight: value?.rimLight === true,
+    smartMode: value?.smartMode === true,
+    prompt: String(value?.prompt ?? '').trim(),
+    referenceImage: value?.referenceImage ? String(value.referenceImage) : null,
+    presetId: value?.presetId ? String(value.presetId) : undefined,
+    sceneActive: value?.sceneActive === true,
+    brightnessActive: value?.brightnessActive === true,
+    colorActive: value?.colorActive === true,
   };
 }
 

@@ -9,17 +9,29 @@ import type { LinghuiCanvasMode, LinghuiNodeData } from '../../../../types/lingh
 import { useTheme } from '../../../../theme/runtime';
 import { linghuiEdgeTypes } from './LinghuiEdge';
 import { linghuiNodeTypes } from '../../nodes';
+import { LINGHUI_CANVAS_SNAP_GRID_SIZE } from '../state/linghuiCanvasLayout';
+import { useLinghuiCanvasTouchMode } from '../hooks/useLinghuiCanvasTouchMode';
 
 type ReactFlowComponentProps = React.ComponentProps<typeof ReactFlow>;
 const DEFAULT_EDGE_OPTIONS = { type: 'linghui-edge' } as const;
 const REACT_FLOW_PRO_OPTIONS = { hideAttribution: true } as const;
-const LINGHUI_CONNECTION_RADIUS = 56;
+const LINGHUI_CONNECTION_RADIUS = 80;
 const LINGHUI_CONNECTION_DRAG_THRESHOLD = 1;
+const LINGHUI_SNAP_GRID: [number, number] = [
+  LINGHUI_CANVAS_SNAP_GRID_SIZE,
+  LINGHUI_CANVAS_SNAP_GRID_SIZE,
+];
+// LibTV bY：跨平台多选修饰键（Mac=Meta，Win/Linux=Control）
+const LINGHUI_MULTI_SELECTION_KEY_CODE = ['Meta', 'Control'];
+// LibTV fitView：300ms 动画（0gg5ir:76587）
+const LINGHUI_FIT_VIEW_OPTIONS = { padding: 0.12, duration: 300 } as const;
 
 interface LinghuiCanvasStageProps {
   nodes: ReactFlowComponentProps['nodes'];
   edges: ReactFlowComponentProps['edges'];
   canvasMode: LinghuiCanvasMode;
+  showMiniMap: boolean;
+  snapToGrid: boolean;
   onNodesChange: ReactFlowComponentProps['onNodesChange'];
   onEdgesChange: ReactFlowComponentProps['onEdgesChange'];
   onConnect: ReactFlowComponentProps['onConnect'];
@@ -47,6 +59,8 @@ export function LinghuiCanvasStage({
   nodes,
   edges,
   canvasMode,
+  showMiniMap,
+  snapToGrid,
   onNodesChange,
   onEdgesChange,
   onConnect,
@@ -69,8 +83,8 @@ export function LinghuiCanvasStage({
   onPaneContextMenu,
   onMoveEnd,
 }: LinghuiCanvasStageProps) {
-  const useVisibleElementCulling = nodes.length + edges.length >= 120;
   const { theme } = useTheme();
+  const isTouchMode = useLinghuiCanvasTouchMode();
   const isDarkTheme = theme.meta.mode === 'dark';
   const majorGridColor = isDarkTheme
     ? 'color-mix(in srgb, var(--token-text-tertiary) 48%, transparent)'
@@ -113,26 +127,31 @@ export function LinghuiCanvasStage({
       minZoom={0.25}
       maxZoom={2.5}
       deleteKeyCode={null}
-      nodesDraggable
+      multiSelectionKeyCode={LINGHUI_MULTI_SELECTION_KEY_CODE}
+      nodesDraggable={!isTouchMode}
+      nodesConnectable={!isTouchMode}
       // ComfyUI 风格：滚轮始终只做缩放（不平移）。
       //  - hand 模式：左键拖动空白处即平移（用于查看放大后超出视口的内容）
       //  - mouse 模式：左键拖动框选；同时给中键/右键拖动作为兜底平移手段
       // Shift + 拖动 仍可触发框选（React Flow 默认 selectionKeyCode='Shift'），不破坏多选。
-      selectionOnDrag={canvasMode === 'mouse'}
-      panOnDrag={canvasMode === 'hand' ? true : [1, 2]}
+      selectionOnDrag={!isTouchMode && canvasMode === 'mouse'}
+      panOnDrag={isTouchMode ? true : (canvasMode === 'hand' ? true : [1, 2])}
       panOnScroll={false}
       zoomOnScroll
       zoomOnPinch
       zoomOnDoubleClick={false}
-      panActivationKeyCode={null}
+      panActivationKeyCode="Space"
       zoomActivationKeyCode={null}
       nodeDragThreshold={8}
       connectionRadius={LINGHUI_CONNECTION_RADIUS}
       connectionDragThreshold={LINGHUI_CONNECTION_DRAG_THRESHOLD}
-      onlyRenderVisibleElements={useVisibleElementCulling}
+      snapToGrid={snapToGrid}
+      snapGrid={LINGHUI_SNAP_GRID}
+      onlyRenderVisibleElements
       proOptions={REACT_FLOW_PRO_OPTIONS}
       colorMode={theme.meta.mode}
       fitView
+      fitViewOptions={LINGHUI_FIT_VIEW_OPTIONS}
     >
       <Background
         id="linghui-grid-major"
@@ -148,19 +167,21 @@ export function LinghuiCanvasStage({
         size={1.9}
         color={minorGridColor}
       />
-      <MiniMap
-        className="linghuiCanvasMiniMap"
-        pannable
-        zoomable
-        maskColor={minimapMaskColor}
-        nodeColor={node => {
-          if (node.type === 'group') {
-            return String((node.data as { color?: string } | undefined)?.color ?? 'var(--token-status-info)');
-          }
-          return String((node.data as unknown as LinghuiNodeData | undefined)?.accent ?? 'var(--token-accent-base)');
-        }}
-        nodeStrokeWidth={2}
-      />
+      {showMiniMap ? (
+        <MiniMap
+          className="linghuiCanvasMiniMap"
+          pannable
+          zoomable
+          maskColor={minimapMaskColor}
+          nodeColor={node => {
+            if (node.type === 'group') {
+              return String((node.data as { color?: string } | undefined)?.color ?? 'var(--token-status-info)');
+            }
+            return String((node.data as unknown as LinghuiNodeData | undefined)?.accent ?? 'var(--token-accent-base)');
+          }}
+          nodeStrokeWidth={2}
+        />
+      ) : null}
     </ReactFlow>
   );
 }

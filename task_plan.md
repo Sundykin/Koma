@@ -1,5 +1,98 @@
 # Task Plan
 
+## Session: 2026-05-16 Linghui Canvas LibTV Recreation
+
+### Goal
+- 从 `/Users/sunmeng/workspace/Koma/template_/libtv` 的打包产物中反向分析画布功能、样式和文案。
+- 将可识别的 LibTV 画布交互、工具栏、节点/边样式、面板和操作逻辑复刻到灵绘中。
+- 允许破坏性更新灵绘现有画布样式和节点操作逻辑，并按需新增依赖；但保持项目持久化、执行链路和 Electron 验证规约不被破坏。
+
+### Scope
+- `template_/libtv/**`
+- `frontend/src/components/linghui/canvas/**`
+- `frontend/src/components/linghui/nodes/**`
+- `frontend/src/components/linghui/page/styles/**`
+- `frontend/src/components/linghui/editors/**`
+- `frontend/src/types/linghui.ts`
+- 相关测试、类型检查和 Electron CDP 视觉验证
+
+### Phases
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Artifact Recon | complete | 盘点 `template_/libtv` 文件结构，从 CSS 类名、文案和 sourcemap/打包 JS 中定位画布功能边界 |
+| 2. Current Linghui Canvas Map | complete | 梳理灵绘现有画布、节点、边、工具栏、面板和交互入口 |
+| 3. Feature Gap Matrix | complete | 建立 LibTV 功能/样式/文案到灵绘文件的映射，决定破坏性改造范围 |
+| 4. Canvas Recreation | complete | 改造灵绘画布 UI、节点操作和样式，必要时新增共享组件/状态 |
+| 5. Regression Coverage | complete | 更新/新增关键测试，覆盖节点操作、样式类、交互入口和持久化边界 |
+| 6. Visual Verification | complete | 通过 Electron remote debugging port `9333` 做真实界面检查，不打开普通浏览器 |
+| 7. Final Validation | complete | 运行目标测试、TypeScript、样式纪律/构建或最小可行校验、diff check |
+| 8. Result Context Actions | complete | 继续补齐 LibTV 式节点结果菜单：复制结果文本、媒体地址、TaskId，并覆盖剪贴板反馈与回归测试 |
+| 9. Touch Canvas Gestures | complete | 补齐 LibTV 式触控体验：粗指针设备进入触控平移模式，画布触控双击适配视图 |
+| 10. Downstream Compatibility & Menus | complete | 继续参考 LibTV 补齐输出类型驱动的下游推荐、语义槽位兼容、边数据类型记录和节点菜单扩展 |
+| 11. Binary Media Clipboard & Feedback | complete | 补齐 LibTV `复制图片` 的二进制剪贴板行为，并保留灵绘已有媒体地址复制能力 |
+| 12. Image Focus Region Tool | complete | 复刻 LibTV 图片节点 `聚焦` 局部区域反馈：选区 UI、节点红框、执行提示词和参考图链路 |
+| 13. Image Mark Points Tool | complete | 复刻 LibTV 图片节点 `标记` 点选反馈：归一化标记点、节点黄点、编辑器点选面板和执行参考链路 |
+| 14. Image High-Res Upscale Tool | complete | 复刻 LibTV 图片节点 `高清放大`：补齐 FFmpeg upscale 桥接、前端工具入口、派生高清图片节点和运行反馈 |
+| 15. Image Tool Derivation Flow | complete | 将 `扩图 / 打光 / 重绘` 从单纯 prompt preset 升级为 LibTV 式派生图生图节点、自动连线和运行反馈 |
+| 16. Extended Image Tool Entrypoints | complete | 继续补齐 LibTV 图片工具栏缺口：`擦除 / 抠图 / 裁剪 / Mockup / 编辑元素 / 编辑文本` 的工具入口、派生节点和反馈 |
+| 17. Electron Visual Pass & Next Gaps | in_progress | 通过 Electron CDP 复查扩展工具条和本地裁剪入口，并继续梳理下一批 LibTV 缺口 |
+| 18. Template Docs Review & Queue | complete | 全量阅读 `template_/docs` 10 份 LibTV 分析文档，按文档缺口刷新后续实施顺序 |
+| 19. Image Relight Visual Panel | complete | 将 `打光` 从二级 preset 菜单升级为独立悬浮面板，含图片预览、风格 preset、比例/分辨率和生成按钮 |
+| 20. Image Repaint Visual Panel | complete | 增加 `重绘` 独立悬浮面板，支持 preset、prompt textarea、比例/分辨率/数量并派生执行 |
+| 21. Image Outpaint Visual Panel | complete | 增加 `扩图` 独立悬浮面板，支持方向/比例预览和派生执行 |
+| 22. LibTV Image Tool Panel Rework | complete | 按 LibTV 截图/打包实现重做图片工具：顶部工具条分组下拉 + 画布下方大悬浮编辑器，去掉右侧参数表单感 |
+| 23. Image Erase/Crop/RemoveBg Panels | pending | 补齐擦除遮罩、裁剪方向、抠图加载反馈等剩余高频图片工具悬浮面板 |
+| 24. Canvas Interaction Polish | pending | 补齐 `multiSelectionKeyCode`、Esc 取消连线、`.canvas-interacting`、fitView 动画和缩放百分比菜单 |
+| 25. Text/Script Node Alignment | pending | 增加文本 import/generate mode 分流、文本 empty-generate 和脚本 Beta 标识 |
+| 26. Video Composition MVP | pending | 评估并实现 LibTV `视频合成` 最小版：多视频节点 FFmpeg concat 派生新视频节点 |
+| 27. LibTV Image Tool Fidelity Pass | complete | 用格式化后的 LibTV 打包代码复刻多角度/打光真实参数、预览交互和全景 Three.js GPU 路径，修正面板过大与全景误触多角度问题 |
+| 28. HUD Scale & Preview Fidelity Fix | complete | 按用户复查反馈继续压缩图片工具条、下拉菜单和打光/多角度悬浮面板尺寸，并强化左侧 Three.js/canvas 预览可读性 |
+| 29. Image Toolbar Menu Routing Fix | complete | 修复 `更多 / 九宫格 / 宫格切分` 下拉被裁剪、换行和误触多角度/打光的问题，确保宫格类入口进入 grid-split |
+| 30. Prompt & Generation Control LibTV Alignment | complete | 参考 LibTV 反编译 CSS/交互重做提示词下方的生图/生视频模型、参数和镜头菜单；去掉所有积分/消耗概念 |
+| 31. Nine Grid Storyboard Slash Generation | complete | 按 LibTV slashImage 真实链路修正 `九宫格`：剧情推演/多机位/16/25 宫格生成内置分镜 prompt 的图生图节点；`宫格切分` 保持独立切图流程，并统一去掉重绘菜单里的重复高清 |
+| 32. Restore Add Node Spatial Entries & Panorama Slash Defaults | complete | 修复空白画布“添加节点”误用引用菜单导致 `导演工作台 / 全景节点` 消失的问题，并把 LibTV `720°全景图` slash 场景、模型、比例和质量默认值移植到全景生图链路 |
+
+### Acceptance Criteria
+- LibTV 画布的主要视觉语言、工具入口、节点/边状态和关键文案在灵绘中可见并可操作。
+- 复刻范围覆盖样式、操作反馈、性能优化、节点操作、节点菜单、节点类型入口和画布整理能力，而不是只做表层 CSS。
+- 缺失的必要依赖可以新增；新增依赖必须进入 `frontend/package.json` 和 lockfile，并被实际代码使用。
+- 灵绘节点创建、选择、编辑、运行、连线、删除/复制等核心操作仍可用。
+- 现有灵绘执行数据结构和工作区保存/恢复不被无意破坏。
+- 样式改造遵守项目 Sass/token 纪律，避免新增散落 inline style 或硬编码主题色。
+- UI 验证只使用 Electron 自定义 Chromium remote debugging 端口。
+- 图片节点 `全景 NEW` 对普通图片必须创建/打开 `linghui/panorama` 全景预览节点，不能触发 `multi-angle`。
+- `多角度编辑器` 和 `打光效果` 必须保留 LibTV 原始字段、预设和可视化交互语义：多角度使用 `rotation/tilt/scale/isWideAngle/mode/promptEnabled`，打光使用 `direction/brightness/lightColor/rimLight/smartMode/prompt/referenceImage`。
+- `打光` 左侧必须是 canvas/Three.js 光球预览，能随主光源、轮廓光、颜色和亮度变化，不允许只放一张静态图片。
+- 图片工具条、点击菜单和复杂工具面板必须保持画布 HUD 尺度；静态点击菜单应是一行约 500px 内，打光面板约 640px 宽，多角度面板约 560px 宽，不能回到接近 900px 的大参数表单。
+- `九宫格` 中的 `剧情推演九宫格 / 多机位九宫格 / 16宫格 / 25宫格` 必须使用内置提示词、当前图片引用和用户手动 prompt 派生新的图生图分镜节点，不能直接进入 `grid-split`，也不能误触 `multi-angle` 或 `relight`。
+- `宫格切分` 必须保持独立切图流程，所有档位写入 `2x2 / 3x3 / 4x4 / 5x5` 并进入 `grid-split`。
+- `高清` 入口不得在 `重绘` 菜单和 `更多` 菜单重复出现；当前保留在 `更多 -> 高清`，重绘菜单只放真正的编辑/重绘类工具。
+- 图片工具条所有可见入口必须可执行；无执行链路的旋转入口不应出现在当前点击菜单里。
+- 全景预览/视角抽取优先走 Three.js GPU 能力；无法使用 WebGL 时才允许回退到既有 Canvas2D 抽取。
+- 空白画布“添加节点”必须展示完整创建目录，包含 `全景节点` 和 `导演工作台`；从节点拖线松开时仍保留 LibTV “引用该节点生成”6 项菜单。
+- 全景生图必须带上 LibTV 反编译出的 `720_panoramic` slash 默认语义：默认模型 `lib-image-2`、`2:1` 比例、`medium` 质量和 `720°全景图` 场景元数据；普通用户 prompt 仍可追加。
+- 生图/生视频模型选择、比例/分辨率/时长参数和提示词输入区应保持 LibTV 控制尺度；图片参数菜单只包含比例、分辨率、数量和额外节点设置，不得混入打光。
+- 图片 `焦距 / 镜头 / 光圈` 必须从比例/分辨率菜单拆成独立镜头菜单；真实打光仅存在于 `打光效果` 工具面板。
+- 灵绘无积分体系，生成按钮、打光面板、多角度编辑器、扩图/重绘面板以及模型/参数菜单均不得显示积分、credits、消耗或闪电点数。
+
+### Error Log
+| Error | Attempt | Resolution |
+|------|---------|------------|
+| Node extraction script rejected due control character in command text | 1 | Rewrote the extraction script with plain regex/string checks and reran successfully |
+| `npm run check:style-discipline` failed on existing inline color/style debts outside this canvas pass | 1 | Confirmed new canvas/node changes are not listed; kept failure recorded and used TypeScript, targeted tests, build, diff check, and Electron CDP as final validation |
+| Result copy media label counted duplicate primary/items entries | 1 | Changed media menu labels to count de-duplicated copy sources, matching the actual clipboard payload |
+| Storyboard shot image predicate widened to generic media type | 1 | Narrowed `shot.image` with `NonNullable<typeof item>` so TypeScript preserves the image media subtype |
+| Video context menu missed imported video properties | 1 | Included `linghui/video` `properties.source/posterSource` in context media collection and deduped with run result media |
+| FFmpeg media info could be empty during audio separation | 1 | Added `mediaInfo?.hasAudio` guard and only show audio separation for local video sources |
+| Focus placeholder feedback kept showing user prompt | 1 | Changed focused image execution placeholder subtitle to `聚焦区域生成` so operation feedback is explicit |
+| Image tool derived node function was not wired into canvas overlay props | 1 | Added `createDerivedImageToolNodeFromNode` to `LinghuiCanvas.tsx` destructuring and overlay props, then covered with document-ops test |
+| Phase 22 toolbar tests still expected direct `扩图/重绘` buttons | 1 | Updated tests to follow the LibTV grouped path: click `重绘 ▼`, then choose `扩图` or `重绘` from the menu |
+| `LinghuiMultiAngleModal` still passed old viewport props after replacing the 3D viewport | 1 | Updated the legacy modal to feed `rotation/tilt/scale/isWideAngle` and map them back to old aliases |
+| Electron canvas pixel check returned a transparent WebGL buffer | 1 | Enabled `preserveDrawingBuffer` + opaque WebGL background on the lighting and multi-angle r3f canvases |
+| Electron CDP measurement script failed with ambiguous Node module syntax | 1 | Re-ran the CDP script as `node --input-type=module` with ESM imports instead of mixing `require()` and top-level await |
+| `npm run lint:theme:scss` failed on existing ChatRenderer hardcoded colors | 1 | Removed Linghui SCSS token violations from touched files; remaining failures are in `src/chat/components/ChatRenderer.module.scss` lines 525-526 and predate this pass |
+| 全景节点添加菜单文案暴露内部实现词 | 1 | 按用户反馈移除可见文案里的 `LibTV / 2:1` 技术措辞，改为“生成或导入全景环境图，并在画布中预览空间关系” |
+
 ## Session: 2026-05-14 Linghui Media Remote URL Flow
 
 ### Goal

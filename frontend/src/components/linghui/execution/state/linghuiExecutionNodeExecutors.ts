@@ -3,12 +3,20 @@ import {
   type LinghuiAgentExecutionMetadata,
   type LinghuiAgentNodeProperties,
   type LinghuiAudioNodeProperties,
+  type LinghuiImageFocusRegion,
+  type LinghuiImageMarkPoint,
   type LinghuiImageMediaItem,
   type LinghuiImageNodeProperties,
   type LinghuiNodeResult,
   type LinghuiScriptNodeProperties,
   type LinghuiTextNodeProperties,
   type LinghuiVideoCapability,
+} from '../../../../types/linghui';
+import {
+  buildLinghuiImageCinematicPromptFragment,
+  normalizeLinghuiImageCinematicConfig,
+  normalizeLinghuiImageFocusRegion,
+  normalizeLinghuiImageMarkPoints,
 } from '../../../../types/linghui';
 import {
   collectLinghuiPromptReferenceImageSources,
@@ -33,7 +41,13 @@ import {
   resolveLinghuiImagePrimaryImportItem,
 } from '../../editors/state/linghuiImageCollections';
 import {
+  LIBTV_PANORAMA_SLASH_LABEL,
+  LIBTV_PANORAMA_SLASH_QUALITY,
+  LIBTV_PANORAMA_SLASH_SCENE,
+  LIBTV_PANORAMA_SUBMIT_MODEL_KEY,
+  LIBTV_PANORAMA_WITH_PROMPT_SCENE,
   compilePanoramaPrompt,
+  getLibTVPanoramaRatioForModel,
   type PanoramaTemplateKind,
 } from '../../panorama/panoramaPromptTemplate';
 import { resolvePanoramaProjectionMode } from '../../panorama/panoramaProjection';
@@ -133,6 +147,93 @@ function buildStoryboardSystemPrompt(targetShotCount: number): string {
 }
 
 type NodeExecutionProgressHandler = (progress: number, message?: string, partialResult?: LinghuiNodeResult) => void;
+
+function buildImageFocusInstruction(region: LinghuiImageFocusRegion): string {
+  const left = Math.round(region.x * 100);
+  const top = Math.round(region.y * 100);
+  const right = Math.round((region.x + region.width) * 100);
+  const bottom = Math.round((region.y + region.height) * 100);
+  const label = region.label ? ` (${region.label})` : '';
+
+  return [
+    `LibTV-style focus region${label}: prioritize local completion and repaint inside the marked box.`,
+    `Focus box normalized coordinates: left ${left}%, top ${top}%, right ${right}%, bottom ${bottom}%.`,
+    'Preserve the original image outside this box as much as possible: keep composition, identity, pose, lighting direction, camera angle, and style stable.',
+    'Only repair, refine, or regenerate details inside the focus box unless the user prompt explicitly asks for a larger change.',
+    'Avoid adding extra subjects, duplicate faces, collage panels, borders, captions, or UI marks.',
+  ].join('\n');
+}
+
+function appendImageFocusInstruction(prompt: string, region: LinghuiImageFocusRegion | null): string {
+  if (!region?.enabled) {
+    return prompt;
+  }
+
+  const instruction = buildImageFocusInstruction(region);
+  const normalizedPrompt = String(prompt).trim();
+  if (!normalizedPrompt) {
+    return instruction;
+  }
+  if (normalizedPrompt.includes('LibTV-style focus region')) {
+    return normalizedPrompt;
+  }
+  return `${normalizedPrompt}\n\n${instruction}`;
+}
+
+function buildImageMarkInstruction(points: LinghuiImageMarkPoint[]): string {
+  const enabledPoints = points.filter(point => point.enabled);
+  if (!enabledPoints.length) {
+    return '';
+  }
+
+  return [
+    'LibTV-style mark points: use these image coordinates as explicit visual anchors.',
+    ...enabledPoints.map((point, index) => {
+      const x = Math.round(point.x * 100);
+      const y = Math.round(point.y * 100);
+      const label = point.label || `mark ${index + 1}`;
+      const prompt = point.prompt ? ` ${point.prompt}` : '';
+      return `Mark ${index + 1} (${label}) at x ${x}%, y ${y}%.${prompt}`;
+    }),
+    'Preserve the relationship between marked subjects/details and the surrounding scene; do not render visible UI pins, numbers, captions, or marker graphics.',
+  ].join('\n');
+}
+
+function appendImageMarkInstruction(prompt: string, points: LinghuiImageMarkPoint[]): string {
+  const instruction = buildImageMarkInstruction(points);
+  if (!instruction) {
+    return prompt;
+  }
+
+  const normalizedPrompt = String(prompt).trim();
+  if (!normalizedPrompt) {
+    return instruction;
+  }
+  if (normalizedPrompt.includes('LibTV-style mark points')) {
+    return normalizedPrompt;
+  }
+  return `${normalizedPrompt}\n\n${instruction}`;
+}
+
+function appendImageCinematicInstruction(
+  prompt: string,
+  cinematic: ReturnType<typeof normalizeLinghuiImageCinematicConfig>,
+): string {
+  const fragment = buildLinghuiImageCinematicPromptFragment(cinematic);
+  if (!fragment) {
+    return prompt;
+  }
+  const normalizedPrompt = String(prompt).trim();
+  // 标签前缀让模型识别这是导演级控制语句，避免被当成主体描述。
+  const block = `Cinematic directive: ${fragment}.`;
+  if (!normalizedPrompt) {
+    return block;
+  }
+  if (normalizedPrompt.includes('Cinematic directive:')) {
+    return normalizedPrompt;
+  }
+  return `${normalizedPrompt}\n\n${block}`;
+}
 
 const IMAGE_SINGLE_CANDIDATE_OUTPUT_CONSTRAINT = [
   '批量抽卡时每个请求只生成一张独立候选图。',
@@ -766,6 +867,15 @@ export async function executeImageNode(
   const prompt = String(node.properties.prompt ?? '').trim();
   const ttiSelection = String(node.properties.ttiSelection ?? '');
   const batchCount = Math.max(1, Math.min(4, Number(node.properties.batchCount ?? 1)));
+  const focusRegion = normalizeLinghuiImageFocusRegion(properties.focusRegion);
+  const markPoints = normalizeLinghuiImageMarkPoints(properties.markPoints);
+  const activeMarkPoints = markPoints.filter(point => point.enabled);
+  const cinematic = normalizeLinghuiImageCinematicConfig(properties.cinematic);
+  const hasCinematicDirective = (
+    cinematic.lighting !== 'auto'
+    || cinematic.focalLength !== 'auto'
+    || cinematic.aperture !== 'auto'
+  );
   // 画布 UI 选的比例 / 分辨率以前在执行器这层就被丢了 —— provider 永远拿不到用户的选择。
   // 这里收集起来，下面所有 generateImageWithProvider / 批量调用统一透传到 provider.start。
   const aspectRatio = String(properties.aspectRatio ?? '').trim() || undefined;
@@ -820,10 +930,41 @@ export async function executeImageNode(
   const textSnippets = collectTextSnippets(node.getAllInputResults(1));
   const promptReferences = node.getPromptReferences();
   const promptReferenceSources = collectLinghuiPromptReferenceImageSources(promptReferences);
-  const referenceSources = mergeUniqueSources(upstreamReferenceSources, promptReferenceSources);
+  const focusRegionReferenceSources = focusRegion?.enabled && focusRegion.source ? [focusRegion.source] : [];
+  const markPointReferenceSources = activeMarkPoints.map(point => point.source).filter(Boolean) as string[];
+  const referenceSources = mergeUniqueSources(
+    upstreamReferenceSources,
+    focusRegionReferenceSources,
+    markPointReferenceSources,
+    promptReferenceSources,
+  );
   const explicitPrompt = mergePromptWithTextInputs(prompt, textSnippets);
   const effectivePrompt = mergePromptWithTextInputs(prompt || node.title, textSnippets);
+  const explicitPromptWithFocus = appendImageCinematicInstruction(
+    appendImageMarkInstruction(
+      appendImageFocusInstruction(explicitPrompt, focusRegion),
+      activeMarkPoints,
+    ),
+    cinematic,
+  );
+  const effectivePromptWithFocus = appendImageCinematicInstruction(
+    appendImageMarkInstruction(
+      appendImageFocusInstruction(effectivePrompt, focusRegion),
+      activeMarkPoints,
+    ),
+    cinematic,
+  );
   const count = batchCount;
+  const placeholderSubtitle = focusRegion?.enabled
+    ? '聚焦区域生成'
+    : hasCinematicDirective
+      ? '电影感生成'
+      : (prompt || '图片占位预览');
+  const multiAnglePlaceholderSubtitle = focusRegion?.enabled
+    ? '聚焦区域生成'
+    : hasCinematicDirective
+      ? '电影感多角度生成'
+      : (prompt || '多角度图片占位预览');
 
   if (multiAngleConfig) {
     if (!upstreamReferenceSources.length) {
@@ -838,7 +979,7 @@ export async function executeImageNode(
     }
 
     const image = await generateImageWithProvider({
-      prompt: explicitPrompt,
+      prompt: explicitPromptWithFocus,
       referenceSources: upstreamReferenceSources,
       ttiSelection,
       aspectRatio,
@@ -848,7 +989,7 @@ export async function executeImageNode(
       multiAngle: multiAngleConfig,
       onProgress,
       placeholderTitle: node.title,
-      placeholderSubtitle: prompt || '多角度图片占位预览',
+      placeholderSubtitle: multiAnglePlaceholderSubtitle,
       signal,
     });
 
@@ -859,16 +1000,19 @@ export async function executeImageNode(
         prompt,
         mode: 'multi-angle',
         multiAngle: properties.multiAngle,
+        ...(focusRegion?.enabled ? { focusRegion } : {}),
+        ...(activeMarkPoints.length ? { markPoints: activeMarkPoints } : {}),
+        ...(hasCinematicDirective ? { cinematic } : {}),
       },
     };
   }
 
   if (count > 1) {
     const batchResult = await generateBatchImagesWithCandidateSelection({
-      prompt: effectivePrompt,
+      prompt: effectivePromptWithFocus,
       count,
       title: node.title,
-      placeholderBase: prompt || '图片占位预览',
+      placeholderBase: placeholderSubtitle,
       sharedParams: {
         referenceSources,
         ttiSelection,
@@ -878,7 +1022,7 @@ export async function executeImageNode(
         settingsSnapshot: node.settingsSnapshot,
         onProgress,
         placeholderTitle: node.title,
-        placeholderSubtitle: prompt || '图片占位预览',
+        placeholderSubtitle,
         signal,
       },
     });
@@ -900,12 +1044,15 @@ export async function executeImageNode(
         candidateSelection: batchResult.candidateSelection,
         similarityDedupe: batchResult.candidateSelection,
         mode: 'generate',
+        ...(focusRegion?.enabled ? { focusRegion } : {}),
+        ...(activeMarkPoints.length ? { markPoints: activeMarkPoints } : {}),
+        ...(hasCinematicDirective ? { cinematic } : {}),
       },
     };
   }
 
   const image = await generateImageWithProvider({
-    prompt: effectivePrompt,
+    prompt: effectivePromptWithFocus,
     referenceSources,
     ttiSelection,
     aspectRatio,
@@ -914,14 +1061,20 @@ export async function executeImageNode(
     settingsSnapshot: node.settingsSnapshot,
     onProgress,
     placeholderTitle: node.title,
-    placeholderSubtitle: prompt || '图片占位预览',
+    placeholderSubtitle,
     signal,
   });
 
   return {
     kind: 'image',
     primary: image,
-    metadata: { prompt, mode: 'generate' },
+    metadata: {
+      prompt,
+      mode: 'generate',
+      ...(focusRegion?.enabled ? { focusRegion } : {}),
+      ...(activeMarkPoints.length ? { markPoints: activeMarkPoints } : {}),
+      ...(hasCinematicDirective ? { cinematic } : {}),
+    },
   };
 }
 
@@ -942,11 +1095,27 @@ export async function executePanoramaNode(
   const templateKind: PanoramaTemplateKind = rawTemplate === 'indoor' || rawTemplate === 'outdoor'
     ? rawTemplate
     : 'auto';
+  const panoramaModelKey = String(node.properties.panoramaModelKey ?? LIBTV_PANORAMA_SUBMIT_MODEL_KEY);
+  const panoramaRatio = String(node.properties.aspectRatio ?? '').trim()
+    || getLibTVPanoramaRatioForModel(panoramaModelKey);
+  const panoramaQuality = String(node.properties.panoramaQuality ?? LIBTV_PANORAMA_SLASH_QUALITY);
+  const panoramaSlashScene = String(node.properties.panoramaSlashScene ?? LIBTV_PANORAMA_SLASH_SCENE);
+  const panoramaWithPromptScene = String(node.properties.panoramaWithPromptScene ?? LIBTV_PANORAMA_WITH_PROMPT_SCENE);
+  const panoramaSlashLabel = String(node.properties.panoramaSlashLabel ?? LIBTV_PANORAMA_SLASH_LABEL);
   const projectionMode = resolvePanoramaProjectionMode(node.properties.projectionMode);
   const wrappedPrompt = compilePanoramaPrompt(originalPrompt, { templateKind, projectionMode });
   const wrappedNode: ExecutionNodeView = {
     ...node,
-    properties: { ...node.properties, prompt: wrappedPrompt },
+    properties: {
+      ...node.properties,
+      prompt: wrappedPrompt,
+      aspectRatio: panoramaRatio,
+      panoramaSlashScene,
+      panoramaWithPromptScene,
+      panoramaSlashLabel,
+      panoramaModelKey,
+      panoramaQuality,
+    },
   };
 
   const result = await executeImageNode(wrappedNode, onProgress, signal);
@@ -1023,6 +1192,12 @@ export async function executePanoramaNode(
       mode: 'panorama',
       panoramaTemplate: templateKind,
       panoramaProjection: projectionMode,
+      panoramaSlashScene,
+      panoramaWithPromptScene,
+      panoramaSlashLabel,
+      panoramaModelKey,
+      panoramaQuality,
+      panoramaRatio,
       originalPrompt: originalPrompt.trim(),
       detailCropCount: detailItems.length,
       perspectiveViewCount: perspectiveItems.length,
@@ -1606,14 +1781,6 @@ async function executeNodeInner(
       return executeStoryboardNode(node, onProgress, signal);
     case 'linghui/director3d':
       return executeDirector3DNode(node, onProgress, signal);
-    case 'linghui/image-generator':
-      // 控制器节点不参与 workflow 执行：用户点「生成图片」按钮 → canvas 派生下游 image
-      // 节点（已自动 trigger 执行）。这里返回空 text 结果让 workflow 调度不卡死。
-      return {
-        kind: 'text',
-        text: '',
-        metadata: { mode: 'image-generator-controller' },
-      };
     default:
       throw new Error(`暂不支持执行节点类型：${node.type}`);
   }

@@ -2,6 +2,7 @@ import React, { memo } from 'react';
 import { type NodeProps } from '@xyflow/react';
 import { getLinghuiResultPrimaryMedia, type LinghuiNodeData, type LinghuiRunStatus } from '../../../../types/linghui';
 import { useNodeRunState, useLinghuiNodeInteraction, useLinghuiNodeEditorVisibility } from '../state/LinghuiNodeRunsContext';
+import { useLinghuiConnectTarget } from '../state/useLinghuiConnectTarget';
 import { LinghuiNodeEditor } from '../../editors/components/LinghuiNodeEditor';
 import { EditableCompactNodeLabel } from './EditableCompactNodeLabel';
 import { resolveLinghuiNodeViewMode } from '../../editors/state/linghuiNodeViewMode';
@@ -9,6 +10,7 @@ import { resolveDefaultCompactNodeStyle } from '../state/linghuiNodeCardSizing';
 import { cssVars } from '../../../../theme/runtime';
 import { LinghuiNodeRunError } from './LinghuiNodeRunError';
 import { LinghuiNodePorts } from './LinghuiNodeHandle';
+import { LinghuiAudioNodeEmptyState } from './LinghuiAudioNodeEmptyState';
 
 const STATUS_COLORS: Record<LinghuiRunStatus, string> = {
   idle: 'var(--token-text-muted)',
@@ -34,7 +36,7 @@ function formatDuration(durationSec?: number): string {
 
 function AudioNodeInner({ id, data, selected }: NodeProps) {
   const nodeData = data as unknown as LinghuiNodeData;
-  const props = nodeData.properties as { source?: string; prompt?: string };
+  const props = nodeData.properties as { source?: string; prompt?: string; mode?: string };
   const runState = useNodeRunState(id);
   const interactionHandlers = useLinghuiNodeInteraction(id);
   const status = runState?.status ?? 'idle';
@@ -54,24 +56,31 @@ function AudioNodeInner({ id, data, selected }: NodeProps) {
       : '待配置';
   const viewMode = resolveLinghuiNodeViewMode(nodeData.viewMode);
   const isEditorVisible = useLinghuiNodeEditorVisibility(id, 'linghui/audio');
+  const isConnectTarget = useLinghuiConnectTarget(id);
 
   return (
     <div
-      className={`linghuiCompactNode nopan ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''} ${isEditorVisible ? 'hasInlineEditor' : ''}`}
+      className={`linghuiCompactNode nopan is-${status} ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''} ${isEditorVisible ? 'hasInlineEditor' : ''} ${isConnectTarget ? 'isConnectTarget' : ''}`}
       data-view-mode={viewMode}
       style={nodeStyle}
       {...interactionHandlers}
     >
+      {!hasUploadedSource ? <span className="linghuiAudioNodeUploadFloat nodrag nopan">上传</span> : null}
       <LinghuiNodePorts accent={nodeData.accent} inputs={nodeData.inputs} outputs={nodeData.outputs} />
 
       <div className="linghuiCompactThumb linghuiCompactAudioThumb">
-        <div className="linghuiCompactAudioWave linghuiCompactAccentText">
-          <span />
-          <span />
-          <span />
-          <span />
-          <span />
-        </div>
+        {props.mode === 'generate' && !hasUploadedSource ? (
+          // LibTV 1:1：音频节点 generate 态无音频时显示 EmptyState（"音频生视频"建议按钮）。
+          <LinghuiAudioNodeEmptyState nodeId={id} />
+        ) : (
+          <div className="linghuiCompactAudioWave linghuiCompactAccentText">
+            <span />
+            <span />
+            <span />
+            <span />
+            <span />
+          </div>
+        )}
       </div>
 
       <div className="linghuiCompactInfo">
