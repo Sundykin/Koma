@@ -1,4 +1,4 @@
-import type { AppSettings, MediaAssetSource, ProviderAssetInput } from '../../../../../types';
+import type { MediaAssetSource, ProviderAssetInput } from '../../../../../types';
 import { getProjectTTIProvider } from '../../../../../providers';
 import { listCapabilityFallbackCandidates, resolveConfiguredChannelModel } from '../../../../../providers/channel/resolver';
 import type { ImageResult, MultiAngleTTIRequest } from '../../../../../providers/tti/types';
@@ -9,7 +9,6 @@ import type { LinghuiImageMediaItem } from '../../../../../types/linghui';
 import { sanitizeBodyForLog, truncateString } from '../../../../../utils/logFormatting';
 import {
   compileLinghuiPromptReferences,
-  type LinghuiPromptReferenceItem,
 } from '../../../editors/state/linghuiPromptReferences';
 import { ensureRemoteUrlForImageSources } from '../../../../../services/mediaRemoteUrlService';
 import { persistMediaAsset } from '../../../../../services/mediaPersistenceService';
@@ -31,134 +30,21 @@ import {
   resolveAsyncProviderResult,
   resolveExecutionSettings,
 } from './shared';
+import {
+  buildTTIRequestOptions,
+  clampProgressValue,
+  dedupeImageReferenceSources,
+  extractProviderImageResults,
+  omitBatchImagesMetadata,
+  resolveAverageVariantProgress,
+  withVariantImageMetadata,
+} from './imageHelpers';
+import type {
+  GenerateImageVariantsWithProviderParams,
+  GenerateImageWithProviderParams,
+} from './imageTypes';
 
 const imageLogger = createLogger('LinghuiImageExecution');
-
-type GenerateImageWithProviderParams = {
-  prompt: string;
-  referenceSources?: Array<MediaAssetSource | ProviderAssetInput>;
-  silentReferenceSources?: Array<MediaAssetSource | ProviderAssetInput>;
-  steps?: number;
-  count?: number;
-  /** 画布上用户选的比例（'1:1' / '16:9' / '9:16' / ...）。会透传给 provider.start 的 options。 */
-  aspectRatio?: string;
-  /** 画布上用户选的分辨率档位（'1K' / '2K' / '4K' / 'auto'）。透传到 options.imageSize，
-   *  让 OpenAI 兼容 / 通用上游按用户挑的档位算尺寸。'auto' / 空值表示用模型默认。 */
-  resolution?: string;
-  onProgress?: (progress: number, message?: string, partialResult?: unknown) => void;
-  placeholderTitle: string;
-  placeholderSubtitle?: string;
-  accent?: string;
-  ttiSelection?: string;
-  promptReferences?: LinghuiPromptReferenceItem[];
-  settingsSnapshot?: AppSettings;
-  multiAngle?: Omit<MultiAngleTTIRequest, 'originalPrompt' | 'anglePrompt' | 'compiledPrompt'> | null;
-  signal?: AbortSignal;
-};
-
-function buildTTIRequestOptions(params: GenerateImageWithProviderParams): Record<string, unknown> | undefined {
-  const options: Record<string, unknown> = {};
-  if (params.steps !== undefined) options.steps = params.steps;
-  const aspectRatio = String(params.aspectRatio ?? '').trim();
-  if (aspectRatio) options.aspectRatio = aspectRatio;
-  const imageSize = String(params.resolution ?? '').trim();
-  // 'auto' 表示让 provider 决定；只有用户显式挑了档位才透传。
-  if (imageSize && imageSize.toLowerCase() !== 'auto') options.imageSize = imageSize;
-  return Object.keys(options).length > 0 ? options : undefined;
-}
-
-interface GenerateImageVariantRequest {
-  label?: string;
-  prompt: string;
-  placeholderTitle?: string;
-  placeholderSubtitle?: string;
-  metadata?: Record<string, unknown>;
-}
-
-type GenerateImageVariantsWithProviderParams = Omit<GenerateImageWithProviderParams, 'prompt' | 'count'> & {
-  variants: GenerateImageVariantRequest[];
-};
-
-function isImageResult(value: unknown): value is ImageResult {
-  if (!value || typeof value !== 'object') return false;
-  const candidate = value as Partial<ImageResult>;
-  return typeof candidate.path === 'string' || typeof candidate.url === 'string';
-}
-
-function omitBatchImagesMetadata(metadata?: ImageResult['metadata']): Record<string, unknown> | undefined {
-  if (!metadata) return undefined;
-  const { batchImages: _batchImages, ...rest } = metadata;
-  return Object.keys(rest).length > 0 ? rest : undefined;
-}
-
-function extractProviderImageResults(output: ImageResult): ImageResult[] {
-  const batchImages = Array.isArray(output.metadata?.batchImages)
-    ? output.metadata.batchImages.filter(isImageResult)
-    : [];
-  return batchImages.length > 0 ? batchImages : [output];
-}
-
-function clampProgressValue(progress?: number): number {
-  const numeric = Number(progress);
-  if (!Number.isFinite(numeric)) {
-    return 0;
-  }
-  return Math.max(0, Math.min(100, Math.round(numeric)));
-}
-
-function resolveAverageVariantProgress(progresses: number[]): number {
-  if (!progresses.length) {
-    return 0;
-  }
-  return Math.round(progresses.reduce((sum, value) => sum + clampProgressValue(value), 0) / progresses.length);
-}
-
-function withVariantImageMetadata(
-  item: LinghuiImageMediaItem,
-  variant: GenerateImageVariantRequest,
-  index: number,
-): LinghuiImageMediaItem {
-  const mergedMetadata = {
-    ...(item.metadata ?? {}),
-    variantIndex: index + 1,
-    ...(variant.metadata ?? {}),
-  };
-
-  return {
-    ...item,
-    label: String(variant.label ?? '').trim() || item.label || `#${index + 1}`,
-    metadata: Object.keys(mergedMetadata).length > 0 ? mergedMetadata : undefined,
-  };
-}
-
-function buildImageReferenceSourceKey(source: MediaAssetSource | ProviderAssetInput): string {
-  if (typeof source === 'string') {
-    return source;
-  }
-  if (source && typeof source === 'object' && 'transport' in source && 'value' in source) {
-    return `${source.transport}:${source.value}`;
-  }
-
-  const asset = source as Exclude<MediaAssetSource, string>;
-  return asset.localPath || asset.remoteUrl || JSON.stringify(asset);
-}
-
-function dedupeImageReferenceSources(
-  sources: Array<MediaAssetSource | ProviderAssetInput | undefined>,
-): Array<MediaAssetSource | ProviderAssetInput> {
-  const seen = new Set<string>();
-  const deduped: Array<MediaAssetSource | ProviderAssetInput> = [];
-
-  for (const source of sources) {
-    if (!source) continue;
-    const key = buildImageReferenceSourceKey(source);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    deduped.push(source);
-  }
-
-  return deduped;
-}
 
 async function persistImageResult(
   output: ImageResult,

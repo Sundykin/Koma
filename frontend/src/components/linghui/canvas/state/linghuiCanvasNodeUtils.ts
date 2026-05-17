@@ -1,0 +1,262 @@
+import type { Node } from '@xyflow/react';
+import { nanoid } from 'nanoid';
+import type {
+  LinghuiNodeData,
+  LinghuiNodeType,
+  LinghuiSlotDataType,
+} from '../../../../types/linghui';
+import {
+  NODE_LABEL_TEMPLATE,
+  createNewNodeData,
+  resolveLinghuiCompatibleInputSlot,
+} from '../../library/state/linghuiNodeDefs';
+import { GROUP_HEADER_HEIGHT } from './linghuiCanvasSharedTypes';
+
+function rfTypeKey(linghuiType: LinghuiNodeType): string {
+  return linghuiType.replace(/\//g, '-');
+}
+
+/**
+ * LibTV 风默认节点 label：`图片节点 5`、`视频节点 7`，**counter 全画布共享**（跨节点类型递增）。
+ * LibTV 打包 chunk：`name: \`图片节点 ${++r.current}\`` 与 `\`视频节点 ${++r.current}\`` 共用一个递增 ref。
+ *
+ * 实现：扫全画布所有非 group 节点 label，匹配任意 NODE_LABEL_TEMPLATE 前缀 + 末尾数字，取全局最大值 +1。
+ * 这样 N 单调递增（删除节点后会跳号，与 LibTV 一致），跨类型共享 counter。
+ */
+function resolveNewNodeLabel(type: LinghuiNodeType, currentNodes: Node[]): string | undefined {
+  const kindLabel = NODE_LABEL_TEMPLATE[type];
+  if (!kindLabel) return undefined;
+
+  const allKindPrefixes = Object.values(NODE_LABEL_TEMPLATE);
+  const maxIndex = currentNodes.reduce((maxValue, node) => {
+    if (node.type === 'group') return maxValue;
+    const nodeData = node.data as unknown as LinghuiNodeData | undefined;
+    const label = String(nodeData?.label ?? '').trim();
+    if (!label) return maxValue;
+    for (const prefix of allKindPrefixes) {
+      if (label.startsWith(`${prefix} `)) {
+        const match = label.slice(prefix.length).match(/^\s*(\d+)\s*$/);
+        if (match) {
+          return Math.max(maxValue, Number(match[1]));
+        }
+      }
+    }
+    return maxValue;
+  }, 0);
+
+  return `${kindLabel} ${maxIndex + 1}`;
+}
+
+export interface CreateCanvasNodeOptions {
+  label?: string;
+  initialProperties?: Record<string, unknown>;
+}
+
+export function createCanvasNode(
+  type: LinghuiNodeType,
+  position: Node['position'],
+  currentNodes: Node[],
+  options?: CreateCanvasNodeOptions,
+): Node {
+  const data = createNewNodeData(type, {
+    label: options?.label ?? resolveNewNodeLabel(type, currentNodes),
+  });
+
+  return {
+    id: nanoid(10),
+    type: rfTypeKey(type),
+    position,
+    data: {
+      ...data,
+      properties: {
+        ...data.properties,
+        ...(options?.initialProperties ?? {}),
+      },
+    } as unknown as Record<string, unknown>,
+    draggable: false,
+  };
+}
+
+export function expandNodeIdsWithDescendants(
+  currentNodes: Node[],
+  nodeIds: Iterable<string>,
+): string[] {
+  const expanded = new Set(nodeIds);
+  let changed = true;
+
+  while (changed) {
+    changed = false;
+
+    for (const node of currentNodes) {
+      if (!node.parentId || expanded.has(node.id) || !expanded.has(node.parentId)) {
+        continue;
+      }
+
+      expanded.add(node.id);
+      changed = true;
+    }
+  }
+
+  return [...expanded];
+}
+
+export function resolveCompatibleTargetHandleId(
+  type: LinghuiNodeType,
+  sourceDataType: LinghuiSlotDataType,
+): string | null {
+  return resolveLinghuiCompatibleInputSlot(type, sourceDataType) ? 'input-0' : null;
+}
+
+export function resolveCompatibleTargetSlotType(
+  type: LinghuiNodeType,
+  sourceDataType: LinghuiSlotDataType,
+): LinghuiSlotDataType | null {
+  return resolveLinghuiCompatibleInputSlot(type, sourceDataType)?.slot.dataType ?? null;
+}
+
+export function isEditableEventTarget(target: EventTarget | null): boolean {
+  const element = target as HTMLElement | null;
+  if (!element || typeof element.closest !== 'function') return false;
+
+  return Boolean(
+    element.closest('input, textarea, select, [contenteditable="true"], .cm-editor'),
+  );
+}
+
+export function readDroppedFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('读取拖入文件失败'));
+    reader.onload = () => resolve(String(reader.result ?? ''));
+    reader.readAsDataURL(file);
+  });
+}
+
+export function getNodeAbsolutePosition(
+  node: Pick<Node, 'position' | 'parentId'>,
+  groupPositions: Map<string, { x: number; y: number }>,
+): { x: number; y: number } {
+  if (!node.parentId) {
+    return { x: node.position.x, y: node.position.y };
+  }
+
+  const parentPosition = groupPositions.get(node.parentId);
+  if (!parentPosition) {
+    return { x: node.position.x, y: node.position.y };
+  }
+
+  return {
+    x: parentPosition.x + node.position.x,
+    y: parentPosition.y + node.position.y,
+  };
+}
+
+export function collectGroupPositions(
+  currentNodes: Node[],
+  groupIds: Iterable<string>,
+): Map<string, { x: number; y: number }> {
+  const groupIdSet = new Set(groupIds);
+  const groupPositions = new Map<string, { x: number; y: number }>();
+
+  for (const node of currentNodes) {
+    if (node.type !== 'group' || !groupIdSet.has(node.id)) continue;
+    groupPositions.set(node.id, { x: node.position.x, y: node.position.y });
+  }
+
+  return groupPositions;
+}
+
+export function detachNodesFromGroups(
+  currentNodes: Node[],
+  groupPositions: Map<string, { x: number; y: number }>,
+  options?: { selectDetached?: boolean },
+): Node[] {
+  return currentNodes.map(node => {
+    if (!node.parentId || !groupPositions.has(node.parentId)) return node;
+
+    const groupPos = groupPositions.get(node.parentId)!;
+    return {
+      ...node,
+      parentId: undefined,
+      extent: undefined,
+      selected: options?.selectDetached ? true : node.selected,
+      position: {
+        x: node.position.x + groupPos.x,
+        y: node.position.y + groupPos.y,
+      },
+    };
+  });
+}
+
+function resolveNodeSize(node: Pick<Node, 'measured' | 'width' | 'height'>): { width: number; height: number } {
+  return {
+    width: node.measured?.width ?? node.width ?? 180,
+    height: node.measured?.height ?? node.height ?? 120,
+  };
+}
+
+export function clampNodePositionToParentBounds(params: {
+  node: Pick<Node, 'parentId' | 'measured' | 'width' | 'height'>;
+  parentNode?: Pick<Node, 'measured' | 'width' | 'height' | 'style'> | null;
+  nextPosition: { x: number; y: number };
+}): { x: number; y: number } {
+  const { node, parentNode, nextPosition } = params;
+  if (!node.parentId || !parentNode) {
+    return nextPosition;
+  }
+
+  const parentWidth = Number(
+    (parentNode.style as { width?: number | string } | undefined)?.width
+      ?? parentNode.measured?.width
+      ?? parentNode.width
+      ?? 0,
+  );
+  const parentHeight = Number(
+    (parentNode.style as { height?: number | string } | undefined)?.height
+      ?? parentNode.measured?.height
+      ?? parentNode.height
+      ?? 0,
+  );
+
+  if (!Number.isFinite(parentWidth) || !Number.isFinite(parentHeight) || parentWidth <= 0 || parentHeight <= 0) {
+    return nextPosition;
+  }
+
+  const { width: nodeWidth, height: nodeHeight } = resolveNodeSize(node);
+  const minX = 0;
+  const maxX = Math.max(0, parentWidth - nodeWidth);
+  const minY = GROUP_HEADER_HEIGHT;
+  const maxY = Math.max(minY, parentHeight - nodeHeight);
+
+  return {
+    x: Math.max(minX, Math.min(nextPosition.x, maxX)),
+    y: Math.max(minY, Math.min(nextPosition.y, maxY)),
+  };
+}
+
+export function resolveExecutionTargetNodeIds(
+  currentNodes: Node[],
+  requestedIds?: string[],
+): string[] {
+  const targetIds = requestedIds?.length
+    ? requestedIds
+    : currentNodes.filter(node => node.selected).map(node => node.id);
+
+  const selectionSet = new Set(targetIds);
+  const resolved = new Set<string>();
+
+  for (const node of currentNodes) {
+    if (node.type === 'group') continue;
+
+    if (selectionSet.has(node.id)) {
+      resolved.add(node.id);
+      continue;
+    }
+
+    if (node.parentId && selectionSet.has(node.parentId)) {
+      resolved.add(node.id);
+    }
+  }
+
+  return [...resolved];
+}
