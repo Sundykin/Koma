@@ -60,6 +60,8 @@ const LINGHUI_TYPE_TO_RF_TYPE_MAP: Record<LinghuiNodeType, LinghuiRFNodeTypeKey>
   'linghui/script': 'linghui-script',
   'linghui/storyboard': 'linghui-storyboard',
   'linghui/director3d': 'linghui-director3d',
+  'linghui/image-grid-slice': 'linghui-image-grid-slice',
+  'linghui/video-clip': 'linghui-video-clip',
 };
 
 const RF_TYPE_TO_LINGHUI_TYPE_MAP: Record<LinghuiRFNodeTypeKey, LinghuiNodeType> = {
@@ -72,6 +74,8 @@ const RF_TYPE_TO_LINGHUI_TYPE_MAP: Record<LinghuiRFNodeTypeKey, LinghuiNodeType>
   'linghui-script': 'linghui/script',
   'linghui-storyboard': 'linghui/storyboard',
   'linghui-director3d': 'linghui/director3d',
+  'linghui-image-grid-slice': 'linghui/image-grid-slice',
+  'linghui-video-clip': 'linghui/video-clip',
 };
 
 // 旧持久化迁移：linghui-image-generator → linghui-image (mode='generate')。

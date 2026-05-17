@@ -44,6 +44,18 @@ import {
   buildLinghuiClipboardSnapshotFromRF,
 } from '../state/linghuiCanvasShared';
 import { normalizeLinghuiMultiAngleConfig } from '../../../../types/linghui';
+import { LINGHUI_TEXT_PRESETS, pickRandomTextPrompt } from '../../editors/state/linghuiTextPresets';
+import { LINGHUI_VIDEO_PRESETS } from '../../editors/state/linghuiVideoPresets';
+import { LINGHUI_AUDIO_PRESETS } from '../../editors/state/linghuiAudioPresets';
+
+/** LibTV TextNode EmptyState 4 actions：每个都派生完整子图（参考 docs/libtv-text-node-deep-dive.md §3）。 */
+export type LinghuiTextEmptyAction = 'edit' | 'video' | 'image-prompt' | 'music';
+
+/** LibTV VideoNode EmptyState 2 actions（参考 docs/libtv-video-node-deep-dive.md §3）。 */
+export type LinghuiVideoEmptyAction = 'first-frame' | 'first-last-frame';
+
+/** LibTV AudioNode EmptyState 1 action（chunk 15gvxu:8668-8728 eH）。 */
+export type LinghuiAudioEmptyAction = 'audio-to-video';
 
 interface UseLinghuiCanvasDocumentOpsParams {
   reactFlow: ReactFlowInstance;
@@ -1570,6 +1582,588 @@ export function useLinghuiCanvasDocumentOps({
   // LibTV 1:1：image-generator 控制器节点已删除。图片节点的"生成"由节点自身的编辑器内 prompt + 运行按钮完成，
   // 不再有"派生下游展示节点"的二分模型。`spawnImageFromGenerator` 不再暴露。
 
+  /**
+   * LibTV TextNode EmptyState 4 actions（15gvxu:55145-55256）：
+   * - 'edit'        eJ "自己编写内容"：切到 mode='manual' + 清空 content，不派生新节点；返回 sourceNodeId
+   * - 'video'       eY "文生视频"：写示例文本 + mode='generate'；右侧 +NODE_WIDTH+GAP 派生 VideoNode；建 text→video 边；选中新视频
+   * - 'image-prompt' eV "图片反推提示词"：左侧 -NODE_WIDTH-GAP 派生 ImageNode；建 image→text 反向边；当前节点写反推 prompt + mode='generate'；选中新图片
+   * - 'music'       eW "文字生音乐"：写音乐 prompt + mode='generate'；右侧派生 AudioNode；建 text→audio 边；选中新音频
+   */
+  const applyTextEmptyAction = useCallback((
+    sourceNodeId: string,
+    action: LinghuiTextEmptyAction,
+  ): string | null => {
+    const currentNodes = reactFlow.getNodes();
+    const sourceNode = currentNodes.find(node => node.id === sourceNodeId);
+    if (!sourceNode || sourceNode.type === 'group') return null;
+
+    const sourceNodeData = sourceNode.data as unknown as LinghuiNodeData;
+    if (sourceNodeData.linghuiType !== 'linghui/text') return null;
+
+    if (action === 'edit') {
+      // 切到 manual 模式（对齐 LibTV TEXT_RESOURCE）+ 清空 content
+      setNodes(existingNodes => existingNodes.map(node => {
+        if (node.id !== sourceNodeId) return node;
+        const data = node.data as unknown as LinghuiNodeData;
+        const props = data.properties as unknown as LinghuiTextNodeProperties;
+        return {
+          ...node,
+          data: {
+            ...data,
+            properties: { ...props, mode: 'manual', content: '' } as unknown as Record<string, unknown>,
+          } as unknown as Record<string, unknown>,
+        };
+      }));
+      setEditorSelection({
+        kind: 'node',
+        nodeId: sourceNodeId,
+        nodeType: 'linghui/text',
+        label: sourceNodeData.label,
+      });
+      scheduleSnapshot();
+      return sourceNodeId;
+    }
+
+    // 余下 3 个 action 都需要派生节点：先算位置（处理 parent group 偏移）
+    const sourceWidth = sourceNode.measured?.width ?? sourceNode.width ?? 280;
+    const groupPositions = collectGroupPositions(currentNodes, sourceNode.parentId ? [sourceNode.parentId] : []);
+    const sourceAbsolutePosition = getNodeAbsolutePosition(sourceNode, groupPositions);
+    const parentPosition = sourceNode.parentId ? groupPositions.get(sourceNode.parentId) : undefined;
+    // LibTV 用 NODE_WIDTH + NODE_GAP，灵绘 sourceWidth + 84（与 createDerivedImageToolNodeFromNode 一致）
+    const horizontalDelta = sourceWidth + 84;
+    const absolutePosition = action === 'image-prompt'
+      ? { x: sourceAbsolutePosition.x - horizontalDelta, y: sourceAbsolutePosition.y }
+      : { x: sourceAbsolutePosition.x + horizontalDelta, y: sourceAbsolutePosition.y };
+    const newPosition = parentPosition
+      ? { x: absolutePosition.x - parentPosition.x, y: absolutePosition.y - parentPosition.y }
+      : absolutePosition;
+
+    let newNode: Node | null = null;
+    let newEdge: Edge | null = null;
+    let sourceNodePatch: ((prev: LinghuiTextNodeProperties) => LinghuiTextNodeProperties) | null = null;
+    let newLabel = '';
+
+    if (action === 'video') {
+      const seed = pickRandomTextPrompt();
+      sourceNodePatch = prev => ({ ...prev, mode: 'generate', content: seed, prompt: prev.prompt || seed });
+
+      const created = createCanvasNode('linghui/video', newPosition, currentNodes);
+      const createdData = created.data as unknown as LinghuiNodeData;
+      const createdProps = createdData.properties as unknown as LinghuiVideoNodeProperties;
+      newLabel = (createdData.label || '').trim() || '视频';
+      newNode = {
+        ...created,
+        parentId: sourceNode.parentId,
+        extent: resolveParentExtent(sourceNode.parentId),
+        selected: true,
+        data: {
+          ...createdData,
+          label: newLabel,
+          properties: {
+            ...createdProps,
+            mode: 'generate',
+            prompt: LINGHUI_TEXT_PRESETS.textToVideo.videoPrompt,
+          } as unknown as Record<string, unknown>,
+        } as unknown as Record<string, unknown>,
+      };
+      newEdge = {
+        id: `e-${nanoid(8)}`,
+        source: sourceNodeId,
+        target: newNode.id,
+        sourceHandle: 'output-0',
+        targetHandle: 'input-0',
+        type: 'linghui-edge',
+        data: { sourceSlotType: 'text', targetSlotType: 'text' } as Record<string, unknown>,
+      };
+    } else if (action === 'music') {
+      const musicPrompt = LINGHUI_TEXT_PRESETS.textToMusic.prompt;
+      sourceNodePatch = prev => ({ ...prev, mode: 'generate', content: musicPrompt, prompt: prev.prompt || musicPrompt });
+
+      const created = createCanvasNode('linghui/audio', newPosition, currentNodes);
+      const createdData = created.data as unknown as LinghuiNodeData;
+      const createdProps = createdData.properties as unknown as LinghuiAudioNodeProperties;
+      newLabel = (createdData.label || '').trim() || '音频';
+      newNode = {
+        ...created,
+        parentId: sourceNode.parentId,
+        extent: resolveParentExtent(sourceNode.parentId),
+        selected: true,
+        data: {
+          ...createdData,
+          label: newLabel,
+          properties: {
+            ...createdProps,
+            // LibTV 标记 scene='Music' 让 Audio 走 TTS Music 通道；灵绘暂以 prompt 透传，scene 字段保留扩展
+            prompt: musicPrompt,
+          } as unknown as Record<string, unknown>,
+        } as unknown as Record<string, unknown>,
+      };
+      newEdge = {
+        id: `e-${nanoid(8)}`,
+        source: sourceNodeId,
+        target: newNode.id,
+        sourceHandle: 'output-0',
+        targetHandle: 'input-0',
+        type: 'linghui-edge',
+        data: { sourceSlotType: 'text', targetSlotType: 'text' } as Record<string, unknown>,
+      };
+    } else if (action === 'image-prompt') {
+      const reversePrompt = LINGHUI_TEXT_PRESETS.imageToPrompt.prompt;
+      sourceNodePatch = prev => ({ ...prev, mode: 'generate', prompt: reversePrompt, content: '' });
+
+      const created = createCanvasNode('linghui/image', newPosition, currentNodes);
+      const createdData = created.data as unknown as LinghuiNodeData;
+      const createdProps = createdData.properties as unknown as LinghuiImageNodeProperties;
+      newLabel = (createdData.label || '').trim() || '图片';
+      // 走 mode='import'（对齐 LibTV IMAGE_RESOURCE），让 ImageNode 进入 EmptyState 等待上传
+      const importProps = createLinghuiImageImportProperties(
+        createdProps,
+        LINGHUI_TEXT_PRESETS.imageToPrompt.imageUrl
+          ? [{ id: 'preset-1', source: LINGHUI_TEXT_PRESETS.imageToPrompt.imageUrl, label: '反推图片' } as LinghuiImageAssetItem]
+          : [],
+        LINGHUI_TEXT_PRESETS.imageToPrompt.imageUrl ? 'preset-1' : '',
+      );
+      newNode = {
+        ...created,
+        parentId: sourceNode.parentId,
+        extent: resolveParentExtent(sourceNode.parentId),
+        selected: true,
+        data: {
+          ...createdData,
+          label: newLabel,
+          properties: importProps as unknown as Record<string, unknown>,
+        } as unknown as Record<string, unknown>,
+      };
+      // ⚠ 反向连线：image → text
+      newEdge = {
+        id: `e-${nanoid(8)}`,
+        source: newNode.id,
+        target: sourceNodeId,
+        sourceHandle: 'output-0',
+        targetHandle: 'input-0',
+        type: 'linghui-edge',
+        data: { sourceSlotType: 'image', targetSlotType: 'image' } as Record<string, unknown>,
+      };
+    }
+
+    if (!newNode || !newEdge || !sourceNodePatch) return null;
+
+    setNodes(existingNodes => {
+      const patched = existingNodes.map(node => {
+        if (node.id === sourceNodeId) {
+          const data = node.data as unknown as LinghuiNodeData;
+          const props = data.properties as unknown as LinghuiTextNodeProperties;
+          return {
+            ...node,
+            selected: false,
+            data: {
+              ...data,
+              properties: sourceNodePatch!(props) as unknown as Record<string, unknown>,
+            } as unknown as Record<string, unknown>,
+          };
+        }
+        return node.selected ? { ...node, selected: false } : node;
+      });
+      return [...patched, newNode!];
+    });
+
+    setEdges(existingEdges => (
+      hasMatchingEdge(existingEdges, newEdge!)
+        ? existingEdges
+        : [...existingEdges, newEdge!]
+    ));
+    setEditorSelection({
+      kind: 'node',
+      nodeId: newNode.id,
+      nodeType: newNode.data && (newNode.data as unknown as LinghuiNodeData).linghuiType,
+      label: newLabel,
+    } as LinghuiCanvasSelection);
+    setContextMenu(null);
+    setQuickCreate(null);
+    setPendingGroupFrame(null);
+    scheduleSnapshot();
+    return newNode.id;
+  }, [
+    reactFlow,
+    scheduleSnapshot,
+    setContextMenu,
+    setEdges,
+    setEditorSelection,
+    setNodes,
+    setPendingGroupFrame,
+    setQuickCreate,
+  ]);
+
+  /**
+   * LibTV VideoNode EmptyState 2 actions（chunk 15gvxu:192400-192509 iU/iO）：
+   * - 'first-frame'      eU/iG "首帧生成视频"：左侧 -NODE_WIDTH-GAP 派生 1 个 ImageNode (mode='import')；
+   *   建 image→video 边；当前 VideoNode 写入 firstFrame.prompt + capability='video.image-to-video'；
+   *   focus 留在 video（与 LibTV 一致）
+   * - 'first-last-frame' iO/ij "首尾帧生成视频"：左侧并列派生 TWO ImageNode（首帧 + 尾帧，垂直分布）；
+   *   建 2 条 image→video 边；写入 firstLastFrame.prompt + capability='video.start-end-to-video'
+   */
+  const applyVideoEmptyAction = useCallback((
+    sourceNodeId: string,
+    action: LinghuiVideoEmptyAction,
+  ): string | null => {
+    const currentNodes = reactFlow.getNodes();
+    const sourceNode = currentNodes.find(node => node.id === sourceNodeId);
+    if (!sourceNode || sourceNode.type === 'group') return null;
+    const sourceNodeData = sourceNode.data as unknown as LinghuiNodeData;
+    if (sourceNodeData.linghuiType !== 'linghui/video') return null;
+
+    const sourceWidth = sourceNode.measured?.width ?? sourceNode.width ?? 320;
+    const groupPositions = collectGroupPositions(currentNodes, sourceNode.parentId ? [sourceNode.parentId] : []);
+    const sourceAbsolutePosition = getNodeAbsolutePosition(sourceNode, groupPositions);
+    const parentPosition = sourceNode.parentId ? groupPositions.get(sourceNode.parentId) : undefined;
+    // ImageNode 默认尺寸约 220，加 84 间距即可（LibTV 用 NODE_GAP，灵绘惯例 84）
+    const horizontalDelta = 220 + 84;
+    const leftAbsoluteX = sourceAbsolutePosition.x - horizontalDelta;
+    const toLocal = (x: number, y: number) => (parentPosition
+      ? { x: x - parentPosition.x, y: y - parentPosition.y }
+      : { x, y });
+
+    if (action === 'first-frame') {
+      const created = createCanvasNode(
+        'linghui/image',
+        toLocal(leftAbsoluteX, sourceAbsolutePosition.y),
+        currentNodes,
+      );
+      const createdData = created.data as unknown as LinghuiNodeData;
+      const createdProps = createdData.properties as unknown as LinghuiImageNodeProperties;
+      const importProps = createLinghuiImageImportProperties(
+        createdProps,
+        LINGHUI_VIDEO_PRESETS.firstFrame.imageUrl
+          ? [{ id: 'preset-1', source: LINGHUI_VIDEO_PRESETS.firstFrame.imageUrl, label: '首帧' } as LinghuiImageAssetItem]
+          : [],
+        LINGHUI_VIDEO_PRESETS.firstFrame.imageUrl ? 'preset-1' : '',
+      );
+      const newImageNode: Node = {
+        ...created,
+        parentId: sourceNode.parentId,
+        extent: resolveParentExtent(sourceNode.parentId),
+        selected: false,
+        data: {
+          ...createdData,
+          label: '首帧',
+          properties: importProps as unknown as Record<string, unknown>,
+        } as unknown as Record<string, unknown>,
+      };
+      const newEdge: Edge = {
+        id: `e-${nanoid(8)}`,
+        source: newImageNode.id,
+        target: sourceNodeId,
+        sourceHandle: 'output-0',
+        targetHandle: 'input-0',
+        type: 'linghui-edge',
+        data: { sourceSlotType: 'image', targetSlotType: 'image' } as Record<string, unknown>,
+      };
+      setNodes(existing => {
+        const patched = existing.map(node => {
+          if (node.id === sourceNodeId) {
+            // 选中 video 节点（focus 留在 video）+ 写入默认 prompt + 切到首帧→视频 capability
+            const data = node.data as unknown as LinghuiNodeData;
+            const props = data.properties as unknown as LinghuiVideoNodeProperties;
+            return {
+              ...node,
+              selected: true,
+              data: {
+                ...data,
+                properties: {
+                  ...props,
+                  mode: 'generate',
+                  prompt: LINGHUI_VIDEO_PRESETS.firstFrame.prompt,
+                  videoCapability: 'video.image-to-video',
+                } as unknown as Record<string, unknown>,
+              } as unknown as Record<string, unknown>,
+            };
+          }
+          return node.selected ? { ...node, selected: false } : node;
+        });
+        return [...patched, newImageNode];
+      });
+      setEdges(existing => (hasMatchingEdge(existing, newEdge) ? existing : [...existing, newEdge]));
+      setEditorSelection({
+        kind: 'node', nodeId: sourceNodeId, nodeType: 'linghui/video', label: sourceNodeData.label,
+      });
+      setContextMenu(null);
+      setQuickCreate(null);
+      setPendingGroupFrame(null);
+      scheduleSnapshot();
+      return newImageNode.id;
+    }
+
+    // first-last-frame：两张 ImageNode 在 video 左侧垂直分布
+    const verticalGap = 28;
+    const stackHalfHeight = 150;  // 估算单图卡高度的一半，足够拉开间距即可
+    const firstY = sourceAbsolutePosition.y - stackHalfHeight - verticalGap;
+    const lastY = sourceAbsolutePosition.y + stackHalfHeight + verticalGap;
+
+    const firstCreated = createCanvasNode('linghui/image', toLocal(leftAbsoluteX, firstY), currentNodes);
+    const firstData = firstCreated.data as unknown as LinghuiNodeData;
+    const firstProps = firstData.properties as unknown as LinghuiImageNodeProperties;
+    const firstImport = createLinghuiImageImportProperties(
+      firstProps,
+      LINGHUI_VIDEO_PRESETS.firstLastFrame.firstImageUrl
+        ? [{ id: 'preset-first', source: LINGHUI_VIDEO_PRESETS.firstLastFrame.firstImageUrl, label: '首帧' } as LinghuiImageAssetItem]
+        : [],
+      LINGHUI_VIDEO_PRESETS.firstLastFrame.firstImageUrl ? 'preset-first' : '',
+    );
+    const newFirstNode: Node = {
+      ...firstCreated,
+      parentId: sourceNode.parentId,
+      extent: resolveParentExtent(sourceNode.parentId),
+      selected: false,
+      data: {
+        ...firstData,
+        label: '首帧',
+        properties: firstImport as unknown as Record<string, unknown>,
+      } as unknown as Record<string, unknown>,
+    };
+
+    const lastCreated = createCanvasNode(
+      'linghui/image',
+      toLocal(leftAbsoluteX, lastY),
+      [...currentNodes, newFirstNode],
+    );
+    const lastData = lastCreated.data as unknown as LinghuiNodeData;
+    const lastProps = lastData.properties as unknown as LinghuiImageNodeProperties;
+    const lastImport = createLinghuiImageImportProperties(
+      lastProps,
+      LINGHUI_VIDEO_PRESETS.firstLastFrame.lastImageUrl
+        ? [{ id: 'preset-last', source: LINGHUI_VIDEO_PRESETS.firstLastFrame.lastImageUrl, label: '尾帧' } as LinghuiImageAssetItem]
+        : [],
+      LINGHUI_VIDEO_PRESETS.firstLastFrame.lastImageUrl ? 'preset-last' : '',
+    );
+    const newLastNode: Node = {
+      ...lastCreated,
+      parentId: sourceNode.parentId,
+      extent: resolveParentExtent(sourceNode.parentId),
+      selected: false,
+      data: {
+        ...lastData,
+        label: '尾帧',
+        properties: lastImport as unknown as Record<string, unknown>,
+      } as unknown as Record<string, unknown>,
+    };
+
+    const newFirstEdge: Edge = {
+      id: `e-${nanoid(8)}`,
+      source: newFirstNode.id,
+      target: sourceNodeId,
+      sourceHandle: 'output-0',
+      targetHandle: 'input-0',
+      type: 'linghui-edge',
+      data: { sourceSlotType: 'image', targetSlotType: 'image' } as Record<string, unknown>,
+    };
+    const newLastEdge: Edge = {
+      id: `e-${nanoid(8)}`,
+      source: newLastNode.id,
+      target: sourceNodeId,
+      sourceHandle: 'output-0',
+      targetHandle: 'input-0',
+      type: 'linghui-edge',
+      data: { sourceSlotType: 'image', targetSlotType: 'image' } as Record<string, unknown>,
+    };
+
+    setNodes(existing => {
+      const patched = existing.map(node => {
+        if (node.id === sourceNodeId) {
+          const data = node.data as unknown as LinghuiNodeData;
+          const props = data.properties as unknown as LinghuiVideoNodeProperties;
+          return {
+            ...node,
+            selected: true,
+            data: {
+              ...data,
+              properties: {
+                ...props,
+                mode: 'generate',
+                prompt: LINGHUI_VIDEO_PRESETS.firstLastFrame.prompt,
+                videoCapability: 'video.start-end-to-video',
+              } as unknown as Record<string, unknown>,
+            } as unknown as Record<string, unknown>,
+          };
+        }
+        return node.selected ? { ...node, selected: false } : node;
+      });
+      return [...patched, newFirstNode, newLastNode];
+    });
+    setEdges(existing => {
+      let next = existing;
+      if (!hasMatchingEdge(next, newFirstEdge)) next = [...next, newFirstEdge];
+      if (!hasMatchingEdge(next, newLastEdge)) next = [...next, newLastEdge];
+      return next;
+    });
+    setEditorSelection({
+      kind: 'node', nodeId: sourceNodeId, nodeType: 'linghui/video', label: sourceNodeData.label,
+    });
+    setContextMenu(null);
+    setQuickCreate(null);
+    setPendingGroupFrame(null);
+    scheduleSnapshot();
+    return newFirstNode.id;
+  }, [
+    reactFlow,
+    scheduleSnapshot,
+    setContextMenu,
+    setEdges,
+    setEditorSelection,
+    setNodes,
+    setPendingGroupFrame,
+    setQuickCreate,
+  ]);
+
+  /**
+   * LibTV AudioNode EmptyState 1 action（chunk 15gvxu:8668-8728 eH "音频生视频"）：
+   *  - 当前 AudioNode 写入示例 audioUrl + mode='import'
+   *  - 右侧 +NODE_WIDTH+GAP 派生 VideoNode（generate + 默认 prompt）
+   *  - 下方 +NODE_HEIGHT_AUDIO+GAP 派生 ImageNode（import + 默认参考图）
+   *  - 2 条边：audio → video，image → video
+   *  - focus 切到 video（LibTV 一致）
+   */
+  const applyAudioEmptyAction = useCallback((
+    sourceNodeId: string,
+    action: LinghuiAudioEmptyAction,
+  ): string | null => {
+    if (action !== 'audio-to-video') return null;
+    const currentNodes = reactFlow.getNodes();
+    const sourceNode = currentNodes.find(node => node.id === sourceNodeId);
+    if (!sourceNode || sourceNode.type === 'group') return null;
+    const sourceNodeData = sourceNode.data as unknown as LinghuiNodeData;
+    if (sourceNodeData.linghuiType !== 'linghui/audio') return null;
+
+    const sourceWidth = sourceNode.measured?.width ?? sourceNode.width ?? 320;
+    const sourceHeight = sourceNode.measured?.height ?? sourceNode.height ?? 220;
+    const groupPositions = collectGroupPositions(currentNodes, sourceNode.parentId ? [sourceNode.parentId] : []);
+    const sourceAbsolutePosition = getNodeAbsolutePosition(sourceNode, groupPositions);
+    const parentPosition = sourceNode.parentId ? groupPositions.get(sourceNode.parentId) : undefined;
+    const toLocal = (x: number, y: number) => (parentPosition
+      ? { x: x - parentPosition.x, y: y - parentPosition.y }
+      : { x, y });
+
+    const videoAbsoluteX = sourceAbsolutePosition.x + sourceWidth + 84;
+    const videoAbsoluteY = sourceAbsolutePosition.y;
+    const imageAbsoluteX = sourceAbsolutePosition.x;
+    const imageAbsoluteY = sourceAbsolutePosition.y + sourceHeight + 56;
+
+    // 右侧 VideoNode（generate）
+    const videoCreated = createCanvasNode(
+      'linghui/video',
+      toLocal(videoAbsoluteX, videoAbsoluteY),
+      currentNodes,
+    );
+    const videoData = videoCreated.data as unknown as LinghuiNodeData;
+    const videoNode: Node = {
+      ...videoCreated,
+      parentId: sourceNode.parentId,
+      extent: resolveParentExtent(sourceNode.parentId),
+      selected: true,
+      data: {
+        ...videoData,
+        label: '视频',
+        properties: {
+          ...(videoData.properties as Record<string, unknown>),
+          mode: 'generate',
+          prompt: LINGHUI_AUDIO_PRESETS.audioToVideo.prompt,
+        } as unknown as Record<string, unknown>,
+      } as unknown as Record<string, unknown>,
+    };
+
+    // 下方 ImageNode（import）
+    const imageCreated = createCanvasNode(
+      'linghui/image',
+      toLocal(imageAbsoluteX, imageAbsoluteY),
+      [...currentNodes, videoNode],
+    );
+    const imageData = imageCreated.data as unknown as LinghuiNodeData;
+    const imageProps = imageData.properties as unknown as LinghuiImageNodeProperties;
+    const imageImportProps = createLinghuiImageImportProperties(
+      imageProps,
+      LINGHUI_AUDIO_PRESETS.audioToVideo.imageUrl
+        ? [{ id: 'preset-image', source: LINGHUI_AUDIO_PRESETS.audioToVideo.imageUrl, label: '图片' } as LinghuiImageAssetItem]
+        : [],
+      LINGHUI_AUDIO_PRESETS.audioToVideo.imageUrl ? 'preset-image' : '',
+    );
+    const imageNode: Node = {
+      ...imageCreated,
+      parentId: sourceNode.parentId,
+      extent: resolveParentExtent(sourceNode.parentId),
+      selected: false,
+      data: {
+        ...imageData,
+        label: '图片',
+        properties: imageImportProps as unknown as Record<string, unknown>,
+      } as unknown as Record<string, unknown>,
+    };
+
+    const audioToVideoEdge: Edge = {
+      id: `e-${nanoid(8)}`,
+      source: sourceNodeId,
+      target: videoNode.id,
+      sourceHandle: 'output-0',
+      targetHandle: 'input-0',
+      type: 'linghui-edge',
+      data: { sourceSlotType: 'audio', targetSlotType: 'audio' } as Record<string, unknown>,
+    };
+    const imageToVideoEdge: Edge = {
+      id: `e-${nanoid(8)}`,
+      source: imageNode.id,
+      target: videoNode.id,
+      sourceHandle: 'output-0',
+      targetHandle: 'input-0',
+      type: 'linghui-edge',
+      data: { sourceSlotType: 'image', targetSlotType: 'image' } as Record<string, unknown>,
+    };
+
+    setNodes(existing => {
+      const patched = existing.map(node => {
+        if (node.id === sourceNodeId) {
+          const data = node.data as unknown as LinghuiNodeData;
+          const props = data.properties as unknown as LinghuiAudioNodeProperties;
+          // 当前 AudioNode 切到 import 模式（与 LibTV AUDIO_RESOURCE 一致）+ 写示例音频 URL
+          return {
+            ...node,
+            selected: false,
+            data: {
+              ...data,
+              properties: {
+                ...props,
+                mode: 'import',
+                source: LINGHUI_AUDIO_PRESETS.audioToVideo.audioUrl || props.source || '',
+              } as unknown as Record<string, unknown>,
+            } as unknown as Record<string, unknown>,
+          };
+        }
+        return node.selected ? { ...node, selected: false } : node;
+      });
+      return [...patched, videoNode, imageNode];
+    });
+    setEdges(existing => {
+      let next = existing;
+      if (!hasMatchingEdge(next, audioToVideoEdge)) next = [...next, audioToVideoEdge];
+      if (!hasMatchingEdge(next, imageToVideoEdge)) next = [...next, imageToVideoEdge];
+      return next;
+    });
+    setEditorSelection({
+      kind: 'node', nodeId: videoNode.id, nodeType: 'linghui/video', label: '视频',
+    });
+    setContextMenu(null);
+    setQuickCreate(null);
+    setPendingGroupFrame(null);
+    scheduleSnapshot();
+    return videoNode.id;
+  }, [
+    reactFlow,
+    scheduleSnapshot,
+    setContextMenu,
+    setEdges,
+    setEditorSelection,
+    setNodes,
+    setPendingGroupFrame,
+    setQuickCreate,
+  ]);
+
   const hasClipboardData = Boolean(clipboardRef.current?.nodes.length || clipboardRef.current?.groups.length);
 
   return {
@@ -1594,6 +2188,9 @@ export function useLinghuiCanvasDocumentOps({
     createDerivedAudioNodeFromVideo,
     createDerivedMultiAngleImageNodeFromNode,
     createDerivedImageToolNodeFromNode,
+    applyTextEmptyAction,
+    applyVideoEmptyAction,
+    applyAudioEmptyAction,
     clearPendingGroupFrame,
   };
 }

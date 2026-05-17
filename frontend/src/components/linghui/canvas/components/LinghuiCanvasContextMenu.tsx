@@ -461,7 +461,14 @@ export const LinghuiCanvasContextMenu: React.FC<LinghuiCanvasContextMenuProps> =
             className="linghuiContextMenuItem"
             onClick={onUploadImages}
           >
-            上传
+            上传图片
+          </button>
+          <button
+            type="button"
+            className="linghuiContextMenuItem"
+            onClick={onUploadVideos}
+          >
+            上传视频
           </button>
           <button
             type="button"

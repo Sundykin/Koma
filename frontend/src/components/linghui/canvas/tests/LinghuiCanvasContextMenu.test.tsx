@@ -161,10 +161,10 @@ describe('LinghuiCanvasContextMenu (LibTV 1:1)', () => {
   });
 
   // ============================================================
-  // LibTV 空白画布右键菜单 1:1 复刻验证
-  // 顺序：上传 / 保存到我的素材 / 添加节点 / ─ / 撤销 / 重做 / ─ / 粘贴
+  // 空白画布右键菜单：在 LibTV 基础上拆分"上传"为图片/视频两项（项目需求）
+  // 顺序：上传图片 / 上传视频 / 保存到我的素材 / 添加节点 / ─ / 撤销 / 重做 / ─ / 粘贴
   // ============================================================
-  it('renders exactly the 7 libtv pane menu items in fixed order', () => {
+  it('renders 8 pane menu items in fixed order (上传拆分为图片/视频)', () => {
     renderNodeMenu({
       contextMenu: {
         kind: 'pane',
@@ -176,7 +176,8 @@ describe('LinghuiCanvasContextMenu (LibTV 1:1)', () => {
       nodeCatalog: LINGHUI_CANVAS_CREATE_MENU_CATALOG,
     });
 
-    expect(screen.getByRole('button', { name: /^上传$/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^上传图片$/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^上传视频$/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /保存到我的素材/ })).toBeDisabled();
     expect(screen.getByRole('button', { name: /添加节点/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /撤销/ })).toBeInTheDocument();

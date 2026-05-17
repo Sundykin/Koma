@@ -53,6 +53,21 @@ export interface LinghuiCanvasOverlaysProps {
     promptSnippet: string;
     properties?: Partial<LinghuiImageNodeProperties>;
   }) => void;
+  /** LibTV TextNode EmptyState 4 actions：派生上下游子图。 */
+  onApplyTextEmptyAction?: (
+    nodeId: string,
+    action: 'edit' | 'video' | 'image-prompt' | 'music',
+  ) => string | null;
+  /** LibTV VideoNode EmptyState 2 actions：派生上游 ImageNode + 自动连线。 */
+  onApplyVideoEmptyAction?: (
+    nodeId: string,
+    action: 'first-frame' | 'first-last-frame',
+  ) => string | null;
+  /** LibTV AudioNode EmptyState "音频生视频"：派生 video + image + 2 条连线。 */
+  onApplyAudioEmptyAction?: (
+    nodeId: string,
+    action: 'audio-to-video',
+  ) => string | null;
   onSetGridSplitType: (type: LinghuiGridType) => void;
   onClearGridSplitCells: () => void;
   onExecuteGridSplit: () => void;

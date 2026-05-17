@@ -7,7 +7,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { App as AntApp } from 'antd';
+import { App as AntApp, Modal } from 'antd';
 import {
   type Edge,
   useNodesState,
@@ -33,6 +33,7 @@ import { useLinghuiCanvasCallbackRefs } from '../hooks/useLinghuiCanvasCallbackR
 import { useLinghuiCanvasFlowBridge } from '../hooks/useLinghuiCanvasFlowBridge';
 import { useLinghuiCanvasOverlayProps } from '../hooks/useLinghuiCanvasOverlayProps';
 import { useLinghuiCanvasUiState } from '../hooks/useLinghuiCanvasUiState';
+import { useLinghuiCanvasStore } from '../state/linghuiCanvasStore';
 import { useLinghuiCanvasViewportControls } from '../hooks/useLinghuiCanvasViewportControls';
 import { useLinghuiCanvasDoubleTapFitView } from '../hooks/useLinghuiCanvasDoubleTapFitView';
 import { type PendingConnectionCreateState } from '../state/linghuiCanvasShared';
@@ -208,6 +209,9 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     createDerivedAudioNodeFromVideo,
     createDerivedMultiAngleImageNodeFromNode,
     createDerivedImageToolNodeFromNode,
+    applyTextEmptyAction,
+    applyVideoEmptyAction,
+    applyAudioEmptyAction,
     clearPendingGroupFrame,
   } = useLinghuiCanvasDocumentOps({
     reactFlow,
@@ -364,6 +368,40 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     setOutlierNotice(null);
   }, []);
 
+  // LibTV canvas:cancel-connect：Esc 取消正在拖拽的连线，避免松手时仍弹 quickCreate。
+  // 清空 pendingConnectionCreateRef 后让 handleConnectEnd 的 resolveQuickCreateFromConnectEnd
+  // 因 pendingConnection 为 null 自动返回 {open:false}；再发 pointerup 终结 React Flow 内部 drag。
+  const cancelPendingConnection = useCallback(() => {
+    if (!pendingConnectionCreateRef.current) return false;
+    pendingConnectionCreateRef.current = null;
+    if (typeof window !== 'undefined') {
+      const evt = new PointerEvent('pointerup', { bubbles: true, cancelable: true });
+      window.dispatchEvent(evt);
+    }
+    return true;
+  }, []);
+
+  // LibTV nO（onBeforeDelete）：键盘删除节点前，如果节点已有生成结果就弹二次确认；空节点直接删。
+  const confirmDeleteNodes = useCallback((nodeIds: string[]) => {
+    if (!nodeIds.length) return;
+    const hasContent = nodeIds.some(id => {
+      const run = nodeRuns[id];
+      return run?.status === 'succeeded' || run?.status === 'failed' || run?.status === 'stale';
+    });
+    if (!hasContent) {
+      deleteNodesByIds(nodeIds);
+      return;
+    }
+    Modal.confirm({
+      title: nodeIds.length > 1 ? `删除 ${nodeIds.length} 个节点` : '删除节点',
+      content: '所选节点包含已生成的内容，删除后可通过 ⌘Z 撤销。确定删除？',
+      okText: '确定删除',
+      cancelText: '取消',
+      okButtonProps: { danger: true },
+      onOk: () => deleteNodesByIds(nodeIds),
+    });
+  }, [deleteNodesByIds, nodeRuns]);
+
   useLinghuiCanvasHotkeys({
     canUndo,
     canRedo,
@@ -386,6 +424,8 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     onZoomIn: zoomIn,
     onZoomOut: zoomOut,
     onToggleShortcutPanel: () => setShortcutPanelOpen(open => !open),
+    onCancelPendingConnection: cancelPendingConnection,
+    confirmDeleteNodes,
     selectedEdgeIds,
   });
   const {
@@ -421,8 +461,8 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     handlePaneContextMenu,
     handleCanvasDoubleClick,
     handleSelectionStart,
-    handleSelectionDragStart,
-    handleSelectionDragStop,
+    handleSelectionDragStart: handleSelectionDragStartBase,
+    handleSelectionDragStop: handleSelectionDragStopBase,
     handleSelectionContextMenu,
     handleSelectionEnd,
   } = useLinghuiCanvasSelectionInteractions({
@@ -440,16 +480,38 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     closeContextMenu,
   });
 
+  // LibTV interacting：节点/框选拖拽过程中通过 .canvas-interacting 暂停 glow/breathe/shimmer 动画。
+  const setInteracting = useLinghuiCanvasStore(state => state.setInteracting);
+  const interacting = useLinghuiCanvasStore(state => state.interacting);
+
+  const handleSelectionDragStart = useCallback<NonNullable<typeof handleSelectionDragStartBase>>(
+    (...args) => {
+      setInteracting(true);
+      return handleSelectionDragStartBase(...args);
+    },
+    [handleSelectionDragStartBase, setInteracting],
+  );
+
+  const handleSelectionDragStop = useCallback<NonNullable<typeof handleSelectionDragStopBase>>(
+    (...args) => {
+      setInteracting(false);
+      return handleSelectionDragStopBase(...args);
+    },
+    [handleSelectionDragStopBase, setInteracting],
+  );
+
   const handleNodeDragStart = useCallback(() => {
     closeContextMenu();
     closeQuickCreate();
     setActiveNodeTool(null);
+    setInteracting(true);
     setCanvasInteractionVersion(version => version + 1);
-  }, [closeContextMenu, closeQuickCreate, setActiveNodeTool]);
+  }, [closeContextMenu, closeQuickCreate, setActiveNodeTool, setInteracting]);
 
   const handleNodeDragStop = useCallback(() => {
+    setInteracting(false);
     setCanvasInteractionVersion(version => version + 1);
-  }, []);
+  }, [setInteracting]);
 
   const {
     bindNodeSurface,
@@ -579,6 +641,9 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     createDerivedAudioNodeFromVideo,
     createDerivedMultiAngleImageNodeFromNode,
     createDerivedImageToolNodeFromNode,
+    applyTextEmptyAction,
+    applyVideoEmptyAction,
+    applyAudioEmptyAction,
     copySelectionToClipboard,
     duplicateSelection,
     pasteClipboardSnapshot,
@@ -611,6 +676,7 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     <LinghuiCanvasSurface
       hostRef={hostRef}
       canvasMode={canvasMode}
+      interacting={interacting}
       canvasZoom={viewport.zoom}
       nodeInteraction={nodeInteractionApi}
       nodeMutation={nodeMutationApi}

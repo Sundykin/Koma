@@ -39,6 +39,12 @@ interface LinghuiCanvasUiState {
    */
   paneClickQuickCreateSuppressUntil: number;
   activeDrawer: LinghuiLibraryDrawerKey | null;
+  /**
+   * LibTV `interacting` 状态：节点/框选拖拽中。挂载到画布根节点的 .canvas-interacting class，
+   * 让 SCSS 暂停 glow-spin / connection-breathe / generating-breathing-* / skeleton-shimmer 等动画，
+   * 避免拖拽时 GPU 被这些动画反复重绘。
+   */
+  interacting: boolean;
 }
 
 interface LinghuiCanvasUiActions {
@@ -75,6 +81,7 @@ interface LinghuiCanvasUiActions {
   setActiveDrawer: (drawer: LinghuiLibraryDrawerKey | null) => void;
   toggleActiveDrawer: (drawer: LinghuiLibraryDrawerKey) => void;
   closeActiveDrawer: () => void;
+  setInteracting: (interacting: boolean) => void;
   resetCanvasUiState: () => void;
   resetCanvasSurfaceState: () => void;
   resetCanvasStore: () => void;
@@ -118,6 +125,7 @@ function createInitialCanvasUiState(): LinghuiCanvasUiState {
     quickCreate: null,
     paneClickQuickCreateSuppressUntil: 0,
     activeDrawer: null,
+    interacting: false,
   };
 }
 
@@ -288,6 +296,10 @@ export const useLinghuiCanvasStore = create<LinghuiCanvasStoreState>((set, get) 
 
   closeActiveDrawer() {
     set({ activeDrawer: null });
+  },
+
+  setInteracting(interacting) {
+    set(state => (state.interacting === interacting ? state : { interacting }));
   },
 
   resetCanvasUiState() {

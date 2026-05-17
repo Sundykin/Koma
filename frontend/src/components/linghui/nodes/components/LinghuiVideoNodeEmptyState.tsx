@@ -1,56 +1,48 @@
 import React, { useMemo } from 'react';
 import { Layers, Sparkles, Video as VideoIcon } from 'lucide-react';
-import type { LinghuiVideoCapability } from '../../../../types/linghui';
-import { useLinghuiNodeMutation } from '../state/LinghuiNodeRunsContext';
+import { useLinghuiNodeEditorApi } from '../state/LinghuiNodeRunsContext';
 import {
   LinghuiNodeEmptyState,
   type LinghuiNodeEmptyStateAction,
 } from './LinghuiNodeEmptyState';
 
 /**
- * LibTV 视频节点 empty_generate 态（chunk `15gvxu-nayl4w.js`）：
- *   actions: [
- *     { icon: layers,   label: "首尾帧生成视频", onClick: ij },
- *     { icon: sparkles, label: "首帧生成视频",   onClick: iG },
- *   ]
+ * LibTV VideoNode empty_generate 态（chunk 15gvxu:193481-193500）。
+ * 2 actions：
+ *   1. 首尾帧生成视频 (layers 14)   → ij/iO：左侧并列派生 TWO ImageNode（首帧+尾帧）+ 2 条 image→video 边
+ *   2. 首帧生成视频   (sparkles 14) → iG/iU：左侧派生 1 个 ImageNode + 1 条 image→video 边
  *
- * 灵绘对齐：通过 updateNodeData 切 videoCapability，与 LibTV 同源行为一致。
- *   - 首尾帧生成视频 → videoCapability = 'video.start-end-to-video'
- *   - 首帧生成视频   → videoCapability = 'video.image-to-video'
+ * 派生由 useLinghuiCanvasDocumentOps.applyVideoEmptyAction 实现（与 TextNode EmptyState 同模式）。
+ * 详见 docs/libtv-video-node-deep-dive.md §3。
  */
 interface LinghuiVideoNodeEmptyStateProps {
   nodeId: string;
 }
 
 export const LinghuiVideoNodeEmptyState: React.FC<LinghuiVideoNodeEmptyStateProps> = ({ nodeId }) => {
-  const { updateNodeData } = useLinghuiNodeMutation();
+  const editorApi = useLinghuiNodeEditorApi();
 
   const actions = useMemo<LinghuiNodeEmptyStateAction[]>(() => {
-    const setCapability = (capability: LinghuiVideoCapability) => () => {
-      updateNodeData(nodeId, (previous) => ({
-        ...previous,
-        properties: {
-          ...previous.properties,
-          videoCapability: capability,
-        },
-      }));
+    const fire = (action: 'first-frame' | 'first-last-frame') => () => {
+      editorApi.onApplyVideoEmptyAction?.(nodeId, action);
     };
     return [
       {
-        key: 'start-end',
+        key: 'first-last-frame',
         label: '首尾帧生成视频',
         icon: <Layers size={14} />,
-        onClick: setCapability('video.start-end-to-video'),
+        onClick: fire('first-last-frame'),
       },
       {
         key: 'first-frame',
         label: '首帧生成视频',
         icon: <Sparkles size={14} />,
-        onClick: setCapability('video.image-to-video'),
+        onClick: fire('first-frame'),
       },
     ];
-  }, [nodeId, updateNodeData]);
+  }, [editorApi, nodeId]);
 
+  // LibTV PlayIcon size=64；灵绘用 VideoIcon 80 保持与图片/文本节点同视觉密度。
   const icon = (
     <span className="linghuiImageNodeEmptyStateIconWrapper">
       <VideoIcon size={80} strokeWidth={1.2} aria-hidden="true" />

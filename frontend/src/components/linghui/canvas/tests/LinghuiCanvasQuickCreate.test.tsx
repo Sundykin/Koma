@@ -13,7 +13,7 @@ const blankQuickCreate: QuickCreateState = {
 };
 
 describe('LinghuiCanvasQuickCreate', () => {
-  it('空白添加节点使用完整 catalog，包含全景节点和 3D 导演工作台', () => {
+  it('空白添加节点：统一用 LINGHUI_REFER_NODE_PRESETS 卡片样式，包含全景节点和 3D 导演工作台', () => {
     const onAddNode = vi.fn();
     render(
       <LinghuiCanvasQuickCreate
@@ -24,19 +24,21 @@ describe('LinghuiCanvasQuickCreate', () => {
     );
 
     expect(screen.getByText('添加节点')).toBeInTheDocument();
+    // 用户要求：全景 / 3D 导演工作台 必须在统一菜单中可见
     expect(screen.getByRole('button', { name: /全景节点/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /3D 导演工作台/ })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /视频合成/ })).not.toBeInTheDocument();
+    // #16 已加 linghui/video-clip 节点类型，视频合成现在可派生（available=true）
+    expect(screen.getByRole('button', { name: /视频合成/ })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /全景节点/ }));
     expect(onAddNode).toHaveBeenCalledWith(expect.objectContaining({
-      id: 'spatial-panorama',
+      id: 'refer-panorama',
       type: 'linghui/panorama',
       label: '全景节点',
     }));
   });
 
-  it('拖线引用仍使用 LibTV 六项引用菜单', () => {
+  it('拖线引用：扁平 6 项卡片（不含 spatial 节点）；视频合成 available 后不再 disabled', () => {
     const onAddNode = vi.fn();
     render(
       <LinghuiCanvasQuickCreate
@@ -55,7 +57,8 @@ describe('LinghuiCanvasQuickCreate', () => {
 
     expect(screen.getByText('引用该节点生成')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /图片/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /视频合成/ })).toBeDisabled();
+    // spatial 节点（全景/3D 导演）在连线模式下隐藏
     expect(screen.queryByRole('button', { name: /全景节点/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /3D 导演工作台/ })).not.toBeInTheDocument();
   });
 });

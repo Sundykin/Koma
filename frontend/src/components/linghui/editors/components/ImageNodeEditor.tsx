@@ -245,7 +245,7 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
 }) => {
   const aspectRatioChoices = aspectRatioOptions ?? IMAGE_ASPECT_RATIOS;
   const { message } = App.useApp();
-  const { executionQueue } = useLinghuiNodeEditorApi();
+  const { executionQueue, onExecuteImageCrop } = useLinghuiNodeEditorApi();
   const { clearNodeRunState, updateNodeData } = useLinghuiNodeMutation();
   const props = nodeData.properties as unknown as LinghuiImageNodeProperties;
   const mode = resolveImageNodeMode(props);
@@ -318,6 +318,15 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
   const isOutpaintToolOpen = activeTool === 'outpaint' && hasCurrentImage;
   const isRelightToolOpen = activeTool === 'relight' && hasCurrentImage;
   const isRepaintToolOpen = activeTool === 'repaint' && hasCurrentImage;
+  // LibTV 同模板的"通用 preset 工具"：擦除 / 抠图 / 裁剪 / Mockup / 元素 / 文字。
+  // 共用同一面板（PanelShell + preset 选择 + 比例 + 生成按钮），按 activeTool 切换。
+  const GENERIC_TOOL_KEYS = ['erase', 'remove-bg', 'crop', 'mockup', 'edit-elements', 'edit-texts'] as const;
+  type GenericToolKey = typeof GENERIC_TOOL_KEYS[number];
+  const isGenericTool = (key: LinghuiImageToolKey | null): key is GenericToolKey => (
+    !!key && (GENERIC_TOOL_KEYS as readonly string[]).includes(key)
+  );
+  const isGenericToolOpen = isGenericTool(activeTool) && hasCurrentImage;
+  const genericTool: GenericToolKey | null = isGenericToolOpen ? (activeTool as GenericToolKey) : null;
   const multiAngleConfig = normalizeLinghuiMultiAngleConfig(props.multiAngle ?? DEFAULT_LINGHUI_MULTI_ANGLE_CONFIG);
   const multiAngleTTISelection = String(props.multiAngle?.ttiSelection ?? props.ttiSelection ?? '');
   const normalizedRelightConfig = useMemo(() => (
@@ -338,6 +347,10 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
   const [outpaintAspectRatio, setOutpaintAspectRatio] = useState(String(outpaintPresets[0]?.properties?.aspectRatio ?? aspectRatio));
   const [outpaintResolution, setOutpaintResolution] = useState(String(outpaintPresets[0]?.properties?.resolution ?? resolution));
   const [outpaintBatchCount, setOutpaintBatchCount] = useState(batchCount);
+  // LibTV outpaintRatio 4 向（0-1 区间，0 表示该方向不扩展，0.5 表示扩到原图一半宽/高）。
+  const [outpaintRatio, setOutpaintRatio] = useState<{ top: number; right: number; bottom: number; left: number }>(
+    () => props.outpaintRatio ?? { top: 0, right: 0.25, bottom: 0, left: 0.25 },
+  );
   const [relightPresetLabel, setRelightPresetLabel] = useState(relightPresets[0]?.label ?? '');
   const [relightAspectRatio, setRelightAspectRatio] = useState(aspectRatio);
   const [relightResolution, setRelightResolution] = useState(resolution);
@@ -352,6 +365,11 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
   const [repaintResolution, setRepaintResolution] = useState(resolution);
   const [repaintBatchCount, setRepaintBatchCount] = useState(batchCount);
   const [repaintPrompt, setRepaintPrompt] = useState('');
+  // 通用工具面板共用状态：preset / aspectRatio / resolution。activeTool 切换时按当前工具的 preset 重置。
+  const [genericPresetLabel, setGenericPresetLabel] = useState('');
+  const [genericAspectRatio, setGenericAspectRatio] = useState(aspectRatio);
+  const [genericResolution, setGenericResolution] = useState(resolution);
+  const [genericPrompt, setGenericPrompt] = useState('');
   const multiAnglePreset = useMemo(() => (
     LIBTV_MULTI_ANGLE_PRESETS.find(preset => preset.key === multiAngleConfig.presetKey)
     ?? LIBTV_MULTI_ANGLE_PRESETS[0]
@@ -418,6 +436,17 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
     setRepaintResolution(resolution);
     setRepaintBatchCount(batchCount);
   }, [aspectRatio, batchCount, isRepaintToolOpen, repaintPresets, resolution]);
+
+  // generic 工具切换时（如 erase → remove-bg）重置 preset 与默认参数
+  useEffect(() => {
+    if (!genericTool) return;
+    const presets = LINGHUI_IMAGE_TOOL_PRESETS[genericTool].presets;
+    const firstPreset = presets[0];
+    setGenericPresetLabel(firstPreset?.label ?? '');
+    setGenericAspectRatio(String(firstPreset?.properties?.aspectRatio ?? aspectRatio));
+    setGenericResolution(String(firstPreset?.properties?.resolution ?? resolution));
+    setGenericPrompt('');
+  }, [aspectRatio, genericTool, resolution]);
 
   const updateProp = useCallback((key: string, value: unknown, options?: { markStale?: boolean }) => {
     updateNodeData(nodeId, prev => ({
@@ -591,17 +620,27 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
       return;
     }
 
+    // 把 outpaintRatio 4 向数字描述拼到 promptSnippet 末尾，让 LLM 真正按用户期望方向扩图
+    const direction: string[] = [];
+    if (outpaintRatio.top > 0.02) direction.push(`向上扩 ${Math.round(outpaintRatio.top * 100)}%`);
+    if (outpaintRatio.right > 0.02) direction.push(`向右扩 ${Math.round(outpaintRatio.right * 100)}%`);
+    if (outpaintRatio.bottom > 0.02) direction.push(`向下扩 ${Math.round(outpaintRatio.bottom * 100)}%`);
+    if (outpaintRatio.left > 0.02) direction.push(`向左扩 ${Math.round(outpaintRatio.left * 100)}%`);
+    const directionSnippet = direction.length > 0 ? `\n扩图方向：${direction.join('，')}。` : '';
+    const mergedSnippet = `${preset.promptSnippet}${directionSnippet}`;
+
     const nextProperties: Partial<LinghuiImageNodeProperties> = {
       ...(preset.properties ?? {}),
       aspectRatio: outpaintAspectRatio,
       resolution: outpaintResolution,
       batchCount: outpaintBatchCount,
+      outpaintRatio,
     };
 
     if (onApplyImageToolPreset) {
       onApplyImageToolPreset({
         label: preset.label,
-        promptSnippet: preset.promptSnippet,
+        promptSnippet: mergedSnippet,
         properties: nextProperties,
       });
       onToolChange(null);
@@ -613,7 +652,7 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
       properties: {
         ...prev.properties,
         ...nextProperties,
-        prompt: mergePromptSnippet(String((prev.properties as Partial<LinghuiImageNodeProperties>).prompt ?? ''), preset.promptSnippet),
+        prompt: mergePromptSnippet(String((prev.properties as Partial<LinghuiImageNodeProperties>).prompt ?? ''), mergedSnippet),
       },
     }));
     onToolChange(null);
@@ -627,6 +666,7 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
     outpaintAspectRatio,
     outpaintBatchCount,
     outpaintPresetLabel,
+    outpaintRatio,
     outpaintPresets,
     outpaintResolution,
     updateNodeData,
@@ -681,6 +721,76 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
     repaintPresets,
     repaintPrompt,
     repaintResolution,
+    updateNodeData,
+  ]);
+
+  /**
+   * 通用工具面板（erase / remove-bg / crop / mockup / edit-elements / edit-texts）的
+   * preset 提交：与 repaint 同链路，按 preset.localAction 分流。
+   *  - localAction='crop' → 走 onExecuteImageCrop（本地 FFmpeg 裁剪）
+   *  - 其它 → onApplyImageToolPreset 派生 image-to-image 节点
+   */
+  const handleApplyGenericPreset = useCallback(() => {
+    if (!genericTool) return;
+    const presets = LINGHUI_IMAGE_TOOL_PRESETS[genericTool].presets;
+    const preset = presets.find(item => item.label === genericPresetLabel) ?? presets[0];
+    if (!preset) {
+      message.info(`暂无可用 ${LINGHUI_IMAGE_TOOL_PRESETS[genericTool].title} 预设`);
+      return;
+    }
+
+    // crop 本地链路：直接派生本地 FFmpeg 裁剪
+    if (preset.localAction === 'crop' && onExecuteImageCrop) {
+      onExecuteImageCrop(nodeId, {
+        aspectRatio: String(preset.properties?.aspectRatio ?? genericAspectRatio),
+        label: preset.label,
+      });
+      onToolChange(null);
+      return;
+    }
+
+    const promptSnippet = genericPrompt.trim()
+      ? mergePromptSnippet(preset.promptSnippet, genericPrompt)
+      : preset.promptSnippet;
+
+    const nextProperties: Partial<LinghuiImageNodeProperties> = {
+      ...(preset.properties ?? {}),
+      aspectRatio: genericAspectRatio,
+      resolution: genericResolution,
+    };
+
+    if (onApplyImageToolPreset) {
+      onApplyImageToolPreset({
+        label: preset.label,
+        promptSnippet,
+        properties: nextProperties,
+      });
+      onToolChange(null);
+      return;
+    }
+
+    updateNodeData(nodeId, prev => ({
+      ...prev,
+      properties: {
+        ...prev.properties,
+        ...nextProperties,
+        prompt: mergePromptSnippet(String((prev.properties as Partial<LinghuiImageNodeProperties>).prompt ?? ''), promptSnippet),
+      },
+    }));
+    onToolChange(null);
+    handleRun();
+  }, [
+    genericAspectRatio,
+    genericPresetLabel,
+    genericPrompt,
+    genericResolution,
+    genericTool,
+    handleRun,
+    message,
+    nodeId,
+    onApplyImageToolPreset,
+    onExecuteImageCrop,
+    onToolChange,
     updateNodeData,
   ]);
 
@@ -1500,20 +1610,23 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
       <>
         <div className="linghuiImageLibTVPanelBody isTwoColumn">
           <div className="linghuiImageLibTVOutpaintStage">
+            {/* LibTV 扩图预览：原图居中，4 向白色扩展区根据 outpaintRatio 实时显示 */}
             <div
-              className={`linghuiImageToolOutpaintFrame ${
-                outpaintAspectRatio === '16:9'
-                  ? 'isWide'
-                  : outpaintAspectRatio === '9:16'
-                    ? 'isTall'
-                    : ''
-              }`}
+              className="linghuiImageToolOutpaintPreview"
+              style={cssVars({
+                '--linghui-outpaint-top': `${outpaintRatio.top * 100}%`,
+                '--linghui-outpaint-right': `${outpaintRatio.right * 100}%`,
+                '--linghui-outpaint-bottom': `${outpaintRatio.bottom * 100}%`,
+                '--linghui-outpaint-left': `${outpaintRatio.left * 100}%`,
+              })}
             >
-              {currentImagePreview ? (
-                <img src={currentImagePreview} alt={currentImage?.label || nodeData.label} draggable={false} />
-              ) : (
-                <ImageIcon size={22} />
-              )}
+              <div className="linghuiImageToolOutpaintFrame">
+                {currentImagePreview ? (
+                  <img src={currentImagePreview} alt={currentImage?.label || nodeData.label} draggable={false} />
+                ) : (
+                  <ImageIcon size={22} />
+                )}
+              </div>
             </div>
           </div>
           <div className="linghuiImageLibTVControlStack">
@@ -1529,6 +1642,28 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
                   {preset.label}
                 </button>
               ))}
+            </div>
+            <div className="linghuiImageLibTVSectionTitle">扩图方向（0–80%）</div>
+            <div className="linghuiImageLibTVOutpaintSliders">
+              {(['top', 'right', 'bottom', 'left'] as const).map(side => {
+                const label = ({ top: '上', right: '右', bottom: '下', left: '左' } as const)[side];
+                return (
+                  <label key={side} className="linghuiImageLibTVOutpaintSliderRow">
+                    <span className="linghuiImageLibTVOutpaintSliderLabel">{label}</span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={0.8}
+                      step={0.05}
+                      value={outpaintRatio[side]}
+                      onChange={event => setOutpaintRatio(prev => ({ ...prev, [side]: Number(event.target.value) }))}
+                    />
+                    <span className="linghuiImageLibTVOutpaintSliderValue">
+                      {Math.round(outpaintRatio[side] * 100)}%
+                    </span>
+                  </label>
+                );
+              })}
             </div>
             <div className="linghuiImageLibTVSectionTitle">比例</div>
             <div className="linghuiImageLibTVPresetButtons">
@@ -1610,7 +1745,90 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
     ),
   }) : null;
 
-  const activeLibTVToolPanel = multiAngleToolPanel || relightToolPanel || outpaintToolPanel || repaintToolPanel;
+  // 通用 preset 工具面板（擦除 / 抠图 / 裁剪 / Mockup / 元素 / 文字）共用模板。
+  const genericToolPanel = (isGenericToolOpen && genericTool) ? renderLibTVToolShell({
+    title: LINGHUI_IMAGE_TOOL_PRESETS[genericTool].title,
+    className: 'isCompactTool',
+    children: (() => {
+      const presets = LINGHUI_IMAGE_TOOL_PRESETS[genericTool].presets;
+      const isCropTool = genericTool === 'crop';
+      return (
+        <>
+          <div className="linghuiImageLibTVPanelBody isTwoColumn">
+            {renderImagePreviewStage()}
+            <div className="linghuiImageLibTVControlStack">
+              <div className="linghuiImageLibTVSectionTitle">
+                {LINGHUI_IMAGE_TOOL_PRESETS[genericTool].title}方式
+              </div>
+              <div className="linghuiImageLibTVPresetButtons">
+                {presets.map((preset: LinghuiImageToolPresetDef) => (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    className={genericPresetLabel === preset.label ? 'isActive' : ''}
+                    onClick={() => {
+                      setGenericPresetLabel(preset.label);
+                      // 选 preset 时同步当前比例（保持 LibTV 同源体验）
+                      if (preset.properties?.aspectRatio) {
+                        setGenericAspectRatio(String(preset.properties.aspectRatio));
+                      }
+                      if (preset.properties?.resolution) {
+                        setGenericResolution(String(preset.properties.resolution));
+                      }
+                    }}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+              {/* 裁剪类纯本地工具不需要追加 prompt；其它工具支持用户补充 prompt */}
+              {!isCropTool && (
+                <textarea
+                  className="linghuiImageLibTVPromptBox"
+                  value={genericPrompt}
+                  placeholder="补充具体要求（可选）"
+                  onChange={event => setGenericPrompt(event.target.value)}
+                />
+              )}
+              <div className="linghuiImageLibTVSectionTitle">比例</div>
+              <div className="linghuiImageLibTVPresetButtons">
+                {aspectRatioChoices.map(option => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={genericAspectRatio === option.value ? 'isActive' : ''}
+                    onClick={() => setGenericAspectRatio(option.value)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              {!isCropTool && (
+                <>
+                  <div className="linghuiImageLibTVSectionTitle">分辨率</div>
+                  <div className="linghuiImageLibTVPresetButtons">
+                    {IMAGE_RESOLUTIONS.map(option => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        className={genericResolution === option.value ? 'isActive' : ''}
+                        onClick={() => setGenericResolution(option.value)}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+          {renderLibTVToolFooter(handleApplyGenericPreset)}
+        </>
+      );
+    })(),
+  }) : null;
+
+  const activeLibTVToolPanel = multiAngleToolPanel || relightToolPanel || outpaintToolPanel || repaintToolPanel || genericToolPanel;
 
   if (isImportMode) {
     // LibTV 1:1：素材节点本身已经展示图片 + 节点上方上传/工具浮按钮，编辑器面板不再重复显示大预览图，

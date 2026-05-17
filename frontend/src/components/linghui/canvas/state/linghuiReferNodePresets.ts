@@ -1,6 +1,8 @@
 import {
   AudioLines,
+  Boxes,
   Image as ImageIcon,
+  Mountain,
   Scissors,
   ScrollText,
   Type,
@@ -8,6 +10,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type {
+  LinghuiNodeCategory,
   LinghuiNodeType,
   LinghuiSlotDataType,
 } from '../../../../types/linghui';
@@ -28,14 +31,14 @@ import { resolveLinghuiCompatibleInputSlot } from '../../library/state/linghuiNo
  */
 export interface LinghuiReferNodePreset {
   /** LibTV 内部 NodeType key（带 _CLIP 这种灵绘暂时没有的） */
-  key: 'text' | 'image' | 'video' | 'video-clip' | 'audio' | 'script';
-  /** 实际派生出来的灵绘节点类型；video-clip 暂时映射到 linghui/video，但 UI 上 disabled */
+  key: 'text' | 'image' | 'video' | 'video-clip' | 'audio' | 'script' | 'panorama' | 'director3d';
+  /** 实际派生出来的灵绘节点类型 */
   type: LinghuiNodeType;
   label: string;
   description: string;
   icon: LucideIcon;
   badge?: 'Beta';
-  /** 灵绘当前是否有能力承接此项；为 false 时永久 disabled（视频合成在灵绘尚未实现） */
+  /** 灵绘当前是否有能力承接此项；为 false 时永久 disabled */
   available: boolean;
   /** 创建时附带的默认 properties（例如 video 的 capability） */
   initialProperties?: Record<string, unknown>;
@@ -44,6 +47,13 @@ export interface LinghuiReferNodePreset {
    * 仅在需要强制语义化命名时填（如 "全能参考视频"）。
    */
   nodeLabel?: string;
+  /** 用于"添加节点"非连线场景下的分组（素材 / 生成 / 剧情 / 空间）。 */
+  category: LinghuiNodeCategory;
+  /**
+   * 仅在"连线松开 → 引用该节点生成"场景下显示。空间类节点（全景 / 3D 导演）只在添加节点场景才出现，
+   * 上游连线模式下隐藏（避免上游链上数据类型不匹配）。
+   */
+  hideInReferMode?: boolean;
 }
 
 export const LINGHUI_REFER_NODE_PRESETS: LinghuiReferNodePreset[] = [
@@ -55,6 +65,7 @@ export const LINGHUI_REFER_NODE_PRESETS: LinghuiReferNodePreset[] = [
     icon: Type,
     available: true,
     initialProperties: { mode: 'generate' },
+    category: 'asset',
   },
   {
     key: 'image',
@@ -66,6 +77,7 @@ export const LINGHUI_REFER_NODE_PRESETS: LinghuiReferNodePreset[] = [
     icon: ImageIcon,
     available: true,
     initialProperties: { mode: 'generate' },
+    category: 'asset',
   },
   {
     key: 'video',
@@ -75,16 +87,18 @@ export const LINGHUI_REFER_NODE_PRESETS: LinghuiReferNodePreset[] = [
     icon: Video,
     available: true,
     initialProperties: { mode: 'generate', videoCapability: 'video.text-to-video' },
+    category: 'generation',
   },
   {
     key: 'video-clip',
-    type: 'linghui/video',
+    // #16 已加 linghui/video-clip 节点类型，开放派生入口
+    type: 'linghui/video-clip',
     label: '视频合成',
     description: '多个视频片段合为一个',
     icon: Scissors,
     badge: 'Beta',
-    // 灵绘暂未实现视频合成（无对应 executor），永久 disabled，与 LibTV "暂未上线 Beta 灰显" 视觉一致。
-    available: false,
+    available: true,
+    category: 'generation',
   },
   {
     key: 'audio',
@@ -94,6 +108,7 @@ export const LINGHUI_REFER_NODE_PRESETS: LinghuiReferNodePreset[] = [
     icon: AudioLines,
     available: true,
     initialProperties: { mode: 'generate' },
+    category: 'asset',
   },
   {
     key: 'script',
@@ -103,6 +118,30 @@ export const LINGHUI_REFER_NODE_PRESETS: LinghuiReferNodePreset[] = [
     icon: ScrollText,
     badge: 'Beta',
     available: true,
+    category: 'storyboard',
+  },
+  // 用户要求：把全景节点 + 3D 导演工作台也加入到统一的 quickCreate 菜单
+  {
+    key: 'panorama',
+    type: 'linghui/panorama',
+    label: '全景节点',
+    description: '生成或导入全景环境图，并在画布中预览空间关系',
+    icon: Mountain,
+    available: true,
+    initialProperties: { mode: 'generate' },
+    category: 'spatial',
+    // 上游引用场景下不显示（全景是输入节点不是输出端）
+    hideInReferMode: true,
+  },
+  {
+    key: 'director3d',
+    type: 'linghui/director3d',
+    label: '3D 导演工作台',
+    description: '搭建 3D 场景、摆位、布光，导出参考图给下游 image 节点',
+    icon: Boxes,
+    available: true,
+    category: 'spatial',
+    hideInReferMode: true,
   },
 ];
 

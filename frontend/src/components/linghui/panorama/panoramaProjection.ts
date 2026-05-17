@@ -30,12 +30,17 @@ export const PANORAMA_PROJECTION_OPTIONS: Array<{
   defaultAspectRatio: string;
   allowedAspectRatios: string[];
 }> = [
+  // 全景节点所有 projection mode 的比例都限制在"接近 2:1"几个档位（用户要求）：
+  //  - 2:1   (=2.000)：等距柱状标准，球面贴图无拉伸
+  //  - 21:9  (≈2.333)：LibTV 备用模型档（getPanoramicRatioForModel 非 lib-image-2 时回落）
+  //  - 17:9  (≈1.889)：介于 2:1 与 16:9 之间的细分档位
+  // 不允许 16:9（≈1.778），它离 2:1 太远会导致 720° 球面贴图明显接缝拉伸。
   {
     value: 'ar720-band',
     label: 'AR720 环境带',
-    hint: '默认。21:9 / 16:9 宽幅环绕，圆柱/球带预览，避免极区拉花',
-    defaultAspectRatio: '21:9',
-    allowedAspectRatios: ['16:9', '21:9'],
+    hint: '默认。圆柱/球带预览，避免极区拉花；可选 2:1 / 21:9 / 17:9 三种近 2:1 比例',
+    defaultAspectRatio: '2:1',
+    allowedAspectRatios: ['2:1', '21:9', '17:9'],
   },
   {
     value: 'equirectangular-2to1',
@@ -47,9 +52,9 @@ export const PANORAMA_PROJECTION_OPTIONS: Array<{
   {
     value: 'flat-wide',
     label: '宽幅平面板',
-    hint: '兜底。模型不支持环绕全景时，把它当一张普通宽幅环境图',
-    defaultAspectRatio: '21:9',
-    allowedAspectRatios: ['16:9', '21:9'],
+    hint: '兜底。模型不支持环绕全景时，把它当一张普通宽幅环境图；仅限近 2:1 几档',
+    defaultAspectRatio: '2:1',
+    allowedAspectRatios: ['2:1', '21:9', '17:9'],
   },
 ];
 

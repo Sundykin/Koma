@@ -521,6 +521,19 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
     });
   }, [persistWorkspace]);
 
+  // LibTV 三层保存模型的"sendBeacon"层（不可丢数据）：beforeunload 时若仍有 pending 防抖快照，
+  // 强制 fire-and-forget 触发一次 flush，让 IPC 在 Electron close 5s 宽限期内尽量完成磁盘写入。
+  // 与 LibTV 同语义：不阻塞关闭，只把"最近一次防抖区间的改动"挤压到磁盘。
+  useEffect(() => {
+    const handler = () => {
+      if (pendingSaveRef.current) {
+        void flushWorkspaceSave({ notify: false, showIndicator: false, refreshWorkspaceList: false });
+      }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [flushWorkspaceSave]);
+
   const updateWorkspaceExecution = useCallback((
     nextRuns: Record<string, LinghuiNodeRunState>,
     nextLogs: LinghuiExecutionLogEntry[],
@@ -1229,11 +1242,25 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
     if (!current) return;
 
     // 画布异常态下不再写盘，避免错误中产生的空白/半空快照覆盖磁盘上的最近一次保存。
+    // 但如果新一帧 graphChange 是非空且与上一次差异属于"用户主动操作"（节点/边数变化），
+    // 说明 React Flow 已重新渲染正常，自动清除 crashed 标志，让用户无需手动恢复。
     if (canvasCrashedRef.current) {
-      linghuiCanvasLogger.warn('graphChange suppressed during canvas crash recovery', {
-        workspaceId: current.id,
-      });
-      return;
+      const looksHealthy = graphData.nodes.length > 0
+        && (graphData.nodes.length !== current.graphData.nodes.length
+          || graphData.edges.length !== current.graphData.edges.length);
+      if (looksHealthy) {
+        canvasCrashedRef.current = false;
+        linghuiCanvasLogger.info('canvas auto-recovered after non-empty graph change', {
+          workspaceId: current.id,
+          nodeCount: graphData.nodes.length,
+        });
+        // 继续走下面的正常保存路径
+      } else {
+        linghuiCanvasLogger.warn('graphChange suppressed during canvas crash recovery', {
+          workspaceId: current.id,
+        });
+        return;
+      }
     }
 
     // Data-loss guard：当前画布有节点但本次快照变成 0 节点 0 边时，几乎只可能来自渲染崩溃或异常重置；
