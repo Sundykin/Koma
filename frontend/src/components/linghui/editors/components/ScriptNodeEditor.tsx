@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Checkbox, Dropdown, Modal, Popover } from 'antd';
+import { Button, Dropdown, Modal, Popover } from 'antd';
 import type { MenuProps } from 'antd';
 import { ArrowUp, Expand, Image as ImageIcon, LayoutGrid, Rows3, Video, Wand2 } from 'lucide-react';
 import type {
@@ -10,13 +10,13 @@ import type {
   LinghuiStoryboardFrame,
 } from '../../../../types/linghui';
 import { loadSettings } from '../../../../store/settings/core';
-import { toFileSystemDisplayUrl } from '../../../../services/fileSystemPort';
 import { listConfiguredModelSelectOptions } from '../../../../providers/channel/resolver';
 import { useLinghuiNodeMutation } from '../../nodes/state/LinghuiNodeRunsContext';
 import { LinghuiPromptEditor } from './LinghuiPromptEditor';
 import type { LinghuiPromptReferenceItem } from '../state/linghuiPromptReferences';
 import { parseLinghuiScriptContent } from '../state/linghuiScriptNodeUtils';
 import { useLinghuiActionLock } from '../hooks/useLinghuiActionLock';
+import { ScriptShotCards, ScriptShotTable } from './ScriptShotViews';
 
 interface ProviderOption {
   value: string;
@@ -40,88 +40,6 @@ const SCRIPT_MODES: Array<{ key: LinghuiScriptNodeMode; label: string }> = [
   { key: 'manual', label: '手动脚本' },
   { key: 'generate', label: 'LLM 生成' },
 ];
-
-function toPreviewSource(source?: string): string {
-  return toFileSystemDisplayUrl(source) || '';
-}
-
-function ScriptShotCards(props: {
-  shots: LinghuiStoryboardFrame[];
-  selectedShotIds: string[];
-  onToggleShot: (shotId: string, checked: boolean) => void;
-}) {
-  const selectedSet = new Set(props.selectedShotIds);
-
-  return (
-    <div className="linghuiScriptShotGrid">
-      {props.shots.map((shot, index) => {
-        const previewSource = toPreviewSource(shot.image?.source);
-        const checked = selectedSet.has(shot.id);
-
-        return (
-          <label
-            key={shot.id}
-            className={`linghuiScriptShotCard ${checked ? 'isSelected' : ''}`}
-          >
-            <div className="linghuiScriptShotCardHeader">
-              <Checkbox
-                checked={checked}
-                onChange={event => props.onToggleShot(shot.id, event.target.checked)}
-              />
-              <span className="linghuiScriptShotIndex">#{index + 1}</span>
-              <span className="linghuiScriptShotDuration">{Math.max(1, Math.round(shot.durationSec || 3))} 秒</span>
-            </div>
-            {previewSource ? (
-              <div className="linghuiScriptShotPreview">
-                <img src={previewSource} alt={shot.title} />
-              </div>
-            ) : null}
-            <div className="linghuiScriptShotTitle">{shot.title || `镜头 ${index + 1}`}</div>
-            <div className="linghuiScriptShotDescription">{shot.description || '暂无镜头描述'}</div>
-          </label>
-        );
-      })}
-    </div>
-  );
-}
-
-function ScriptShotTable(props: {
-  shots: LinghuiStoryboardFrame[];
-  selectedShotIds: string[];
-  onToggleShot: (shotId: string, checked: boolean) => void;
-}) {
-  const selectedSet = new Set(props.selectedShotIds);
-
-  return (
-    <div className="linghuiScriptShotTableWrap">
-      <table className="linghuiScriptShotTable">
-        <thead>
-          <tr>
-            <th />
-            <th>镜头</th>
-            <th>描述</th>
-            <th>时长</th>
-          </tr>
-        </thead>
-        <tbody>
-          {props.shots.map((shot, index) => (
-            <tr key={shot.id} className={selectedSet.has(shot.id) ? 'isSelected' : ''}>
-              <td>
-                <Checkbox
-                  checked={selectedSet.has(shot.id)}
-                  onChange={event => props.onToggleShot(shot.id, event.target.checked)}
-                />
-              </td>
-              <td>{shot.title || `镜头 ${index + 1}`}</td>
-              <td>{shot.description || '暂无镜头描述'}</td>
-              <td>{Math.max(1, Math.round(shot.durationSec || 3))} 秒</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
 
 export const ScriptNodeEditor: React.FC<ScriptNodeEditorProps> = ({
   nodeId,

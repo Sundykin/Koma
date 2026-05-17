@@ -5,7 +5,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { app, shell } from 'electron';
 import { BaseController } from './base';
-import { getBusinessRoot, getStyleReferencesDir } from '../service/paths';
+import { getRuntimeStorageRoot, getStyleReferencesDir } from '../service/paths';
 import { resolveKomaTTSVoiceSamplePath } from '../service/ttsVoiceSamples';
 
 const ALLOWED_PATH_NAMES = new Set([
@@ -147,8 +147,8 @@ class AppController extends BaseController {
   }
 
   /**
-   * 保存"项目级"风格参考图，落到 `~/.koma/projects/{projectId}/assets/style-reference.{ext}`。
-   * 与全局参考图（`~/.koma/style-references/{presetId}-user.{ext}`）独立，
+   * 保存"项目级"风格参考图，落到 `{storageRoot}/projects/{projectId}/assets/style-reference.{ext}`。
+   * 与全局参考图（`{storageRoot}/style-references/{presetId}-user.{ext}`）独立，
    * 项目级覆盖优先级最高（resolveActiveStyleReferenceAsset 里先看 project.styleSnapshot.styleReferenceImage）。
    */
   async saveProjectStyleReferenceImage(args: { projectId: string; dataBase64: string; ext: string }) {
@@ -169,7 +169,7 @@ class AppController extends BaseController {
       throw new Error('Empty image data');
     }
 
-    const projectAssetsDir = path.join(getBusinessRoot(), 'projects', projectId, 'assets');
+    const projectAssetsDir = path.join(getRuntimeStorageRoot(), 'projects', projectId, 'assets');
     await fs.promises.mkdir(projectAssetsDir, { recursive: true });
 
     // 同 projectId 下同名其它扩展名的旧文件先清掉，避免遗留
@@ -197,7 +197,7 @@ class AppController extends BaseController {
     if (!isSafeProjectId(projectId)) {
       return { success: false, removed: 0 };
     }
-    const projectAssetsDir = path.join(getBusinessRoot(), 'projects', projectId, 'assets');
+    const projectAssetsDir = path.join(getRuntimeStorageRoot(), 'projects', projectId, 'assets');
     let removed = 0;
     for (const e of ALLOWED_STYLE_REFERENCE_EXTS) {
       const old = path.join(projectAssetsDir, `style-reference.${e}`);

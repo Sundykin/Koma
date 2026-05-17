@@ -3,6 +3,7 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
+import { setRuntimeStorageRoot } from './paths';
 import archiver from 'archiver';
 import extract from 'extract-zip';
 import {
@@ -296,6 +297,7 @@ export class ProjectService {
 
   async init(rootPath: string): Promise<string> {
     this.storageRoot = rootPath;
+    setRuntimeStorageRoot(rootPath);
 
     // 确保目录存在
     await fs.promises.mkdir(this.storageRoot, { recursive: true });

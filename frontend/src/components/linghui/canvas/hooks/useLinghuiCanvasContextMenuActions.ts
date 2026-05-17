@@ -287,11 +287,7 @@ export function useLinghuiCanvasContextMenuActions({
     message.success('已删除其他视频，仅保留当前主视频');
   }, [contextMenuMediaActionState.videoItems, message, onClearNodeRunState, updateNodeData]);
 
-  /**
-   * 视频工具栏调用入口：按任意 nodeId 分离音轨，自己解析视频源，不依赖右键菜单 contextMenuMediaActionState。
-   * 对齐 LibTV "音频分离 → 音视频分离"：从节点 properties + 当前 run result 中找一个本地视频源，
-   * FFmpeg 拆出音轨，并通过 createDerivedAudioNodeFromVideo 派生 audio 节点。
-   */
+  /** 视频工具栏入口：按 nodeId 解析本地视频源并分离音轨。 */
   const handleSeparateVideoAudioForNode = useCallback(async (targetNodeId: string) => {
     const target = reactFlow.getNode(targetNodeId);
     if (!target) {
@@ -354,10 +350,7 @@ export function useLinghuiCanvasContextMenuActions({
     }
   }, [createDerivedAudioNodeFromVideo, message, nodeRuns, reactFlow, workspaceId]);
 
-  /**
-   * LibTV "返回生成节点"：派生 image 节点的右键菜单上的高频跳转项。
-   * 选中控制器节点 + fitView 到该节点，让用户继续在控制器上调参再生成。
-   */
+  /** LibTV "返回生成节点"：选中控制器节点并 fitView。 */
   const handleReturnToGenerator = useCallback(() => {
     const generatorId = contextMenuMediaActionState.generatorNodeId;
     if (!generatorId) {

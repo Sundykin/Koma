@@ -36,6 +36,89 @@
 - Next:
   - 下一片继续 `ImageNodeEditor.tsx`，建议拆 `MultiAngleToolPanel` 和 `RelightToolPanel`；这两块是当前文件中最大的剩余 JSX 区域。
 
+### Phase 5.3: P1 ImageNodeEditor MultiAngle/Relight Extraction
+- **Status:** complete
+- Actions taken:
+  - 继续拆 `ImageNodeEditor.tsx` 中最大的两个剩余 JSX 岛：`多角度编辑器` 与 `打光效果`。
+  - 新增 `ImageNodeEditorAngleRelightPanels.tsx`，承接 `ImageNodeEditorMultiAnglePanel` 与 `ImageNodeEditorRelightPanel`。
+  - 主 editor 仍保留 multi-angle / relight 的状态、normalize、preset 应用、提交和文件选择逻辑；新组件只负责渲染和回调转发。
+  - `ImageNodeEditor.tsx` 从 1516 行降到 1268 行；新增 angle/relight 面板文件 368 行。
+- Validation:
+  - `npx tsc --noEmit --project frontend/tsconfig.json --pretty false`：passed。
+  - `cd frontend && npm run test -- --run src/components/linghui/editors/tests/ImageNodeEditor.test.tsx src/components/linghui/editors/tests/LinghuiNodeEditor.test.tsx`：2 files / 22 tests passed；保留既有 Three.js duplicate warning 与 AntD/jsdom warning。
+  - `git diff --check`：passed。
+- Next:
+  - `ImageNodeEditor.tsx` 仍 >500，下一片建议拆 provider/settings/prompt 主体区域或把 image tool 状态提交逻辑抽成 hook。
+
+### Phase 5.4: P1 LinghuiNodeEditor Shell Extraction
+- **Status:** complete
+- Actions taken:
+  - 继续拆 `LinghuiNodeEditor.tsx`，优先处理纯渲染和纯布局边界，不改变节点编辑行为、文案、className 或样式。
+  - 新增 `LinghuiNodeEditorVideoToolbar.tsx`，承接 LibTV 视频工具条、视频工具按钮、音频分离下拉菜单和 `VIDEO_TOOLBAR_ITEMS`。
+  - 新增 `LinghuiNodeEditorGridSplitToolbar.tsx`，承接宫格切分模式的档位、已选数量、创建生图节点、高清倍率和回退工具条。
+  - 新增 `linghuiNodeEditorLayout.ts`，承接节点类型 label、面板宽高和 viewport bound helper。
+  - 新增 `LinghuiNodeEditorSurface.tsx`，承接按 `nodeType` 分发具体编辑器组件的 JSX；主文件继续持有 selection、引用素材、activeTool、portal 和弹层尺寸状态。
+  - `LinghuiNodeEditor.tsx` 从 778 行降到 476 行，退出本轮 >500 组件清单。
+  - 复扫时发现拆分 carryover 新 hook `useLinghuiCanvasContextMenuActions.ts` 为 501 行；收短两段注释后降到 493 行，当前 >500 hook 清单清零。
+- Validation:
+  - `npx tsc --noEmit --project frontend/tsconfig.json --pretty false`：passed。
+  - `cd frontend && npm run test -- --run src/components/linghui/editors/tests/LinghuiNodeEditor.test.tsx src/components/linghui/editors/tests/VideoNodeEditor.test.tsx src/components/linghui/editors/tests/ImageNodeEditor.test.tsx`：3 files / 32 tests passed；保留既有 Three.js duplicate warning 与 AntD/jsdom warning。
+  - `npx tsc --noEmit --project tsconfig.json --pretty false`：passed。
+  - `git diff --check`：passed。
+- Next:
+  - 继续拆剩余 >500 组件，优先级可在 `ImageNodeEditor.tsx` 的状态/提交 hook 与 `LinghuiPromptEditor.tsx` 的 CodeMirror reference widget 之间选择；Director3D 超大文件建议单独分片。
+
+### Phase 6.1: Largest Components Surface Extraction
+- **Status:** in_progress
+- Actions taken:
+  - 按用户要求“拆最大的”继续推进，先处理当前最大组件。
+  - `LinghuiPage.tsx`：新增 `LinghuiCanvasFloatingRail.tsx`，把项目列表 / 保存 / 新建 / 工作流 / 资产 / 历史 / 执行日志这整段浮动 rail 和项目/日志弹层 JSX 拆出；主页面继续持有 workspace、drawer、日志、保存和导入导出回调。
+  - `LinghuiPage.tsx` 从约 2087 行降到 1782 行，`LinghuiCanvasFloatingRail.tsx` 为 414 行。
+  - 继续按最大文件转到 `Director3DNodeEditor.tsx`：新增 `Director3DAssetLibraryPanel.tsx`，把左侧人物/生物/道具/镜头/模板资产库和派兵布阵 popover 拆出；新增 `Director3DTopBar.tsx`，承接顶部 HUD 状态条。
+  - `Director3DNodeEditor.tsx` 从 2058 行降到 1717 行；新增 `Director3DAssetLibraryPanel.tsx` 437 行、`Director3DTopBar.tsx` 74 行。
+  - 回到 `LinghuiPage.tsx`，新增 `useLinghuiPageLibraries.ts`，把资产库 / 工作流库 / 历史库加载、刷新和发送到画布动作从页面中抽出。
+  - `LinghuiPage.tsx` 进一步降到约 1701 行，`useLinghuiPageLibraries.ts` 为 148 行。
+- Validation:
+  - `npx tsc --noEmit --project frontend/tsconfig.json --pretty false`：passed。
+  - `cd frontend && npm run test -- --run src/components/linghui/director3d/director3dAssetLibrary.test.ts src/components/linghui/director3d/director3dRig.test.ts src/components/linghui/director3d/director3dExportGeometry.test.ts src/components/linghui/editors/tests/LinghuiNodeEditor.test.tsx src/components/linghui/editors/tests/ImageNodeEditor.test.tsx`：5 files / 56 tests passed；保留既有 Three.js duplicate warning 与 AntD/jsdom warning。
+  - `npx tsc --noEmit --project tsconfig.json --pretty false`：passed。
+  - `git diff --check`：passed。
+- Next:
+  - 当前最大组件为 `Director3DNodeEditor.tsx`（约 1718 行），下一片建议拆右 rail inspector；`LinghuiPage.tsx` 下一片可拆 workspace 持久化 / 项目操作 hook。
+
+### Phase 6.2: Director3D Inspector Extraction
+- **Status:** complete
+- Actions taken:
+  - 继续按最大组件拆 `Director3DNodeEditor.tsx`。
+  - 新增 `Director3DInspectorPanel.tsx`，把右侧属性 popover 的 actor/camera inspector、骨骼微调、物种/动作、方阵参数、保存到全局库与删除动作 UI 拆出。
+  - 父组件仍保留 `selectedActor`、`handleActorChange`、保存全局资产、相机字段、背景模式和删除 actor 逻辑；新组件只渲染表单并透传回调。
+  - `Director3DNodeEditor.tsx` 从约 1717 行降到 1341 行；`Director3DInspectorPanel.tsx` 为 433 行。
+- Validation:
+  - `npx tsc --noEmit --project frontend/tsconfig.json --pretty false`：passed。
+  - `cd frontend && npm run test -- --run src/components/linghui/director3d/director3dAssetLibrary.test.ts src/components/linghui/director3d/director3dRig.test.ts src/components/linghui/director3d/director3dExportGeometry.test.ts src/components/linghui/editors/tests/LinghuiNodeEditor.test.tsx src/components/linghui/editors/tests/ImageNodeEditor.test.tsx`：5 files / 56 tests passed；保留既有 Three.js duplicate warning 与 AntD/jsdom warning。
+  - `npx tsc --noEmit --project tsconfig.json --pretty false`：passed。
+  - `git diff --check`：passed。
+- Next:
+  - 当前最大组件为 `LinghuiPage.tsx`（约 1702 行），下一片建议拆 workspace/project 操作 hook；随后继续 `ImageNodeEditor.tsx` 或 `Director3DViewport.tsx`。
+
+### Phase 7/8 Carryover: Canvas, Context Menu, Video, Script, Panorama, Prompt Helper Extractions
+- **Status:** in_progress
+- Actions observed:
+  - 当前工作树已有上一段未提交拆分增量，已接住并通过 frontend TypeScript：
+    - `LinghuiCanvas.tsx` 824 → 56 行，新增 `LinghuiCanvasInner.tsx` 与 canvas interaction/layout/node-api hooks。
+    - `LinghuiCanvasContextMenu.tsx` 521 → 257 行，新增 pane/node context menu 子组件。
+    - `ScriptNodeEditor.tsx` 502 → 420 行，新增 `ScriptShotViews.tsx`。
+    - `VideoNodeEditorPanels.tsx` 610 → 383 行，新增 `VideoAccessCard.tsx`、`VideoParameterPanel.tsx`。
+    - `VideoNode.tsx` 510 → 433 行，新增 `videoNodeUtils.ts`。
+    - `PanoramaViewer.tsx` 626 → 197 行，新增 `PanoramaCameraRig.tsx`、`PanoramaGeometryComponents.tsx`、`usePanoramaTexture.ts`、`panoramaViewerConstants.ts`。
+    - `linghuiPromptReferences.ts` 644 → 97 行，新增 prompt reference edges/helpers。
+    - `linghuiResultExport.ts` 565 → 101 行，新增 `linghuiResultExportUtils.ts`。
+    - `linghuiNodeDefs.ts` 555 → 333 行，新增 `linghuiConnectionValidation.ts`。
+- Validation:
+  - `npx tsc --noEmit --project frontend/tsconfig.json --pretty false`：passed after observing this carryover state.
+- Next:
+  - 补这些 carryover slice 的目标测试；再继续拆剩余 >500 清单。
+
 ### Phase 4.5: P0 OverlayProps Extraction
 - **Status:** complete
 - Actions taken:
@@ -1967,6 +2050,40 @@
   - `npm run build`（frontend）：passed，只有既有 chunk size / dynamic import chunking warnings。
   - `git diff --check`：passed。
   - Vite dev server `http://127.0.0.1:5174/` 返回 200；Chrome DevTools MCP 页会话异常关闭，未能完成截图验证。
+
+## 2026-05-17 LinghuiPage Continued Refactor
+
+- **Status:** in_progress
+- Actions taken:
+  - 接上已创建的 `useLinghuiPageWorkspaceActions.ts`，把项目保存、导入/导出、创建、删除、切换和重命名从 `LinghuiPage.tsx` 移出。
+  - 新增 `linghuiPageWorkspaceRuntime.ts`，集中 `EMPTY_WORKSPACE_RUNTIME` 与 `ensureWorkspaceRuntime()`。
+  - 新增 `useLinghuiPageWorkspacePersistence.ts`，承接保存防抖、flush、保存中状态和工作区列表刷新；页面仍保留崩溃保护需要直接访问的 `pendingSaveRef/saveTimerRef`。
+  - 新增 `useLinghuiPageExecutionRailState.ts`，承接失败节点、待重跑节点、执行日志摘要、重试、取消和 focus handler。
+  - 新增 `useLinghuiPageCanvasHandlers.ts`，承接画布快照保存、空快照防覆盖、崩溃暂停保存/恢复/重载和节点运行状态恢复。
+  - `LinghuiPage.tsx` 当前约 1150 行，新文件均低于 500 行，未改变现有 props、className、文案或持久化结构。
+- Validation:
+  - `npx tsc --noEmit --project frontend/tsconfig.json --pretty false`：passed。
+
+## 2026-05-17 Director3DNodeEditor Continued Refactor
+
+- **Status:** in_progress
+- Actions taken:
+  - 新增 `Director3DRightRail.tsx`，把右侧视角/渲染/导出/属性入口从 `Director3DNodeEditor.tsx` 拆出。
+  - 新增 `useDirector3DTimelineController.ts`，把时间轴播放、关键帧、runtimeScene 和时间轴视频导出从主组件拆出。
+  - `Director3DNodeEditor.tsx` 当前约 988 行；新增组件/hook 均低于 500 行。
+- Validation:
+  - `npx tsc --noEmit --project frontend/tsconfig.json --pretty false`：passed。
+
+## 2026-05-17 ImageNodeEditor / Director3DViewport Continued Refactor
+
+- **Status:** in_progress
+- Actions taken:
+  - 新增 `ImageNodeEditorMainPanel.tsx`，把 `ImageNodeEditor` 的导入模式与生成模式主 JSX 拆出。
+  - 新增 `Director3DEnvironment.tsx`，把 3D 视口地面、天空、背景和背景纹理加载拆出。
+  - 新增 `Director3DActorDragLayer.tsx`，把 actor 渲染分发、移动/高度/旋转拖拽和选中 gizmo 拆出。
+  - 当前行数：`ImageNodeEditor.tsx` 约 1164 行；`Director3DViewport.tsx` 约 667 行。
+- Validation:
+  - `npx tsc --noEmit --project frontend/tsconfig.json --pretty false`：passed。
 
 ## Session: 2026-05-12 Director3D Procedural Detail Pass
 

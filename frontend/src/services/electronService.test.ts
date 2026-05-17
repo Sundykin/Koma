@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { diagnosticsListLogs, windowIsMaximized } from './electronService';
+import { STORAGE_KEYS } from '../constants/storageKeys';
+import { diagnosticsListLogs, getStoragePath, windowIsMaximized } from './electronService';
 
 describe('electronService window state', () => {
   afterEach(() => {
@@ -53,5 +54,31 @@ describe('electronService diagnostics', () => {
       logsDir: '/tmp/koma/logs',
       totalSize: 12,
     });
+  });
+});
+
+describe('electronService storage path', () => {
+  afterEach(() => {
+    localStorage.removeItem(STORAGE_KEYS.STORAGE_CONFIG);
+    delete (window as typeof window & { electronAPI?: unknown }).electronAPI;
+  });
+
+  it('优先读取 storageConfig 中的用户存储目录', async () => {
+    localStorage.setItem(
+      STORAGE_KEYS.STORAGE_CONFIG,
+      JSON.stringify({ rootPath: '/tmp/koma-custom', version: 1 })
+    );
+
+    await expect(getStoragePath()).resolves.toBe('/tmp/koma-custom');
+  });
+
+  it('没有配置时回退到默认业务根', async () => {
+    (window as typeof window & { electronAPI?: unknown }).electronAPI = {
+      app: {
+        getPath: async () => ({ path: '/Users/demo' }),
+      },
+    };
+
+    await expect(getStoragePath()).resolves.toBe('/Users/demo/.koma');
   });
 });

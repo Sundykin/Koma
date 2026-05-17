@@ -12,24 +12,18 @@
  *  - 右：选中假人 → 编辑位置/朝向/姿态/颜色；未选中假人 → 编辑当前取景视角参数
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { App, Button, InputNumber, Popover, Slider, Tooltip } from 'antd';
+import { App, Button } from 'antd';
 import { useNodes } from '@xyflow/react';
 import type { Node } from '@xyflow/react';
-import { ArrowRight, Box, Camera, Cylinder, Eye, Grid2x2, Image as ImageIcon, Layers, LayoutTemplate, Link2, Maximize2, Minimize2, Plus, RotateCw, Square, Trash2, Users, Wand2, Zap } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
+import { Plus, RotateCw, Trash2 } from 'lucide-react';
 import type {
   LinghuiDirector3DActor,
-  LinghuiDirector3DActorPose,
   LinghuiDirector3DBackgroundMode,
-  LinghuiDirector3DCreatureAction,
   LinghuiDirector3DCreatureSpecies,
-  LinghuiDirector3DEasing,
-  LinghuiDirector3DExportResolution,
   LinghuiDirector3DKeyframe,
   LinghuiDirector3DNodeProperties,
   LinghuiDirector3DRenderMode,
   LinghuiDirector3DScene,
-  LinghuiDirector3DTimeline,
   LinghuiNodeData,
   LinghuiNodeRunState,
 } from '../../../../types/linghui';
@@ -40,49 +34,39 @@ import {
   DIRECTOR3D_PROP_CATEGORY_LABELS,
   DIRECTOR3D_PROP_LIBRARY,
   DIRECTOR3D_SCENE_TEMPLATES,
-  DIRECTOR3D_EXPORT_RESOLUTION_OPTIONS,
-  resolveDirector3DExportDimensions,
-  resolveDirector3DExportResolution,
   type Director3DBattalionOptions,
   type Director3DCameraPreset,
-  type Director3DCameraPresetCategory,
   type Director3DCharacterPreset,
   type Director3DPropCategory,
   type Director3DPropPreset,
-  captureSceneAsKeyframe,
   cloneCameraForKeyframe,
   snapshotActorAsKeyframeActor,
   compileDirector3DPromptFragment,
   createDefaultDirector3DScene,
-  createDefaultDirector3DTimeline,
   createDirector3DActor,
   createDirector3DBattalion,
   createDirector3DCharacter,
   createDirector3DCreature,
   createDirector3DRidingHorse,
   createDirector3DLiteSoldier,
-  CREATURE_SPECIES_LIBRARY,
   createDirector3DProp,
   groupDirector3DCameraPresets,
-  interpolateSceneAt,
 } from '../../director3d/director3dScene';
-import { Director3DTimelineHud, type Director3DTimelineExportState, type Director3DTimelineLayer } from '../../director3d/Director3DTimelineHud';
-import { exportDirector3DTimelineVideo } from '../../director3d/director3dTimelineExport';
-import {
-  DIRECTOR3D_JOINT_META,
-  DIRECTOR3D_RIG_PRESET_OPTIONS,
-  patchRigJoint,
-  resolveActorRig,
-} from '../../director3d/director3dRig';
+import { Director3DTimelineHud } from '../../director3d/Director3DTimelineHud';
 import { useLinghuiGlobalAssets, type LinghuiGlobalAsset, type LinghuiGlobalAssetCategory, type LinghuiGlobalAssetPropType } from '../../../../store/linghuiGlobalAssets';
 import { pickReferenceImagesAndPersist } from '../../director3d/director3dReferenceImageUpload';
-import { Save as SaveIcon, Bookmark, BookmarkCheck, Upload } from 'lucide-react';
-import { toDirector3DColorInputValue } from '../../director3d/director3dColors';
 import { Director3DViewport, type Director3DViewportHandle } from '../../director3d/Director3DViewport';
 import { useLinghuiNodeEditorApi, useLinghuiNodeMutation } from '../../nodes/state/LinghuiNodeRunsContext';
 import { toFileSystemDisplayUrl } from '../../../../services/fileSystemPort';
 import { persistMediaAsset } from '../../../../services/mediaPersistenceService';
 import { getLinghuiResultPrimaryMedia } from '../../../../types/linghui';
+import {
+  Director3DAssetLibraryPanel,
+  type Director3DAssetTab,
+} from './Director3DAssetLibraryPanel';
+import { Director3DTopBar } from './Director3DTopBar';
+import { Director3DRightRail } from './Director3DRightRail';
+import { useDirector3DTimelineController } from '../hooks/useDirector3DTimelineController';
 
 interface Director3DNodeEditorProps {
   nodeId: string;
@@ -96,29 +80,6 @@ interface Selection {
   kind: SelectionKind;
   actorId?: string;
 }
-
-// Director3D inspector lives inside an AntD Popover. AntD Slider opens its own
-// Tooltip portal by default, and the nested Popover -> SliderTooltip portals can
-// recurse in AntD 6. Keep the value readouts inline instead.
-const DIRECTOR3D_INSPECTOR_SLIDER_TOOLTIP = { open: false } as const;
-
-const ASSET_PROPS: Array<{ id: string; label: string }> = [
-  { id: 'mannequin', label: '假人' },
-];
-
-const PROP_ICON_BY_TYPE: Record<Director3DPropPreset['type'], LucideIcon> = {
-  'prop-box': Box,
-  'prop-cylinder': Cylinder,
-  'prop-plane': Square,
-  'prop-camera': Camera,
-  'prop-arrow': ArrowRight,
-};
-
-// 摄影机预设分组顺序：景别 → 角度 → 焦段 → 经典镜头
-const CAMERA_PRESET_CATEGORY_ORDER: Director3DCameraPresetCategory[] = ['shot-size', 'angle', 'lens', 'classic'];
-
-const ASPECT_RATIOS = ['16:9', '21:9', '4:3', '1:1', '9:16'];
-type Director3DAssetTab = 'props' | 'characters' | 'creatures' | 'cameras' | 'templates';
 
 function normalizeAngleRadians(value: number): number {
   let next = value;
@@ -473,42 +434,6 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
   const cameraPresetGroups = useMemo(() => groupDirector3DCameraPresets(), []);
   const lastCameraPresetIds = scene.render.lastCameraPresetIds ?? [];
 
-  /* ========== 时间轴（C-6A）========== */
-  const timeline = useMemo<LinghuiDirector3DTimeline>(
-    () => scene.timeline ?? createDefaultDirector3DTimeline(),
-    [scene.timeline],
-  );
-  const [currentTime, setCurrentTime] = useState(0);
-  const [playing, setPlaying] = useState(false);
-  const [selectedKeyframeId, setSelectedKeyframeId] = useState<string | null>(null);
-
-  // 播放循环：requestAnimationFrame 推进 currentTime，到达 duration 自动停
-  useEffect(() => {
-    if (!playing) return undefined;
-    if (timeline.keyframes.length < 2) {
-      setPlaying(false);
-      return undefined;
-    }
-    let raf = 0;
-    let lastTime = performance.now();
-    const tick = () => {
-      const now = performance.now();
-      const dt = (now - lastTime) / 1000;
-      lastTime = now;
-      setCurrentTime(prev => {
-        const next = prev + dt;
-        if (next >= timeline.duration) {
-          setPlaying(false);
-          return timeline.duration;
-        }
-        return next;
-      });
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [playing, timeline.duration, timeline.keyframes.length]);
-
   // 左右 rail popover 外部点击关闭：rail / rail popover / 任何 antd body-portal 子弹层
   // 都算「安全区」，点这些不关；点其他地方才关。Esc 也关。
   useEffect(() => {
@@ -546,245 +471,41 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
     };
   }, [openLeftRailTab, rightRailOpen]);
 
-  // runtimeScene：用于 viewport 渲染的"当前时间帧"，不回写到 properties
-  const runtimeScene = useMemo<LinghuiDirector3DScene>(() => {
-    if (!scene.timeline || scene.timeline.keyframes.length === 0) return scene;
-    return interpolateSceneAt(scene, currentTime);
-  }, [currentTime, scene]);
-
-  // 工具：把 timeline 写回 scene
-  const updateTimeline = useCallback((updater: (prev: LinghuiDirector3DTimeline) => LinghuiDirector3DTimeline) => {
-    updateScene(prev => {
-      const nextTimeline = updater(prev.timeline ?? createDefaultDirector3DTimeline());
-      return { ...prev, timeline: nextTimeline };
-    });
-  }, [updateScene]);
-
-  /**
-   * 当前激活图层：
-   *  - 选中 actor → 该 actor 的图层（编辑物体轨）
-   *  - 否则 → 镜头图层
-   * 时间线 UI / 加帧 / 删帧都按此图层走，避免不同物体的关键帧互相覆盖。
-   */
-  const activeTimelineLayer = useMemo<Director3DTimelineLayer>(() => {
-    if (selection.kind === 'actor' && selectedActor) {
-      return { kind: 'actor', actorId: selectedActor.id, label: selectedActor.label || '物体' };
-    }
-    return { kind: 'camera', label: '镜头' };
-  }, [selectedActor, selection.kind]);
-
-  const handleAddKeyframe = useCallback(() => {
-    updateScene(prev => {
-      const baseTimeline = prev.timeline ?? createDefaultDirector3DTimeline();
-      const captureTime = Math.max(0, Math.min(baseTimeline.duration, Number(currentTime.toFixed(3))));
-      const newKfId = `kf_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 5)}`;
-
-      if (activeTimelineLayer.kind === 'camera') {
-        // 镜头图层：写 scope='camera' 关键帧。同 scope + 同时间已存在 → 覆盖
-        const existing = baseTimeline.keyframes.find(k => {
-          const scope = k.scope ?? 'scene';
-          return (scope === 'camera' || scope === 'scene') && Math.abs(k.time - captureTime) < 0.02;
-        });
-        const cameraSnapshot = cloneCameraForKeyframe(prev.camera);
-        // viewport 当前 yaw 不取模 → cameraOrbit 记录累计弧度，环绕镜头可跨 360°
-        const currentOrbit = viewportRef.current?.getCurrentOrbit();
-        const cameraOrbit = currentOrbit ? { ...currentOrbit } : undefined;
-        if (existing) {
-          const updated = {
-            ...existing,
-            camera: cameraSnapshot,
-            ...(cameraOrbit ? { cameraOrbit } : {}),
-          };
-          setSelectedKeyframeId(existing.id);
-          return { ...prev, timeline: { ...baseTimeline, keyframes: baseTimeline.keyframes.map(k => (k.id === existing.id ? updated : k)) } };
-        }
-        const newKf: LinghuiDirector3DKeyframe = {
-          id: newKfId,
-          time: captureTime,
-          scope: 'camera',
-          actors: [],
-          camera: cameraSnapshot,
-          ...(cameraOrbit ? { cameraOrbit } : {}),
-        };
-        setSelectedKeyframeId(newKfId);
-        return { ...prev, timeline: { ...baseTimeline, keyframes: [...baseTimeline.keyframes, newKf].sort((a, b) => a.time - b.time) } };
-      }
-
-      // actor 图层：写 scope='actor:{id}' 关键帧。同 scope + 同时间已存在 → 覆盖
-      const actorId = activeTimelineLayer.actorId;
-      const actor = prev.actors.find(a => a.id === actorId);
-      if (!actor) return prev;
-      const scope = `actor:${actorId}` as const;
-      const existing = baseTimeline.keyframes.find(k => (k.scope ?? 'scene') === scope && Math.abs(k.time - captureTime) < 0.02);
-      const snapshot = snapshotActorAsKeyframeActor(actor);
-      if (existing) {
-        const updated = { ...existing, actors: [snapshot] };
-        setSelectedKeyframeId(existing.id);
-        return { ...prev, timeline: { ...baseTimeline, keyframes: baseTimeline.keyframes.map(k => (k.id === existing.id ? updated : k)) } };
-      }
-      const newKf: LinghuiDirector3DKeyframe = {
-        id: newKfId,
-        time: captureTime,
-        scope,
-        actors: [snapshot],
-        camera: prev.camera,
-      };
-      setSelectedKeyframeId(newKfId);
-      return { ...prev, timeline: { ...baseTimeline, keyframes: [...baseTimeline.keyframes, newKf].sort((a, b) => a.time - b.time) } };
-    });
-  }, [activeTimelineLayer, currentTime, updateScene]);
-
-  const handleRemoveKeyframe = useCallback((keyframeId: string) => {
-    updateTimeline(prev => ({
-      ...prev,
-      keyframes: prev.keyframes.filter(k => k.id !== keyframeId),
-    }));
-    setSelectedKeyframeId(null);
-  }, [updateTimeline]);
-
-  const handleMoveKeyframe = useCallback((keyframeId: string, newTime: number) => {
-    updateTimeline(prev => {
-      const clamped = Math.max(0, Math.min(prev.duration, newTime));
-      const moved = prev.keyframes
-        .map(k => (k.id === keyframeId ? { ...k, time: Number(clamped.toFixed(3)) } : k))
-        .sort((a, b) => a.time - b.time);
-      return { ...prev, keyframes: moved };
-    });
-  }, [updateTimeline]);
-
-  const handleSeek = useCallback((t: number) => {
-    const clamped = Math.max(0, Math.min(timeline.duration, t));
-    setPlaying(false);
-    setCurrentTime(clamped);
-  }, [timeline.duration]);
-
-  const handleDurationChange = useCallback((duration: number) => {
-    updateTimeline(prev => ({ ...prev, duration }));
-  }, [updateTimeline]);
-
-  const handleFpsChange = useCallback((fps: number) => {
-    updateTimeline(prev => ({ ...prev, fps }));
-  }, [updateTimeline]);
-
-  const handleEasingChange = useCallback((easing: LinghuiDirector3DEasing) => {
-    updateTimeline(prev => ({ ...prev, easing }));
-  }, [updateTimeline]);
-
-  const handleExportResolutionChange = useCallback((resolution: LinghuiDirector3DExportResolution) => {
-    updateTimeline(prev => ({ ...prev, exportResolution: resolution }));
-  }, [updateTimeline]);
-
-  const handleResetTimeline = useCallback(() => {
-    updateScene(prev => ({ ...prev, timeline: createDefaultDirector3DTimeline() }));
-    setSelectedKeyframeId(null);
-    setCurrentTime(0);
-    setPlaying(false);
-  }, [updateScene]);
-
-  const handlePlayToggle = useCallback(() => {
-    setPlaying(prev => {
-      if (prev) return false;
-      // 从末尾按 play → 跳回开头
-      if (currentTime >= timeline.duration - 0.001) {
-        setCurrentTime(0);
-      }
-      return true;
-    });
-  }, [currentTime, timeline.duration]);
-
-  /* ========== 时间轴导出视频（C-6B）========== */
-  const [timelineExport, setTimelineExport] = useState<Director3DTimelineExportState>({
-    active: false,
-    phase: null,
-    current: 0,
-    total: 0,
+  const {
+    activeTimelineLayer,
+    currentTime,
+    handleAddKeyframe,
+    handleCancelTimelineExport,
+    handleDurationChange,
+    handleEasingChange,
+    handleExportResolutionChange,
+    handleExportTimelineVideo,
+    handleFpsChange,
+    handleMoveKeyframe,
+    handlePlayToggle,
+    handleRemoveKeyframe,
+    handleResetTimeline,
+    handleSeek,
+    playing,
+    runtimeScene,
+    selectedKeyframeId,
+    setSelectedKeyframeId,
+    timeline,
+    timelineExport,
+    timelineVideoPosterUrl,
+    timelineVideoUrl,
+  } = useDirector3DTimelineController({
+    message,
+    nodeData,
+    nodeId,
+    renderModeForExport,
+    scene,
+    selectedActor,
+    selectionKind: selection.kind,
+    updateNodeData,
+    updateScene,
+    viewportRef,
   });
-  const exportAbortRef = useRef<AbortController | null>(null);
-
-  const handleCancelTimelineExport = useCallback(() => {
-    exportAbortRef.current?.abort();
-  }, []);
-
-  const handleExportTimelineVideo = useCallback(async () => {
-    if (timelineExport.active) return;
-    if (timeline.keyframes.length < 2) {
-      message.warning('请先添加至少 2 个关键帧再导出');
-      return;
-    }
-    const viewport = viewportRef.current;
-    if (!viewport) {
-      message.warning('视口未就绪，请重试');
-      return;
-    }
-
-    // 用户在 HUD 设置的导出分辨率档位 → (width, height)，按 aspectRatio 计算宽
-    const exportResolution = resolveDirector3DExportResolution(timeline.exportResolution);
-    const { width, height } = resolveDirector3DExportDimensions(exportResolution, scene.camera.aspectRatio);
-
-    setPlaying(false);
-    const abort = new AbortController();
-    exportAbortRef.current = abort;
-    setTimelineExport({ active: true, phase: 'render', current: 0, total: 0 });
-
-    try {
-      const result = await exportDirector3DTimelineVideo({
-        nodeId,
-        duration: timeline.duration,
-        fps: timeline.fps,
-        width,
-        height,
-        signal: abort.signal,
-        renderFrameToDataUrl: async (t: number) => {
-          if (abort.signal.aborted) return null;
-          // 关键：直接在导出流程算好 frame scene 传给 viewport.captureCurrentView，
-          // 不依赖 setCurrentTime 触发的 React 重渲染链路 —— 之前那套 2-RAF 等待
-          // 在 React 18 并发模式下 capture 闭包仍可能拿不到新 scene，导致每帧都是同一张图
-          const frameScene = interpolateSceneAt(scene, t);
-          // 同步更新游标，让 UI 上有视觉进度反馈（不依赖它做渲染）
-          setCurrentTime(t);
-          return await viewport.captureCurrentView({
-            width,
-            height,
-            renderMode: renderModeForExport,
-            sceneOverride: frameScene,
-            cameraOverride: frameScene.camera,
-          });
-        },
-        onProgress: (current, total, phase) => {
-          setTimelineExport({ active: true, phase, current, total });
-        },
-      });
-
-      updateNodeData(nodeId, prev => ({
-        ...prev,
-        properties: {
-          ...prev.properties,
-          outputMode: 'video',
-          timelineVideoUrl: result.localUrl,
-          timelineVideoPosterUrl: result.firstFrameUrl,
-          timelineVideoMeta: {
-            duration: result.duration,
-            fps: result.fps,
-            frameCount: result.frameCount,
-            width: result.width,
-            height: result.height,
-          },
-        },
-      }));
-      message.success(`时间轴动画已导出 ${result.frameCount} 帧 (${result.duration.toFixed(1)}s @ ${result.fps}fps)`);
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
-      if (msg.includes('取消')) {
-        message.info('已取消导出');
-      } else {
-        message.error(`导出失败：${msg}`);
-      }
-    } finally {
-      exportAbortRef.current = null;
-      setTimelineExport({ active: false, phase: null, current: 0, total: 0 });
-    }
-  }, [message, nodeId, renderModeForExport, scene.camera.aspectRatio, timeline.duration, timeline.fps, timeline.keyframes.length, timelineExport.active, updateNodeData]);
-  /* ========== 时间轴 end ========== */
 
   const handleAddProp = useCallback((preset: Director3DPropPreset) => {
     updateScene(prev => {
@@ -1132,374 +853,47 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
     >
       <div className="linghuiDirector3DLayout">
         {/* 顶部 HUD：状态条 */}
-        <div className="linghuiDirector3DTopBar">
-          <span className="linghuiDirector3DTopBarChip">
-            <Camera size={11} />
-            {Math.round(scene.camera.fov)}° · {scene.camera.aspectRatio}
-          </span>
-          <span className="linghuiDirector3DTopBarChip">
-            <Users size={11} />
-            {stats.mannequins} 角色
-          </span>
-          {stats.liteMannequins > 0 ? (
-            <span className="linghuiDirector3DTopBarChip">
-              <Users size={11} style={{ opacity: 0.6 }} />
-              {stats.liteMannequins} 群演
-            </span>
-          ) : null}
-          {stats.formations > 0 ? (
-            <span className="linghuiDirector3DTopBarChip" title={`${stats.formations} 个方阵 / 共 ${stats.formationMembers} 人`}>
-              <Grid2x2 size={11} />
-              {stats.formations} 方阵 · {stats.formationMembers} 人
-            </span>
-          ) : null}
-          {stats.props > 0 ? (
-            <span className="linghuiDirector3DTopBarChip">
-              <Box size={11} />
-              {stats.props} 道具
-            </span>
-          ) : null}
-          <span className="linghuiDirector3DTopBarChip">
-            {RENDER_MODE_LABELS[renderModeForExport]}
-          </span>
-          <span className="linghuiDirector3DTopBarChip" title="Cmd/Ctrl+F 沉浸 · 1-4 切换渲染模式">
-            ⌘F / 1-4
-          </span>
-          <Tooltip title={immersive ? '退出沉浸 (Cmd/Ctrl+F)' : '沉浸模式 (Cmd/Ctrl+F)'} placement="bottom">
-            <button
-              type="button"
-              className="linghuiDirector3DTopBarBtn"
-              onClick={() => setImmersive(prev => !prev)}
-            >
-              {immersive ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
-            </button>
-          </Tooltip>
-        </div>
+        <Director3DTopBar
+          immersive={immersive}
+          renderModeForExport={renderModeForExport}
+          renderModeLabels={RENDER_MODE_LABELS}
+          scene={scene}
+          stats={stats}
+          onToggleImmersive={() => setImmersive(prev => !prev)}
+        />
 
         {/* 主体：左 rail | 视口 | 右 rail，flex 中间撑开 */}
         <div className="linghuiDirector3DBody">
 
         {/* 左侧 activity bar：纵向 5 个独立图标按钮，hover 各自弹出对应资产面板 */}
-        <aside className="linghuiDirector3DRail">
-          {([
-            { id: 'characters' as const, label: '人物', Icon: Users, title: '加角色 / 派兵布阵 / 全局角色库' },
-            { id: 'creatures' as const, label: '生物', Icon: Zap, title: '现实动物 + 玄幻生物' },
-            { id: 'props' as const, label: '道具', Icon: Box, title: '场景道具 + 全局道具库' },
-            { id: 'cameras' as const, label: '视角', Icon: Camera, title: '电影镜头预设' },
-            { id: 'templates' as const, label: '模板', Icon: LayoutTemplate, title: '快速套用整套场景' },
-          ]).map(tab => (
-            <Popover
-              key={tab.id}
-              open={openLeftRailTab === tab.id}
-              trigger="hover"
-              placement="right"
-              align={{ overflow: { adjustY: true, adjustX: true } }}
-              mouseEnterDelay={0.1}
-              mouseLeaveDelay={0.2}
-              overlayClassName="linghuiDirector3DRailPopover"
-              getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
-              // 只接受「开」事件；关闭交给外部点击 / Esc，避免鼠标移到子 popup 时被错关
-              onOpenChange={(open) => {
-                if (open) {
-                  setOpenLeftRailTab(tab.id);
-                  setActiveAssetTab(tab.id);
-                }
-              }}
-              content={(
-                <div className="linghuiDirector3DRailPopoverInner">
-                  <div className="linghuiDirector3DRailPopoverTitle">{tab.label}</div>
-                  <div className="linghuiDirector3DAssetGrid">
-            {activeAssetTab === 'characters' && (
-              <>
-                <div className="linghuiDirector3DCameraGroupHeading">主角预设</div>
-                {DIRECTOR3D_CHARACTER_PRESETS.map(preset => (
-                  <button
-                    key={preset.id}
-                    type="button"
-                    className="linghuiDirector3DAssetTile"
-                    onClick={() => handleAddCharacter(preset)}
-                    title={`${preset.label} · ${preset.hint}`}
-                  >
-                    <Users size={18} style={{ color: preset.color.startsWith('var(') ? undefined : preset.color }} />
-                    <span>{preset.label}</span>
-                  </button>
-                ))}
-                <div className="linghuiDirector3DCameraGroupHeading">通用</div>
-                {ASSET_PROPS.map(asset => (
-                  <button key={asset.id} type="button" className="linghuiDirector3DAssetTile" onClick={handleAddActor} title="加一个空白主角假人">
-                    <Users size={20} />
-                    <span>{asset.label}</span>
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  className="linghuiDirector3DAssetTile"
-                  onClick={handleAddLiteSoldier}
-                  title="加一个低多边形群演占位，独立可拖拽，作为人群路人或填充背景"
-                >
-                  <Users size={20} style={{ opacity: 0.6 }} />
-                  <span>群演</span>
-                </button>
-                <button
-                  type="button"
-                  className="linghuiDirector3DAssetTile"
-                  onClick={handleAddRidingHorse}
-                  title="添加骑手与马的组合，任一成员移动 / 旋转都会保持相对关系"
-                >
-                  <Zap size={20} />
-                  <span>人骑马</span>
-                </button>
-                {characterAssets.assets.length > 0 ? (
-                  <>
-                    <div className="linghuiDirector3DCameraGroupHeading">我的全局库</div>
-                    {characterAssets.assets.map(asset => (
-                      <button
-                        key={asset.id}
-                        type="button"
-                        className={`linghuiDirector3DAssetTile linghuiDirector3DGlobalTile ${asset.favorite ? 'isFavorite' : ''}`}
-                        onClick={() => handleAddGlobalAsset(asset)}
-                        onContextMenu={event => {
-                          event.preventDefault();
-                          void handleDeleteGlobalAsset(asset);
-                        }}
-                        title={`${asset.label}（右键删除 / 点击星标切换收藏）`}
-                      >
-                        <span className="linghuiDirector3DGlobalTileFavoriteSlot" onClick={(event) => { event.stopPropagation(); void handleToggleAssetFavorite(asset); }}>
-                          {asset.favorite ? <BookmarkCheck size={12} /> : <Bookmark size={12} />}
-                        </span>
-                        <Users size={18} style={{ color: asset.color?.startsWith('var(') ? undefined : asset.color }} />
-                        <span>{asset.label}</span>
-                      </button>
-                    ))}
-                  </>
-                ) : null}
-              </>
-            )}
-            {activeAssetTab === 'characters' && (
-              <Popover
-                open={battalionOpen}
-                onOpenChange={setBattalionOpen}
-                trigger="click"
-                placement="rightTop"
-                overlayClassName="linghuiDirector3DBattalionPopover"
-                getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
-                content={(
-                  <div className="linghuiDirector3DBattalionPanel">
-                    <div className="linghuiDirector3DBattalionTitle">派兵布阵</div>
-                    <div className="linghuiDirector3DBattalionHint">一键铺 M 行 × N 列的低级假人，用于群戏排布或受阅式构图。</div>
-                    <div className="linghuiDirector3DBattalionRow">
-                      <span className="linghuiDirector3DBattalionLabel">行 × 列</span>
-                      <InputNumber
-                        size="small"
-                        min={1}
-                        max={12}
-                        value={battalionConfig.rows}
-                        onChange={value => setBattalionConfig(prev => ({ ...prev, rows: Math.max(1, Math.min(12, Math.round(Number(value) || 1))) }))}
-                      />
-                      <span className="linghuiDirector3DBattalionTimes">×</span>
-                      <InputNumber
-                        size="small"
-                        min={1}
-                        max={12}
-                        value={battalionConfig.cols}
-                        onChange={value => setBattalionConfig(prev => ({ ...prev, cols: Math.max(1, Math.min(12, Math.round(Number(value) || 1))) }))}
-                      />
-                      <span className="linghuiDirector3DBattalionTotal">= {battalionConfig.rows * battalionConfig.cols} 人</span>
-                    </div>
-                    <div className="linghuiDirector3DBattalionRow">
-                      <span className="linghuiDirector3DBattalionLabel">间距</span>
-                      <div className="linghuiDirector3DBattalionChipGroup">
-                        {[
-                          { value: 0.6, label: '密集' },
-                          { value: 1.0, label: '标准' },
-                          { value: 1.6, label: '稀疏' },
-                        ].map(option => (
-                          <button
-                            key={option.value}
-                            type="button"
-                            className={`linghuiDirector3DBattalionChip ${Math.abs(battalionConfig.spacing - option.value) < 0.01 ? 'isActive' : ''}`}
-                            onClick={() => setBattalionConfig(prev => ({ ...prev, spacing: option.value }))}
-                          >
-                            {option.label}
-                            <span className="linghuiDirector3DBattalionChipMeta">{option.value}m</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="linghuiDirector3DBattalionRow">
-                      <span className="linghuiDirector3DBattalionLabel">朝向</span>
-                      <div className="linghuiDirector3DBattalionChipGroup">
-                        {([
-                          { value: 'forward' as const, label: '正向' },
-                          { value: 'away' as const, label: '背向' },
-                          { value: 'inward' as const, label: '向心' },
-                          { value: 'outward' as const, label: '向外' },
-                        ]).map(option => (
-                          <button
-                            key={option.value}
-                            type="button"
-                            className={`linghuiDirector3DBattalionChip ${battalionConfig.memberFacing === option.value ? 'isActive' : ''}`}
-                            onClick={() => setBattalionConfig(prev => ({ ...prev, memberFacing: option.value }))}
-                          >
-                            {option.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="linghuiDirector3DBattalionActions">
-                      <Button size="small" onClick={() => setBattalionOpen(false)}>取消</Button>
-                      <Button size="small" type="primary" icon={<Plus size={14} />} onClick={handleDeployBattalion}>
-                        部署
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              >
-                <button type="button" className="linghuiDirector3DAssetTile">
-                  <Grid2x2 size={20} />
-                  <span>派兵布阵</span>
-                </button>
-              </Popover>
-            )}
-            {activeAssetTab === 'creatures' && (
-              <>
-                <div className="linghuiDirector3DCameraGroupHeading">现实动物</div>
-                {CREATURE_SPECIES_LIBRARY.filter(spec => (
-                  spec.kind === 'lion' || spec.kind === 'wolf' || spec.kind === 'tiger'
-                  || spec.kind === 'bear' || spec.kind === 'horse' || spec.kind === 'eagle'
-                )).map(spec => (
-                  <button
-                    key={spec.kind}
-                    type="button"
-                    className="linghuiDirector3DAssetTile"
-                    onClick={() => handleAddCreature(spec.kind)}
-                    title={spec.promptHint}
-                  >
-                    <Users size={20} />
-                    <span>{spec.label}</span>
-                  </button>
-                ))}
-                <div className="linghuiDirector3DCameraGroupHeading">玄幻生物</div>
-                {CREATURE_SPECIES_LIBRARY.filter(spec => (
-                  spec.kind === 'dragon' || spec.kind === 'phoenix' || spec.kind === 'qilin'
-                  || spec.kind === 'fox' || spec.kind === 'deer' || spec.kind === 'crane'
-                )).map(spec => (
-                  <button
-                    key={spec.kind}
-                    type="button"
-                    className="linghuiDirector3DAssetTile"
-                    onClick={() => handleAddCreature(spec.kind)}
-                    title={spec.promptHint}
-                  >
-                    <Zap size={20} />
-                    <span>{spec.label}</span>
-                  </button>
-                ))}
-              </>
-            )}
-            {activeAssetTab === 'cameras' && CAMERA_PRESET_CATEGORY_ORDER.flatMap(category => {
-              const presets = cameraPresetGroups[category] ?? [];
-              if (presets.length === 0) return [];
-              return [
-                <div key={`${category}-heading`} className="linghuiDirector3DCameraGroupHeading">
-                  {DIRECTOR3D_CAMERA_PRESET_CATEGORY_LABELS[category]}
-                </div>,
-                ...presets.map(preset => {
-                  const active = lastCameraPresetIds[0] === preset.id;
-                  return (
-                    <button
-                      key={preset.id}
-                      type="button"
-                      className={`linghuiDirector3DAssetTile linghuiDirector3DCameraTile ${active ? 'isActive' : ''}`}
-                      onClick={() => handleApplyCameraPreset(preset)}
-                      title={preset.hint ? `${preset.label} · ${preset.hint}` : preset.label}
-                    >
-                      <Camera size={18} />
-                      <span>{preset.label}</span>
-                    </button>
-                  );
-                }),
-              ];
-            })}
-            {activeAssetTab === 'props' && propCategoryOrder.flatMap(category => {
-              const presets = propsByCategory[category] ?? [];
-              if (presets.length === 0) return [];
-              return [
-                <div key={`prop-cat-${category}`} className="linghuiDirector3DCameraGroupHeading">
-                  {DIRECTOR3D_PROP_CATEGORY_LABELS[category]}
-                </div>,
-                ...presets.map(preset => {
-                  const Icon = PROP_ICON_BY_TYPE[preset.type] ?? Box;
-                  return (
-                    <button
-                      key={preset.id}
-                      type="button"
-                      className="linghuiDirector3DAssetTile"
-                      onClick={() => handleAddProp(preset)}
-                      title={preset.promptHint ? `${preset.label} · ${preset.promptHint}` : preset.label}
-                    >
-                      <Icon size={20} />
-                      <span>{preset.label}</span>
-                    </button>
-                  );
-                }),
-              ];
-            })}
-            {activeAssetTab === 'props' && propAssets.assets.length > 0 && (
-              <>
-                <div className="linghuiDirector3DCameraGroupHeading">我的全局库</div>
-                {propAssets.assets.map(asset => {
-                  const Icon = PROP_ICON_BY_TYPE[asset.propType ?? 'prop-box'] ?? Box;
-                  return (
-                    <button
-                      key={asset.id}
-                      type="button"
-                      className={`linghuiDirector3DAssetTile linghuiDirector3DGlobalTile ${asset.favorite ? 'isFavorite' : ''}`}
-                      onClick={() => handleAddGlobalAsset(asset)}
-                      onContextMenu={event => {
-                        event.preventDefault();
-                        void handleDeleteGlobalAsset(asset);
-                      }}
-                      title={`${asset.label}（右键删除 / 星标切换收藏）`}
-                    >
-                      <span className="linghuiDirector3DGlobalTileFavoriteSlot" onClick={(event) => { event.stopPropagation(); void handleToggleAssetFavorite(asset); }}>
-                        {asset.favorite ? <BookmarkCheck size={12} /> : <Bookmark size={12} />}
-                      </span>
-                      <Icon size={18} />
-                      <span>{asset.label}</span>
-                    </button>
-                  );
-                })}
-              </>
-            )}
-            {activeAssetTab === 'templates' && DIRECTOR3D_SCENE_TEMPLATES.map(template => (
-              <button
-                key={template.id}
-                type="button"
-                className="linghuiDirector3DAssetTile"
-                onClick={() => handleApplyTemplate(template.id)}
-                title={template.hint}
-              >
-                <LayoutTemplate size={20} />
-                <span>{template.label}</span>
-              </button>
-            ))}
-                  </div>
-                </div>
-              )}
-            >
-              <button
-                type="button"
-                className={`linghuiDirector3DRailButton ${activeAssetTab === tab.id ? 'isActive' : ''}`}
-                onMouseEnter={() => setActiveAssetTab(tab.id)}
-                title={tab.title}
-              >
-                <tab.Icon size={18} />
-                <span>{tab.label}</span>
-              </button>
-            </Popover>
-          ))}
-        </aside>
+        <Director3DAssetLibraryPanel
+          activeAssetTab={activeAssetTab}
+          battalionConfig={battalionConfig}
+          battalionOpen={battalionOpen}
+          cameraPresetGroups={cameraPresetGroups}
+          characterAssets={characterAssets.assets}
+          lastCameraPresetIds={lastCameraPresetIds}
+          openLeftRailTab={openLeftRailTab}
+          propAssets={propAssets.assets}
+          propCategoryOrder={propCategoryOrder}
+          propsByCategory={propsByCategory}
+          onAddActor={handleAddActor}
+          onAddCharacter={handleAddCharacter}
+          onAddCreature={handleAddCreature}
+          onAddGlobalAsset={handleAddGlobalAsset}
+          onAddLiteSoldier={handleAddLiteSoldier}
+          onAddProp={handleAddProp}
+          onAddRidingHorse={handleAddRidingHorse}
+          onApplyCameraPreset={handleApplyCameraPreset}
+          onApplyTemplate={handleApplyTemplate}
+          onDeleteGlobalAsset={asset => { void handleDeleteGlobalAsset(asset); }}
+          onDeployBattalion={handleDeployBattalion}
+          onSetActiveAssetTab={setActiveAssetTab}
+          onSetBattalionConfig={setBattalionConfig}
+          onSetBattalionOpen={setBattalionOpen}
+          onSetOpenLeftRailTab={setOpenLeftRailTab}
+          onToggleAssetFavorite={asset => { void handleToggleAssetFavorite(asset); }}
+        />
 
         {/* 中央：3D 视口 + 镜头条 */}
         <main className="linghuiDirector3DStage">
@@ -1525,493 +919,35 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
         </main>
 
         {/* 右侧 activity rail：属性 + 时间轴关键帧入口；属性 popover 内容根据选中状态切换 */}
-        <aside className="linghuiDirector3DRail isRight">
-          {/* 输出调整：每个按钮竖向排列；按功能分组用背景色区分（视角 / 渲染 / 导出）。
-             rail 宽度与原先一致（44px），仅图标 + 小字。 */}
-          <div className="linghuiDirector3DRailGroup isCamera" title="视角">
-            <button
-              type="button"
-              className={`linghuiDirector3DRailButton ${cameraMode === 'output' ? 'isActive' : ''}`}
-              onClick={() => setCameraMode('output')}
-              title="输出视角：拖动 / 缩放写入输出相机"
-            >
-              <Camera size={16} />
-              <span>输出</span>
-            </button>
-            <button
-              type="button"
-              className={`linghuiDirector3DRailButton ${cameraMode === 'editor' ? 'isActive' : ''}`}
-              onClick={() => setCameraMode('editor')}
-              title="编辑视角：仅查看，不改输出"
-            >
-              <Eye size={16} />
-              <span>编辑</span>
-            </button>
-            {cameraMode === 'editor' ? (
-              <button
-                type="button"
-                className="linghuiDirector3DRailButton"
-                onClick={() => {
-                  const current = viewportRef.current?.getCurrentCamera();
-                  if (!current) return;
-                  updateScene(prev => ({ ...prev, camera: { ...current } }));
-                  setCameraMode('output');
-                }}
-                title="把当前编辑视角固化为输出相机"
-              >
-                <Link2 size={16} />
-                <span>固化</span>
-              </button>
-            ) : null}
-          </div>
-
-          <div className="linghuiDirector3DRailGroup isRender" title="渲染风格">
-            {([
-              { mode: 'preview' as const, Icon: ImageIcon, short: '彩色' },
-              { mode: 'lineart' as const, Icon: Square, short: '线稿' },
-              { mode: 'silhouette' as const, Icon: Box, short: '剪影' },
-              { mode: 'depth' as const, Icon: Layers, short: '深度' },
-              { mode: 'composition' as const, Icon: Grid2x2, short: '构图' },
-            ]).map(({ mode, Icon, short }) => (
-              <button
-                key={mode}
-                type="button"
-                className={`linghuiDirector3DRailButton ${renderModeForExport === mode ? 'isActive' : ''}`}
-                onClick={() => {
-                  setRenderModeForExport(mode);
-                  setPreviewMode(mode === 'silhouette' ? 'silhouette' : mode === 'lineart' ? 'lineart' : 'preview');
-                }}
-                title={`导出 ${RENDER_MODE_LABELS[mode]} 风格`}
-              >
-                <Icon size={16} />
-                <span>{short}</span>
-              </button>
-            ))}
-          </div>
-
-          <div className="linghuiDirector3DRailGroup isExport" title="导出">
-            <button
-              type="button"
-              className="linghuiDirector3DRailButton isAccent"
-              onClick={handleExportLineart}
-              title={`导出 ${RENDER_MODE_LABELS[renderModeForExport]}`}
-            >
-              <Wand2 size={16} />
-              <span>导出</span>
-            </button>
-            {lineartPreview ? (
-              <img
-                className="linghuiDirector3DRailThumb"
-                src={lineartPreview}
-                alt="lineart preview"
-                title="最近导出"
-              />
-            ) : null}
-          </div>
-
-          <Popover
-            open={rightRailOpen}
-            trigger="hover"
-            placement="left"
-            align={{ overflow: { adjustY: true, adjustX: true } }}
-            mouseEnterDelay={0.1}
-            mouseLeaveDelay={0.2}
-            overlayClassName="linghuiDirector3DRailPopover"
-            getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
-            // 同左 rail：受控开，关闭走外部点击 / Esc
-            onOpenChange={(open) => {
-              if (open) setRightRailOpen(true);
-            }}
-            content={(
-              <div className="linghuiDirector3DRailPopoverInner">
-                <div className="linghuiDirector3DRailPopoverTitle">
-                  {selection.kind === 'actor' && selectedActor ? (selectedActor.label || '属性') : '属性'}
-                </div>
-                {selection.kind !== 'actor' || !selectedActor ? (
-                  <div className="linghuiDirector3DInspectorEmpty">点击视口里的物体查看其属性</div>
-                ) : null}
-
-          {selection.kind === 'actor' && selectedActor ? (
-            <div className="linghuiDirector3DInspectorBody">
-              <Field label="名称">
-                <input
-                  className="linghuiDirector3DInspectorInput"
-                  value={selectedActor.label}
-                  onChange={(e) => handleActorChange(selectedActor.id, { label: e.target.value })}
-                />
-              </Field>
-              <Field label="位置 X / 高度Y / Z (m)">
-                <Vec3Input
-                  value={selectedActor.position}
-                  onChange={(value) => handleActorChange(selectedActor.id, { position: value })}
-                />
-              </Field>
-              <Field label="高度 Y (m)">
-                <div className="linghuiDirector3DRigSliderRow">
-                  <Slider
-                    min={-1}
-                    max={8}
-                    step={0.05}
-                    value={Number(selectedActor.position[1].toFixed(2))}
-                    tooltip={DIRECTOR3D_INSPECTOR_SLIDER_TOOLTIP}
-                    onChange={(height) => {
-                      const y = Number(height);
-                      handleActorChange(selectedActor.id, {
-                        position: [selectedActor.position[0], Number(y.toFixed(2)), selectedActor.position[2]],
-                      });
-                    }}
-                    style={{ flex: 1 }}
-                  />
-                  <span className="linghuiDirector3DRigSliderValue">{selectedActor.position[1].toFixed(2)}</span>
-                </div>
-              </Field>
-              <Field label="朝向 (°)">
-                <Slider
-                  min={-180}
-                  max={180}
-                  value={Math.round((selectedActor.rotationY * 180) / Math.PI)}
-                  tooltip={DIRECTOR3D_INSPECTOR_SLIDER_TOOLTIP}
-                  onChange={(deg) => handleActorChange(selectedActor.id, { rotationY: ((deg as number) * Math.PI) / 180 })}
-                />
-              </Field>
-              {selectedActor.groupId ? (
-                <div className="linghuiDirector3DGroupHint">
-                  {selectedActor.groupLabel || '组合'} · {selectedActor.groupRole === 'rider' ? '骑手' : selectedActor.groupRole === 'mount' ? '坐骑' : '成员'}，移动 / 旋转会联动同组实体
-                </div>
-              ) : null}
-              {selectedActor.type === 'mannequin' ? (
-                <>
-                  <Field label="预置动作">
-                    <div className="linghuiDirector3DPoseGrid">
-                      {DIRECTOR3D_RIG_PRESET_OPTIONS.map(option => {
-                        // 选中态：基础 6 个对照 posePreset；扩展的看 actor.rig 是否就是该预置的 rig
-                        const isBuiltinMatch = Boolean(option.posePreset && selectedActor.posePreset === option.posePreset && !selectedActor.rig);
-                        const isRigMatch = Boolean(selectedActor.rig && JSON.stringify(selectedActor.rig) === JSON.stringify(option.rig));
-                        const active = isBuiltinMatch || isRigMatch;
-                        return (
-                          <button
-                            key={option.key}
-                            type="button"
-                            className={`linghuiDirector3DPoseTile ${active ? 'isActive' : ''}`}
-                            onClick={() => handleActorChange(selectedActor.id, {
-                              // 预置：基础 6 个直接更新 posePreset 字符串；扩展的把 rig 写到 actor.rig（保持 posePreset=idle 兜底）
-                              ...(option.posePreset
-                                ? { posePreset: option.posePreset, rig: option.rig }
-                                : { posePreset: 'idle' as LinghuiDirector3DActorPose, rig: option.rig }),
-                            })}
-                          >
-                            {option.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </Field>
-
-                  <Field label="骨骼微调">
-                    <div className="linghuiDirector3DRigGrid">
-                      {DIRECTOR3D_JOINT_META.map(joint => {
-                        const currentRig = resolveActorRig(selectedActor.rig, selectedActor.posePreset);
-                        return (
-                          <div key={joint.key} className="linghuiDirector3DRigJoint">
-                            <div className="linghuiDirector3DRigJointHeader">{joint.label}</div>
-                            {joint.axes.map(({ axis, name, hint }) => {
-                              const radValue = currentRig[joint.key][axis];
-                              const degValue = Math.round((radValue * 180) / Math.PI);
-                              return (
-                                <div key={`${joint.key}-${axis}`} className="linghuiDirector3DRigSliderRow">
-                                  <span className="linghuiDirector3DRigSliderLabel" title={hint}>{name}</span>
-                                  <Slider
-                                    min={-180}
-                                    max={180}
-                                    step={1}
-                                    value={degValue}
-                                    tooltip={DIRECTOR3D_INSPECTOR_SLIDER_TOOLTIP}
-                                    onChange={(deg) => {
-                                      const nextRad = ((deg as number) * Math.PI) / 180;
-                                      const nextRig = patchRigJoint(currentRig, joint.key, axis, nextRad);
-                                      handleActorChange(selectedActor.id, { rig: nextRig });
-                                    }}
-                                    style={{ flex: 1 }}
-                                  />
-                                  <span className="linghuiDirector3DRigSliderValue">{degValue}°</span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        );
-                      })}
-                      <Button
-                        size="small"
-                        block
-                        onClick={() => handleActorChange(selectedActor.id, { rig: undefined })}
-                        disabled={!selectedActor.rig}
-                      >
-                        重置到预置动作
-                      </Button>
-                    </div>
-                  </Field>
-                </>
-              ) : null}
-              {selectedActor.type === 'creature' ? (
-                <>
-                  <Field label="物种">
-                    <div className="linghuiDirector3DPoseGrid">
-                      {CREATURE_SPECIES_LIBRARY.map(spec => (
-                        <button
-                          key={spec.kind}
-                          type="button"
-                          className={`linghuiDirector3DPoseTile ${selectedActor.species === spec.kind ? 'isActive' : ''}`}
-                          onClick={() => handleActorChange(selectedActor.id, {
-                            species: spec.kind,
-                            color: spec.color,
-                          })}
-                          title={spec.promptHint}
-                        >
-                          {spec.label}
-                        </button>
-                      ))}
-                    </div>
-                  </Field>
-                  <Field label="动作">
-                    <div className="linghuiDirector3DPoseGrid">
-                      {(['idle', 'walk', 'run', 'pounce', 'fly', 'roar'] as LinghuiDirector3DCreatureAction[]).map(action => {
-                        const labels: Record<LinghuiDirector3DCreatureAction, string> = {
-                          idle: '站立', walk: '行走', run: '奔跑', pounce: '扑击', fly: '飞行', roar: '咆哮',
-                        };
-                        const active = (selectedActor.creatureAction ?? 'idle') === action;
-                        return (
-                          <button
-                            key={action}
-                            type="button"
-                            className={`linghuiDirector3DPoseTile ${active ? 'isActive' : ''}`}
-                            onClick={() => handleActorChange(selectedActor.id, {
-                              creatureAction: action,
-                              // 切动作时同步清掉手调骨架，让 mesh 回到该动作预置
-                              creatureRig: undefined,
-                            })}
-                          >
-                            {labels[action]}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </Field>
-                </>
-              ) : null}
-              {selectedActor.type === 'formation' && selectedActor.formation ? (
-                <>
-                  <Field label="行 × 列">
-                    <div className="linghuiDirector3DVec3">
-                      <div className="linghuiDirector3DVec3Cell">
-                        <span className="linghuiDirector3DVec3Axis">R</span>
-                        <InputNumber
-                          size="small"
-                          controls={false}
-                          min={1}
-                          max={12}
-                          value={selectedActor.formation.rows}
-                          onChange={value => handleActorChange(selectedActor.id, {
-                            formation: {
-                              ...selectedActor.formation!,
-                              rows: Math.max(1, Math.min(12, Math.round(Number(value) || 1))),
-                            },
-                          })}
-                        />
-                      </div>
-                      <div className="linghuiDirector3DVec3Cell">
-                        <span className="linghuiDirector3DVec3Axis">C</span>
-                        <InputNumber
-                          size="small"
-                          controls={false}
-                          min={1}
-                          max={12}
-                          value={selectedActor.formation.cols}
-                          onChange={value => handleActorChange(selectedActor.id, {
-                            formation: {
-                              ...selectedActor.formation!,
-                              cols: Math.max(1, Math.min(12, Math.round(Number(value) || 1))),
-                            },
-                          })}
-                        />
-                      </div>
-                      <div className="linghuiDirector3DVec3Cell">
-                        <span className="linghuiDirector3DVec3Axis">S</span>
-                        <InputNumber
-                          size="small"
-                          controls={false}
-                          min={0.3}
-                          max={3}
-                          step={0.1}
-                          value={selectedActor.formation.spacing}
-                          onChange={value => handleActorChange(selectedActor.id, {
-                            formation: {
-                              ...selectedActor.formation!,
-                              spacing: Math.max(0.3, Math.min(3, Number(value) || 1)),
-                            },
-                          })}
-                        />
-                      </div>
-                    </div>
-                  </Field>
-                  <Field label="成员朝向">
-                    <div className="linghuiDirector3DPoseGrid">
-                      {([
-                        { value: 'forward' as const, label: '正向' },
-                        { value: 'away' as const, label: '背向' },
-                        { value: 'inward' as const, label: '向心' },
-                        { value: 'outward' as const, label: '向外' },
-                      ]).map(option => (
-                        <button
-                          key={option.value}
-                          type="button"
-                          className={`linghuiDirector3DPoseTile ${selectedActor.formation?.memberFacing === option.value ? 'isActive' : ''}`}
-                          onClick={() => handleActorChange(selectedActor.id, {
-                            formation: { ...selectedActor.formation!, memberFacing: option.value },
-                          })}
-                        >
-                          {option.label}
-                        </button>
-                      ))}
-                    </div>
-                  </Field>
-                </>
-              ) : null}
-              <Field label="缩放">
-                <Slider
-                  min={0.3}
-                  max={selectedActor.type === 'mannequin' ? 1.5 : 3}
-                  step={0.05}
-                  value={selectedActor.scale}
-                  tooltip={DIRECTOR3D_INSPECTOR_SLIDER_TOOLTIP}
-                  onChange={(scale) => handleActorChange(selectedActor.id, { scale: scale as number })}
-                />
-              </Field>
-              <Field label="颜色">
-                <input
-                  type="color"
-                  className="linghuiDirector3DColorInput"
-                  value={toDirector3DColorInputValue(selectedActor.color)}
-                  onChange={(e) => handleActorChange(selectedActor.id, { color: e.target.value })}
-                />
-              </Field>
-              <div className="linghuiDirector3DInspectorActions">
-                {selectedActor.type !== 'formation' && selectedActor.type !== 'mannequin-lite' ? (
-                  <Popover
-                    open={saveAssetPopoverOpen}
-                    onOpenChange={(next) => {
-                      setSaveAssetPopoverOpen(next);
-                      if (!next) setPendingReferenceImages([]);
-                    }}
-                    trigger="click"
-                    placement="leftTop"
-                    overlayClassName="linghuiDirector3DBattalionPopover"
-                    getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
-                    content={(
-                      <div className="linghuiDirector3DBattalionPanel">
-                        <div className="linghuiDirector3DBattalionTitle">保存到全局库</div>
-                        <div className="linghuiDirector3DBattalionHint">
-                          可选附带 1-3 张参考图，下游图片节点会拿到当作真实视觉指引。
-                        </div>
-                        {(selectedActor.referenceImages?.length || pendingReferenceImages.length) > 0 ? (
-                          <div className="linghuiDirector3DAngleStrip" style={{ marginTop: 4 }}>
-                            {selectedActor.referenceImages?.map((url) => (
-                              <img key={`existing-${url}`} src={url} alt="已绑定" title="已在 actor 上的参考图" />
-                            ))}
-                            {pendingReferenceImages.map((url) => (
-                              <img key={`pending-${url}`} src={url} alt="待入库" title="本次上传，待保存入库" />
-                            ))}
-                          </div>
-                        ) : null}
-                        <div className="linghuiDirector3DBattalionActions">
-                          <Button
-                            size="small"
-                            icon={<Upload size={14} />}
-                            onClick={handlePickReferenceImages}
-                            disabled={pendingReferenceImages.length + (selectedActor.referenceImages?.length ?? 0) >= 3}
-                          >
-                            添加参考图
-                          </Button>
-                          <Button size="small" type="primary" icon={<SaveIcon size={14} />} onClick={handleSaveSelectedAsGlobalAsset}>
-                            保存
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                  >
-                    <Button size="small" icon={<SaveIcon size={14} />}>
-                      存到全局库
-                    </Button>
-                  </Popover>
-                ) : null}
-                <Button danger size="small" icon={<Trash2 size={14} />} onClick={() => handleDeleteActor(selectedActor.id)}>
-                  {selectedActor.groupId ? '删除组合' : '删除'}
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div className="linghuiDirector3DInspectorBody">
-              <Field label="FOV">
-                <div className="linghuiDirector3DRigSliderRow">
-                  <Slider
-                    min={18}
-                    max={90}
-                    value={scene.camera.fov}
-                    tooltip={DIRECTOR3D_INSPECTOR_SLIDER_TOOLTIP}
-                    onChange={(fov) => handleCameraField('fov', fov as number)}
-                    style={{ flex: 1 }}
-                  />
-                  <span className="linghuiDirector3DRigSliderValue">{Math.round(scene.camera.fov)}°</span>
-                </div>
-              </Field>
-              <Field label="比例">
-                <div className="linghuiDirector3DRatioGrid">
-                  {ASPECT_RATIOS.map(ratio => (
-                    <button
-                      key={ratio}
-                      type="button"
-                      className={`linghuiDirector3DRatioTile ${scene.camera.aspectRatio === ratio ? 'isActive' : ''}`}
-                      onClick={() => handleCameraField('aspectRatio', ratio)}
-                    >
-                      {ratio}
-                    </button>
-                  ))}
-                </div>
-              </Field>
-              <Field label="背景">
-                <div className="linghuiDirector3DBackgroundModes">
-                  {(['none', 'color', 'image-plane', 'panorama'] as LinghuiDirector3DBackgroundMode[]).map(mode => (
-                    <button
-                      key={mode}
-                      type="button"
-                      className={`linghuiDirector3DBgMode ${scene.background.mode === mode ? 'isActive' : ''}`}
-                      onClick={() => handleBackgroundModeChange(mode)}
-                    >
-                      {mode === 'none' ? '无' : mode === 'color' ? '纯色' : mode === 'image-plane' ? '图片板' : '全景'}
-                    </button>
-                  ))}
-                </div>
-              </Field>
-              <div className="linghuiDirector3DInspectorActions">
-                <Button size="small" icon={<Plus size={14} />} onClick={handleAddActor}>添加假人</Button>
-                <Button size="small" icon={<RotateCw size={14} />} onClick={handleAddRidingHorse}>人骑马</Button>
-              </div>
-            </div>
-          )}
-              </div>
-            )}
-          >
-            <div className="linghuiDirector3DRailGroup isInspector" title="属性">
-              <button
-                type="button"
-                className={`linghuiDirector3DRailButton ${selection.kind === 'actor' ? 'isActive' : ''}`}
-                title="属性"
-              >
-                <Users size={18} />
-                <span>属性</span>
-              </button>
-            </div>
-          </Popover>
-        </aside>
+        <Director3DRightRail
+          cameraMode={cameraMode}
+          lineartPreview={lineartPreview}
+          pendingReferenceImages={pendingReferenceImages}
+          renderModeForExport={renderModeForExport}
+          renderModeLabels={RENDER_MODE_LABELS}
+          rightRailOpen={rightRailOpen}
+          saveAssetPopoverOpen={saveAssetPopoverOpen}
+          scene={scene}
+          selectedActor={selectedActor}
+          selectionKind={selection.kind}
+          viewportRef={viewportRef}
+          onActorChange={handleActorChange}
+          onAddActor={handleAddActor}
+          onAddRidingHorse={handleAddRidingHorse}
+          onBackgroundModeChange={handleBackgroundModeChange}
+          onCameraField={handleCameraField}
+          onDeleteActor={handleDeleteActor}
+          onExportLineart={handleExportLineart}
+          onPickReferenceImages={handlePickReferenceImages}
+          onSaveSelectedAsGlobalAsset={handleSaveSelectedAsGlobalAsset}
+          onSetCameraMode={setCameraMode}
+          onSetPendingReferenceImages={setPendingReferenceImages}
+          onSetPreviewMode={setPreviewMode}
+          onSetRenderModeForExport={setRenderModeForExport}
+          onSetRightRailOpen={setRightRailOpen}
+          onSetSaveAssetPopoverOpen={setSaveAssetPopoverOpen}
+          onUpdateScene={updateScene}
+        />
 
         </div>{/* /body */}
 
@@ -2025,12 +961,8 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
               selectedKeyframeId={selectedKeyframeId}
               exportState={timelineExport}
               activeLayer={activeTimelineLayer}
-              exportedVideoUrl={typeof (nodeData.properties as { timelineVideoUrl?: string } | undefined)?.timelineVideoUrl === 'string'
-                ? (nodeData.properties as { timelineVideoUrl: string }).timelineVideoUrl
-                : undefined}
-              exportedVideoPosterUrl={typeof (nodeData.properties as { timelineVideoPosterUrl?: string } | undefined)?.timelineVideoPosterUrl === 'string'
-                ? (nodeData.properties as { timelineVideoPosterUrl: string }).timelineVideoPosterUrl
-                : undefined}
+              exportedVideoUrl={timelineVideoUrl}
+              exportedVideoPosterUrl={timelineVideoPosterUrl}
               onPlayToggle={handlePlayToggle}
               onSeek={handleSeek}
               onAddKeyframe={handleAddKeyframe}
@@ -2052,40 +984,5 @@ export const Director3DNodeEditor: React.FC<Director3DNodeEditorProps> = ({ node
   );
 };
 
-const Field: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
-  <div className="linghuiDirector3DField">
-    <div className="linghuiDirector3DFieldLabel">{label}</div>
-    <div className="linghuiDirector3DFieldBody">{children}</div>
-  </div>
-);
-
-interface Vec3InputProps {
-  value: [number, number, number];
-  onChange: (value: [number, number, number]) => void;
-}
-
-const Vec3Input: React.FC<Vec3InputProps> = ({ value, onChange }) => {
-  const handle = (idx: number, next: number | null) => {
-    const updated = [...value] as [number, number, number];
-    updated[idx] = typeof next === 'number' && Number.isFinite(next) ? next : 0;
-    onChange(updated);
-  };
-  const labels = ['X', '高度Y', 'Z'] as const;
-  return (
-    <div className="linghuiDirector3DVec3">
-      {labels.map((axis, idx) => (
-        <div key={axis} className="linghuiDirector3DVec3Cell">
-          <span className="linghuiDirector3DVec3Axis">{axis}</span>
-          <InputNumber
-            size="small"
-            controls={false}
-            value={Number(value[idx].toFixed(2))}
-            onChange={(next) => handle(idx, next as number | null)}
-          />
-        </div>
-      ))}
-    </div>
-  );
-};
 
 export default Director3DNodeEditor;

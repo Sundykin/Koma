@@ -3,6 +3,7 @@
  * 在浏览器环境下提供 fallback 实现
  */
 import type { MediaModelSelection, MediaOwnerRef, ProjectStyleSnapshot, StoredMediaAsset } from '../types';
+import { STORAGE_KEYS } from '../constants/storageKeys';
 import { toKomaLocalUrl } from '../utils/urlUtils';
 
 // 类型定义
@@ -683,15 +684,30 @@ export const diagnosticsExportLogs = async (destPath: string): Promise<Diagnosti
   throw new Error('Diagnostics export not available in browser');
 };
 
-// 获取存储根路径（业务根：~/.koma/storage —— 与 userData 子目录隔离）
+// 获取存储根路径（与 storageConfig 使用同一来源）
 export const getStoragePath = async (): Promise<string> => {
+  if (typeof window !== 'undefined') {
+    try {
+      const data = window.localStorage?.getItem(STORAGE_KEYS.STORAGE_CONFIG);
+      if (data) {
+        const parsed = JSON.parse(data) as { rootPath?: string };
+        const configuredPath = normalizePath(String(parsed.rootPath || ''));
+        if (configuredPath) {
+          return configuredPath;
+        }
+      }
+    } catch {
+      // fall through to default path
+    }
+  }
+
   const api = getElectronAPI();
   if (api) {
     const home = await api.app.getPath('home');
     const homePath = typeof home === 'object' && home !== null && 'path' in home
       ? (home as { path: string }).path
       : (home as string);
-    return `${homePath}/.koma/storage`;
+    return normalizePath(`${homePath}/.koma`);
   }
   return '';
 };

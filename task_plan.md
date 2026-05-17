@@ -45,9 +45,9 @@
 | 2. Structural Boundary Review | complete | 抽查大文件顶层函数、render 区块、hook action 区块，按业务边界而不是纯行数规划拆分 |
 | 3. Guardrails | complete | 明确拆分必须保持 className、DOM 层级、props 行为和样式文件不变；必要 UI 验证只能走 Electron CDP `9333` |
 | 4. P0 Canvas Operations Hooks | complete | 已完成 `useLinghuiCanvasDocumentOps`、`useLinghuiCanvasOverlayProps`、`useLinghuiCanvasMediaImport` 拆分，三个 hooks 均降到 500 行以下 |
-| 5. P1 Image Node Editing Surface | in_progress | `LinghuiImageNodeFloatingToolbar` 菜单拆分已完成；`ImageNodeEditor` 已抽出 compact 工具面板、参数弹层、聚焦/标记面板，下一步拆多角度和打光面板 |
-| 6. P2 Director3D Editor & Viewport | pending | 拆 `Director3DNodeEditor`、`Director3DViewport`、`Director3DCreatureMesh`、`Director3DProp`，按资产栏、属性面板、时间轴、视口层、程序化模型部件拆分 |
-| 7. P3 Page/Canvas Shell | pending | 拆 `LinghuiPage` 和 `LinghuiCanvas`，将工作区持久化、执行队列、项目侧栏、执行日志、画布事件绑定分别收束 |
+| 5. P1 Image Node Editing Surface | in_progress | `LinghuiImageNodeFloatingToolbar` 菜单拆分已完成；`ImageNodeEditor` 已抽出 compact 工具面板、参数弹层、聚焦/标记、多角度和打光面板；`LinghuiNodeEditor` 已拆出视频工具条、宫格切分工具条、布局 helper 和编辑器分发面板并降到 500 行以下 |
+| 6. P2 Director3D Editor & Viewport | in_progress | `Director3DNodeEditor` 已拆出左侧资产库、顶部 HUD、右侧属性 inspector、右侧 rail、时间轴 controller hook；`Director3DViewport` 已拆出环境/背景和 Actor 拖拽层；程序化模型部件待拆 |
+| 7. P3 Page/Canvas Shell | in_progress | `LinghuiPage` 已拆出浮动 rail / 项目列表 / 执行日志面板、资产/工作流/历史库 hook、工作区动作 hook、保存持久化 hook、执行 rail 状态 hook、画布保存/恢复 handler hook；下一步可拆执行控制器 |
 | 8. P4 Node Renderers & Prompt Panels | pending | 拆 `ImageNode`、`VideoNode`、`LinghuiPromptEditor`、`VideoNodeEditorPanels`、`ScriptNodeEditor`、`LinghuiCanvasContextMenu`、`PanoramaViewer` |
 | 9. Validation Per Slice | pending | 每个拆分 slice 跑对应 Vitest、frontend/root TypeScript、`git diff --check`；UI 结构被动到时用 Electron CDP 做视觉 smoke |
 
@@ -58,24 +58,17 @@
 - 大文件拆分后目标：核心 orchestration 文件降到约 300-500 行；新建子组件/hook 通常控制在 300 行以内。
 - 行为验证以现有测试为主；没有覆盖的高风险 UI 用 Electron remote debugging port `9333` 检查，不能打开普通浏览器验证。
 
-### Current Scan After Phase 5.2
+### Current Scan After Page Shell Split
 | Lines | Kind | File |
 |------:|------|------|
-| 2091 | component | `frontend/src/components/linghui/editors/components/Director3DNodeEditor.tsx` |
-| 2086 | component | `frontend/src/components/linghui/page/components/LinghuiPage.tsx` |
-| 1516 | component | `frontend/src/components/linghui/editors/components/ImageNodeEditor.tsx` |
-| 1249 | component | `frontend/src/components/linghui/director3d/Director3DViewport.tsx` |
-| 927 | component | `frontend/src/components/linghui/editors/components/LinghuiPromptEditor.tsx` |
-| 890 | component | `frontend/src/components/linghui/nodes/components/ImageNode.tsx` |
-| 824 | component | `frontend/src/components/linghui/canvas/components/LinghuiCanvas.tsx` |
-| 809 | component | `frontend/src/components/linghui/director3d/Director3DCreatureMesh.tsx` |
-| 778 | component | `frontend/src/components/linghui/editors/components/LinghuiNodeEditor.tsx` |
-| 715 | component | `frontend/src/components/linghui/director3d/Director3DProp.tsx` |
-| 626 | component | `frontend/src/components/linghui/panorama/PanoramaViewer.tsx` |
-| 610 | component | `frontend/src/components/linghui/editors/components/VideoNodeEditorPanels.tsx` |
-| 521 | component | `frontend/src/components/linghui/canvas/components/LinghuiCanvasContextMenu.tsx` |
-| 510 | component | `frontend/src/components/linghui/nodes/components/VideoNode.tsx` |
-| 502 | component | `frontend/src/components/linghui/editors/components/ScriptNodeEditor.tsx` |
+| 1150 | component | `frontend/src/components/linghui/page/components/LinghuiPage.tsx` |
+| 1164 | component | `frontend/src/components/linghui/editors/components/ImageNodeEditor.tsx` |
+| 988 | component | `frontend/src/components/linghui/editors/components/Director3DNodeEditor.tsx` |
+| 928 | component | `frontend/src/components/linghui/editors/components/LinghuiPromptEditor.tsx` |
+| 891 | component | `frontend/src/components/linghui/nodes/components/ImageNode.tsx` |
+| 667 | component | `frontend/src/components/linghui/director3d/Director3DViewport.tsx` |
+| 810 | component | `frontend/src/components/linghui/director3d/Director3DCreatureMesh.tsx` |
+| 716 | component | `frontend/src/components/linghui/director3d/Director3DProp.tsx` |
 
 ### Error Log
 | Error | Attempt | Resolution |

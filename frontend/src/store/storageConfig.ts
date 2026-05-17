@@ -8,6 +8,12 @@ import { STORAGE_KEYS } from '../constants/storageKeys';
 
 const STORAGE_VERSION = 1;
 const DEFAULT_FOLDER_NAME = '.koma';
+const MIGRATION_EXCLUDED_NAMES = new Set([
+  '_userData',
+  'SingletonCookie',
+  'SingletonLock',
+  'SingletonSocket',
+]);
 
 // 获取默认存储路径
 export async function getDefaultStoragePath(): Promise<string> {
@@ -133,8 +139,9 @@ export async function migrateStorage(
     throw new Error('仅支持 Electron 环境');
   }
 
-  // 获取所有需要迁移的文件/目录
-  const items = await electronService.fs.readdir(oldPath);
+  // 只迁移业务数据。Electron/Chromium 的 userData 在 main.ts 固定为
+  // ~/.koma/_userData，里面有运行时锁文件和 socket，不能当业务存储迁移。
+  const items = (await electronService.fs.readdir(oldPath)).filter(item => !shouldSkipMigrationItem(item));
   const total = items.length;
 
   for (let i = 0; i < items.length; i++) {
@@ -159,7 +166,7 @@ export async function migrateStorage(
 // 递归复制目录
 async function copyDirectory(src: string, dest: string): Promise<void> {
   await electronService.fs.mkdir(dest);
-  const items = await electronService.fs.readdir(src);
+  const items = (await electronService.fs.readdir(src)).filter(item => !shouldSkipMigrationItem(item));
 
   for (const item of items) {
     const srcPath = `${src}/${item}`;
@@ -172,6 +179,10 @@ async function copyDirectory(src: string, dest: string): Promise<void> {
       await electronService.fs.copy(srcPath, destPath);
     }
   }
+}
+
+function shouldSkipMigrationItem(item: string): boolean {
+  return MIGRATION_EXCLUDED_NAMES.has(item) || item.startsWith('Singleton');
 }
 
 // 更新存储路径

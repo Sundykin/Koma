@@ -24,9 +24,22 @@
 import { app } from 'electron';
 import * as path from 'node:path';
 
+let runtimeStorageRoot = '';
+
 /** 业务根目录（与默认 storageRoot 一致，固定不可配置） */
 export function getBusinessRoot(): string {
   return path.join(app.getPath('home'), '.koma');
+}
+
+/** 当前用户配置的业务存储根；未配置时回退默认业务根。 */
+export function getRuntimeStorageRoot(): string {
+  return runtimeStorageRoot || getBusinessRoot();
+}
+
+export function setRuntimeStorageRoot(rootPath: string): string {
+  const normalized = String(rootPath || '').trim();
+  runtimeStorageRoot = normalized ? path.resolve(normalized) : getBusinessRoot();
+  return runtimeStorageRoot;
 }
 
 /** 默认业务日志目录；实际运行时会跟随可配置 storageRoot。 */
@@ -64,9 +77,9 @@ export function getFfmpegBinDir(): string {
   return path.join(getBusinessRoot(), 'ffmpeg');
 }
 
-/** 风格参考图运行时目录（业务根下，便于 koma-local:// 协议直读） */
+/** 风格参考图运行时目录（跟随当前 storageRoot）。 */
 export function getStyleReferencesDir(): string {
-  return path.join(getBusinessRoot(), 'style-references');
+  return path.join(getRuntimeStorageRoot(), 'style-references');
 }
 
 /** 主程序更新下载缓存（dmg / exe / AppImage 临时落盘点） */

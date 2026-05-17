@@ -4,6 +4,7 @@
 import { BaseController } from './base';
 import { services } from '../service';
 import { ensureServicesReady } from '../service';
+import { syncBuiltinStyleReferences } from '../service/styleReferences';
 import type { ProjectMeta, ExportOptions, ProjectsIndex } from '../service/project';
 import type {
   CharacterRow, SceneRow, PropRow, ShotRow, ShotVersionRow,
@@ -18,6 +19,7 @@ class ProjectController extends BaseController {
     services.diagnostics.setStorageRoot(rootPath);
     services.linghui.init(rootPath);
     services.ffmpeg.init(`${rootPath}/cache/ffmpeg`).catch(() => undefined);
+    await syncBuiltinStyleReferences();
     return { success: true, rootPath };
   }
 
