@@ -10,15 +10,20 @@ import type {
 } from '../../../../types/linghui';
 import { importLinghuiWorkspaceAsset } from '../../../../store/linghuiStorage';
 import { openFileDialog } from '../../../../services/electronService';
-import {
-  isImageHostingEnabled,
-  uploadLocalFileToImageHosting,
-} from '../../../../services/imageHostingService';
-import { createCanvasNode, readDroppedFileAsDataUrl } from '../state/linghuiCanvasShared';
+import { isImageHostingEnabled } from '../../../../services/imageHostingService';
 import {
   createLinghuiImageAssetItemFromSource,
   createLinghuiImageImportProperties,
 } from '../../editors/state/linghuiImageCollections';
+import {
+  resolveDroppedFileSource,
+  resolveUploadedFileSource,
+} from './linghuiCanvasMediaImportSources';
+import {
+  createUploadedAudioNode,
+  createUploadedImageNode,
+  createUploadedVideoNode,
+} from './linghuiCanvasUploadedNodeFactories';
 
 interface UseLinghuiCanvasMediaImportParams {
   workspaceId: string | null | undefined;
@@ -47,114 +52,6 @@ export function useLinghuiCanvasMediaImport({
   insertNodeAtScreenPosition,
   message,
 }: UseLinghuiCanvasMediaImportParams) {
-  const createUploadedImageNode = useCallback((
-    position: Node['position'],
-    item: LinghuiImageAssetItem,
-  ): Node => {
-    const label = item.label?.trim() || '图片';
-    const node = createCanvasNode('linghui/image', position, []);
-    const nodeData = node.data as unknown as LinghuiNodeData;
-    const nodeProps = nodeData.properties as unknown as LinghuiImageNodeProperties;
-    return {
-      ...node,
-      data: {
-        ...nodeData,
-        label,
-        properties: {
-          ...createLinghuiImageImportProperties(nodeProps, [item], item.id),
-        },
-      } as unknown as Record<string, unknown>,
-    };
-  }, []);
-
-  const createUploadedVideoNode = useCallback((
-    position: Node['position'],
-    source: string,
-    filename: string,
-  ): Node => {
-    const label = filename.replace(/\.[^.]+$/, '').trim() || '视频';
-    const node = createCanvasNode('linghui/video', position, []);
-    const nodeData = node.data as unknown as LinghuiNodeData;
-
-    return {
-      ...node,
-      data: {
-        ...nodeData,
-        label,
-        properties: {
-          ...nodeData.properties,
-          source,
-          posterSource: '',
-        },
-      } as unknown as Record<string, unknown>,
-    };
-  }, []);
-
-  const createUploadedAudioNode = useCallback((
-    position: Node['position'],
-    source: string,
-    filename: string,
-  ): Node => {
-    const label = filename.replace(/\.[^.]+$/, '').trim() || '音频';
-    const node = createCanvasNode('linghui/audio', position, []);
-    const nodeData = node.data as unknown as LinghuiNodeData;
-
-    return {
-      ...node,
-      data: {
-        ...nodeData,
-        label,
-        properties: {
-          ...nodeData.properties,
-          source,
-        },
-      } as unknown as Record<string, unknown>,
-    };
-  }, []);
-
-  const resolveDroppedFileSource = useCallback(async (file: File): Promise<string> => {
-    const filePath = (file as File & { path?: string }).path;
-    if (filePath) {
-      if (workspaceId) {
-        return importLinghuiWorkspaceAsset(workspaceId, filePath, file.name);
-      }
-      return filePath;
-    }
-    return readDroppedFileAsDataUrl(file);
-  }, [workspaceId]);
-
-  /**
-   * 右键上传走"图床"OSS 优先链路：
-   * - 配置了 image-hosting 渠道 → uploadLocalFileToImageHosting() 拿远端 URL，作为节点 source
-   * - 未配置或上传失败 → 回退到 importLinghuiWorkspaceAsset()（koma-local://）；
-   *   未拿到 workspaceId 时再退化为本地路径
-   * 视频也复用同一管线：底层 provider.uploadImage(bytes) 与内容类型无关，可承载视频字节流。
-   */
-  const resolveUploadedFileSource = useCallback(async (
-    filePath: string,
-    filename: string,
-    options: { ossEnabled: boolean; kind: 'image' | 'video' },
-  ): Promise<{ source: string; via: 'oss' | 'workspace' | 'path'; ossError?: string }> => {
-    if (options.ossEnabled) {
-      const ossResult = await uploadLocalFileToImageHosting(filePath, { filename });
-      if (ossResult.success && ossResult.url) {
-        return { source: ossResult.url, via: 'oss' };
-      }
-      // OSS 失败：先记录原因，再走 workspace 兜底
-      const ossError = ossResult.error || '图床上传失败';
-      if (workspaceId) {
-        const localSource = await importLinghuiWorkspaceAsset(workspaceId, filePath, filename);
-        return { source: localSource, via: 'workspace', ossError };
-      }
-      return { source: filePath, via: 'path', ossError };
-    }
-    if (workspaceId) {
-      const localSource = await importLinghuiWorkspaceAsset(workspaceId, filePath, filename);
-      return { source: localSource, via: 'workspace' };
-    }
-    return { source: filePath, via: 'path' };
-  }, [workspaceId]);
-
   const addImageNodesAtScreenPosition = useCallback((
     items: LinghuiImageAssetItem[],
     screenX: number,
@@ -284,7 +181,7 @@ export function useLinghuiCanvasMediaImport({
       await Promise.all(pendingItems.map(async (entry, index) => {
         const nodeId = insertedIds[index];
         try {
-          const resolved = await resolveUploadedFileSource(entry.filePath, entry.filename, { ossEnabled, kind: 'image' });
+          const resolved = await resolveUploadedFileSource(entry.filePath, entry.filename, { workspaceId, ossEnabled, kind: 'image' });
           if (resolved.ossError) ossFailureCount += 1;
           const finalItem = await createLinghuiImageAssetItemFromSource({
             source: resolved.source,
@@ -340,10 +237,10 @@ export function useLinghuiCanvasMediaImport({
     hostRef,
     message,
     reactFlow,
-    resolveUploadedFileSource,
     scheduleSnapshot,
     setEditorSelection,
     setNodes,
+    workspaceId,
   ]);
 
   const handleUploadVideosToCanvas = useCallback(async (screenX?: number, screenY?: number) => {
@@ -397,7 +294,7 @@ export function useLinghuiCanvasMediaImport({
       await Promise.all(pendingItems.map(async (entry, index) => {
         const nodeId = insertedIds[index];
         try {
-          const resolved = await resolveUploadedFileSource(entry.filePath, entry.filename, { ossEnabled, kind: 'video' });
+          const resolved = await resolveUploadedFileSource(entry.filePath, entry.filename, { workspaceId, ossEnabled, kind: 'video' });
           if (resolved.ossError) ossFailureCount += 1;
           setNodes(currentNodes => currentNodes.map(node => {
             if (node.id !== nodeId) return node;
@@ -449,10 +346,10 @@ export function useLinghuiCanvasMediaImport({
     hostRef,
     message,
     reactFlow,
-    resolveUploadedFileSource,
     scheduleSnapshot,
     setEditorSelection,
     setNodes,
+    workspaceId,
   ]);
 
   const handleUploadAudiosToCanvas = useCallback(async (screenX?: number, screenY?: number) => {
@@ -529,17 +426,17 @@ export function useLinghuiCanvasMediaImport({
       try {
         const resolvedImages = await Promise.all(imageFiles.map(async file => (
           createLinghuiImageAssetItemFromSource({
-            source: await resolveDroppedFileSource(file),
+            source: await resolveDroppedFileSource(file, workspaceId),
             filenameHint: file.name,
           })
         )));
         const resolvedVideos = await Promise.all(videoFiles.map(async file => ({
           filename: file.name,
-          source: await resolveDroppedFileSource(file),
+          source: await resolveDroppedFileSource(file, workspaceId),
         })));
         const resolvedAudios = await Promise.all(audioFiles.map(async file => ({
           filename: file.name,
-          source: await resolveDroppedFileSource(file),
+          source: await resolveDroppedFileSource(file, workspaceId),
         })));
 
         addImageNodesAtScreenPosition(resolvedImages, event.clientX, event.clientY);
@@ -569,7 +466,7 @@ export function useLinghuiCanvasMediaImport({
     closeQuickCreate,
     insertNodeAtScreenPosition,
     message,
-    resolveDroppedFileSource,
+    workspaceId,
   ]);
 
   return {

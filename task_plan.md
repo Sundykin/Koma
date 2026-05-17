@@ -1,5 +1,88 @@
 # Task Plan
 
+## Session: 2026-05-17 Linghui Large Component/Hook Refactor Plan
+
+### Goal
+- 扫描 `frontend/src/components/linghui` 下超过 500 行的大组件和大 hooks。
+- 制定分阶段拆分计划，把大组件/大 hooks 拆成小组件、小 hooks 和纯工具函数。
+- 约束：拆分过程只做结构整理，不改变现有功能、交互、DOM 语义、className、样式尺度和持久化数据结构。
+
+### Scope
+- Included:
+  - `frontend/src/components/linghui/**/*.tsx` 中超过 500 行的 UI 组件。
+  - `frontend/src/components/linghui/**/use*.ts(x)` 中超过 500 行的 hooks。
+- Excluded for this plan:
+  - `*.test.ts(x)` 与 `tests/**`。
+  - 非组件/非 hook 的大型逻辑文件，例如执行器、scene builder、共享 state；后续可另开“逻辑模块拆分”计划。
+
+### Inventory
+| Lines | Kind | File |
+|------:|------|------|
+| 2196 | hook | `frontend/src/components/linghui/canvas/hooks/useLinghuiCanvasDocumentOps.ts` |
+| 2091 | component | `frontend/src/components/linghui/editors/components/Director3DNodeEditor.tsx` |
+| 2086 | component | `frontend/src/components/linghui/page/components/LinghuiPage.tsx` |
+| 1976 | component | `frontend/src/components/linghui/editors/components/ImageNodeEditor.tsx` |
+| 1869 | hook | `frontend/src/components/linghui/canvas/hooks/useLinghuiCanvasOverlayProps.ts` |
+| 1249 | component | `frontend/src/components/linghui/director3d/Director3DViewport.tsx` |
+| 927 | component | `frontend/src/components/linghui/editors/components/LinghuiPromptEditor.tsx` |
+| 890 | component | `frontend/src/components/linghui/nodes/components/ImageNode.tsx` |
+| 824 | component | `frontend/src/components/linghui/canvas/components/LinghuiCanvas.tsx` |
+| 809 | component | `frontend/src/components/linghui/director3d/Director3DCreatureMesh.tsx` |
+| 778 | component | `frontend/src/components/linghui/editors/components/LinghuiNodeEditor.tsx` |
+| 715 | component | `frontend/src/components/linghui/director3d/Director3DProp.tsx` |
+| 626 | component | `frontend/src/components/linghui/panorama/PanoramaViewer.tsx` |
+| 610 | component | `frontend/src/components/linghui/editors/components/VideoNodeEditorPanels.tsx` |
+| 582 | hook | `frontend/src/components/linghui/canvas/hooks/useLinghuiCanvasMediaImport.ts` |
+| 552 | component | `frontend/src/components/linghui/nodes/components/LinghuiImageNodeFloatingToolbar.tsx` |
+| 521 | component | `frontend/src/components/linghui/canvas/components/LinghuiCanvasContextMenu.tsx` |
+| 510 | component | `frontend/src/components/linghui/nodes/components/VideoNode.tsx` |
+| 502 | component | `frontend/src/components/linghui/editors/components/ScriptNodeEditor.tsx` |
+
+### Phases
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Inventory Scan | complete | 扫描灵绘组件/hooks 行数，过滤测试文件，确认 19 个超过 500 行的目标文件 |
+| 2. Structural Boundary Review | complete | 抽查大文件顶层函数、render 区块、hook action 区块，按业务边界而不是纯行数规划拆分 |
+| 3. Guardrails | complete | 明确拆分必须保持 className、DOM 层级、props 行为和样式文件不变；必要 UI 验证只能走 Electron CDP `9333` |
+| 4. P0 Canvas Operations Hooks | complete | 已完成 `useLinghuiCanvasDocumentOps`、`useLinghuiCanvasOverlayProps`、`useLinghuiCanvasMediaImport` 拆分，三个 hooks 均降到 500 行以下 |
+| 5. P1 Image Node Editing Surface | in_progress | `LinghuiImageNodeFloatingToolbar` 菜单拆分已完成；`ImageNodeEditor` 已抽出 compact 工具面板、参数弹层、聚焦/标记面板，下一步拆多角度和打光面板 |
+| 6. P2 Director3D Editor & Viewport | pending | 拆 `Director3DNodeEditor`、`Director3DViewport`、`Director3DCreatureMesh`、`Director3DProp`，按资产栏、属性面板、时间轴、视口层、程序化模型部件拆分 |
+| 7. P3 Page/Canvas Shell | pending | 拆 `LinghuiPage` 和 `LinghuiCanvas`，将工作区持久化、执行队列、项目侧栏、执行日志、画布事件绑定分别收束 |
+| 8. P4 Node Renderers & Prompt Panels | pending | 拆 `ImageNode`、`VideoNode`、`LinghuiPromptEditor`、`VideoNodeEditorPanels`、`ScriptNodeEditor`、`LinghuiCanvasContextMenu`、`PanoramaViewer` |
+| 9. Validation Per Slice | pending | 每个拆分 slice 跑对应 Vitest、frontend/root TypeScript、`git diff --check`；UI 结构被动到时用 Electron CDP 做视觉 smoke |
+
+### Acceptance Criteria
+- 每次提交只拆一个业务边界，避免把功能改动混进结构重排。
+- 原组件入口和公开 props 保持兼容；父组件 import 改动最小。
+- 原有 className、AntD popup class、ARIA label、按钮文案、DOM 顺序尽量保持，样式文件不做语义变更。
+- 大文件拆分后目标：核心 orchestration 文件降到约 300-500 行；新建子组件/hook 通常控制在 300 行以内。
+- 行为验证以现有测试为主；没有覆盖的高风险 UI 用 Electron remote debugging port `9333` 检查，不能打开普通浏览器验证。
+
+### Current Scan After Phase 5.2
+| Lines | Kind | File |
+|------:|------|------|
+| 2091 | component | `frontend/src/components/linghui/editors/components/Director3DNodeEditor.tsx` |
+| 2086 | component | `frontend/src/components/linghui/page/components/LinghuiPage.tsx` |
+| 1516 | component | `frontend/src/components/linghui/editors/components/ImageNodeEditor.tsx` |
+| 1249 | component | `frontend/src/components/linghui/director3d/Director3DViewport.tsx` |
+| 927 | component | `frontend/src/components/linghui/editors/components/LinghuiPromptEditor.tsx` |
+| 890 | component | `frontend/src/components/linghui/nodes/components/ImageNode.tsx` |
+| 824 | component | `frontend/src/components/linghui/canvas/components/LinghuiCanvas.tsx` |
+| 809 | component | `frontend/src/components/linghui/director3d/Director3DCreatureMesh.tsx` |
+| 778 | component | `frontend/src/components/linghui/editors/components/LinghuiNodeEditor.tsx` |
+| 715 | component | `frontend/src/components/linghui/director3d/Director3DProp.tsx` |
+| 626 | component | `frontend/src/components/linghui/panorama/PanoramaViewer.tsx` |
+| 610 | component | `frontend/src/components/linghui/editors/components/VideoNodeEditorPanels.tsx` |
+| 521 | component | `frontend/src/components/linghui/canvas/components/LinghuiCanvasContextMenu.tsx` |
+| 510 | component | `frontend/src/components/linghui/nodes/components/VideoNode.tsx` |
+| 502 | component | `frontend/src/components/linghui/editors/components/ScriptNodeEditor.tsx` |
+
+### Error Log
+| Error | Attempt | Resolution |
+|------|---------|------------|
+| planning catchup reported unsynced prior context | 1 | Checked `git status` / `git diff --stat`; current branch was clean before this planning edit, so treated catchup as historical context only |
+| planning catchup reported unsynced panorama perspective context | 1 | Checked `git diff --stat`; identified existing `ImageNode.tsx` and `panoramaPerspectiveExtractor.ts` changes from prior context and left them untouched during toolbar refactor |
+
 ## Session: 2026-05-16 Linghui Canvas LibTV Recreation
 
 ### Goal

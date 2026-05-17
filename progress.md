@@ -1,5 +1,143 @@
 # Progress Log
 
+## Session: 2026-05-17 Linghui Large Component/Hook Refactor Plan
+
+### Phase 5.1: P1 Image Floating Toolbar Menu Extraction
+- **Status:** complete
+- Actions taken:
+  - 继续执行 P1 Image Node Editing Surface，先拆较小且风险低的 `LinghuiImageNodeFloatingToolbar.tsx`。
+  - 新增 `linghuiImageToolbarMenus.tsx`，承接图片工具条的菜单 classNames、Dropdown menu factory、active tool 判断、高清 / 九宫格 / 宫格切分 / 重绘 / 更多菜单构造。
+  - `LinghuiImageNodeFloatingToolbar.tsx` 保留组件状态、剧情编辑 Modal 编排、工具条 JSX 和节点 API 调用；按钮文案、className、Dropdown `document.body` 挂载和菜单顺序保持不变。
+  - 原文件从 552 行降到 362 行，新菜单文件 316 行；重新扫描后剩余 >500 的组件 15 个，hooks 0 个。
+  - 恢复脚本提示存在上一会话未同步的全景视角修复上下文，已用 `git diff --stat` 确认对应现有修改在 `ImageNode.tsx` 与 `panoramaPerspectiveExtractor.ts`，本轮没有触碰这两个文件。
+- Validation:
+  - `npx tsc --noEmit --project frontend/tsconfig.json --pretty false`：passed。
+  - `cd frontend && npm run test -- --run src/components/linghui/editors/tests/LinghuiNodeEditor.test.tsx`：1 file / 10 tests passed；保留既有 AntD shadow-root / jsdom getComputedStyle warning。
+  - `cd frontend && npm run test -- --run src/components/linghui/editors/tests/ImageNodeEditor.test.tsx`：1 file / 12 tests passed；保留既有 Three.js duplicate warning。
+  - `npx tsc --noEmit --project tsconfig.json --pretty false`：passed。
+  - `git diff --check`：passed。
+- Next:
+  - 继续 P1，建议转入 `ImageNodeEditor.tsx` 的只读子面板抽取；优先拆 `MultiAngleToolPanel / RelightToolPanel / OutpaintToolPanel / RepaintToolPanel`，不改任何样式和交互。
+
+### Phase 5.2: P1 ImageNodeEditor Panel Extraction
+- **Status:** complete
+- Actions taken:
+  - 继续拆 `ImageNodeEditor.tsx`，先抽不改变业务状态归属的纯渲染面板。
+  - 新增 `ImageNodeEditorLibTVPanels.tsx`，承接 LibTV 面板壳、生成 footer、预览 stage，以及 `扩图 / 重绘 / 通用 preset 工具` 三类 compact 面板。
+  - 新增 `ImageNodeEditorSettingsPopovers.tsx`，承接图片参数 Popover 和独立镜头 Popover；`ImageNodeEditorExtraSettingsBlock` 继续从 `ImageNodeEditor.tsx` re-export，保持外部 API。
+  - 新增 `ImageNodeEditorFocusMarkPanels.tsx`，承接 `聚焦 / 标记` 两个面板；主 editor 仍持有节点写入、message 和创建标记点逻辑。
+  - `ImageNodeEditor.tsx` 从 1976 行降到 1516 行；新面板文件分别为 405 / 182 / 228 行。功能、样式类、文案、DOM 语义和状态写入链路保持不变。
+- Validation:
+  - `npx tsc --noEmit --project frontend/tsconfig.json --pretty false`：passed。
+  - `cd frontend && npm run test -- --run src/components/linghui/editors/tests/ImageNodeEditor.test.tsx src/components/linghui/editors/tests/LinghuiNodeEditor.test.tsx`：2 files / 22 tests passed；保留既有 Three.js duplicate warning 与 AntD/jsdom warning。
+  - `npx tsc --noEmit --project tsconfig.json --pretty false`：passed。
+  - `git diff --check`：passed。
+  - 重新扫描 >500 组件/hooks：剩余 15 个组件，hooks 0 个；`ImageNodeEditor.tsx` 仍在清单中但已降到 1516 行。
+- Next:
+  - 下一片继续 `ImageNodeEditor.tsx`，建议拆 `MultiAngleToolPanel` 和 `RelightToolPanel`；这两块是当前文件中最大的剩余 JSX 区域。
+
+### Phase 4.5: P0 OverlayProps Extraction
+- **Status:** complete
+- Actions taken:
+  - 拆 `useLinghuiCanvasOverlayProps.ts`，把纯 helper、右键菜单媒体状态、图片工具执行链路、右键菜单动作和右键菜单 props 组装拆出。
+  - 新增 `linghuiCanvasOverlayMediaHelpers.ts`，承接媒体结果转图片项、视频去重、剪贴板写入、宫格/高清/裁剪输入物化、文件名清理等纯 helper。
+  - 新增 `useLinghuiCanvasContextMenuMediaState.ts`，承接当前右键节点的图片/视频/复制状态推导。
+  - 新增 `useLinghuiCanvasImageToolExecutions.ts`，承接图片工具 preset、宫格切分、高清放大、裁剪、多角度执行触发。
+  - 新增 `useLinghuiCanvasContextMenuActions.ts`，承接创建资产/主体、复制结果/图片、展开/只保留媒体、视频音轨分离、保存工作流等动作。
+  - 新增 `useLinghuiCanvasContextMenuOverlayProps.ts`，承接右键菜单 overlay props 组装和菜单命令闭包。
+  - `useLinghuiCanvasOverlayProps.ts` 从 1869 行降到 462 行，已退出 >500 hook 清单；新增 hooks/helpers 均不超过 500 行。
+- Validation:
+  - `npx tsc --noEmit --project frontend/tsconfig.json --pretty false`：passed。
+  - `cd frontend && npm run test -- --run src/components/linghui/canvas/tests`：14 files / 71 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json --pretty false`：passed。
+  - `git diff --check`：passed。
+  - 重新扫描 >500 清单：已无 hooks；剩余 16 个目标全是组件。
+- Next:
+  - P0 Canvas Operations Hooks 完成。下一阶段进入 P1 Image Node Editing Surface，优先拆 `ImageNodeEditor.tsx` 或较小的 `LinghuiImageNodeFloatingToolbar.tsx`。
+
+### Phase 4.4: P0 DocumentOps Media + Group Extraction
+- **Status:** complete
+- Actions taken:
+  - 继续收口 `useLinghuiCanvasDocumentOps.ts`，把媒体结果派生和图片工具派生从主 hook 中拆出。
+  - 新增媒体派生 hooks：`useLinghuiCanvasImageResultDerivation.ts`、`useLinghuiCanvasPanoramaDerivation.ts`、`useLinghuiCanvasVideoResultDerivation.ts`、`useLinghuiCanvasAudioFromVideoDerivation.ts`、`useLinghuiCanvasMultiAngleImageDerivation.ts`、`useLinghuiCanvasImageToolDerivation.ts`。
+  - 新增 `useLinghuiCanvasMediaDerivations.ts` 薄聚合入口和 `linghuiCanvasMediaDerivationShared.ts` 参数类型；原 `createDerivedImageNodesFromNode / createDerivedPanoramaNodeFromNode / createDerivedVideoNodesFromNode / createDerivedAudioNodeFromVideo / createDerivedMultiAngleImageNodeFromNode / createDerivedImageToolNodeFromNode` 方法名保持不变。
+  - 新增 `useLinghuiCanvasGroupOps.ts`，承接删除节点、删边、解组、选中成组和 `clearPendingGroupFrame`。
+  - `useLinghuiCanvasDocumentOps.ts` 从 1107 行降到 472 行，已退出本轮 >500 hook 清单；新建 hooks 均低于 300 行。
+- Validation:
+  - `npx tsc --noEmit --project frontend/tsconfig.json --pretty false`：passed。
+  - `cd frontend && npm run test -- --run src/components/linghui/canvas/tests/useLinghuiCanvasDocumentOps.test.tsx`：1 file / 9 tests passed。
+  - `cd frontend && npm run test -- --run src/components/linghui/canvas/tests`：14 files / 71 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json --pretty false`：passed。
+  - `git diff --check`：passed。
+  - 重新扫描 >500 清单：P0 hooks 只剩 `useLinghuiCanvasOverlayProps.ts` 1869 行；`useLinghuiCanvasMediaImport.ts` 479 行、`useLinghuiCanvasDocumentOps.ts` 472 行已达标。
+- Next:
+  - 继续 P0 最后一项：拆 `useLinghuiCanvasOverlayProps.ts`，优先寻找不碰 DOM/className 的 action/helper 边界。
+
+### Phase 4.3: P0 DocumentOps Storyboard Derivation Extraction
+- **Status:** complete
+- Actions taken:
+  - 继续拆 `useLinghuiCanvasDocumentOps.ts`，把脚本节点派生分镜、分镜图片、分镜视频三组动作抽出。
+  - 新增 `linghuiCanvasDocumentOpsShared.ts`，承接 `getDerivedNodeMeta()` 和 `hasMatchingEdge()` 两个跨派生动作共享 helper。
+  - 新增 `linghuiCanvasStoryboardDerivationShared.ts`，统一 storyboard 派生 hook 参数类型。
+  - 新增 `useLinghuiCanvasStoryboardTextDerivation.ts`、`useLinghuiCanvasStoryboardImageDerivation.ts`、`useLinghuiCanvasStoryboardVideoDerivation.ts` 和薄聚合 hook `useLinghuiCanvasStoryboardDerivations.ts`。
+  - 保持 `useLinghuiCanvasDocumentOps.ts` 对外返回 API 不变：`deriveStoryboardShotsFromScript / deriveStoryboardImagesFromScript / deriveStoryboardVideosFromScript` 仍由原 hook 暴露。
+  - `useLinghuiCanvasDocumentOps.ts` 从 1624 行降到 1107 行；新增 storyboard hooks 均低于 300 行。
+- Validation:
+  - `npx tsc --noEmit --project frontend/tsconfig.json --pretty false`：passed。
+  - `cd frontend && npm run test -- --run src/components/linghui/canvas/tests/useLinghuiCanvasDocumentOps.test.tsx`：1 file / 9 tests passed。
+  - `cd frontend && npm run test -- --run src/components/linghui/canvas/tests`：14 files / 71 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json --pretty false`：passed。
+  - `git diff --check`：passed。
+- Next:
+  - P0 仍剩 `useLinghuiCanvasDocumentOps.ts` 1107 行和 `useLinghuiCanvasOverlayProps.ts` 1869 行。下一片继续抽 DocumentOps 媒体结果派生，之后再转入 OverlayProps。
+
+### Phase 4.2: P0 MediaImport Helper Extraction
+- **Status:** complete
+- Actions taken:
+  - 继续执行 P0 Canvas Operations Hooks 拆分，处理 `useLinghuiCanvasMediaImport.ts`。
+  - 新增 `linghuiCanvasUploadedNodeFactories.ts`，抽出图片/视频/音频上传节点创建逻辑。
+  - 新增 `linghuiCanvasMediaImportSources.ts`，抽出拖拽 source 解析和图床/工作区 fallback source 解析。
+  - 保持原 hook 对外返回值不变：`handleUploadImagesToCanvas / handleUploadVideosToCanvas / handleUploadAudiosToCanvas / handleDragOver / handleDrop`。
+  - `useLinghuiCanvasMediaImport.ts` 从 582 行降到 479 行；两个 helper 分别 47 / 73 行。
+  - 保留上传占位节点必须在 `setNodes` updater 外创建的 Strict Mode 防护。
+- Validation:
+  - `npx tsc --noEmit --project frontend/tsconfig.json --pretty false`：passed。
+  - `cd frontend && npm run test -- --run src/components/linghui/canvas/tests`：14 files / 71 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json --pretty false`：passed。
+  - `git diff --check`：passed。
+- Next:
+  - P0 仍剩 `useLinghuiCanvasDocumentOps.ts` 1624 行和 `useLinghuiCanvasOverlayProps.ts` 1869 行。下一片建议优先抽 DocumentOps 的 storyboard 派生或媒体结果派生。
+
+### Phase 4.1: P0 DocumentOps EmptyState Action Extraction
+- **Status:** complete
+- Actions taken:
+  - 开始执行 P0 Canvas Operations Hooks 拆分，先处理 `useLinghuiCanvasDocumentOps.ts` 中边界最清晰的 Text / Video / Audio EmptyState 派生动作。
+  - 新增薄聚合 hook `useLinghuiCanvasEmptyActions.ts`，保持 `applyTextEmptyAction / applyVideoEmptyAction / applyAudioEmptyAction` 三个原对外方法名。
+  - 新增 `useLinghuiCanvasTextEmptyAction.ts`、`useLinghuiCanvasVideoEmptyAction.ts`、`useLinghuiCanvasAudioEmptyAction.ts`，分别承接原先的文本、视频、音频空态派生逻辑。
+  - 新增 `linghuiCanvasEmptyActionShared.ts`，只放共享参数类型和边去重 helper。
+  - `useLinghuiCanvasDocumentOps.ts` 从 2196 行降到 1624 行；新增 hooks 均低于 300 行，未修改 className、DOM、样式或业务文案。
+- Validation:
+  - `npx tsc --noEmit --project frontend/tsconfig.json --pretty false`：passed。
+  - `cd frontend && npm run test -- --run src/components/linghui/canvas/tests/useLinghuiCanvasDocumentOps.test.tsx`：1 file / 9 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json --pretty false`：passed。
+  - `git diff --check`：passed。
+- Next:
+  - 继续 P0 的下一片：从 `useLinghuiCanvasDocumentOps.ts` 抽 storyboard 派生或媒体结果派生；或者转到 `useLinghuiCanvasMediaImport.ts` 做上传/拖拽导入拆分。
+
+### Phase 1-3: Inventory, Boundary Review, Guardrails
+- **Status:** complete
+- Actions taken:
+  - 使用 `planning-with-files-zht` 恢复并继续维护 `task_plan.md`、`findings.md`、`progress.md`。
+  - 运行 planning catchup；它报告了上一会话历史上下文，但 `git status --short --branch` 与 `git diff --stat` 显示本轮开始时工作树干净。
+  - 扫描 `frontend/src/components/linghui` 下非测试 `.ts/.tsx` 文件，按“组件 `.tsx` / hook `use*.ts(x)` / 超过 500 行”过滤。
+  - 确认 19 个本轮目标：3 个 hooks、16 个组件。最大文件为 `useLinghuiCanvasDocumentOps.ts` 2196 行、`Director3DNodeEditor.tsx` 2091 行、`LinghuiPage.tsx` 2086 行、`ImageNodeEditor.tsx` 1976 行、`useLinghuiCanvasOverlayProps.ts` 1869 行。
+  - 抽查超大文件顶层函数和 JSX/render 区块，按业务边界制定 P0-P4 拆分顺序。
+  - 将新 session、完整 inventory、拆分 phases、acceptance criteria 写入 `task_plan.md`；将结构发现和优先级判断写入 `findings.md`。
+- Validation:
+  - `npx tsc --noEmit --project frontend/tsconfig.json --pretty false`：passed。
+- Next:
+  - 用户确认后从 P0 开始拆 `useLinghuiCanvasDocumentOps.ts`：先抽纯 helper 和派生/empty-action hooks，保持原 hook 对外返回值不变。
+
 ## Session: 2026-05-16 Linghui Canvas LibTV Recreation
 
 ### Phase 32: Restore Add Node Spatial Entries & Panorama Slash Defaults

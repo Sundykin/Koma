@@ -1,5 +1,118 @@
 # Findings
 
+## 2026-05-17 灵绘大组件 / 大 hooks 拆分扫描
+
+- 扫描命令口径：`rg --files frontend/src/components/linghui -g '*.tsx' -g '*.ts' -g '!**/*.test.ts' -g '!**/*.test.tsx' -g '!**/tests/**'`，组件取 `.tsx`，hooks 取 `use*.ts(x)`，阈值 `>500` 行。
+- 结果：本轮目标文件 19 个，合计约 20,313 行；其中 hooks 3 个，组件 16 个。最大风险集中在画布操作 hooks、图片编辑器、3D 导演编辑器、页面 shell。
+- 超过 500 行但不属于本轮“组件 / hook”的文件也存在：`director3dScene.ts`、`linghuiExecutionNodeExecutors.ts`、`director3dExportGeometry.ts`、`linghuiCanvasShared.ts`、`linghuiPromptReferences.ts`、`linghuiExecutionShared.ts`、`providers/image.ts`、`linghuiResultExport.ts`、`linghuiNodeDefs.ts` 等。它们应作为后续“逻辑模块拆分”单独处理，不要混进 UI 组件拆分。
+
+### 优先级判断
+
+- P0：`useLinghuiCanvasDocumentOps.ts` 2196 行。天然边界已经按函数暴露：workspace asset 节点创建、storyboard 派生、group 创建、媒体结果派生、image tool 派生、Text/Video/Audio EmptyState 派生。建议先抽纯 helper，再抽 `useLinghuiCanvasDerivationOps` / `useLinghuiCanvasEmptyActions` / `useLinghuiCanvasGroupOps`，原 hook 只聚合返回值。
+- P0：`useLinghuiCanvasOverlayProps.ts` 1869 行。当前同时处理 quick create、context menu、结果复制、图片工具执行、宫格切分、高清/裁剪、多角度、视频音频分离和 props assembly。建议拆成 `useLinghuiCanvasContextActions`、`useLinghuiImageToolExecution`、`useLinghuiMediaResultActions`、`useLinghuiQuickCreateActions`，最后保留薄聚合层。
+- P0：`useLinghuiCanvasMediaImport.ts` 582 行。上传图片/视频/音频和拖拽导入混在一起；拆 `linghuiCanvasUploadNodes.ts` 纯 node factory、`useLinghuiCanvasUploadActions`、`useLinghuiCanvasDropImport`。要保留现有 Strict Mode 稳定 id 约束：节点对象必须在 `setNodes` updater 外创建。
+- P1：`ImageNodeEditor.tsx` 1976 行。当前包含状态、图片参数、镜头参数、聚焦/标记、多角度、打光、扩图、重绘、通用工具面板和 import/generate 分支。建议先搬出只读组件：`ImageToolPanelShell`、`MultiAngleToolPanel`、`RelightToolPanel`、`OutpaintToolPanel`、`RepaintToolPanel`、`GenericImageToolPanel`、`ImageFocusPanel`、`ImageMarkPointPanel`，再抽动作 hooks。
+- P1：`LinghuiImageNodeFloatingToolbar.tsx` 552 行。菜单结构可拆为 `ToolbarButton`、`ImageRepaintMenu`、`ImageMoreMenu`、`GridStoryMenu`、`GridSplitMenu`、`GridStoryPromptModal`，保持现有 Dropdown popup class 和 body container 不变。
+- P2：`Director3DNodeEditor.tsx` 2091 行。最大 JSX 块集中在左 rail 资产 popover、视口、右侧 inspector、顶部 HUD、底部 timeline。建议拆 `Director3DTopBar`、`Director3DAssetRail`、`Director3DAssetPopoverContent`、`Director3DInspectorPopover`、`Director3DCameraInspector`、`Director3DActorInspector`、`useDirector3DSceneActions`、`useDirector3DTimelineActions`。
+- P2：`Director3DViewport.tsx` 1249 行。可拆 scene primitives 和交互层：`Director3DEnvironment`、`Director3DBackground`、`Director3DCaptureRenderer`、`Director3DActorDragLayer`、`useDirector3DOrbitCamera`、`useBackgroundTexture`。保持 r3f Canvas 和 capture handle 行为不变。
+- P2：`Director3DCreatureMesh.tsx` 809 行、`Director3DProp.tsx` 715 行。程序化 mesh 可按物种/道具族拆小部件；必须同步检查导出几何 parity，避免视口拆了但导出仍依赖旧结构假设。
+- P3：`LinghuiPage.tsx` 2086 行。职责包含 workspace load/save、runtime restore、library drawers、project rail、execution queue/log、workflow execution。建议先抽 `LinghuiCanvasProjectRail` / `LinghuiExecutionLogPanel` 纯组件，再抽 `useLinghuiWorkspacePersistence`、`useLinghuiWorkspaceRuntime`、`useLinghuiExecutionController`。
+- P3：`LinghuiCanvas.tsx` 824 行。可拆快捷创建/布局修复/outlier notice/ReactFlow event bindings/overlay wiring；原文件保留 ReactFlow composition。
+- P4：`LinghuiPromptEditor.tsx` 927 行、`ImageNode.tsx` 890 行、`VideoNode.tsx` 510 行、`VideoNodeEditorPanels.tsx` 610 行、`ScriptNodeEditor.tsx` 502 行、`LinghuiCanvasContextMenu.tsx` 521 行、`PanoramaViewer.tsx` 626 行。适合在 P0-P3 稳定后做低风险组件提取，优先保留 DOM 与 className。
+
+### 拆分护栏
+
+- 这批重构是 mechanical extraction：不得趁机改功能、样式、文案、菜单尺度或节点数据结构。
+- 先搬 JSX 和纯 helper，再抽 hooks；每一步保持原文件可读的 orchestration，不做跨模块大改名。
+- 每个 slice 先跑相关测试，再跑 `npx tsc --noEmit --project frontend/tsconfig.json` 和 root `npx tsc --noEmit --project tsconfig.json`；若改到渲染结构，按 AGENTS.md 只用 Electron CDP `127.0.0.1:9333` 做视觉检查。
+- 本轮扫描后额外跑了 frontend TypeScript，当前通过。
+
+### 2026-05-17 P0 第一片：DocumentOps EmptyState 动作拆分
+
+- 已把 `useLinghuiCanvasDocumentOps.ts` 里的 Text / Video / Audio EmptyState 派生动作抽到独立小 hooks：
+  - `useLinghuiCanvasEmptyActions.ts`：21 行聚合入口，继续提供原来的 `applyTextEmptyAction / applyVideoEmptyAction / applyAudioEmptyAction`。
+  - `useLinghuiCanvasTextEmptyAction.ts`：235 行，保留文本空态 4 个动作。
+  - `useLinghuiCanvasVideoEmptyAction.ts`：241 行，保留视频空态首帧/首尾帧动作。
+  - `useLinghuiCanvasAudioEmptyAction.ts`：172 行，保留音频生视频动作。
+  - `linghuiCanvasEmptyActionShared.ts`：31 行，共享参数类型和边去重 helper。
+- `useLinghuiCanvasDocumentOps.ts` 从 2196 行降到 1624 行；本轮没有改变返回 API，`LinghuiCanvas` / `useLinghuiCanvasOverlayProps` 仍从 DocumentOps 拿同名动作。
+- 验证：`useLinghuiCanvasDocumentOps.test.tsx` 9 tests passed；frontend/root TypeScript passed；`git diff --check` passed。
+
+### 2026-05-17 P0 第二片：MediaImport helper 拆分
+
+- 已把 `useLinghuiCanvasMediaImport.ts` 里的上传节点创建和 source 解析抽到纯 helper：
+  - `linghuiCanvasUploadedNodeFactories.ts`：73 行，承接图片/视频/音频上传节点 factory。
+  - `linghuiCanvasMediaImportSources.ts`：47 行，承接拖拽文件 source 解析与图床/本地工作区 fallback。
+- `useLinghuiCanvasMediaImport.ts` 从 582 行降到 479 行，已退出本轮超 500 行 hooks 清单。
+- 保留关键行为：图片/视频上传节点仍在 `setNodes` updater 外提前创建，避免 React Strict Mode 双调用导致插入 id 与异步上传回写 id 不匹配。
+- 验证：全量 `frontend/src/components/linghui/canvas/tests` 14 files / 71 tests passed；frontend/root TypeScript passed；`git diff --check` passed。
+
+### 2026-05-17 P0 第三片：DocumentOps Storyboard 派生拆分
+
+- 已把 `useLinghuiCanvasDocumentOps.ts` 里的脚本节点分镜派生拆成三条独立 hook：
+  - `useLinghuiCanvasStoryboardTextDerivation.ts`：承接从脚本创建分镜文本节点。
+  - `useLinghuiCanvasStoryboardImageDerivation.ts`：承接从脚本/分镜派生图片节点。
+  - `useLinghuiCanvasStoryboardVideoDerivation.ts`：承接从脚本/分镜派生视频节点。
+  - `useLinghuiCanvasStoryboardDerivations.ts`：12 行薄聚合入口，保持原 DocumentOps 三个方法名。
+  - `linghuiCanvasStoryboardDerivationShared.ts`：共享 hook 参数类型；`linghuiCanvasDocumentOpsShared.ts`：共享派生 metadata 与边去重 helper。
+- `useLinghuiCanvasDocumentOps.ts` 从 1624 行降到 1107 行，仍偏大，但 storyboard 业务边界已经从主 orchestration hook 移出。
+- 行为约束：没有修改节点类型、边类型、selection、context menu、quick create、snapshot 调度等对外语义；原 hook 仍暴露 `deriveStoryboardShotsFromScript / deriveStoryboardImagesFromScript / deriveStoryboardVideosFromScript`。
+- 验证：`useLinghuiCanvasDocumentOps.test.tsx` 9 tests passed；全量 `frontend/src/components/linghui/canvas/tests` 14 files / 71 tests passed；frontend/root TypeScript passed；`git diff --check` passed。
+
+### 2026-05-17 P0 第四片：DocumentOps 媒体派生与分组操作拆分
+
+- 已把 `useLinghuiCanvasDocumentOps.ts` 的媒体派生操作拆到小 hooks：
+  - `useLinghuiCanvasImageResultDerivation.ts`：图片结果派生图片节点。
+  - `useLinghuiCanvasPanoramaDerivation.ts`：图片结果派生全景预览节点。
+  - `useLinghuiCanvasVideoResultDerivation.ts`：视频结果派生视频节点。
+  - `useLinghuiCanvasAudioFromVideoDerivation.ts`：视频分离音频派生音频节点。
+  - `useLinghuiCanvasMultiAngleImageDerivation.ts`：多角度派生图片生成节点。
+  - `useLinghuiCanvasImageToolDerivation.ts`：扩图/重绘/打光等工具派生图片生成节点。
+  - `useLinghuiCanvasMediaDerivations.ts`：薄聚合入口，保持 DocumentOps 原返回 API。
+- 已把删除、删边、解组、选中成组和 `clearPendingGroupFrame` 拆到 `useLinghuiCanvasGroupOps.ts`；这类操作仍使用原来的 selection、snapshot 和 run-state 清理语义。
+- `useLinghuiCanvasDocumentOps.ts` 从 1107 行降到 472 行；`useLinghuiCanvasMediaImport.ts` 已是 479 行。P0 中已达标的 hooks：DocumentOps、MediaImport。
+- 重新扫描 >500 组件/hooks 后，P0 hooks 只剩 `useLinghuiCanvasOverlayProps.ts` 1869 行；总体 >500 清单从 19 个降到 17 个。
+- 验证：frontend TypeScript passed；`useLinghuiCanvasDocumentOps.test.tsx` 9 tests passed；全量 canvas tests 14 files / 71 tests passed；root TypeScript passed；`git diff --check` passed。
+
+### 2026-05-17 P0 第五片：OverlayProps 拆分完成
+
+- 已把 `useLinghuiCanvasOverlayProps.ts` 从 1869 行拆到 462 行；P0 三个 hooks 全部退出 >500 清单：
+  - `useLinghuiCanvasDocumentOps.ts`：472 行。
+  - `useLinghuiCanvasMediaImport.ts`：479 行。
+  - `useLinghuiCanvasOverlayProps.ts`：462 行。
+- OverlayProps 拆分边界：
+  - `linghuiCanvasOverlayMediaHelpers.ts`：纯媒体/剪贴板/文件物化 helper。
+  - `useLinghuiCanvasContextMenuMediaState.ts`：右键节点图片/视频/复制能力推导。
+  - `useLinghuiCanvasImageToolExecutions.ts`：图片工具 preset、宫格切分、高清、裁剪、多角度执行。
+  - `useLinghuiCanvasContextMenuActions.ts`：右键菜单动作，包括创建资产、创建主体、复制、展开/保留媒体、音轨分离、保存工作流。
+  - `useLinghuiCanvasContextMenuOverlayProps.ts`：右键菜单 overlay props 和闭包组装。
+- 重新扫描结果：当前 >500 清单剩 16 个组件，已无 hooks；下一阶段应进入 Image Node Editing Surface。
+- 验证：frontend TypeScript passed；全量 `frontend/src/components/linghui/canvas/tests` 14 files / 71 tests passed；root TypeScript passed；`git diff --check` passed。
+
+### 2026-05-17 P1 第一片：图片浮动工具条菜单拆分
+
+- `LinghuiImageNodeFloatingToolbar.tsx` 的主要复杂度来自菜单构造，而不是渲染本身：高清、九宫格、宫格切分、重绘、更多菜单都在主组件内创建，并混入 Dropdown popup class、body container、active tool 判断和图标 JSX。
+- 已新增 `linghuiImageToolbarMenus.tsx`，把这些菜单常量和 builder 移出；主组件只保留：
+  - `openDropdown` 与 `pendingGridPreset` 状态。
+  - `fireImageTool / openGridStoryComposer / openGridSplit` 这些调用节点 API 的闭包。
+  - 实际工具条按钮 JSX。
+- 行为保持点：`linghuiImageToolbarDropdown` / `linghuiImageToolbarSubmenuDropdown` class、submenu `popupOffset`、`getPopupContainer` 到 `document.body`、九宫格剧情编辑 Modal、高清 2x/4x、宫格切分 2x2-5x5、导入素材隐藏聚焦/标记入口都未改。
+- 行数变化：`LinghuiImageNodeFloatingToolbar.tsx` 552 → 362 行；新 `linghuiImageToolbarMenus.tsx` 316 行。按当前扫描口径，剩余 >500 的组件 15 个，hooks 0 个。
+- 恢复脚本提示上一会话还有全景视角修复上下文；当前工作树中 `ImageNode.tsx` 与 `panoramaPerspectiveExtractor.ts` 的未提交修改属于这段上下文，本次 P1 toolbar 拆分没有触碰。
+- 验证：frontend TypeScript、`LinghuiNodeEditor.test.tsx`、`ImageNodeEditor.test.tsx`、root TypeScript、`git diff --check` 均通过；测试警告为既有 AntD/jsdom 与 Three.js duplicate warning。
+
+### 2026-05-17 P1 第二片：ImageNodeEditor 面板拆分
+
+- `ImageNodeEditor.tsx` 的剩余复杂度主要分为三类：状态/提交逻辑、工具面板 JSX、底部提示词和参数控制。第二片先只移动工具面板 JSX，不改变状态归属。
+- 已新增三个子文件：
+  - `ImageNodeEditorLibTVPanels.tsx`：LibTV 面板壳、footer、预览 stage、扩图、重绘和通用 preset 面板。
+  - `ImageNodeEditorSettingsPopovers.tsx`：图片参数菜单与镜头菜单；`ImageNodeEditorExtraSettingsBlock` 从这里导出，并由 `ImageNodeEditor.tsx` re-export 保持兼容。
+  - `ImageNodeEditorFocusMarkPanels.tsx`：聚焦、标记面板和焦点/百分比 UI helper。
+- 保持行为点：扩图 4 向比例、重绘 prompt 合并、通用工具 crop 本地链路、焦距/光圈菜单、聚焦区域写入、标记点点击/键盘添加、生成 footer 的 `重置参数 / 生成` 文案和 className 都保持原样。
+- 行数变化：`ImageNodeEditor.tsx` 1976 → 1516 行；新文件为 405 / 182 / 228 行，均低于 500。
+- 验证：frontend/root TypeScript、`ImageNodeEditor.test.tsx`、`LinghuiNodeEditor.test.tsx`、`git diff --check` 均通过；警告仍为既有测试环境 warning。
+- 下一片建议：拆 `MultiAngleToolPanel` 与 `RelightToolPanel`，这两块还留在主文件中，是当前最大 JSX 岛。
+
 ## 2026-05-17 Phase 34 反查结论：LibTV VideoNode 深度反编（状态机 + 工具条 + 8 mode generator）
 
 - 完整深度文档落到 `template_/docs/libtv-video-node-deep-dive.md`；配套源 `/tmp/libtv-15gvxu-formatted.js` 行 191333-194000、`/tmp/libtv-0bed6jbw0.formatted.js` 行 8789-9300、`/tmp/libtv-157843.formatted.js` 行 144-336、`/tmp/libtv-105a.formatted.js` 行 391-700、`/tmp/libtv-0gg5ir.beautified.js` 行 37521-37592。
