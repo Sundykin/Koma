@@ -22,7 +22,7 @@ import {
   useLinghuiNodeEditorVisibility,
 } from '../state/LinghuiNodeRunsContext';
 import { useLinghuiConnectTarget } from '../state/useLinghuiConnectTarget';
-import { extractPerspectiveView } from '../../panorama/panoramaPerspectiveExtractor';
+import { extractPerspectiveViewFromViewerCamera } from '../../panorama/panoramaPerspectiveExtractor';
 import { LinghuiNodeEditor } from '../../editors/components/LinghuiNodeEditor';
 import { PanoramaViewer, PanoramaViewport } from '../../panorama/PanoramaViewer';
 import { resolvePanoramaProjectionMode } from '../../panorama/panoramaProjection';
@@ -378,17 +378,17 @@ function ImageNodeInner({ id, data, selected }: NodeProps) {
   // 全景节点"应用此视角"：把当前预览的 yaw/pitch/fovDeg 抽成 perspective 图，
   // 派生为下游 linghui/image (mode='import') 节点。仅在全景节点上生效。
   //
-  // ⚠ 坐标系适配（关键 — 两边约定不一致）：
-  //  - PanoramaViewer 相机 lookAt(sin*cos, sin, +cos*cos)：panorama 中心朝 +Z，pitch>0=朝上
-  //  - extractor 约定 dz=-cos*cos：panorama 中心朝 -Z（OpenGL 视图前向），
-  //    且 v=(pitchSph+π/2)/π 让 pitch>0 映射到 panorama 底部
-  //  → viewer 的 yaw 需 +π 翻面、pitch 需取反，extractor 才会抽到 viewer 实际看到的画面（不上下颠倒、不指反向）。
+  // 使用 extractPerspectiveViewFromViewerCamera —— 它的坐标系约定与 PanoramaViewer 内部相机完全一致：
+  //  - panorama 中心朝 +Z（与 cam.lookAt 公式一致）
+  //  - pitch>0 = 朝上 → 抽到 panorama 顶部（v<0.5）
+  //  - yaw>0 = 朝右
+  // 不需要再手动做 yaw+π / -pitch 转换；直接传 viewer 的快照值即可所见即所抽。
   const panoramaApplyPerspectiveHandler = useCallback(async (view: { yaw: number; pitch: number; fovDeg: number }) => {
     if (!isPanoramaNode || !primaryDisplayItem?.preview) return;
     try {
-      const result = await extractPerspectiveView(primaryDisplayItem.preview, {
-        yaw: view.yaw + Math.PI,    // panorama 中心方向差 180°
-        pitch: -view.pitch,          // y 轴方向反置（extractor v 公式让 pitch>0 落到底部）
+      const result = await extractPerspectiveViewFromViewerCamera(primaryDisplayItem.preview, {
+        yaw: view.yaw,
+        pitch: view.pitch,
         fovDeg: view.fovDeg,
         width: 1024,
         height: 768,

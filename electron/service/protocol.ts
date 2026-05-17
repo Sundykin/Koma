@@ -1,7 +1,7 @@
 import { app, protocol } from 'electron';
 import fs from 'fs';
 import path from 'path';
-import { getBusinessRoot, getPluginsRuntimeDir } from './paths';
+import { getBusinessRoot, getPluginsRuntimeDir, getRuntimeStorageRoot } from './paths';
 
 const mimeTypes: Record<string, string> = {
   '.png': 'image/png',
@@ -25,13 +25,14 @@ function isPathAllowed(filePath: string): boolean {
   const userData = app.getPath('userData');
   const temp = app.getPath('temp');
   const businessRoot = getBusinessRoot();
+  const storageRoot = getRuntimeStorageRoot();
   // 打包后内置资源（音色 wav / 风格图等）落在 process.resourcesPath/extraResources/，
   // macOS prod 是 `/Applications/Koma.app/Contents/Resources`，不在 home 下，必须显式允许。
   // dev 模式下 process.resourcesPath 指向 Electron 安装的 Resources，加上也无害。
   const resourcesPath = process.resourcesPath || '';
   // dev 模式 fallback: 项目根 build/extraResources/ 也可能被直接读到
   const appPath = app.getAppPath();
-  const allowedRoots = [home, appData, userData, temp, businessRoot, resourcesPath, appPath].filter(Boolean);
+  const allowedRoots = [home, appData, userData, temp, businessRoot, storageRoot, resourcesPath, appPath].filter(Boolean);
   return allowedRoots.some(root => normalized.startsWith(root + path.sep) || normalized === root);
 }
 

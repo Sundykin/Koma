@@ -181,112 +181,10 @@ export const NODE_META: Record<LinghuiNodeType, LinghuiNodeMeta> = {
   },
 };
 
-export const SLOT_TYPE_LABELS: Record<LinghuiSlotDataType, string> = {
-  image: '图片',
-  text: '文本',
-  video: '视频',
-  audio: '音频',
-  images: '多图',
-  shot: '分镜',
-  storyboard: '分镜序列',
-};
 
-export const NODE_SLOT_LAYOUTS: Record<LinghuiNodeType, { inputs: LinghuiSlotDef[]; outputs: LinghuiSlotDef[] }> = {
-  'linghui/text': {
-    inputs: [
-      { name: '图片参考', dataType: 'image' },
-      { name: '文本输入', dataType: 'text' },
-      { name: '视频参考', dataType: 'video' },
-      { name: '音频参考', dataType: 'audio' },
-    ],
-    outputs: [{ name: 'text', dataType: 'text' }],
-  },
-  'linghui/agent': {
-    inputs: [
-      { name: '图片参考', dataType: 'image' },
-      { name: '文本输入', dataType: 'text' },
-    ],
-    outputs: [{ name: 'text', dataType: 'text' }],
-  },
-  'linghui/image': {
-    inputs: [
-      { name: '参考', dataType: 'image' },
-      { name: '文本', dataType: 'text' },
-    ],
-    outputs: [{ name: 'image', dataType: 'image' }],
-  },
-  'linghui/panorama': {
-    inputs: [
-      { name: '参考', dataType: 'image' },
-      { name: '文本', dataType: 'text' },
-    ],
-    outputs: [{ name: 'image', dataType: 'image' }],
-  },
-  'linghui/video': {
-    inputs: [
-      { name: '参考', dataType: 'image' },
-      { name: '文本', dataType: 'text' },
-      { name: '音频', dataType: 'audio' },
-      { name: '视频', dataType: 'video' },
-    ],
-    outputs: [{ name: 'video', dataType: 'video' }],
-  },
-  'linghui/audio': {
-    inputs: [
-      { name: '图片参考', dataType: 'image' },
-      { name: '文本输入', dataType: 'text' },
-      { name: '视频参考', dataType: 'video' },
-      { name: '音频参考', dataType: 'audio' },
-    ],
-    outputs: [{ name: 'audio', dataType: 'audio' }],
-  },
-  'linghui/script': {
-    inputs: [
-      { name: '图片参考', dataType: 'image' },
-      { name: '文本设定', dataType: 'text' },
-      { name: '视频参考', dataType: 'video' },
-    ],
-    outputs: [
-      { name: 'script', dataType: 'text' },
-      { name: 'storyboard', dataType: 'storyboard' },
-    ],
-  },
-  'linghui/storyboard': {
-    inputs: [
-      { name: '图片参考', dataType: 'image' },
-      { name: '剧情补充', dataType: 'text' },
-      { name: '视频参考', dataType: 'video' },
-    ],
-    outputs: [
-      { name: 'script', dataType: 'text' },
-      { name: 'storyboard', dataType: 'storyboard' },
-    ],
-  },
-  'linghui/director3d': {
-    inputs: [
-      { name: '背景', dataType: 'image' },
-      { name: '文本', dataType: 'text' },
-    ],
-    outputs: [
-      { name: 'image', dataType: 'image' },
-      { name: 'text', dataType: 'text' },
-    ],
-  },
-  // 宫格切分节点：单图入，多图出（每个槽位一张图，下游可挑选派生）
-  'linghui/image-grid-slice': {
-    inputs: [{ name: '主图', dataType: 'image' }],
-    outputs: [{ name: 'slots', dataType: 'images' }],
-  },
-  // 视频合成节点：多输入（视频 + 图片），单视频出
-  'linghui/video-clip': {
-    inputs: [
-      { name: '视频片段', dataType: 'video' },
-      { name: '图片片段', dataType: 'image' },
-    ],
-    outputs: [{ name: 'video', dataType: 'video' }],
-  },
-};
-
+import { NODE_SLOT_LAYOUTS, SLOT_TYPE_LABELS, isLinghuiSlotDataTypeCompatible, resolveLinghuiCompatibleInputSlot, validateLinghuiConnection, isLinghuiConnectionValid } from './linghuiConnectionValidation';
+export { NODE_SLOT_LAYOUTS, SLOT_TYPE_LABELS, isLinghuiSlotDataTypeCompatible, resolveLinghuiCompatibleInputSlot, validateLinghuiConnection, isLinghuiConnectionValid } from './linghuiConnectionValidation';
+export type { LinghuiConnectionValidationResult } from './linghuiConnectionValidation';
 export const NODE_PROPERTY_DEFAULTS: Record<LinghuiNodeType, Record<string, unknown>> = {
   // LibTV TextNode 默认无 action，UI 渲染走 empty_generate 视图态（15gvxu:55066-55074）。
   // 灵绘类型要求 mode 必填 → 默认 'generate' 让新节点显示 EmptyState 4 actions；
@@ -412,117 +310,8 @@ export const LINGHUI_NODE_CATALOG: LinghuiNodeCatalogItem[] = Object.values(NODE
     accent: meta.accent,
   }));
 
-export interface LinghuiConnectionValidationResult {
-  valid: boolean;
-  message?: string;
-}
-
-export function isLinghuiSlotDataTypeCompatible(params: {
-  sourceDataType: LinghuiSlotDataType;
-  targetDataType: LinghuiSlotDataType;
-}): boolean {
-  const { sourceDataType, targetDataType } = params;
-
-  if (sourceDataType === targetDataType) {
-    return true;
-  }
-
-  if (sourceDataType === 'images' && targetDataType === 'image') {
-    return true;
-  }
-
-  if (sourceDataType === 'image' && targetDataType === 'images') {
-    return true;
-  }
-
-  if (sourceDataType === 'video' && targetDataType === 'image') {
-    return true;
-  }
-
-  if (sourceDataType === 'storyboard' && (targetDataType === 'text' || targetDataType === 'shot')) {
-    return true;
-  }
-
-  if (sourceDataType === 'shot' && (targetDataType === 'text' || targetDataType === 'image')) {
-    return true;
-  }
-
-  return false;
-}
-
-export function resolveLinghuiCompatibleInputSlot(
-  type: LinghuiNodeType,
-  sourceDataType: LinghuiSlotDataType,
-): { slot: LinghuiSlotDef; index: number } | null {
-  const slots = NODE_SLOT_LAYOUTS[type]?.inputs ?? [];
-  const index = slots.findIndex(slot => isLinghuiSlotDataTypeCompatible({
-    sourceDataType,
-    targetDataType: slot.dataType,
-  }));
-
-  if (index < 0) {
-    return null;
-  }
-
-  return { slot: slots[index], index };
-}
-
-export function validateLinghuiConnection(params: {
-  sourceDataType: LinghuiSlotDataType;
-  targetDataType: LinghuiSlotDataType;
-  sourceNodeType?: LinghuiNodeType;
-  targetNodeType?: LinghuiNodeType;
-  sourceSlotIndex?: number;
-  targetSlotIndex?: number;
-}): LinghuiConnectionValidationResult {
-  if (isLinghuiSlotDataTypeCompatible(params)) {
-    return { valid: true };
-  }
-
-  const sourceLabel = SLOT_TYPE_LABELS[params.sourceDataType] ?? params.sourceDataType;
-  const targetLabel = SLOT_TYPE_LABELS[params.targetDataType] ?? params.targetDataType;
-  return {
-    valid: false,
-    message: `${sourceLabel}输出不能连接到${targetLabel}输入。`,
-  };
-}
-
-export function isLinghuiConnectionValid(
-  connection: { source: string; target: string; sourceHandle: string | null; targetHandle: string | null },
-  nodes: Array<{ id: string; data: LinghuiNodeData }>,
-): LinghuiConnectionValidationResult {
-  const sourceNode = nodes.find(n => n.id === connection.source);
-  const targetNode = nodes.find(n => n.id === connection.target);
-  if (!sourceNode || !targetNode) return { valid: false, message: '连接节点不存在。' };
-  if (sourceNode.id === targetNode.id) return { valid: false, message: '节点不能连接到自身。' };
-  if (!sourceNode.data.outputs.length || !targetNode.data.inputs.length) {
-    return { valid: false, message: '连接端口不存在。' };
-  }
-
-  const sourceSlot = sourceNode.data.outputs[0];
-  const targetSlot = targetNode.data.inputs.find(slot => isLinghuiSlotDataTypeCompatible({
-    sourceDataType: sourceSlot.dataType,
-    targetDataType: slot.dataType,
-  }));
-
-  if (!targetSlot) {
-    const sourceLabel = SLOT_TYPE_LABELS[sourceSlot.dataType] ?? sourceSlot.dataType;
-    return { valid: false, message: `当前节点没有可接收${sourceLabel}输出的输入槽。` };
-  }
-
-  return validateLinghuiConnection({
-    sourceDataType: sourceSlot.dataType,
-    targetDataType: targetSlot.dataType,
-    sourceNodeType: sourceNode.data.linghuiType,
-    targetNodeType: targetNode.data.linghuiType,
-    sourceSlotIndex: 0,
-    targetSlotIndex: targetNode.data.inputs.indexOf(targetSlot),
-  });
-}
-
-export function getLinghuiNodeMeta(type?: string | null): LinghuiNodeMeta | null {
-  if (!type || !(type in NODE_META)) return null;
-  return NODE_META[type as LinghuiNodeType];
+export function getLinghuiNodeMeta(type?: string | null): LinghuiNodeMeta | undefined {
+  return type ? NODE_META[type as LinghuiNodeType] : undefined;
 }
 
 export function getLinghuiNodeAccent(type?: string | null): string {
@@ -533,23 +322,12 @@ export function createNewNodeData(type: LinghuiNodeType, options?: CreateNewNode
   const meta = NODE_META[type];
   const slots = NODE_SLOT_LAYOUTS[type];
   const defaults = NODE_PROPERTY_DEFAULTS[type];
-
-  // LibTV 命名：默认 label 形如 "图片节点 5"。
-  //   - 显式 options.label 优先（quickCreate 预设、剪贴板恢复等场景）。
-  //   - 否则按 NODE_LABEL_TEMPLATE + serial 拼接，未提供 serial 时降级到 meta.title。
   const fallbackLabel = NODE_LABEL_TEMPLATE[type] ?? meta.title;
-  const resolvedLabel = options?.label?.trim()
-    || (typeof options?.serial === 'number' ? `${fallbackLabel} ${options.serial}` : fallbackLabel);
-
+  const resolvedLabel = options?.label?.trim() || (typeof options?.serial === 'number' ? `${fallbackLabel} ${options.serial}` : fallbackLabel);
   return {
-    linghuiType: type,
-    label: resolvedLabel,
-    accent: meta.accent,
-    background: meta.background,
-    viewMode: 'light',
-    properties: { ...defaults },
-    inputs: slots.inputs.map(s => ({ ...s })),
-    outputs: slots.outputs.map(s => ({ ...s })),
+    linghuiType: type, label: resolvedLabel, accent: meta.accent, background: meta.background,
+    viewMode: 'light', properties: { ...defaults },
+    inputs: slots.inputs.map(s => ({ ...s })), outputs: slots.outputs.map(s => ({ ...s })),
     active: false,
   };
 }

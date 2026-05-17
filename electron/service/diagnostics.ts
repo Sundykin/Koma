@@ -196,6 +196,7 @@ export class DiagnosticsService {
     fs.mkdirSync(this.logsDir, { recursive: true });
     fs.mkdirSync(this.getRendererLogsDir(), { recursive: true });
     fs.mkdirSync(this.getConsoleLogsDir(), { recursive: true });
+    this.appendStorageLogMarker();
     try {
       app.setAppLogsPath(this.logsDir);
     } catch (err) {
@@ -435,6 +436,15 @@ export class DiagnosticsService {
   private isLogFile(filename: string): boolean {
     const lower = filename.toLowerCase();
     return lower.endsWith('.log') || lower.endsWith('.txt');
+  }
+
+  private appendStorageLogMarker(): void {
+    const line = `[${new Date().toISOString()}] [INFO] [Diagnostics] storageRoot=${this.storageRoot} logsDir=${this.logsDir}${os.EOL}`;
+    try {
+      fs.appendFileSync(path.join(this.logsDir, 'koma.log'), line, 'utf-8');
+    } catch (err) {
+      mainLogger.warn('[diagnostics] write storage log marker failed', err);
+    }
   }
 
   private resolveLogKind(relativePath: string, filename: string, rootLabel: string): DiagnosticsLogFileInfo['kind'] {

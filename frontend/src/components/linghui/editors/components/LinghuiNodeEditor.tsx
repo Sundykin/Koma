@@ -5,37 +5,19 @@ import {
   useNodes,
   useNodesData,
 } from '@xyflow/react';
-import { App, Button, Dropdown, Tooltip } from 'antd';
+import { App } from 'antd';
 import type { MenuProps } from 'antd';
-import {
-  AudioWaveform,
-  Captions,
-  ChevronDown,
-  ScanLine,
-  Scissors,
-  Sparkles,
-  X,
-} from 'lucide-react';
+import { X } from 'lucide-react';
 import type {
-  LinghuiGridType,
   LinghuiImageNodeProperties,
   LinghuiImageToolKey,
   LinghuiNodeData,
   LinghuiNodeType,
   LinghuiVideoNodeProperties,
-  LinghuiVideoToolKey,
 } from '../../../../types/linghui';
 import { getLinghuiResultPrimaryMedia } from '../../../../types/linghui';
-import { AgentNodeEditor } from './AgentNodeEditor';
-import { AudioNodeEditor } from './AudioNodeEditor';
-import { ImageNodeEditor } from './ImageNodeEditor';
 import { LinghuiImageNodeFloatingToolbar } from '../../nodes/components/LinghuiImageNodeFloatingToolbar';
-import { PanoramaNodeEditor } from './PanoramaNodeEditor';
 import { Director3DNodeEditor } from './Director3DNodeEditor';
-import { ScriptNodeEditor } from './ScriptNodeEditor';
-import { StoryboardNodeEditor } from './StoryboardNodeEditor';
-import { TextNodeEditor } from './TextNodeEditor';
-import { VideoNodeEditor } from './VideoNodeEditor';
 import { EditableCompactNodeLabel } from '../../nodes/components/EditableCompactNodeLabel';
 import {
   useLinghuiCanvasZoom,
@@ -48,8 +30,25 @@ import {
 } from '../state/linghuiPromptReferences';
 import { resolveLinghuiImagePrimaryForNode } from '../state/linghuiImageCollections';
 import { buildLinghuiReferenceMediaBuckets } from '../state/linghuiReferenceMedia';
-import { VIDEO_TOOL_PRESETS } from '../state/videoNodeEditorShared';
 import { cssVars } from '../../../../theme/runtime';
+import {
+  GRID_SPLIT_OPTIONS,
+  LinghuiNodeEditorGridSplitToolbar,
+} from './LinghuiNodeEditorGridSplitToolbar';
+import {
+  LinghuiNodeEditorVideoToolbar,
+  VIDEO_TOOLBAR_ITEMS,
+} from './LinghuiNodeEditorVideoToolbar';
+import { LinghuiNodeEditorSurface } from './LinghuiNodeEditorSurface';
+import {
+  getNodeTypeLabel,
+  getPanelMaxHeight,
+  getPanelWidth,
+  getViewportBoundHeight,
+  getViewportBoundWidth,
+  PANEL_GAP,
+  TOOLBAR_STANDOFF,
+} from './linghuiNodeEditorLayout';
 
 interface LinghuiNodeEditorProps {
   nodeId: string;
@@ -63,76 +62,6 @@ interface LinghuiNodeEditorProps {
  *   其余工具都是"派生下游新节点"行为，对素材节点同样有意义，因此保留。
  */
 const IMPORT_HIDDEN_IMAGE_TOOLS = new Set<LinghuiImageToolKey>(['focus', 'mark']);
-
-/** 对齐 LibTV 视频工具条（截图）：剪辑 / 高清 / 解析 / 智能去字幕 / 音频分离。 */
-const VIDEO_TOOLBAR_ITEMS: Array<{ key: LinghuiVideoToolKey; label: string }> = [
-  { key: 'clip', label: '剪辑' },
-  { key: 'upscale', label: '高清' },
-  { key: 'analyze', label: '解析' },
-  { key: 'subtitle-remove', label: '智能去字幕' },
-  { key: 'audio-separation', label: '音频分离' },
-];
-
-const GRID_SPLIT_OPTIONS: Array<{ value: LinghuiGridType; label: string; size: number }> = [
-  { value: '2x2', label: '4格', size: 2 },
-  { value: '3x3', label: '9格', size: 3 },
-  { value: '4x4', label: '16格', size: 4 },
-  { value: '5x5', label: '25格', size: 5 },
-];
-
-const PANEL_GAP = 8;
-const TOOLBAR_STANDOFF = 6;
-
-function getNodeTypeLabel(nodeType: LinghuiNodeType): string {
-  switch (nodeType) {
-    case 'linghui/image':
-      return '图片节点';
-    case 'linghui/panorama':
-      return '全景节点';
-    case 'linghui/agent':
-      return 'Agent 节点';
-    case 'linghui/video':
-      return '视频节点';
-    case 'linghui/audio':
-      return '音频节点';
-    case 'linghui/script':
-      return '脚本节点';
-    case 'linghui/storyboard':
-      return '故事板节点';
-    case 'linghui/text':
-      return '文本节点';
-    case 'linghui/director3d':
-      return '3D 导演工作台';
-    default:
-      return '节点编辑';
-  }
-}
-
-function getPanelWidth(nodeType: LinghuiNodeType): number {
-  if (nodeType === 'linghui/script') return 760;
-  if (nodeType === 'linghui/storyboard') return 760;
-  if (nodeType === 'linghui/audio') return 540;
-  if (nodeType === 'linghui/agent') return 620;
-  if (nodeType === 'linghui/director3d') return 1080;
-  return 560;
-}
-
-function getPanelMaxHeight(nodeType: LinghuiNodeType): number {
-  if (nodeType === 'linghui/script') return 760;
-  if (nodeType === 'linghui/storyboard') return 760;
-  if (nodeType === 'linghui/agent') return 640;
-  if (nodeType === 'linghui/text') return 520;
-  if (nodeType === 'linghui/director3d') return 720;
-  return 620;
-}
-
-function getViewportBoundWidth(width: number): string {
-  return `min(${width}px, calc(100vw - 48px))`;
-}
-
-function getViewportBoundHeight(height: number): string {
-  return `min(${height}px, calc(100vh - 112px))`;
-}
 
 export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
   nodeId,
@@ -227,8 +156,6 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
       ?? (nodeData?.properties as unknown as LinghuiVideoNodeProperties | undefined)?.source
       ?? '',
     ).trim());
-  const isAgentNode = nodeType === 'linghui/agent';
-
   const activeImageTool = activeTool?.kind === 'image' && activeTool.nodeId === nodeId
     ? activeTool.tool
     : null;
@@ -414,122 +341,6 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
     );
   }
 
-  /**
-   * 视频工具条 LibTV 风：剪辑 / 高清 / 解析 / 智能去字幕 / 音频分离（音视频分离 + 人声分离>仅人声/仅背景音）。
-   * 严格不暴露假按钮：未接入服务的入口走 disabled + tooltip 解释。
-   */
-  const renderLibTVVideoToolbar = () => {
-    const activateTool = (tool: LinghuiVideoToolKey) => {
-      setActiveTool(activeVideoTool === tool ? null : { kind: 'video', nodeId, tool });
-    };
-
-    const handleSubtitleRemove = () => {
-      message.info('智能去字幕需要云端 AI 服务，暂未在本地接入。');
-    };
-
-    const handleAudioVideoSplit = () => {
-      if (onSeparateVideoAudio) {
-        onSeparateVideoAudio(nodeId);
-      } else {
-        message.error('音频分离能力当前不可用，请检查工作区状态');
-      }
-    };
-
-    const audioSeparationMenu: MenuProps['items'] = [
-      {
-        key: 'audio-vocal-separation',
-        label: '人声分离',
-        children: [
-          {
-            key: 'audio-vocal-only',
-            label: '仅保留人声',
-            disabled: true,
-          },
-          {
-            key: 'audio-bgm-only',
-            label: '仅保留背景音',
-            disabled: true,
-          },
-        ],
-      },
-      {
-        key: 'audio-av-split',
-        label: '音视频分离',
-        onClick: ({ domEvent }) => {
-          domEvent.stopPropagation();
-          handleAudioVideoSplit();
-        },
-      },
-    ];
-
-    return (
-      <div className="linghuiNodeEditorToolRail isLibTVVideo">
-        <Tooltip title={VIDEO_TOOL_PRESETS.clip.description}>
-          <button
-            type="button"
-            className={`linghuiNodeEditorToolButton ${activeVideoTool === 'clip' ? 'isActive' : ''}`}
-            onClick={() => activateTool('clip')}
-          >
-            <Scissors size={14} className="linghuiNodeEditorToolButtonIcon" />
-            <span>剪辑</span>
-          </button>
-        </Tooltip>
-
-        <Tooltip title={VIDEO_TOOL_PRESETS.upscale.description}>
-          <button
-            type="button"
-            className={`linghuiNodeEditorToolButton ${activeVideoTool === 'upscale' ? 'isActive' : ''}`}
-            onClick={() => activateTool('upscale')}
-          >
-            <span className="linghuiNodeEditorToolButtonBadge">HD</span>
-            <span>高清</span>
-          </button>
-        </Tooltip>
-
-        <Tooltip title={VIDEO_TOOL_PRESETS.analyze.description}>
-          <button
-            type="button"
-            className={`linghuiNodeEditorToolButton ${activeVideoTool === 'analyze' ? 'isActive' : ''}`}
-            onClick={() => activateTool('analyze')}
-          >
-            <ScanLine size={14} className="linghuiNodeEditorToolButtonIcon" />
-            <span>解析</span>
-          </button>
-        </Tooltip>
-
-        <Tooltip title={VIDEO_TOOL_PRESETS['subtitle-remove'].description}>
-          <button
-            type="button"
-            className="linghuiNodeEditorToolButton isPlaceholder"
-            onClick={handleSubtitleRemove}
-            disabled
-          >
-            <Captions size={14} className="linghuiNodeEditorToolButtonIcon" />
-            <span>智能去字幕</span>
-            <Sparkles size={12} className="linghuiNodeEditorToolButtonHintIcon" />
-          </button>
-        </Tooltip>
-
-        <Dropdown
-          trigger={['click']}
-          classNames={{ root: 'linghuiNodeEditorDropdownMenu' }}
-          getPopupContainer={resolveDropdownContainer}
-          menu={{ items: audioSeparationMenu }}
-        >
-          <button
-            type="button"
-            className={`linghuiNodeEditorToolButton ${activeVideoTool === 'audio-separation' ? 'isActive' : ''}`}
-            onClick={event => event.stopPropagation()}
-          >
-            <AudioWaveform size={14} className="linghuiNodeEditorToolButtonIcon" />
-            <span>音频分离</span>
-            <ChevronDown size={12} className="linghuiNodeEditorToolButtonCaret" />
-          </button>
-        </Dropdown>
-      </div>
-    );
-  };
-
   const renderToolbar = () => {
     if (nodeType === 'linghui/image') {
       if (!hasCurrentImage) {
@@ -539,66 +350,19 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
       // 宫格切分模式：保留特殊工具条（用户在切分流程中需要"宫格档位/已选宫格数/创建生图节点/回退"专属操作）。
       if (isGridSplitMode) {
         return (
-          <div className="linghuiNodeEditorGridToolRail">
-            <Dropdown
-              open={openDropdownKey === 'grid-split:type'}
-              trigger={[]}
-              classNames={{ root: 'linghuiNodeEditorDropdownMenu' }}
-              getPopupContainer={resolveDropdownContainer}
-              onOpenChange={(nextOpen) => handleDropdownOpenChange('grid-split:type', nextOpen)}
-              menu={{
-                items: gridSplitMenuItems,
-                selectable: true,
-                selectedKeys: [splitGridType],
-              }}
-            >
-              <Button
-                size="small"
-                className="linghuiNodeEditorToolButton isActive"
-                onClick={(event) => handleDropdownTriggerClick(event, 'grid-split:type')}
-              >
-                宫格 {GRID_SPLIT_OPTIONS.find(option => option.value === splitGridType)?.label ?? '4格'}
-              </Button>
-            </Dropdown>
-            <div className="linghuiNodeEditorGridStatus">
-              已选择 {selectedSplitCells.length} 个宫格
-            </div>
-            <Button
-              type="primary"
-              size="small"
-              disabled={selectedSplitCells.length === 0}
-              onClick={() => onExecuteGridSplit?.()}
-            >
-              创建生图节点
-            </Button>
-            <Dropdown
-              open={openDropdownKey === 'grid-split:upscale'}
-              trigger={[]}
-              classNames={{ root: 'linghuiNodeEditorDropdownMenu' }}
-              getPopupContainer={resolveDropdownContainer}
-              onOpenChange={(nextOpen) => handleDropdownOpenChange('grid-split:upscale', nextOpen)}
-              menu={{
-                items: gridSplitUpscaleMenuItems,
-                selectable: true,
-                selectedKeys: [String(gridSplitUpscaleFactor)],
-              }}
-            >
-              <Button
-                size="small"
-                className="linghuiNodeEditorToolButton"
-                onClick={(event) => handleDropdownTriggerClick(event, 'grid-split:upscale')}
-              >
-                高清 {gridSplitUpscaleFactor}x
-              </Button>
-            </Dropdown>
-            <Button
-              size="small"
-              className="linghuiNodeEditorToolButton"
-              onClick={() => onRevertGridSplit?.()}
-            >
-              回退
-            </Button>
-          </div>
+          <LinghuiNodeEditorGridSplitToolbar
+            openDropdownKey={openDropdownKey}
+            splitGridType={splitGridType}
+            selectedSplitCellCount={selectedSplitCells.length}
+            gridSplitUpscaleFactor={gridSplitUpscaleFactor}
+            gridSplitMenuItems={gridSplitMenuItems}
+            gridSplitUpscaleMenuItems={gridSplitUpscaleMenuItems}
+            onDropdownOpenChange={handleDropdownOpenChange}
+            onDropdownTriggerClick={handleDropdownTriggerClick}
+            onExecuteGridSplit={onExecuteGridSplit}
+            onRevertGridSplit={onRevertGridSplit}
+            resolveDropdownContainer={resolveDropdownContainer}
+          />
         );
       }
 
@@ -620,7 +384,16 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
         return null;
       }
 
-      return renderLibTVVideoToolbar();
+      return (
+        <LinghuiNodeEditorVideoToolbar
+          nodeId={nodeId}
+          activeVideoTool={activeVideoTool}
+          message={message}
+          onToolChange={tool => setActiveTool(tool ? { kind: 'video', nodeId, tool } : null)}
+          onSeparateVideoAudio={onSeparateVideoAudio}
+          resolveDropdownContainer={resolveDropdownContainer}
+        />
+      );
     }
 
     return null;
@@ -674,103 +447,28 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
           onMouseDown={handleStopPropagation}
           onPointerDown={handleStopPropagation}
         >
-          {nodeType === 'linghui/text' && (
-            <TextNodeEditor
-              nodeId={nodeId}
-              nodeData={nodeData}
-              nodeRun={nodeRuns[nodeId]}
-              promptReferences={promptReferences}
-              onRun={() => onRunNode(nodeId)}
-            />
-          )}
-          {isAgentNode && (
-            <AgentNodeEditor
-              nodeId={nodeId}
-              nodeData={nodeData}
-              nodeRun={nodeRuns[nodeId]}
-              promptReferences={promptReferences}
-              onRun={() => onRunNode(nodeId)}
-            />
-          )}
-          {nodeType === 'linghui/image' && (
-            <ImageNodeEditor
-              nodeId={nodeId}
-              nodeData={nodeData}
-              nodeRun={nodeRuns[nodeId]}
-              referenceImages={referenceImages}
-              promptReferences={promptReferences}
-              workspaceId={workspaceId}
-              activeTool={activeImageTool}
-              onToolChange={tool => setActiveTool(tool ? { kind: 'image', nodeId, tool } : null)}
-              onExecuteMultiAngle={options => onExecuteMultiAngle?.(options)}
-              onApplyImageToolPreset={onApplyImageToolPreset}
-              onRun={() => onRunNode(nodeId)}
-            />
-          )}
-          {nodeType === 'linghui/panorama' && (
-            <PanoramaNodeEditor
-              nodeId={nodeId}
-              nodeData={nodeData}
-              nodeRun={nodeRuns[nodeId]}
-              referenceImages={referenceImages}
-              promptReferences={promptReferences}
-              workspaceId={workspaceId}
-              activeTool={activeImageTool}
-              onToolChange={tool => setActiveTool(tool ? { kind: 'image', nodeId, tool } : null)}
-              onExecuteMultiAngle={options => onExecuteMultiAngle?.(options)}
-              onRun={() => onRunNode(nodeId)}
-            />
-          )}
-          {nodeType === 'linghui/video' && (
-            <VideoNodeEditor
-              nodeId={nodeId}
-              nodeData={nodeData}
-              nodeRun={nodeRuns[nodeId]}
-              referenceImages={referenceImages}
-              referenceVideos={referenceVideos}
-              referenceAudios={referenceAudios}
-              promptReferences={promptReferences}
-              workspaceId={workspaceId}
-              activeTool={activeVideoTool}
-              onToolChange={tool => setActiveTool(tool ? { kind: 'video', nodeId, tool } : null)}
-              onRun={() => onRunNode(nodeId)}
-            />
-          )}
-          {nodeType === 'linghui/audio' && (
-            <AudioNodeEditor
-              nodeId={nodeId}
-              nodeData={nodeData}
-              nodeRun={nodeRuns[nodeId]}
-              promptReferences={promptReferences}
-              workspaceId={workspaceId}
-              onAssetLibraryMutate={onAssetLibraryMutate}
-              onRun={() => onRunNode(nodeId)}
-            />
-          )}
-          {nodeType === 'linghui/script' && (
-            <ScriptNodeEditor
-              nodeId={nodeId}
-              nodeData={nodeData}
-              nodeRun={nodeRuns[nodeId]}
-              promptReferences={promptReferences}
-              onRun={() => onRunNode(nodeId)}
-              onDeriveShots={shots => onDeriveScriptShots(nodeId, shots)}
-              onGenerateImages={shots => onGenerateScriptImages(nodeId, shots)}
-              onGenerateVideos={shots => onGenerateScriptVideos(nodeId, shots)}
-            />
-          )}
-          {nodeType === 'linghui/storyboard' && (
-            <StoryboardNodeEditor
-              nodeId={nodeId}
-              nodeData={nodeData}
-              nodeRun={nodeRuns[nodeId]}
-              promptReferences={promptReferences}
-              onRun={() => onRunNode(nodeId)}
-              onDeriveShots={shots => onDeriveScriptShots(nodeId, shots)}
-              onGenerateImages={shots => onGenerateScriptImages(nodeId, shots)}
-              onGenerateVideos={shots => onGenerateScriptVideos(nodeId, shots)}
-            />
-          )}
+          <LinghuiNodeEditorSurface
+            nodeId={nodeId}
+            nodeType={nodeType}
+            nodeData={nodeData}
+            nodeRuns={nodeRuns}
+            workspaceId={workspaceId}
+            referenceImages={referenceImages}
+            referenceVideos={referenceVideos}
+            referenceAudios={referenceAudios}
+            promptReferences={promptReferences}
+            activeImageTool={activeImageTool}
+            activeVideoTool={activeVideoTool}
+            onImageToolChange={tool => setActiveTool(tool ? { kind: 'image', nodeId, tool } : null)}
+            onVideoToolChange={tool => setActiveTool(tool ? { kind: 'video', nodeId, tool } : null)}
+            onExecuteMultiAngle={onExecuteMultiAngle}
+            onApplyImageToolPreset={onApplyImageToolPreset}
+            onAssetLibraryMutate={onAssetLibraryMutate}
+            onRunNode={onRunNode}
+            onDeriveScriptShots={onDeriveScriptShots}
+            onGenerateScriptImages={onGenerateScriptImages}
+            onGenerateScriptVideos={onGenerateScriptVideos}
+          />
         </div>
       )}
     </div>

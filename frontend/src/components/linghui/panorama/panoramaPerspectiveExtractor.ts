@@ -293,3 +293,129 @@ export const PANORAMA_PERSPECTIVE_EIGHT_DIRECTIONS: Array<{
   pitch: 0,
   fovDeg: 60,
 }));
+
+// ============================================================
+// Viewer-aligned 抽取：专给 <PanoramaViewer> 的"应用此视角"按钮用
+// ============================================================
+//
+// 与上面通用 extractor 的关键区别（确保所抽即所见，对齐 PanoramaViewer 内部相机约定）：
+//   - viewer 相机 lookAt 公式 = (sin(yaw)*cos(pitch), sin(pitch), cos(yaw)*cos(pitch))
+//     panorama 中心朝 +Z；上面通用 extractor 约定中心朝 -Z（OpenGL 视图前向）
+//   - viewer 的 sphere 用 scale=[-1,1,1] + BackSide，texture 等距柱状默认 v=0=顶部
+//   - 通用 extractor 的 v 公式 v=(pitchSph+π/2)/π 让 pitch>0(上) 映射到 v>0.5（panorama 底部）
+//     即"用户在 viewer 朝上看天空，extractor 截出来是地面"——上下颠倒
+//   - 通用 extractor 的 atan2(dx, -dz) 让 panorama 中心朝 -Z，与 viewer 中心朝 +Z 整体差 180°
+//     即"用户在 viewer 看到的正前画面，extractor 截出来是背后画面"
+//
+// 为了不影响通用 extractor 已有的 6 face / 8 direction 等预生成功能，这里独立实现。
+//
+// 内部公式：
+//   - camN = (0, 0, +1)            // 相机朝 +Z，与 viewer 一致
+//   - 屏幕像素 (px, py) → camera-space (camX, camY, +1) NDC 反算
+//   - Rx(-pitch) * camN：pitch>0 → wy>0（朝上）
+//   - Ry(+yaw)  * v1：yaw>0 → wx>0（朝右）
+//   - directionToUVForViewer：atan2(dx, dz) 让 dz=+1 → u=0.5（中心）
+//   - v 公式 v=(π/2 - pitchSph)/π 让 pitch>0 → v<0.5（panorama 顶部）
+
+function directionToUVForViewer(
+  dx: number,
+  dy: number,
+  dz: number,
+  mode: LinghuiPanoramaProjectionMode,
+): { u: number; v: number } | null {
+  if (mode === 'flat-wide') return null;
+
+  // panorama 中心朝 +Z；yaw 从 +Z 顺时针绕 Y → +X 为右
+  const yawSph = Math.atan2(dx, dz); // [-π, π]，0 时正对 +Z
+  const pitchSph = Math.asin(Math.max(-1, Math.min(1, dy))); // [-π/2, π/2]
+
+  // u: yawSph=0(中心) → u=0.5；yawSph=+π → u=1（右边缘，会 wrap 到左）
+  const u = (yawSph + Math.PI) / (2 * Math.PI);
+
+  if (mode === 'equirectangular-2to1') {
+    // v: pitchSph=+π/2(天顶) → v=0；pitchSph=-π/2(地底) → v=1
+    const v = (Math.PI / 2 - pitchSph) / Math.PI;
+    return { u, v };
+  }
+
+  // ar720-band：pitch 限制在 ±AR720_BAND_HALF_PITCH
+  if (pitchSph < -AR720_BAND_HALF_PITCH || pitchSph > AR720_BAND_HALF_PITCH) return null;
+  // band 内：pitchSph=+HALF → v=0（顶）；pitchSph=-HALF → v=1（底）
+  const v = (AR720_BAND_HALF_PITCH - pitchSph) / (2 * AR720_BAND_HALF_PITCH);
+  return { u, v };
+}
+
+/**
+ * 从 PanoramaViewer 当前相机视角抽取 perspective 图。
+ * 调用方传入的 yaw/pitch/fovDeg **必须**是 viewer 当前 yawTargetRef/pitchTargetRef/fovRef 的快照
+ * （不要做任何坐标系转换）。
+ */
+export async function extractPerspectiveViewFromViewerCamera(
+  panoramaSrc: string,
+  options: ExtractPerspectiveOptions,
+): Promise<ExtractPerspectiveResult> {
+  const { yaw, pitch, fovDeg, width, height, projectionMode } = options;
+
+  if (projectionMode === 'flat-wide') {
+    // flat 没有球面投影，直接 center crop（沿用通用 extractor 的实现）
+    return extractFlatCrop(panoramaSrc, options);
+  }
+
+  const source = await loadImageData(panoramaSrc);
+  const out = document.createElement('canvas');
+  out.width = width;
+  out.height = height;
+  const outCtx = out.getContext('2d');
+  if (!outCtx) throw new Error('无法创建输出 canvas');
+  const outImage = outCtx.createImageData(width, height);
+
+  const fovRad = (fovDeg * Math.PI) / 180;
+  const halfTan = Math.tan(fovRad / 2);
+  const aspect = width / height;
+
+  // Rx(-pitch)：pitch>0 → 朝上（与 viewer 一致）
+  const cp = Math.cos(pitch);
+  const sp = Math.sin(pitch);
+  // Ry(+yaw)：yaw>0 → 朝右
+  const cy = Math.cos(yaw);
+  const sy = Math.sin(yaw);
+
+  for (let py = 0; py < height; py++) {
+    const ndcY = 1 - (2 * (py + 0.5)) / height;
+    for (let px = 0; px < width; px++) {
+      const ndcX = (2 * (px + 0.5)) / width - 1;
+      // camera-space 方向：相机朝 +Z（与 viewer 一致）
+      const camX = ndcX * halfTan * aspect;
+      const camY = ndcY * halfTan;
+      const camZ = 1;
+      const camLen = Math.sqrt(camX * camX + camY * camY + camZ * camZ);
+      const cnx = camX / camLen;
+      const cny = camY / camLen;
+      const cnz = camZ / camLen;
+      // Rx(-pitch)：y' = cny*cp + cnz*sp; z' = -cny*sp + cnz*cp
+      const py1 = cny * cp + cnz * sp;
+      const pz1 = -cny * sp + cnz * cp;
+      // Ry(+yaw)：x' = cnx*cy + z*sy; z' = -cnx*sy + z*cy
+      const wx = cnx * cy + pz1 * sy;
+      const wy = py1;
+      const wz = -cnx * sy + pz1 * cy;
+      const uv = directionToUVForViewer(wx, wy, wz, projectionMode);
+      const outIdx = (py * width + px) * 4;
+      if (!uv) {
+        outImage.data[outIdx] = AR720_BAND_FALLBACK_RGB[0];
+        outImage.data[outIdx + 1] = AR720_BAND_FALLBACK_RGB[1];
+        outImage.data[outIdx + 2] = AR720_BAND_FALLBACK_RGB[2];
+        outImage.data[outIdx + 3] = 255;
+        continue;
+      }
+      const [r, g, b] = sampleBilinear(source, uv.u, uv.v);
+      outImage.data[outIdx] = r;
+      outImage.data[outIdx + 1] = g;
+      outImage.data[outIdx + 2] = b;
+      outImage.data[outIdx + 3] = 255;
+    }
+  }
+
+  outCtx.putImageData(outImage, 0, 0);
+  return { dataUrl: out.toDataURL('image/png'), width, height };
+}

@@ -1,16 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { InfoCircleOutlined } from '@ant-design/icons';
-import { App, Button, Dropdown, Popover, Slider, Tooltip } from 'antd';
+import { App, Button, Dropdown, Popover } from 'antd';
 import type { MenuProps } from 'antd';
-import { ArrowUp, Download, Film } from 'lucide-react';
+import { ArrowUp, Download } from 'lucide-react';
 import {
-  VIDEO_ASPECT_RATIOS,
-  VIDEO_RESOLUTIONS,
   type LinghuiVideoCapability,
   type LinghuiVideoToolKey,
 } from '../../../../types/linghui';
-import { electronService } from '../../../../services/electronService';
-import { fromKomaLocalUrl } from '../../../../utils/urlUtils';
 import type { LinghuiPromptReferenceItem } from '../state/linghuiPromptReferences';
 import { LinghuiPromptEditor } from './LinghuiPromptEditor';
 import {
@@ -18,137 +13,16 @@ import {
   type ProviderOption,
   type VideoToolPreset,
   formatVideoParameterSummary,
-  getPreviewSource,
 } from '../state/videoNodeEditorShared';
 import {
   getVideoCapabilityDescriptor,
   type VideoCapabilityDescriptor,
 } from '../state/videoCapabilityUtils';
 import {
-  clampDurationToSpec,
-  specToInputBounds,
   type VideoDurationSpec,
 } from '../../../../providers/itv/durationSpec';
-
-const decodeKomaLocalSource = fromKomaLocalUrl;
-
-function isRemoteSource(source: string): boolean {
-  return /^https?:\/\//i.test(source);
-}
-
-function isLocalSource(source: string): boolean {
-  return Boolean(source) && !isRemoteSource(source) && !source.startsWith('data:') && !source.startsWith('blob:');
-}
-
-interface VideoAccessCardProps {
-  source: string;
-  posterSource?: string;
-  emptyDescription: string;
-  pills?: string[];
-  onDownload?: () => void;
-}
-
-function VideoAccessCard({
-  source,
-  posterSource,
-  emptyDescription,
-  pills = [],
-  onDownload,
-}: VideoAccessCardProps) {
-  const { message } = App.useApp();
-  const rawSource = source.startsWith('koma-local://') ? decodeKomaLocalSource(source) : source;
-  const previewSource = posterSource ? getPreviewSource(posterSource) : '';
-  const sourceLabel = rawSource.split(/[\\/]/).pop() || '视频文件';
-  const canOpen = Boolean(rawSource) && (isRemoteSource(rawSource) || isLocalSource(rawSource));
-  const canReveal = isLocalSource(rawSource);
-
-  const handleOpen = async () => {
-    if (!canOpen) return;
-    try {
-      if (isRemoteSource(rawSource)) {
-        await electronService.shell.openExternal(rawSource);
-      } else {
-        await electronService.shell.openPath(rawSource);
-      }
-    } catch (error) {
-      message.error(error instanceof Error ? error.message : '打开视频失败');
-    }
-  };
-
-  const handleReveal = async () => {
-    if (!canReveal) return;
-    try {
-      await electronService.shell.showItemInFolder(rawSource);
-    } catch (error) {
-      message.error(error instanceof Error ? error.message : '定位视频文件失败');
-    }
-  };
-
-  return (
-    <div className="linghuiEditorPlayerCard">
-      <div className="linghuiEditorPlayerSurface isStatic">
-        {previewSource ? (
-          <img
-            className="linghuiEditorPlayerPoster"
-            src={previewSource}
-            alt={sourceLabel}
-          />
-        ) : (
-          <div className="linghuiEditorPlayerPlaceholder">
-            <Film size={24} />
-            <span>{emptyDescription}</span>
-          </div>
-        )}
-        <div className="linghuiEditorPlayerOverlay">
-          <span className="linghuiEditorSummaryPill">弹框内不嵌入播放器</span>
-          {onDownload ? (
-            <Button size="small" onClick={onDownload} icon={<Download size={14} />}>
-              下载
-            </Button>
-          ) : null}
-          {canOpen ? (
-            <Button size="small" type="primary" onClick={handleOpen}>
-              {isRemoteSource(rawSource) ? '在浏览器打开' : '在系统播放器打开'}
-            </Button>
-          ) : null}
-          {canReveal ? (
-            <Button size="small" onClick={handleReveal}>
-              打开所在位置
-            </Button>
-          ) : null}
-        </div>
-      </div>
-      <div className="linghuiEditorPassThroughTitle">{sourceLabel}</div>
-      <div className="linghuiEditorPassThroughMeta">{rawSource}</div>
-      {pills.length > 0 ? (
-        <div className="linghuiEditorPlayerMetaRow">
-          {pills.map(item => (
-            <span key={item} className="linghuiEditorSummaryPill">{item}</span>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function TooltipLabel({
-  label,
-  tooltip,
-}: {
-  label: React.ReactNode;
-  tooltip: React.ReactNode;
-}) {
-  return (
-    <div className="linghuiEditorLabelWithTooltip">
-      <span>{label}</span>
-      <Tooltip title={tooltip}>
-        <span className="linghuiEditorInfoIcon" aria-label="查看说明">
-          <InfoCircleOutlined />
-        </span>
-      </Tooltip>
-    </div>
-  );
-}
+import { VideoAccessCard, TooltipLabel } from './VideoAccessCard';
+import { VideoParameterPanel } from './VideoParameterPanel';
 
 interface VideoToolSectionProps {
   activeTool: LinghuiVideoToolKey | null;
@@ -315,24 +189,6 @@ export function VideoGeneratePanel({
   const selectedProvider = providers.find(option => option.value === selectedProviderValue) ?? providers[0];
   const modelSummary = selectedProvider?.label || '未配置视频模型';
   const parameterSummary = formatVideoParameterSummary({ aspectRatio, resolution, duration });
-  const durationBounds = specToInputBounds(durationSpec);
-  const durationMarks = useMemo(() => {
-    if (durationSpec.kind === 'enum') {
-      return durationSpec.values.reduce<Record<number, string>>((marks, value) => {
-        marks[value] = `${value}s`;
-        return marks;
-      }, {});
-    }
-
-    return {
-      [durationSpec.min]: `${durationSpec.min}s`,
-      [durationSpec.default]: `${durationSpec.default}s`,
-      [durationSpec.max]: `${durationSpec.max}s`,
-    };
-  }, [durationSpec]);
-  const durationHint = durationSpec.kind === 'enum'
-    ? `当前模型仅支持 ${durationSpec.values.map(value => `${value}s`).join(' / ')}`
-    : `当前模型支持 ${durationSpec.min}-${durationSpec.max}s`;
 
   const modelMenuItems = useMemo<MenuProps['items']>(() => (
     providers.map(provider => ({
@@ -390,100 +246,17 @@ export function VideoGeneratePanel({
   ]);
 
   const parameterContent = useMemo(() => (
-    <div
-      className="linghuiVideoEditorParamsPopover"
-      onClick={event => event.stopPropagation()}
-      onMouseDown={event => event.stopPropagation()}
-      onPointerDown={event => event.stopPropagation()}
-    >
-      <div className="linghuiVideoEditorParamGroup">
-        <div className="linghuiVideoEditorParamLabel">比例</div>
-        <div className="linghuiVideoEditorOptionGrid">
-          {VIDEO_ASPECT_RATIOS.map(option => (
-            <button
-              key={option.value}
-              type="button"
-              className={`linghuiVideoEditorOptionTile ${aspectRatio === option.value ? 'isActive' : ''}`}
-              onClick={() => {
-                setOpenPanel(null);
-                onUpdateAspectRatio(option.value);
-              }}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="linghuiVideoEditorParamGroup">
-        <div className="linghuiVideoEditorParamLabel">分辨率</div>
-        <div className="linghuiVideoEditorOptionGrid isCompact">
-          {VIDEO_RESOLUTIONS.map(option => (
-            <button
-              key={option.value}
-              type="button"
-              className={`linghuiVideoEditorOptionTile ${resolution === option.value ? 'isActive' : ''}`}
-              onClick={() => {
-                setOpenPanel(null);
-                onUpdateResolution(option.value);
-              }}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="linghuiVideoEditorParamGroup">
-        <div className="linghuiVideoEditorDurationHeader">
-          <span className="linghuiVideoEditorParamLabel">视频时长</span>
-          <span className="linghuiVideoEditorDurationValue">{duration}s</span>
-        </div>
-        {durationSpec.kind === 'enum' ? (
-          <div className="linghuiVideoEditorDurationChoices">
-            {durationSpec.values.map(value => (
-              <button
-                key={value}
-                type="button"
-                className={`linghuiVideoEditorOptionTile ${duration === value ? 'isActive' : ''}`}
-                onClick={() => {
-                  setOpenPanel(null);
-                  onUpdateDuration(value);
-                }}
-              >
-                {value}s
-              </button>
-            ))}
-          </div>
-        ) : (
-          <Slider
-            className="linghuiVideoEditorDurationSlider"
-            min={durationBounds.min}
-            max={durationBounds.max}
-            step={durationBounds.step}
-            marks={durationMarks}
-            value={clampDurationToSpec(duration, durationSpec)}
-            onChange={value => onUpdateDuration(Number(value))}
-            onChangeComplete={() => setOpenPanel(null)}
-          />
-        )}
-        <div className="linghuiVideoEditorDurationHint">{durationHint}</div>
-      </div>
-    </div>
-  ), [
-    aspectRatio,
-    duration,
-    durationBounds.max,
-    durationBounds.min,
-    durationBounds.step,
-    durationHint,
-    durationMarks,
-    durationSpec,
-    onUpdateAspectRatio,
-    onUpdateDuration,
-    onUpdateResolution,
-    resolution,
-  ]);
+    <VideoParameterPanel
+      aspectRatio={aspectRatio}
+      resolution={resolution}
+      duration={duration}
+      durationSpec={durationSpec}
+      onUpdateAspectRatio={onUpdateAspectRatio}
+      onUpdateResolution={onUpdateResolution}
+      onUpdateDuration={onUpdateDuration}
+      onClose={() => setOpenPanel(null)}
+    />
+  ), [aspectRatio, resolution, duration, durationSpec, onUpdateAspectRatio, onUpdateResolution, onUpdateDuration]);
 
   return (
     <>

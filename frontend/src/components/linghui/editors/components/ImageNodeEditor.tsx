@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { App, Button, Dropdown, Popover } from 'antd';
+import { App } from 'antd';
 import type { MenuProps } from 'antd';
-import { ArrowUp, Camera, Image as ImageIcon, RotateCcw, Trash2, UploadCloud, X } from 'lucide-react';
 import type {
   LinghuiExecuteMultiAngleOptions,
   LinghuiImageFocusRegion,
@@ -12,7 +11,6 @@ import type {
   LinghuiImageToolKey,
   LinghuiMultiAngleConfig,
   LinghuiMultiAngleMode,
-  LinghuiMultiAnglePresetKey,
   LinghuiNodeData,
   LinghuiNodeRunState,
   LinghuiRelightDirection,
@@ -23,11 +21,9 @@ import {
   DEFAULT_LINGHUI_IMAGE_RELIGHT_CONFIG,
   DEFAULT_LINGHUI_MULTI_ANGLE_CONFIG,
   IMAGE_ASPECT_RATIOS,
-  IMAGE_RESOLUTIONS,
   LINGHUI_IMAGE_APERTURE_PRESETS,
   LINGHUI_IMAGE_FOCAL_LENGTH_PRESETS,
   LINGHUI_IMAGE_MARK_POINT_LIMIT,
-  LINGHUI_IMAGE_BATCH_COUNTS,
   normalizeLinghuiImageCinematicConfig,
   normalizeLinghuiImageFocusRegion,
   normalizeLinghuiImageMarkPoints,
@@ -46,17 +42,41 @@ import {
   type LinghuiImageToolPresetDef,
 } from '../state/linghuiImageToolPresets';
 import type { LinghuiPromptReferenceItem } from '../state/linghuiPromptReferences';
-import { LinghuiPromptEditor } from './LinghuiPromptEditor';
-import { LinghuiMultiAngle3DViewport } from './LinghuiMultiAngle3DViewport';
-import { LinghuiLightingSpherePreview } from './LinghuiLightingSpherePreview';
+import {
+  ImageNodeEditorMultiAnglePanel,
+  ImageNodeEditorRelightPanel,
+  type LibTVMultiAnglePreset,
+} from './ImageNodeEditorAngleRelightPanels';
+import {
+  ImageNodeEditorFocusPanel,
+  ImageNodeEditorMarkPanel,
+  type LinghuiFocusRegionAxis,
+} from './ImageNodeEditorFocusMarkPanels';
+import {
+  ImageNodeEditorGenericPanel,
+  ImageNodeEditorOutpaintPanel,
+  ImageNodeEditorRepaintPanel,
+  type LinghuiImageOutpaintRatio,
+} from './ImageNodeEditorLibTVPanels';
+import {
+  ImageNodeEditorCameraSettingsContent,
+  ImageNodeEditorImageSettingsContent,
+  type ImageNodeEditorExtraSettingsBlock,
+} from './ImageNodeEditorSettingsPopovers';
+import {
+  ImageNodeEditorGeneratePanel,
+  ImageNodeEditorImportPanel,
+  type ImageNodeEditorDisplayReferenceImage,
+} from './ImageNodeEditorMainPanel';
 import { useLinghuiNodeEditorApi, useLinghuiNodeMutation } from '../../nodes/state/LinghuiNodeRunsContext';
 import { useLinghuiActionLock } from '../hooks/useLinghuiActionLock';
-import { cssVars } from '../../../../theme/runtime';
 import {
   createLinghuiImageAssetItemFromSource,
   createLinghuiImageImportProperties,
   resolveLinghuiImageCollection,
 } from '../state/linghuiImageCollections';
+
+export type { ImageNodeEditorExtraSettingsBlock } from './ImageNodeEditorSettingsPopovers';
 
 function getPreviewSource(source?: string): string {
   return toFileSystemDisplayUrl(source) || '';
@@ -97,14 +117,6 @@ function buildFocusRegionPatch(
   };
 }
 
-function formatFocusRegionPercent(value: number): string {
-  return `${Math.round(value * 100)}%`;
-}
-
-function formatMarkPointPercent(value: number): string {
-  return `${Math.round(value * 100)}%`;
-}
-
 interface ProviderOption {
   value: string;
   label: string;
@@ -112,33 +124,7 @@ interface ProviderOption {
   modelLabel?: string;
 }
 
-interface DisplayReferenceImage {
-  source?: string;
-  label?: string;
-  badge: string;
-}
-
-type LinghuiFocusRegionAxis = 'x' | 'y' | 'width' | 'height';
-
-const IMAGE_FOCUS_REGION_STEP = 0.01;
-const IMAGE_FOCUS_REGION_PRESETS: Array<{
-  key: string;
-  label: string;
-  region: Pick<LinghuiImageFocusRegion, 'x' | 'y' | 'width' | 'height'>;
-}> = [
-  { key: 'center', label: '中心', region: { x: 0.28, y: 0.22, width: 0.44, height: 0.42 } },
-  { key: 'portrait', label: '脸部', region: { x: 0.32, y: 0.12, width: 0.36, height: 0.32 } },
-  { key: 'upper', label: '上半身', region: { x: 0.2, y: 0.1, width: 0.6, height: 0.58 } },
-  { key: 'full', label: '全图', region: { x: 0.04, y: 0.04, width: 0.92, height: 0.92 } },
-];
-
-const LIBTV_MULTI_ANGLE_PRESETS: Array<{
-  key: LinghuiMultiAnglePresetKey;
-  label: string;
-  values: Pick<LinghuiMultiAngleConfig, 'rotation' | 'tilt' | 'scale'> | null;
-  isWideAngle?: boolean;
-  prompt: string;
-}> = [
+const LIBTV_MULTI_ANGLE_PRESETS: LibTVMultiAnglePreset[] = [
   { key: 'custom', label: '自定义', values: null, prompt: '' },
   { key: 'fisheye', label: '鱼眼视角', values: { rotation: 0, tilt: 30, scale: 100 }, isWideAngle: true, prompt: '极度特写镜头，广角镜头，边缘带有鱼眼畸变效果' },
   { key: 'tilted', label: '倾斜视角', values: { rotation: 45, tilt: -30, scale: 50 }, prompt: 'dutch angle，tilted frame' },
@@ -188,16 +174,6 @@ function createLinghuiImageMarkPoint(params: {
     prompt: `请重点关注标记 ${pointIndex} 附近的主体、动作或细节，并保持画面其它区域稳定。`,
     updatedAt: Date.now(),
   };
-}
-
-export interface ImageNodeEditorExtraSettingsBlock {
-  /** 渲染在设置弹层里的标题（与原生 比例 / 分辨率 / 出图数量 等并列） */
-  label: string;
-  /** 当前选中的 value */
-  value: string;
-  /** 候选项；label 显示，value 写回 */
-  options: Array<{ value: string; label: string; hint?: string }>;
-  onChange: (next: string) => void;
 }
 
 export interface ImageNodeEditorProps {
@@ -287,14 +263,6 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
   const derivedBannerText = isDerivedFromController
     ? `这是控制器节点派生的结果${Number.isFinite(generatedSequence) && generatedSequence > 0 ? ` · 第 ${generatedSequence} 次` : ''}。修改 prompt / 参数请回到上游控制器节点重新生成。`
     : '';
-  const focusRegionStyle = activeFocusRegion
-    ? cssVars({
-        '--linghui-focus-x': `${activeFocusRegion.x * 100}%`,
-        '--linghui-focus-y': `${activeFocusRegion.y * 100}%`,
-        '--linghui-focus-w': `${activeFocusRegion.width * 100}%`,
-        '--linghui-focus-h': `${activeFocusRegion.height * 100}%`,
-      })
-    : undefined;
   const generateProgressText = nodeRun?.status === 'running'
     && typeof nodeRun.progress === 'number'
     && Number.isFinite(nodeRun.progress)
@@ -333,7 +301,7 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
     normalizeLinghuiImageRelightConfig(props.relight ?? DEFAULT_LINGHUI_IMAGE_RELIGHT_CONFIG)
   ), [props.relight]);
 
-  const displayReferenceImages: DisplayReferenceImage[] = referenceImages.map((ref, index) => ({
+  const displayReferenceImages: ImageNodeEditorDisplayReferenceImage[] = referenceImages.map((ref, index) => ({
     ...ref,
     badge: String(index + 1),
   }));
@@ -348,7 +316,7 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
   const [outpaintResolution, setOutpaintResolution] = useState(String(outpaintPresets[0]?.properties?.resolution ?? resolution));
   const [outpaintBatchCount, setOutpaintBatchCount] = useState(batchCount);
   // LibTV outpaintRatio 4 向（0-1 区间，0 表示该方向不扩展，0.5 表示扩到原图一半宽/高）。
-  const [outpaintRatio, setOutpaintRatio] = useState<{ top: number; right: number; bottom: number; left: number }>(
+  const [outpaintRatio, setOutpaintRatio] = useState<LinghuiImageOutpaintRatio>(
     () => props.outpaintRatio ?? { top: 0, right: 0.25, bottom: 0, left: 0.25 },
   );
   const [relightPresetLabel, setRelightPresetLabel] = useState(relightPresets[0]?.label ?? '');
@@ -378,6 +346,10 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
   const handleRun = useCallback(() => {
     runWithActionLock(onRun);
   }, [onRun, runWithActionLock]);
+
+  const handleCloseLibTVToolPanel = useCallback(() => {
+    onToolChange(null);
+  }, [onToolChange]);
 
   useEffect(() => {
     loadSettings().then(settings => {
@@ -612,6 +584,17 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
     setOutpaintAspectRatio(String(preset.properties?.aspectRatio ?? aspectRatio));
     setOutpaintResolution(String(preset.properties?.resolution ?? resolution));
   }, [aspectRatio, resolution]);
+
+  const handleSelectGenericPreset = useCallback((preset: LinghuiImageToolPresetDef) => {
+    setGenericPresetLabel(preset.label);
+    // 选 preset 时同步当前比例（保持 LibTV 同源体验）
+    if (preset.properties?.aspectRatio) {
+      setGenericAspectRatio(String(preset.properties.aspectRatio));
+    }
+    if (preset.properties?.resolution) {
+      setGenericResolution(String(preset.properties.resolution));
+    }
+  }, []);
 
   const handleApplyOutpaintPreset = useCallback(() => {
     const preset = outpaintPresets.find(item => item.label === outpaintPresetLabel) ?? outpaintPresets[0];
@@ -938,6 +921,19 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
     updateMarkPoints([...normalizedMarkPoints, nextPoint]);
   }, [currentImageSource, message, normalizedMarkPoints, updateMarkPoints]);
 
+  const handleAddCenterMarkPoint = useCallback((target: HTMLDivElement) => {
+    const rect = target.getBoundingClientRect();
+    const point = createLinghuiImageMarkPoint({
+      x: 0.5,
+      y: 0.5,
+      source: currentImageSource,
+      index: normalizedMarkPoints.length,
+    });
+    if (rect.width > 0 && rect.height > 0 && normalizedMarkPoints.length < LINGHUI_IMAGE_MARK_POINT_LIMIT) {
+      updateMarkPoints([...normalizedMarkPoints, point]);
+    }
+  }, [currentImageSource, normalizedMarkPoints, updateMarkPoints]);
+
   const handleRemoveMarkPoint = useCallback((pointId: string) => {
     updateMarkPoints(normalizedMarkPoints.filter(point => point.id !== pointId));
   }, [normalizedMarkPoints, updateMarkPoints]);
@@ -979,854 +975,147 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
   ), [providers, updateProp]);
 
   const imageSettingsContent = (
-    <div
-      className="linghuiEditorSettingsPopover"
-      onClick={event => event.stopPropagation()}
-      onMouseDown={event => event.stopPropagation()}
-      onPointerDown={event => event.stopPropagation()}
-    >
-      <div className="linghuiEditorSettingsBlock">
-        <div className="linghuiEditorSettingsLabel">比例</div>
-        <div className="linghuiEditorOptionGrid">
-          {aspectRatioChoices.map(option => (
-            <button
-              key={option.value}
-              type="button"
-              className={`linghuiEditorOptionTile ${aspectRatio === option.value ? 'isActive' : ''}`}
-              onClick={() => updateProp('aspectRatio', option.value)}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="linghuiEditorSettingsBlock">
-        <div className="linghuiEditorSettingsLabel">分辨率</div>
-        <div className="linghuiEditorOptionGrid isCompact">
-          {IMAGE_RESOLUTIONS.map(option => (
-            <button
-              key={option.value}
-              type="button"
-              className={`linghuiEditorOptionTile ${resolution === option.value ? 'isActive' : ''}`}
-              onClick={() => updateProp('resolution', option.value)}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {!hideBatchCount && (
-        <div className="linghuiEditorSettingsBlock">
-          <div className="linghuiEditorSettingsLabel">出图数量</div>
-          <div className="linghuiEditorOptionGrid">
-            {LINGHUI_IMAGE_BATCH_COUNTS.map(value => (
-              <button
-                key={value}
-                type="button"
-                className={`linghuiEditorOptionTile ${batchCount === value ? 'isActive' : ''}`}
-                onClick={() => updateProp('batchCount', value)}
-              >
-                {value}张
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {extraSettings && (Array.isArray(extraSettings) ? extraSettings : [extraSettings]).map((block, index) => (
-        <div key={`${block.label}-${index}`} className="linghuiEditorSettingsBlock">
-          <div className="linghuiEditorSettingsLabel">{block.label}</div>
-          <div className="linghuiEditorOptionGrid">
-            {block.options.map(option => (
-              <button
-                key={option.value}
-                type="button"
-                className={`linghuiEditorOptionTile ${block.value === option.value ? 'isActive' : ''}`}
-                onClick={() => block.onChange(option.value)}
-                title={option.hint}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      ))}
-    </div>
+    <ImageNodeEditorImageSettingsContent
+      aspectRatioChoices={aspectRatioChoices}
+      aspectRatio={aspectRatio}
+      resolution={resolution}
+      batchCount={batchCount}
+      hideBatchCount={hideBatchCount}
+      extraSettings={extraSettings}
+      onAspectRatioChange={value => updateProp('aspectRatio', value)}
+      onResolutionChange={value => updateProp('resolution', value)}
+      onBatchCountChange={value => updateProp('batchCount', value)}
+    />
   );
 
   const cameraSettingsContent = (
-    <div
-      className="linghuiEditorSettingsPopover isCameraMenu"
-      onClick={event => event.stopPropagation()}
-      onMouseDown={event => event.stopPropagation()}
-      onPointerDown={event => event.stopPropagation()}
-    >
-      <div className="linghuiEditorSettingsBlock">
-        <div className="linghuiEditorSettingsLabel">焦距 / 镜头</div>
-        <div className="linghuiEditorOptionGrid">
-          {LINGHUI_IMAGE_FOCAL_LENGTH_PRESETS.map(option => (
-            <button
-              key={option.value}
-              type="button"
-              className={`linghuiEditorOptionTile ${cinematicConfig.focalLength === option.value ? 'isActive' : ''}`}
-              onClick={() => updateProp('cinematic', normalizeLinghuiImageCinematicConfig({
-                ...cinematicConfig,
-                focalLength: option.value,
-              }))}
-              title={option.prompt}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="linghuiEditorSettingsBlock">
-        <div className="linghuiEditorSettingsLabel">光圈 / 景深</div>
-        <div className="linghuiEditorOptionGrid isCompact">
-          {LINGHUI_IMAGE_APERTURE_PRESETS.map(option => (
-            <button
-              key={option.value}
-              type="button"
-              className={`linghuiEditorOptionTile ${cinematicConfig.aperture === option.value ? 'isActive' : ''}`}
-              onClick={() => updateProp('cinematic', normalizeLinghuiImageCinematicConfig({
-                ...cinematicConfig,
-                aperture: option.value,
-              }))}
-              title={option.prompt}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
+    <ImageNodeEditorCameraSettingsContent
+      cinematicConfig={cinematicConfig}
+      onCinematicChange={value => updateProp('cinematic', value)}
+    />
   );
 
+  const imagePanelAlt = currentImage?.label || nodeData.label;
   const focusRegionPanel = activeTool === 'focus' && hasCurrentImage ? (
-    <div className="linghuiEditorSection linghuiImageFocusPanel">
-      <div className="linghuiImageFocusHeader">
-        <div>
-          <div className="linghuiEditorSectionTitle">聚焦</div>
-          <div className="linghuiImageFocusHint">红框区域会作为下一次局部补全重点</div>
-        </div>
-        <div className="linghuiEditorSummaryRow">
-          {activeFocusRegion ? (
-            <span className="linghuiEditorSummaryPill">
-              {formatFocusRegionPercent(activeFocusRegion.width)} × {formatFocusRegionPercent(activeFocusRegion.height)}
-            </span>
-          ) : (
-            <span className="linghuiEditorSummaryPill isMuted">未启用</span>
-          )}
-        </div>
-      </div>
-
-      <div className="linghuiImageFocusStage">
-        {currentImagePreview ? (
-          <img src={currentImagePreview} alt={currentImage?.label || nodeData.label} draggable={false} />
-        ) : (
-          <ImageIcon size={22} />
-        )}
-        {activeFocusRegion && <div className="linghuiImageFocusBox" style={focusRegionStyle} />}
-      </div>
-
-      <div className="linghuiImageFocusPresetRow">
-        {IMAGE_FOCUS_REGION_PRESETS.map(preset => (
-          <button
-            key={preset.key}
-            type="button"
-            className="linghuiImageFocusPresetButton"
-            onClick={() => updateFocusRegion({ ...preset.region, enabled: true })}
-          >
-            {preset.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="linghuiImageFocusControls">
-        {([
-          ['x', '横向'],
-          ['y', '纵向'],
-          ['width', '宽度'],
-          ['height', '高度'],
-        ] as Array<[LinghuiFocusRegionAxis, string]>).map(([axis, label]) => {
-          const value = activeFocusRegion?.[axis] ?? DEFAULT_LINGHUI_IMAGE_FOCUS_REGION[axis];
-          return (
-            <label key={axis} className="linghuiImageFocusSlider">
-              <span>{label}</span>
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={IMAGE_FOCUS_REGION_STEP}
-                value={value}
-                onChange={event => updateFocusRegionAxis(axis, Number(event.target.value))}
-              />
-              <strong>{formatFocusRegionPercent(value)}</strong>
-            </label>
-          );
-        })}
-      </div>
-
-      <div className="linghuiImageFocusActions">
-        <Button size="small" type="primary" onClick={handleEnableFocusRegion}>
-          标记区域
-        </Button>
-        <Button size="small" onClick={handleDisableFocusRegion} disabled={!normalizedFocusRegion}>
-          清除聚焦
-        </Button>
-      </div>
-    </div>
+    <ImageNodeEditorFocusPanel
+      currentImagePreview={currentImagePreview}
+      imageAlt={imagePanelAlt}
+      activeFocusRegion={activeFocusRegion}
+      normalizedFocusRegion={normalizedFocusRegion}
+      onUpdateFocusRegion={updateFocusRegion}
+      onUpdateFocusRegionAxis={updateFocusRegionAxis}
+      onEnableFocusRegion={handleEnableFocusRegion}
+      onDisableFocusRegion={handleDisableFocusRegion}
+    />
   ) : null;
 
   const markPointPanel = activeTool === 'mark' && hasCurrentImage ? (
-    <div className="linghuiEditorSection linghuiImageMarkPanel">
-      <div className="linghuiImageFocusHeader">
-        <div>
-          <div className="linghuiEditorSectionTitle">标记</div>
-          <div className="linghuiImageFocusHint">点击图片添加焦点，标记会写入下一次生成提示</div>
-        </div>
-        <span className={`linghuiEditorSummaryPill ${activeMarkPoints.length ? '' : 'isMuted'}`}>
-          {activeMarkPoints.length}/{LINGHUI_IMAGE_MARK_POINT_LIMIT}
-        </span>
-      </div>
-
-      <div
-        className="linghuiImageMarkStage"
-        role="button"
-        aria-label="添加标记点"
-        tabIndex={0}
-        onClick={handleMarkStageClick}
-        onKeyDown={event => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
-            const target = event.currentTarget;
-            const rect = target.getBoundingClientRect();
-            const point = createLinghuiImageMarkPoint({
-              x: 0.5,
-              y: 0.5,
-              source: currentImageSource,
-              index: normalizedMarkPoints.length,
-            });
-            if (rect.width > 0 && rect.height > 0 && normalizedMarkPoints.length < LINGHUI_IMAGE_MARK_POINT_LIMIT) {
-              updateMarkPoints([...normalizedMarkPoints, point]);
-            }
-          }
-        }}
-      >
-        {currentImagePreview ? (
-          <img src={currentImagePreview} alt={currentImage?.label || nodeData.label} draggable={false} />
-        ) : (
-          <ImageIcon size={22} />
-        )}
-        {activeMarkPoints.map((point, index) => (
-          <span
-            key={point.id}
-            className="linghuiImageMarkPoint"
-            style={cssVars({
-              '--linghui-mark-x': `${point.x * 100}%`,
-              '--linghui-mark-y': `${point.y * 100}%`,
-            })}
-          >
-            {index + 1}
-          </span>
-        ))}
-      </div>
-
-      {activeMarkPoints.length > 0 && (
-        <div className="linghuiImageMarkList">
-          {activeMarkPoints.map((point, index) => (
-            <div key={point.id} className="linghuiImageMarkListItem">
-              <span>{point.label || `标记 ${index + 1}`}</span>
-              <strong>
-                {formatMarkPointPercent(point.x)}, {formatMarkPointPercent(point.y)}
-              </strong>
-              <button type="button" onClick={() => handleRemoveMarkPoint(point.id)}>
-                删除
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div className="linghuiImageFocusActions">
-        <Button size="small" onClick={handleClearMarkPoints} disabled={normalizedMarkPoints.length === 0}>
-          清除标记
-        </Button>
-      </div>
-    </div>
+    <ImageNodeEditorMarkPanel
+      currentImagePreview={currentImagePreview}
+      imageAlt={imagePanelAlt}
+      activeMarkPoints={activeMarkPoints}
+      normalizedMarkPointCount={normalizedMarkPoints.length}
+      onStageClick={handleMarkStageClick}
+      onStageKeyboardAdd={handleAddCenterMarkPoint}
+      onRemoveMarkPoint={handleRemoveMarkPoint}
+      onClearMarkPoints={handleClearMarkPoints}
+    />
   ) : null;
 
-  const renderLibTVToolFooter = (onGenerate: () => void, disabled = false) => (
-    <div className="linghuiImageLibTVPanelFooter">
-      <button
-        type="button"
-        className="linghuiImageLibTVResetButton"
-        onClick={() => onToolChange(null)}
-      >
-        <RotateCcw size={14} />
-        <span>重置参数</span>
-      </button>
-      <div className="linghuiImageLibTVFooterRight">
-        <button
-          type="button"
-          className="linghuiImageLibTVGenerateButton"
-          aria-label="生成"
-          disabled={disabled}
-          onClick={onGenerate}
-        >
-          <ArrowUp size={18} />
-        </button>
-      </div>
-    </div>
-  );
+  const multiAngleToolPanel = isMultiAngleToolOpen ? (
+    <ImageNodeEditorMultiAnglePanel
+      currentImagePreview={currentImagePreview}
+      presets={LIBTV_MULTI_ANGLE_PRESETS}
+      multiAngleConfig={multiAngleConfig}
+      onApplyPreset={applyMultiAnglePreset}
+      onSetMode={setMultiAngleMode}
+      onUpdateMultiAngle={updateMultiAngle}
+      onGenerate={handleConfirmMultiAngle}
+      onClose={handleCloseLibTVToolPanel}
+    />
+  ) : null;
 
-  const renderLibTVToolShell = (params: {
-    title: string;
-    className?: string;
-    children: React.ReactNode;
-  }) => (
-    <div className={`linghuiImageLibTVPanel ${params.className ?? ''}`} role="dialog" aria-label={params.title}>
-      <div className="linghuiImageLibTVPanelHeader">
-        <h3>{params.title}</h3>
-        <button
-          type="button"
-          className="linghuiImageLibTVCloseButton"
-          aria-label="关闭"
-          onClick={() => onToolChange(null)}
-        >
-          <X size={16} />
-        </button>
-      </div>
-      {params.children}
-    </div>
-  );
+  const relightToolPanel = isRelightToolOpen ? (
+    <ImageNodeEditorRelightPanel
+      currentImagePreview={currentImagePreview}
+      relightValues={relightValues}
+      relightSceneActive={relightSceneActive}
+      relightPrompt={relightPrompt}
+      relightReferenceImage={relightReferenceImage}
+      relightPresetLabel={relightPresetLabel}
+      relightPresets={relightPresets}
+      mainDirections={LIBTV_RELIGHT_MAIN_DIRECTIONS}
+      backDirections={LIBTV_RELIGHT_BACK_DIRECTIONS}
+      brightnessSteps={LIBTV_RELIGHT_BRIGHTNESS_STEPS}
+      getPreviewSource={getPreviewSource}
+      onSetRelightSceneActive={setRelightSceneActive}
+      onSetRelightBrightnessActive={setRelightBrightnessActive}
+      onSetRelightColorActive={setRelightColorActive}
+      onUpdateRelightValues={updateRelightValues}
+      onSetRelightPrompt={setRelightPrompt}
+      onSetRelightReferenceImage={setRelightReferenceImage}
+      onPickRelightReferenceImage={() => void handlePickRelightReferenceImage()}
+      onApplyRelightPreset={applyRelightPreset}
+      onGenerate={handleApplyRelightPreset}
+      onClose={handleCloseLibTVToolPanel}
+    />
+  ) : null;
 
-  const renderImagePreviewStage = (className = '') => (
-    <div className={`linghuiImageLibTVPreviewStage ${className}`}>
-      {currentImagePreview ? (
-        <img src={currentImagePreview} alt={currentImage?.label || nodeData.label} draggable={false} />
-      ) : (
-        <ImageIcon size={30} />
-      )}
-    </div>
-  );
+  const outpaintToolPanel = isOutpaintToolOpen ? (
+    <ImageNodeEditorOutpaintPanel
+      currentImagePreview={currentImagePreview}
+      imageAlt={imagePanelAlt}
+      aspectRatioChoices={aspectRatioChoices}
+      outpaintPresets={outpaintPresets}
+      outpaintPresetLabel={outpaintPresetLabel}
+      outpaintAspectRatio={outpaintAspectRatio}
+      outpaintResolution={outpaintResolution}
+      outpaintRatio={outpaintRatio}
+      setOutpaintAspectRatio={setOutpaintAspectRatio}
+      setOutpaintResolution={setOutpaintResolution}
+      setOutpaintRatio={setOutpaintRatio}
+      onSelectOutpaintPreset={handleSelectOutpaintPreset}
+      onGenerate={handleApplyOutpaintPreset}
+      onClose={handleCloseLibTVToolPanel}
+    />
+  ) : null;
 
-  const multiAngleToolPanel = isMultiAngleToolOpen ? renderLibTVToolShell({
-    title: '多角度编辑器',
-    className: 'isMultiAngle',
-    children: (
-      <>
-        <div className="linghuiImageLibTVTabRow">
-          {LIBTV_MULTI_ANGLE_PRESETS.map(tab => (
-            <button
-              key={tab.key}
-              type="button"
-              className={multiAngleConfig.presetKey === tab.key ? 'isActive' : ''}
-              onClick={() => applyMultiAnglePreset(tab)}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-        <div className="linghuiImageLibTVPanelBody isTwoColumn">
-          <div className="linghuiImageLibTVPreviewStage isMultiAngleScene linghuiImageLibTVOrbitStage">
-            <LinghuiMultiAngle3DViewport
-              imageUrl={currentImagePreview}
-              mode={multiAngleConfig.mode}
-              rotation={multiAngleConfig.rotation}
-              tilt={multiAngleConfig.tilt}
-              scale={multiAngleConfig.scale}
-              isWideAngle={multiAngleConfig.isWideAngle}
-              onRotationTiltChange={(rotation, tilt) => updateMultiAngle({ rotation, tilt, presetKey: 'custom' })}
-              onScaleChange={(scale) => updateMultiAngle({ scale, presetKey: 'custom' })}
-            />
-          </div>
-          <div className="linghuiImageLibTVControlStack">
-            <div className="linghuiImageLibTVModeSwitcher" role="tablist" aria-label="多角度模式">
-              <button type="button" className={multiAngleConfig.mode === 'object' ? 'isActive' : ''} onClick={() => setMultiAngleMode('object')}>
-                Object
-              </button>
-              <button type="button" className={multiAngleConfig.mode === 'camera' ? 'isActive' : ''} onClick={() => setMultiAngleMode('camera')}>
-                Camera
-              </button>
-            </div>
-            {multiAngleConfig.mode === 'camera' ? (
-              <>
-                <div className="linghuiImageLibTVSliderRow">
-                  <span>水平环绕</span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={315}
-                    step={45}
-                    value={((Math.round(multiAngleConfig.rotation / 45) * 45) % 360 + 360) % 360}
-                    onChange={event => updateMultiAngle({ rotation: Number(event.target.value), presetKey: 'custom' })}
-                  />
-                  <strong>{((Math.round(multiAngleConfig.rotation / 45) * 45) % 360 + 360) % 360}°</strong>
-                </div>
-                <div className="linghuiImageLibTVSliderRow">
-                  <span>垂直俯仰</span>
-                  <input
-                    type="range"
-                    min={-30}
-                    max={60}
-                    step={30}
-                    value={Math.max(-30, Math.min(60, Math.round(multiAngleConfig.tilt / 30) * 30))}
-                    onChange={event => updateMultiAngle({ tilt: Number(event.target.value), presetKey: 'custom' })}
-                  />
-                  <strong>{Math.max(-30, Math.min(60, Math.round(multiAngleConfig.tilt / 30) * 30))}°</strong>
-                </div>
-                <div className="linghuiImageLibTVSliderRow">
-                  <span>景别缩放</span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={10}
-                    step={5}
-                    value={Math.round(multiAngleConfig.scale / 10)}
-                    onChange={event => updateMultiAngle({ scale: Number(event.target.value) * 10, presetKey: 'custom' })}
-                  />
-                  <strong>{multiAngleConfig.scale <= 30 ? '全景' : multiAngleConfig.scale <= 60 ? '中景' : '特写'}</strong>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="linghuiImageLibTVSliderRow">
-                  <span>旋转</span>
-                  <input
-                    type="range"
-                    min={-180}
-                    max={180}
-                    step={1}
-                    value={multiAngleConfig.rotation}
-                    onChange={event => updateMultiAngle({ rotation: Number(event.target.value), presetKey: 'custom' })}
-                  />
-                  <strong>{Math.round(multiAngleConfig.rotation)}°</strong>
-                </div>
-                <div className="linghuiImageLibTVSliderRow">
-                  <span>倾斜</span>
-                  <input
-                    type="range"
-                    min={-90}
-                    max={90}
-                    step={1}
-                    value={multiAngleConfig.tilt}
-                    onChange={event => updateMultiAngle({ tilt: Number(event.target.value), presetKey: 'custom' })}
-                  />
-                  <strong>{Math.round(multiAngleConfig.tilt)}°</strong>
-                </div>
-                <div className="linghuiImageLibTVSliderRow">
-                  <span>缩放</span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={10}
-                    step={1}
-                    value={Math.round(multiAngleConfig.scale / 10)}
-                    onChange={event => updateMultiAngle({ scale: Number(event.target.value) * 10, presetKey: 'custom' })}
-                  />
-                  <strong>{Math.round(multiAngleConfig.scale / 10)}</strong>
-                </div>
-                <div className="linghuiImageLibTVSwitchRow">
-                  <span>广角镜头</span>
-                  <button
-                    type="button"
-                    className={multiAngleConfig.isWideAngle ? 'isOn' : ''}
-                    aria-label="广角镜头"
-                    onClick={() => updateMultiAngle({ isWideAngle: !multiAngleConfig.isWideAngle, presetKey: 'custom' })}
-                  />
-                </div>
-              </>
-            )}
-            <div className="linghuiImageLibTVSwitchRow">
-              <span>提示词</span>
-              <button
-                type="button"
-                className={multiAngleConfig.promptEnabled ? 'isOn' : ''}
-                aria-label="提示词开关"
-                onClick={() => updateMultiAngle({ promptEnabled: !multiAngleConfig.promptEnabled })}
-              />
-            </div>
-            {multiAngleConfig.promptEnabled && (
-              <textarea
-                className="linghuiImageLibTVPromptBox"
-                value={multiAngleConfig.prompt}
-                placeholder="输入提示词..."
-                onChange={event => updateMultiAngle({ prompt: event.target.value, presetKey: multiAngleConfig.prompt ? multiAngleConfig.presetKey : 'custom' })}
-              />
-            )}
-          </div>
-        </div>
-        {renderLibTVToolFooter(handleConfirmMultiAngle)}
-      </>
-    ),
-  }) : null;
-
-  const relightToolPanel = isRelightToolOpen ? renderLibTVToolShell({
-    title: '打光效果',
-    className: 'isRelight',
-    children: (
-      <>
-        <div className="linghuiImageLibTVPanelBody isRelightGrid">
-          <div className="linghuiImageLibTVPreviewStage isLightingSphere linghuiImageLibTVLightingStage">
-            <LinghuiLightingSpherePreview
-              imageUrl={currentImagePreview}
-              direction={relightValues.direction}
-              brightness={relightValues.brightness}
-              lightColor={relightValues.lightColor}
-              rimLight={relightValues.rimLight}
-              onDirectionChange={(direction) => {
-                setRelightSceneActive(true);
-                updateRelightValues({
-                  direction,
-                  rimLight: LIBTV_RELIGHT_BACK_DIRECTIONS.has(direction) ? false : relightValues.rimLight,
-                });
-              }}
-            />
-          </div>
-          <div className="linghuiImageLibTVControlStack">
-            <div className="linghuiImageLibTVSmartHeader">
-              <span>全局</span>
-              <span className={`linghuiImageLibTVActiveMark ${relightSceneActive ? 'isActive' : ''}`}>
-                {relightSceneActive ? '已启用' : '默认'}
-              </span>
-            </div>
-            <div className="linghuiImageLibTVSliderRow">
-              <span>亮度</span>
-              <input
-                type="range"
-                min={0}
-                max={LIBTV_RELIGHT_BRIGHTNESS_STEPS.length - 1}
-                step={1}
-                value={Math.max(0, LIBTV_RELIGHT_BRIGHTNESS_STEPS.indexOf(relightValues.brightness as typeof LIBTV_RELIGHT_BRIGHTNESS_STEPS[number]))}
-                onMouseDown={() => setRelightBrightnessActive(true)}
-                onChange={event => {
-                  setRelightBrightnessActive(true);
-                  updateRelightValues({ brightness: LIBTV_RELIGHT_BRIGHTNESS_STEPS[Number(event.target.value)] ?? 50 });
-                }}
-              />
-              <strong>{relightValues.brightness} %</strong>
-            </div>
-            <div className="linghuiImageLibTVColorRow">
-              <span>颜色</span>
-              <input
-                type="color"
-                aria-label="颜色"
-                value={relightValues.lightColor}
-                onChange={event => {
-                  setRelightColorActive(true);
-                  updateRelightValues({ lightColor: event.target.value });
-                }}
-              />
-            </div>
-            <div className="linghuiImageLibTVButtonGrid">
-              {LIBTV_RELIGHT_MAIN_DIRECTIONS.map(({ value, label }) => (
-                <button
-                  key={value}
-                  type="button"
-                  className={relightValues.direction === value ? 'isActive' : ''}
-                  onClick={() => {
-                    setRelightSceneActive(true);
-                    updateRelightValues({
-                      direction: value,
-                      rimLight: LIBTV_RELIGHT_BACK_DIRECTIONS.has(value) ? false : relightValues.rimLight,
-                    });
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            <div className="linghuiImageLibTVSwitchRow">
-              <span>轮廓光</span>
-              <button
-                type="button"
-                className={relightValues.rimLight ? 'isOn' : ''}
-                aria-label="轮廓光"
-                disabled={LIBTV_RELIGHT_BACK_DIRECTIONS.has(relightValues.direction)}
-                onClick={() => updateRelightValues({ rimLight: !relightValues.rimLight })}
-              />
-            </div>
-          </div>
-          <div className="linghuiImageLibTVPresetColumn">
-            <div className="linghuiImageLibTVSmartHeader">
-              <span>智能模式</span>
-              <button
-                type="button"
-                className={relightValues.smartMode ? 'isOn' : ''}
-                aria-label="智能模式"
-                onClick={() => updateRelightValues({ smartMode: !relightValues.smartMode })}
-              />
-            </div>
-            {relightValues.smartMode && (
-              <>
-                <textarea
-                  className="linghuiImageLibTVPromptBox"
-                  placeholder="简单描述你想实现的打光效果，或者情绪风格"
-                  value={relightPrompt}
-                  onChange={event => setRelightPrompt(event.target.value)}
-                />
-                {relightReferenceImage ? (
-                  <div className="linghuiImageLibTVReferencePreview">
-                    <img src={getPreviewSource(relightReferenceImage)} alt="打光参考图" />
-                    <button type="button" onClick={() => setRelightReferenceImage(null)} aria-label="移除参考图">
-                      移除
-                    </button>
-                  </div>
-                ) : (
-                  <button type="button" className="linghuiImageLibTVReferenceButton" onClick={() => void handlePickRelightReferenceImage()}>
-                    打光参考图
-                  </button>
-                )}
-              </>
-            )}
-            <div className="linghuiImageLibTVSectionTitle">预设</div>
-            <div className="linghuiImageLibTVPresetGrid">
-              {relightPresets.map((preset: LinghuiImageToolPresetDef) => (
-                <button
-                  key={preset.label}
-                  type="button"
-                  className={relightPresetLabel === preset.label ? 'isActive' : ''}
-                  onClick={() => applyRelightPreset(preset)}
-                >
-                  <span>{preset.label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-        {renderLibTVToolFooter(handleApplyRelightPreset)}
-      </>
-    ),
-  }) : null;
-
-  const outpaintToolPanel = isOutpaintToolOpen ? renderLibTVToolShell({
-    title: '扩图',
-    className: 'isCompactTool',
-    children: (
-      <>
-        <div className="linghuiImageLibTVPanelBody isTwoColumn">
-          <div className="linghuiImageLibTVOutpaintStage">
-            {/* LibTV 扩图预览：原图居中，4 向白色扩展区根据 outpaintRatio 实时显示 */}
-            <div
-              className="linghuiImageToolOutpaintPreview"
-              style={cssVars({
-                '--linghui-outpaint-top': `${outpaintRatio.top * 100}%`,
-                '--linghui-outpaint-right': `${outpaintRatio.right * 100}%`,
-                '--linghui-outpaint-bottom': `${outpaintRatio.bottom * 100}%`,
-                '--linghui-outpaint-left': `${outpaintRatio.left * 100}%`,
-              })}
-            >
-              <div className="linghuiImageToolOutpaintFrame">
-                {currentImagePreview ? (
-                  <img src={currentImagePreview} alt={currentImage?.label || nodeData.label} draggable={false} />
-                ) : (
-                  <ImageIcon size={22} />
-                )}
-              </div>
-            </div>
-          </div>
-          <div className="linghuiImageLibTVControlStack">
-            <div className="linghuiImageLibTVSectionTitle">扩图方式</div>
-            <div className="linghuiImageLibTVPresetButtons">
-              {outpaintPresets.map((preset: LinghuiImageToolPresetDef) => (
-                <button
-                  key={preset.label}
-                  type="button"
-                  className={outpaintPresetLabel === preset.label ? 'isActive' : ''}
-                  onClick={() => handleSelectOutpaintPreset(preset)}
-                >
-                  {preset.label}
-                </button>
-              ))}
-            </div>
-            <div className="linghuiImageLibTVSectionTitle">扩图方向（0–80%）</div>
-            <div className="linghuiImageLibTVOutpaintSliders">
-              {(['top', 'right', 'bottom', 'left'] as const).map(side => {
-                const label = ({ top: '上', right: '右', bottom: '下', left: '左' } as const)[side];
-                return (
-                  <label key={side} className="linghuiImageLibTVOutpaintSliderRow">
-                    <span className="linghuiImageLibTVOutpaintSliderLabel">{label}</span>
-                    <input
-                      type="range"
-                      min={0}
-                      max={0.8}
-                      step={0.05}
-                      value={outpaintRatio[side]}
-                      onChange={event => setOutpaintRatio(prev => ({ ...prev, [side]: Number(event.target.value) }))}
-                    />
-                    <span className="linghuiImageLibTVOutpaintSliderValue">
-                      {Math.round(outpaintRatio[side] * 100)}%
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
-            <div className="linghuiImageLibTVSectionTitle">比例</div>
-            <div className="linghuiImageLibTVPresetButtons">
-              {aspectRatioChoices.map(option => (
-                <button
-                  key={option.value}
-                  type="button"
-                  className={outpaintAspectRatio === option.value ? 'isActive' : ''}
-                  onClick={() => setOutpaintAspectRatio(option.value)}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-            <div className="linghuiImageLibTVSectionTitle">分辨率</div>
-            <div className="linghuiImageLibTVPresetButtons">
-              {IMAGE_RESOLUTIONS.map(option => (
-                <button
-                  key={option.value}
-                  type="button"
-                  className={outpaintResolution === option.value ? 'isActive' : ''}
-                  onClick={() => setOutpaintResolution(option.value)}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-        {renderLibTVToolFooter(handleApplyOutpaintPreset)}
-      </>
-    ),
-  }) : null;
-
-  const repaintToolPanel = isRepaintToolOpen ? renderLibTVToolShell({
-    title: '重绘',
-    className: 'isCompactTool',
-    children: (
-      <>
-        <div className="linghuiImageLibTVPanelBody isTwoColumn">
-          {renderImagePreviewStage()}
-          <div className="linghuiImageLibTVControlStack">
-            <div className="linghuiImageLibTVSectionTitle">重绘方式</div>
-            <div className="linghuiImageLibTVPresetButtons">
-              {repaintPresets.map((preset: LinghuiImageToolPresetDef) => (
-                <button
-                  key={preset.label}
-                  type="button"
-                  className={repaintPresetLabel === preset.label ? 'isActive' : ''}
-                  onClick={() => setRepaintPresetLabel(preset.label)}
-                >
-                  {preset.label}
-                </button>
-              ))}
-            </div>
-            <textarea
-              className="linghuiImageLibTVPromptBox"
-              value={repaintPrompt}
-              placeholder="补充要修复、替换或迁移的具体方向"
-              onChange={event => setRepaintPrompt(event.target.value)}
-            />
-            <div className="linghuiImageLibTVSectionTitle">比例</div>
-            <div className="linghuiImageLibTVPresetButtons">
-              {aspectRatioChoices.map(option => (
-                <button
-                  key={option.value}
-                  type="button"
-                  className={repaintAspectRatio === option.value ? 'isActive' : ''}
-                  onClick={() => setRepaintAspectRatio(option.value)}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-        {renderLibTVToolFooter(handleApplyRepaintPreset)}
-      </>
-    ),
-  }) : null;
+  const repaintToolPanel = isRepaintToolOpen ? (
+    <ImageNodeEditorRepaintPanel
+      currentImagePreview={currentImagePreview}
+      imageAlt={imagePanelAlt}
+      aspectRatioChoices={aspectRatioChoices}
+      repaintPresets={repaintPresets}
+      repaintPresetLabel={repaintPresetLabel}
+      repaintPrompt={repaintPrompt}
+      repaintAspectRatio={repaintAspectRatio}
+      setRepaintPresetLabel={setRepaintPresetLabel}
+      setRepaintPrompt={setRepaintPrompt}
+      setRepaintAspectRatio={setRepaintAspectRatio}
+      onGenerate={handleApplyRepaintPreset}
+      onClose={handleCloseLibTVToolPanel}
+    />
+  ) : null;
 
   // 通用 preset 工具面板（擦除 / 抠图 / 裁剪 / Mockup / 元素 / 文字）共用模板。
-  const genericToolPanel = (isGenericToolOpen && genericTool) ? renderLibTVToolShell({
-    title: LINGHUI_IMAGE_TOOL_PRESETS[genericTool].title,
-    className: 'isCompactTool',
-    children: (() => {
-      const presets = LINGHUI_IMAGE_TOOL_PRESETS[genericTool].presets;
-      const isCropTool = genericTool === 'crop';
-      return (
-        <>
-          <div className="linghuiImageLibTVPanelBody isTwoColumn">
-            {renderImagePreviewStage()}
-            <div className="linghuiImageLibTVControlStack">
-              <div className="linghuiImageLibTVSectionTitle">
-                {LINGHUI_IMAGE_TOOL_PRESETS[genericTool].title}方式
-              </div>
-              <div className="linghuiImageLibTVPresetButtons">
-                {presets.map((preset: LinghuiImageToolPresetDef) => (
-                  <button
-                    key={preset.label}
-                    type="button"
-                    className={genericPresetLabel === preset.label ? 'isActive' : ''}
-                    onClick={() => {
-                      setGenericPresetLabel(preset.label);
-                      // 选 preset 时同步当前比例（保持 LibTV 同源体验）
-                      if (preset.properties?.aspectRatio) {
-                        setGenericAspectRatio(String(preset.properties.aspectRatio));
-                      }
-                      if (preset.properties?.resolution) {
-                        setGenericResolution(String(preset.properties.resolution));
-                      }
-                    }}
-                  >
-                    {preset.label}
-                  </button>
-                ))}
-              </div>
-              {/* 裁剪类纯本地工具不需要追加 prompt；其它工具支持用户补充 prompt */}
-              {!isCropTool && (
-                <textarea
-                  className="linghuiImageLibTVPromptBox"
-                  value={genericPrompt}
-                  placeholder="补充具体要求（可选）"
-                  onChange={event => setGenericPrompt(event.target.value)}
-                />
-              )}
-              <div className="linghuiImageLibTVSectionTitle">比例</div>
-              <div className="linghuiImageLibTVPresetButtons">
-                {aspectRatioChoices.map(option => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    className={genericAspectRatio === option.value ? 'isActive' : ''}
-                    onClick={() => setGenericAspectRatio(option.value)}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-              {!isCropTool && (
-                <>
-                  <div className="linghuiImageLibTVSectionTitle">分辨率</div>
-                  <div className="linghuiImageLibTVPresetButtons">
-                    {IMAGE_RESOLUTIONS.map(option => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        className={genericResolution === option.value ? 'isActive' : ''}
-                        onClick={() => setGenericResolution(option.value)}
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-          {renderLibTVToolFooter(handleApplyGenericPreset)}
-        </>
-      );
-    })(),
-  }) : null;
+  const genericToolPanel = (isGenericToolOpen && genericTool) ? (
+    <ImageNodeEditorGenericPanel
+      tool={genericTool}
+      currentImagePreview={currentImagePreview}
+      imageAlt={imagePanelAlt}
+      aspectRatioChoices={aspectRatioChoices}
+      genericPresetLabel={genericPresetLabel}
+      genericPrompt={genericPrompt}
+      genericAspectRatio={genericAspectRatio}
+      genericResolution={genericResolution}
+      onSelectGenericPreset={handleSelectGenericPreset}
+      setGenericPrompt={setGenericPrompt}
+      setGenericAspectRatio={setGenericAspectRatio}
+      setGenericResolution={setGenericResolution}
+      onGenerate={handleApplyGenericPreset}
+      onClose={handleCloseLibTVToolPanel}
+    />
+  ) : null;
 
   const activeLibTVToolPanel = multiAngleToolPanel || relightToolPanel || outpaintToolPanel || repaintToolPanel || genericToolPanel;
 
@@ -1834,143 +1123,42 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
     // LibTV 1:1：素材节点本身已经展示图片 + 节点上方上传/工具浮按钮，编辑器面板不再重复显示大预览图，
     // 只保留"文件名 + 替换/清空"轻量操作行，避免反人类的"上下两张图"重复。
     return (
-      <div className="linghuiEditorPanel" onMouseDown={event => event.stopPropagation()}>
-        {activeLibTVToolPanel ?? (
-          <div className="linghuiEditorControlRow">
-            {hasCurrentImage ? (
-              <span className="linghuiEditorSummaryPill">{currentImage?.label || nodeData.label}</span>
-            ) : (
-              <span className="linghuiEditorSummaryPill">尚未上传图片</span>
-            )}
-            <div className="linghuiEditorActionGroup">
-              <Button size="small" icon={<UploadCloud size={14} />} onClick={() => void handleReplaceImage()}>
-                {hasCurrentImage ? '替换图片' : '导入图片'}
-              </Button>
-              <Button size="small" icon={<Trash2 size={14} />} danger disabled={!hasImportSource} onClick={handleClearImage}>
-                清空
-              </Button>
-            </div>
-          </div>
-        )}
-      </div>
+      <ImageNodeEditorImportPanel
+        activeLibTVToolPanel={activeLibTVToolPanel}
+        currentImageLabel={currentImage?.label}
+        hasCurrentImage={hasCurrentImage}
+        hasImportSource={hasImportSource}
+        nodeLabel={nodeData.label}
+        onClearImage={handleClearImage}
+        onReplaceImage={() => void handleReplaceImage()}
+      />
     );
   }
 
   return (
-    <div className="linghuiEditorPanel" onMouseDown={event => event.stopPropagation()}>
-      {activeLibTVToolPanel ?? (
-        <>
-        {displayReferenceImages.length > 0 && (
-          <div className="linghuiEditorSection">
-            <div className="linghuiEditorRefs">
-              {displayReferenceImages.map((ref, index) => {
-                const src = getPreviewSource(ref.source);
-                return (
-                  <div key={`${ref.source || ref.label || index}-${ref.badge}`} className="linghuiEditorRefThumb">
-                    {src ? <img src={src} alt={ref.label || `参考 ${index + 1}`} /> : <ImageIcon size={16} />}
-                    <span className="linghuiEditorRefBadge">{ref.badge}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {isDerivedFromController && (
-          <div className="linghuiEditorDerivedBanner" role="note">
-            <span className="linghuiEditorDerivedBannerBadge">派生</span>
-            <span className="linghuiEditorDerivedBannerText">{derivedBannerText}</span>
-          </div>
-        )}
-
-        <div className="linghuiEditorPrompt">
-          <LinghuiPromptEditor
-            value={prompt}
-            onChange={value => updateProp('prompt', value)}
-            references={promptReferences}
-            placeholder="输入 @ 引用上游产物"
-            surfaceStyle="fusion"
-            minHeight="64px"
-            maxHeight="152px"
-          />
-        </div>
-
-        {focusRegionPanel}
-        {markPointPanel}
-
-        <div className="linghuiEditorControlRow">
-          <Dropdown
-            trigger={providers.length > 0 ? ['click'] : []}
-            menu={{
-              items: providerMenuItems,
-              selectable: true,
-              selectedKeys: selectedProvider ? [selectedProvider.value] : [],
-            }}
-            classNames={{ root: 'linghuiNodeEditorDropdownMenu linghuiEditorModelDropdownMenu' }}
-            getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
-            styles={{ root: { zIndex: 1200 } }}
-          >
-            <button
-              type="button"
-              className={`linghuiEditorInlineTrigger ${providers.length === 0 ? 'isDisabled' : ''}`}
-              onClick={event => event.stopPropagation()}
-              disabled={providers.length === 0}
-            >
-              {modelSummary}
-            </button>
-          </Dropdown>
-
-          <Popover
-            trigger="click"
-            placement="bottomRight"
-            content={imageSettingsContent}
-            overlayClassName="linghuiEditorPopover"
-            getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
-            zIndex={1200}
-          >
-            <button
-              type="button"
-              className="linghuiEditorInlineTrigger"
-              onClick={event => event.stopPropagation()}
-            >
-              {parameterSummary}
-            </button>
-          </Popover>
-
-          <Popover
-            trigger="click"
-            placement="bottomRight"
-            content={cameraSettingsContent}
-            overlayClassName="linghuiEditorPopover"
-            getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
-            zIndex={1200}
-          >
-            <button
-              type="button"
-              className="linghuiEditorInlineTrigger isCameraTrigger"
-              title="选择镜头参数"
-              onClick={event => event.stopPropagation()}
-            >
-              <Camera size={13} />
-              <span>{cameraButtonSummary}</span>
-            </button>
-          </Popover>
-
-          <div className="linghuiEditorActionGroup">
-            <Button
-              type="primary"
-              size="small"
-              icon={<ArrowUp size={12} />}
-              onClick={handleRun}
-              disabled={isImageGenerating || isRunActionLocked}
-              loading={isImageGenerating}
-            >
-              {generateButtonText}
-            </Button>
-          </div>
-        </div>
-        </>
-      )}
-    </div>
+    <ImageNodeEditorGeneratePanel
+      activeLibTVToolPanel={activeLibTVToolPanel}
+      cameraButtonSummary={cameraButtonSummary}
+      cameraSettingsContent={cameraSettingsContent}
+      derivedBannerText={derivedBannerText}
+      displayReferenceImages={displayReferenceImages}
+      focusRegionPanel={focusRegionPanel}
+      generateButtonText={generateButtonText}
+      getPreviewSource={getPreviewSource}
+      imageSettingsContent={imageSettingsContent}
+      isDerivedFromController={isDerivedFromController}
+      isImageGenerating={isImageGenerating}
+      isRunActionLocked={isRunActionLocked}
+      markPointPanel={markPointPanel}
+      modelSummary={modelSummary}
+      parameterSummary={parameterSummary}
+      prompt={prompt}
+      promptReferences={promptReferences}
+      providerMenuItems={providerMenuItems}
+      providerSelectedKey={selectedProvider?.value}
+      providersAvailable={providers.length > 0}
+      onPromptChange={value => updateProp('prompt', value)}
+      onRun={handleRun}
+    />
   );
 };

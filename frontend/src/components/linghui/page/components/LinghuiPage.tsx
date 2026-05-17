@@ -3,56 +3,18 @@ import { App as AntApp, Spin } from 'antd';
 import {
   createLinghuiWorkspace,
   createLinghuiWorkspaceHistoryRecord,
-  deleteLinghuiWorkspace,
-  exportLinghuiWorkspace,
-  importLinghuiWorkspace,
-  listLinghuiWorkflowTemplates,
-  listLinghuiWorkspaceAssets,
-  listLinghuiWorkspaceHistoryRecords,
   listLinghuiWorkspaces,
   loadLinghuiWorkspace,
-  saveLinghuiWorkspace,
-  type LinghuiWorkflowTemplateRecord,
-  type LinghuiWorkspaceAssetRecord,
-  type LinghuiWorkspaceHistoryRecord,
 } from '../../../../store/linghuiStorage';
-import { electronService } from '../../../../services/electronService';
 import type {
   LinghuiExecutionLogEntry,
   LinghuiExecutionQueueState,
-  LinghuiGraphSnapshot,
   LinghuiGraphStats,
   LinghuiNodeRunState,
-  LinghuiViewportState,
   LinghuiWorkspaceDocument,
   LinghuiWorkspaceMeta,
 } from '../../../../types/linghui';
-import {
-  DEFAULT_LINGHUI_WORKSPACE_NAME,
-  EMPTY_LINGHUI_EXECUTION_LOGS,
-  EMPTY_LINGHUI_NODE_RUNS,
-} from '../../../../types/linghui';
-import {
-  ArrowLeft,
-  ChevronDown,
-  ChevronUp,
-  ClipboardList,
-  CircleAlert,
-  CircleCheck,
-  Download,
-  Info,
-  TriangleAlert,
-  X,
-  FolderOpen,
-  History,
-  Library,
-  Plus,
-  Save,
-  Trash2,
-  Upload,
-  Workflow,
-} from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
+import { DEFAULT_LINGHUI_WORKSPACE_NAME } from '../../../../types/linghui';
 import LinghuiCanvas, {
   type LinghuiCanvasHandle,
 } from '../../canvas/components/LinghuiCanvas';
@@ -65,11 +27,22 @@ import {
 } from '../../execution/state/linghuiExecution';
 import { buildLinghuiExecutionPlan, type LinghuiExecutionPlan } from '../../execution/state/linghuiExecutionPlan';
 import { exportLinghuiNodeResults } from '../../execution/state/linghuiResultExport';
-import { cloneSnapshotValue, detectCanvasMutationKind } from '../../canvas/state/linghuiCanvasShared';
+import { cloneSnapshotValue } from '../../canvas/state/linghuiCanvasShared';
 import { createLogger } from '../../../../store/logger';
 import { loadSettings } from '../../../../store/settings/core';
 import { resetLinghuiCanvasStore, useLinghuiCanvasStore } from '../../canvas/state/linghuiCanvasStore';
 import { LinghuiExecutionPlanModal } from '../../execution/components/LinghuiExecutionPlanModal';
+import { LinghuiCanvasFloatingRail } from './LinghuiCanvasFloatingRail';
+import { useLinghuiPageCanvasHandlers } from '../hooks/useLinghuiPageCanvasHandlers';
+import { useLinghuiPageExecutionRailState } from '../hooks/useLinghuiPageExecutionRailState';
+import { useLinghuiPageLibraries } from '../hooks/useLinghuiPageLibraries';
+import { useLinghuiPageWorkspacePersistence } from '../hooks/useLinghuiPageWorkspacePersistence';
+import { useLinghuiPageWorkspaceActions } from '../hooks/useLinghuiPageWorkspaceActions';
+import {
+  EMPTY_WORKSPACE_RUNTIME,
+  ensureWorkspaceRuntime,
+  type LinghuiWorkspaceRuntimeState,
+} from '../state/linghuiPageWorkspaceRuntime';
 import '../styles/LinghuiPage.scss';
 
 function createLog(level: LinghuiExecutionLogEntry['level'], message: string, nodeId?: string): LinghuiExecutionLogEntry {
@@ -93,54 +66,7 @@ interface LinghuiPageProps {
   onExit?: () => void;
 }
 
-type LinghuiWorkspaceRuntimeState = Pick<LinghuiWorkspaceDocument, 'nodeRuns' | 'executionLogs'>;
-
-const EMPTY_WORKSPACE_RUNTIME: LinghuiWorkspaceRuntimeState = {
-  nodeRuns: EMPTY_LINGHUI_NODE_RUNS,
-  executionLogs: EMPTY_LINGHUI_EXECUTION_LOGS,
-};
-const WORKSPACE_SAVE_DEBOUNCE_MS = 2500;
 const workflowLogger = createLogger('LinghuiWorkflowExecution');
-const linghuiCanvasLogger = createLogger('LinghuiCanvas');
-const EXECUTION_LOG_ICON_BY_LEVEL: Record<LinghuiExecutionLogEntry['level'], LucideIcon> = {
-  error: CircleAlert,
-  warn: TriangleAlert,
-  info: Info,
-  success: CircleCheck,
-};
-
-function ensureWorkspaceRuntime(
-  workspace: LinghuiWorkspaceDocument | null | undefined,
-  options?: { resetInterruptedRuns?: boolean },
-): LinghuiWorkspaceDocument {
-  if (!workspace) {
-    throw new Error('灵绘工作区数据异常：未返回工作区文档');
-  }
-
-  const baseNodeRuns = workspace.nodeRuns ?? EMPTY_LINGHUI_NODE_RUNS;
-  const nodeRuns = options?.resetInterruptedRuns
-    ? Object.fromEntries(
-        Object.entries(baseNodeRuns).map(([nodeId, runState]) => {
-          if (runState?.status !== 'running') {
-            return [nodeId, runState];
-          }
-          return [nodeId, {
-            ...runState,
-            status: 'stale',
-            progress: undefined,
-            message: '上次执行已中断，可重新运行。',
-            updatedAt: Date.now(),
-          } satisfies LinghuiNodeRunState];
-        }),
-      )
-    : baseNodeRuns;
-
-  return {
-    ...workspace,
-    nodeRuns,
-    executionLogs: workspace.executionLogs ?? EMPTY_LINGHUI_EXECUTION_LOGS,
-  };
-}
 
 interface PendingLinghuiExecutionPlanRequest {
   plan: LinghuiExecutionPlan;
@@ -156,36 +82,19 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
   const { message, modal } = AntApp.useApp();
   const canvasRef = useRef<LinghuiCanvasHandle | null>(null);
   const railShellRef = useRef<HTMLDivElement | null>(null);
-  const renameInputRef = useRef<HTMLInputElement | null>(null);
-  const saveTimerRef = useRef<number | null>(null);
   const executionBatchesRef = useRef<Set<AbortController>>(new Set());
   const executionQueuesRef = useRef<Map<AbortController, LinghuiExecutionQueueState>>(new Map());
-  const pendingSaveRef = useRef<{
-    doc: LinghuiWorkspaceDocument;
-    syncActiveWorkspace: boolean;
-    refreshWorkspaceList: boolean;
-  } | null>(null);
   const activeWorkspaceRef = useRef<LinghuiWorkspaceDocument | null>(null);
-  const persistedWorkspaceRef = useRef<LinghuiWorkspaceDocument | null>(null);
   const workspaceRuntimeRef = useRef<LinghuiWorkspaceRuntimeState>(EMPTY_WORKSPACE_RUNTIME);
   const canvasCrashedRef = useRef<boolean>(false);
 
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [, setRunning] = useState(false);
   const [executionQueue, setExecutionQueue] = useState<LinghuiExecutionQueueState | null>(null);
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
   const [workspaceList, setWorkspaceList] = useState<LinghuiWorkspaceMeta[]>([]);
   const [activeWorkspace, setActiveWorkspace] = useState<LinghuiWorkspaceDocument | null>(null);
-  const [workspaceNameDraft, setWorkspaceNameDraft] = useState(DEFAULT_LINGHUI_WORKSPACE_NAME);
   const [workspaceRuntime, setWorkspaceRuntime] = useState<LinghuiWorkspaceRuntimeState>(EMPTY_WORKSPACE_RUNTIME);
-  const [assetFilter, setAssetFilter] = useState<LinghuiAssetFilter>('all');
-  const [assetLoading, setAssetLoading] = useState(false);
-  const [workspaceAssets, setWorkspaceAssets] = useState<LinghuiWorkspaceAssetRecord[]>([]);
-  const [workflowLoading, setWorkflowLoading] = useState(false);
-  const [workflowTemplates, setWorkflowTemplates] = useState<LinghuiWorkflowTemplateRecord[]>([]);
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [workspaceHistory, setWorkspaceHistory] = useState<LinghuiWorkspaceHistoryRecord[]>([]);
   const [pendingExecutionPlan, setPendingExecutionPlan] = useState<PendingLinghuiExecutionPlanRequest | null>(null);
   const [projectPanelOpen, setProjectPanelOpen] = useState(false);
   const [executionLogPanelOpen, setExecutionLogPanelOpen] = useState(false);
@@ -198,6 +107,30 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
   const activeDrawer = useLinghuiCanvasStore(state => state.activeDrawer);
   const setActiveDrawer = useLinghuiCanvasStore(state => state.setActiveDrawer);
   const closeActiveDrawer = useLinghuiCanvasStore(state => state.closeActiveDrawer);
+  const {
+    assetFilter,
+    assetLoading,
+    historyLoading,
+    loadAssetLibrary,
+    loadHistoryLibrary,
+    loadWorkflowLibrary,
+    setAssetFilter,
+    workspaceAssets,
+    workspaceHistory,
+    workflowLoading,
+    workflowTemplates,
+    handleAssetLibraryMutate,
+    handleHistoryLibraryMutate,
+    handleSendAssetToCanvas,
+    handleSendHistoryToCanvas,
+    handleSendWorkflowToCanvas,
+    handleWorkflowTemplateMutate,
+  } = useLinghuiPageLibraries({
+    activeDrawer,
+    activeWorkspaceId: activeWorkspace?.id ?? null,
+    canvasRef,
+    message,
+  });
 
   useEffect(() => {
     resetLinghuiCanvasStore();
@@ -215,10 +148,6 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
         }
       : null;
   }, [activeWorkspace]);
-
-  useEffect(() => {
-    setWorkspaceNameDraft(activeWorkspace?.name ?? DEFAULT_LINGHUI_WORKSPACE_NAME);
-  }, [activeWorkspace?.id, activeWorkspace?.name]);
 
   useEffect(() => {
     if (!projectPanelOpen && !executionLogPanelOpen) {
@@ -249,7 +178,6 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
   const activateWorkspace = useCallback((workspace: LinghuiWorkspaceDocument) => {
     const normalizedWorkspace = ensureWorkspaceRuntime(workspace, { resetInterruptedRuns: true });
     activeWorkspaceRef.current = normalizedWorkspace;
-    persistedWorkspaceRef.current = normalizedWorkspace;
     applyWorkspaceRuntime({
       nodeRuns: normalizedWorkspace.nodeRuns,
       executionLogs: normalizedWorkspace.executionLogs,
@@ -262,6 +190,24 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
     });
     setLastSavedAt(normalizedWorkspace.updatedAt);
   }, [applyWorkspaceRuntime]);
+
+  const {
+    flushWorkspaceSave,
+    pendingSaveRef,
+    refreshWorkspaceList,
+    saveTimerRef,
+    saving,
+    scheduleWorkspaceSave,
+  } = useLinghuiPageWorkspacePersistence({
+    activeWorkspaceRef,
+    activateWorkspace,
+    canvasRef,
+    message,
+    setActiveWorkspace,
+    setLastSavedAt,
+    setWorkspaceList,
+    workspaceRuntimeRef,
+  });
 
   useEffect(() => {
     let mounted = true;
@@ -308,218 +254,6 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
       executionQueuesRef.current.clear();
     };
   }, [activateWorkspace, message]);
-
-  const refreshWorkspaceList = useCallback(async (preferredId?: string) => {
-    const items = await listLinghuiWorkspaces();
-    setWorkspaceList(items);
-
-    if (!preferredId || activeWorkspaceRef.current?.id === preferredId) return;
-    const preferred = items.find(item => item.id === preferredId);
-    if (!preferred) return;
-    const loaded = await loadLinghuiWorkspace(preferred.id);
-    if (!loaded) return;
-    activateWorkspace(loaded);
-  }, [activateWorkspace]);
-
-  const loadAssetLibrary = useCallback(async (workspaceId: string | null | undefined) => {
-    if (!workspaceId) {
-      setWorkspaceAssets([]);
-      return;
-    }
-
-    setAssetLoading(true);
-    try {
-      const assets = await listLinghuiWorkspaceAssets(workspaceId);
-      setWorkspaceAssets(assets);
-    } catch (error: any) {
-      message.error(error?.message || '读取灵绘资产库失败');
-    } finally {
-      setAssetLoading(false);
-    }
-  }, [message]);
-
-  useEffect(() => {
-    if (activeDrawer !== 'asset') return;
-    void loadAssetLibrary(activeWorkspace?.id ?? null);
-  }, [activeDrawer, activeWorkspace?.id, loadAssetLibrary]);
-
-  const loadWorkflowLibrary = useCallback(async (workspaceId: string | null | undefined) => {
-    if (!workspaceId) {
-      setWorkflowTemplates([]);
-      return;
-    }
-
-    setWorkflowLoading(true);
-    try {
-      const items = await listLinghuiWorkflowTemplates(workspaceId);
-      setWorkflowTemplates(items);
-    } catch (error: any) {
-      message.error(error?.message || '读取灵绘工作流模板失败');
-    } finally {
-      setWorkflowLoading(false);
-    }
-  }, [message]);
-
-  useEffect(() => {
-    if (activeDrawer !== 'workflow') return;
-    void loadWorkflowLibrary(activeWorkspace?.id ?? null);
-  }, [activeDrawer, activeWorkspace?.id, loadWorkflowLibrary]);
-
-  const loadHistoryLibrary = useCallback(async (workspaceId: string | null | undefined) => {
-    if (!workspaceId) {
-      setWorkspaceHistory([]);
-      return;
-    }
-
-    setHistoryLoading(true);
-    try {
-      const items = await listLinghuiWorkspaceHistoryRecords(workspaceId);
-      setWorkspaceHistory(items);
-    } catch (error: any) {
-      message.error(error?.message || '读取灵绘历史结果失败');
-    } finally {
-      setHistoryLoading(false);
-    }
-  }, [message]);
-
-  useEffect(() => {
-    if (activeDrawer !== 'history') return;
-    void loadHistoryLibrary(activeWorkspace?.id ?? null);
-  }, [activeDrawer, activeWorkspace?.id, loadHistoryLibrary]);
-
-  const handleHistoryLibraryMutate = useCallback(() => {
-    void loadHistoryLibrary(activeWorkspaceRef.current?.id ?? null);
-  }, [loadHistoryLibrary]);
-
-  const persistWorkspace = useCallback(async (
-    doc: LinghuiWorkspaceDocument,
-    options?: {
-      notify?: boolean;
-      syncActiveWorkspace?: boolean;
-      refreshWorkspaceList?: boolean;
-      showIndicator?: boolean;
-    },
-  ): Promise<boolean> => {
-    const {
-      notify = false,
-      syncActiveWorkspace = true,
-      refreshWorkspaceList: shouldRefreshWorkspaceList = true,
-      showIndicator = false,
-    } = options ?? {};
-
-    if (showIndicator) {
-      setSaving(true);
-    }
-    try {
-      const saved = ensureWorkspaceRuntime(await saveLinghuiWorkspace(doc));
-      persistedWorkspaceRef.current = saved;
-      if (syncActiveWorkspace) {
-        activeWorkspaceRef.current = saved;
-        workspaceRuntimeRef.current = {
-          nodeRuns: saved.nodeRuns,
-          executionLogs: saved.executionLogs,
-        };
-        setActiveWorkspace(saved);
-      } else {
-        const liveWorkspace = activeWorkspaceRef.current;
-        if (liveWorkspace?.id === saved.id) {
-          activeWorkspaceRef.current = {
-            ...liveWorkspace,
-            updatedAt: saved.updatedAt,
-          };
-        } else {
-          activeWorkspaceRef.current = saved;
-        }
-      }
-      setLastSavedAt(saved.updatedAt);
-      if (shouldRefreshWorkspaceList) {
-        await refreshWorkspaceList(saved.id);
-      }
-      if (notify) {
-        message.success('灵绘工作区已保存');
-      }
-      return true;
-    } catch (error: any) {
-      message.error(error?.message || '保存灵绘工作区失败');
-      return false;
-    } finally {
-      if (showIndicator) {
-        setSaving(false);
-      }
-    }
-  }, [message, refreshWorkspaceList]);
-
-  const scheduleWorkspaceSave = useCallback((
-    doc: LinghuiWorkspaceDocument,
-    options?: {
-      syncActiveWorkspace?: boolean;
-      refreshWorkspaceList?: boolean;
-    },
-  ) => {
-    const {
-      syncActiveWorkspace = true,
-      refreshWorkspaceList: shouldRefreshWorkspaceList = true,
-    } = options ?? {};
-
-    activeWorkspaceRef.current = doc;
-    pendingSaveRef.current = pendingSaveRef.current
-      ? {
-          doc,
-          syncActiveWorkspace: pendingSaveRef.current.syncActiveWorkspace || syncActiveWorkspace,
-          refreshWorkspaceList: pendingSaveRef.current.refreshWorkspaceList || shouldRefreshWorkspaceList,
-        }
-      : {
-          doc,
-          syncActiveWorkspace,
-          refreshWorkspaceList: shouldRefreshWorkspaceList,
-        };
-
-    if (syncActiveWorkspace) {
-      setActiveWorkspace(doc);
-    }
-
-    if (saveTimerRef.current) {
-      window.clearTimeout(saveTimerRef.current);
-    }
-
-    saveTimerRef.current = window.setTimeout(() => {
-      if (!pendingSaveRef.current) return;
-      const pending = pendingSaveRef.current;
-      pendingSaveRef.current = null;
-      persistWorkspace(pending.doc, {
-        notify: false,
-        syncActiveWorkspace: pending.syncActiveWorkspace,
-        refreshWorkspaceList: pending.refreshWorkspaceList,
-      });
-    }, WORKSPACE_SAVE_DEBOUNCE_MS);
-  }, [persistWorkspace]);
-
-  const flushWorkspaceSave = useCallback(async (options?: {
-    notify?: boolean;
-    syncActiveWorkspace?: boolean;
-    refreshWorkspaceList?: boolean;
-    showIndicator?: boolean;
-  }): Promise<boolean> => {
-    canvasRef.current?.snapshotNow();
-
-    const current = activeWorkspaceRef.current;
-    if (!current) {
-      return true;
-    }
-
-    if (saveTimerRef.current) {
-      window.clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
-    }
-    pendingSaveRef.current = null;
-
-    return persistWorkspace(current, {
-      notify: options?.notify ?? false,
-      syncActiveWorkspace: options?.syncActiveWorkspace ?? true,
-      refreshWorkspaceList: options?.refreshWorkspaceList ?? true,
-      showIndicator: options?.showIndicator ?? true,
-    });
-  }, [persistWorkspace]);
 
   // LibTV 三层保存模型的"sendBeacon"层（不可丢数据）：beforeunload 时若仍有 pending 防抖快照，
   // 强制 fire-and-forget 触发一次 flush，让 IPC 在 Electron close 5s 宽限期内尽量完成磁盘写入。
@@ -1014,386 +748,55 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
     void openDrawer(drawer);
   }, [openDrawer]);
 
-  const handleAssetLibraryMutate = useCallback(() => {
-    void loadAssetLibrary(activeWorkspaceRef.current?.id ?? null);
-  }, [loadAssetLibrary]);
+  const {
+    commitWorkspaceRename,
+    handleCreateWorkspace,
+    handleDeleteWorkspace,
+    handleExportWorkspace,
+    handleImportWorkspace,
+    handleManualSave,
+    handleSelectWorkspace,
+    renameInputRef,
+    setWorkspaceNameDraft,
+    workspaceNameDraft,
+  } = useLinghuiPageWorkspaceActions({
+    activeWorkspace,
+    activeWorkspaceRef,
+    activateWorkspace,
+    closeActiveDrawer,
+    flushWorkspaceSave,
+    message,
+    modal,
+    refreshWorkspaceList,
+    scheduleWorkspaceSave,
+    setExecutionLogPanelOpen,
+    setProjectPanelOpen,
+    setWorkspaceList,
+    workspaceList,
+  });
 
-  const handleWorkflowTemplateMutate = useCallback(() => {
-    void loadWorkflowLibrary(activeWorkspaceRef.current?.id ?? null);
-  }, [loadWorkflowLibrary]);
-
-  const handleSendAssetToCanvas = useCallback((asset: LinghuiWorkspaceAssetRecord) => {
-    canvasRef.current?.addWorkspaceAsset(asset);
-    message.success(`已将 ${asset.name} 发送到画布`);
-  }, [message]);
-
-  const handleSendWorkflowToCanvas = useCallback((template: LinghuiWorkflowTemplateRecord) => {
-    canvasRef.current?.addWorkflowTemplate(template);
-    message.success(`已将工作流 ${template.name} 发送到画布`);
-  }, [message]);
-
-  const handleSendHistoryToCanvas = useCallback((record: LinghuiWorkspaceHistoryRecord) => {
-    canvasRef.current?.addWorkspaceAsset(record);
-    message.success(`已将历史结果 ${record.name} 发送到画布`);
-  }, [message]);
-
-  const handleManualSave = useCallback(async () => {
-    const success = await flushWorkspaceSave({
-      notify: true,
-      syncActiveWorkspace: true,
-      refreshWorkspaceList: true,
-      showIndicator: true,
-    });
-    if (success) {
-      setProjectPanelOpen(false);
-    }
-  }, [flushWorkspaceSave]);
-
-  const handleExportWorkspace = useCallback(async (workspaceId?: string) => {
-    const current = activeWorkspaceRef.current;
-    const targetWorkspaceId = workspaceId || current?.id;
-    if (!targetWorkspaceId) {
-      message.info('请先打开一个灵绘项目');
-      return;
-    }
-
-    const shouldFlushActive = targetWorkspaceId === current?.id;
-    if (shouldFlushActive) {
-      const flushed = await flushWorkspaceSave({
-        syncActiveWorkspace: true,
-        refreshWorkspaceList: true,
-        showIndicator: true,
-      });
-      if (!flushed) {
-        return;
-      }
-    }
-
-    try {
-      const workspace = shouldFlushActive && activeWorkspaceRef.current
-        ? activeWorkspaceRef.current
-        : await loadLinghuiWorkspace(targetWorkspaceId);
-      if (!workspace) {
-        message.error('无法读取要导出的灵绘项目');
-        return;
-      }
-      const exportPath = await exportLinghuiWorkspace(workspace);
-      if (exportPath) {
-        message.success('灵绘项目已导出');
-      }
-    } catch (error: any) {
-      message.error(error?.message || '导出灵绘项目失败');
-    }
-  }, [flushWorkspaceSave, message]);
-
-  const handleImportWorkspace = useCallback(async () => {
-    try {
-      const result = await electronService.dialog.openFile({
-        title: '导入灵绘项目',
-        filters: [
-          { name: 'Linghui Workspace Package', extensions: ['zip'] },
-          { name: 'Linghui JSON', extensions: ['json'] },
-        ],
-      });
-      const filePath = result.filePaths?.[0];
-      if (result.canceled || !filePath) {
-        return;
-      }
-
-      const flushed = await flushWorkspaceSave({
-        syncActiveWorkspace: true,
-        refreshWorkspaceList: true,
-        showIndicator: true,
-      });
-      if (!flushed) {
-        return;
-      }
-
-      const imported = await importLinghuiWorkspace(filePath);
-      activateWorkspace(imported);
-      await refreshWorkspaceList(imported.id);
-      closeActiveDrawer();
-      setExecutionLogPanelOpen(false);
-      setProjectPanelOpen(true);
-      message.success('灵绘项目已导入');
-    } catch (error: any) {
-      message.error(error?.message || '导入灵绘项目失败');
-    }
-  }, [activateWorkspace, closeActiveDrawer, flushWorkspaceSave, message, refreshWorkspaceList]);
-
-  const handleDeleteWorkspace = useCallback((workspaceId: string) => {
-    const workspace = workspaceList.find(item => item.id === workspaceId);
-    if (!workspace) {
-      message.error('无法找到要删除的灵绘项目');
-      return;
-    }
-
-    modal.confirm({
-      title: '删除灵绘项目',
-      content: `确定删除「${workspace.name}」吗？画布、资产、历史结果和本地静态资源都会一起删除。`,
-      okText: '删除',
-      okType: 'danger',
-      cancelText: '取消',
-      async onOk() {
-        await deleteLinghuiWorkspace(workspaceId);
-        const nextList = await listLinghuiWorkspaces();
-        if (nextList.length === 0) {
-          const created = await createLinghuiWorkspace(DEFAULT_LINGHUI_WORKSPACE_NAME);
-          activateWorkspace(created);
-          setWorkspaceList([created]);
-          setProjectPanelOpen(true);
-          message.success('已删除灵绘项目，并创建了新的空项目');
-          return;
-        }
-
-        setWorkspaceList(nextList);
-        if (activeWorkspaceRef.current?.id === workspaceId) {
-          const nextWorkspace = await loadLinghuiWorkspace(nextList[0].id);
-          if (nextWorkspace) {
-            activateWorkspace(nextWorkspace);
-          }
-        }
-        setProjectPanelOpen(true);
-        message.success('已删除灵绘项目');
-      },
-    });
-  }, [activateWorkspace, message, modal, workspaceList]);
-
-  const handleCreateWorkspace = useCallback(async () => {
-    const flushed = await flushWorkspaceSave({
-      syncActiveWorkspace: true,
-      refreshWorkspaceList: true,
-      showIndicator: true,
-    });
-    if (!flushed) {
-      return;
-    }
-
-    try {
-      const workspace = await createLinghuiWorkspace(DEFAULT_LINGHUI_WORKSPACE_NAME);
-      activateWorkspace(workspace);
-      await refreshWorkspaceList(workspace.id);
-      closeActiveDrawer();
-      setExecutionLogPanelOpen(false);
-      setProjectPanelOpen(true);
-      message.success('已创建新的灵绘项目');
-      window.setTimeout(() => {
-        renameInputRef.current?.focus();
-        renameInputRef.current?.select();
-      }, 0);
-    } catch (error: any) {
-      message.error(error?.message || '创建新的灵绘项目失败');
-    }
-  }, [activateWorkspace, closeActiveDrawer, flushWorkspaceSave, message, refreshWorkspaceList]);
-
-  const handleSelectWorkspace = useCallback(async (workspaceId: string) => {
-    if (!workspaceId || workspaceId === activeWorkspaceRef.current?.id) {
-      setProjectPanelOpen(false);
-      return;
-    }
-
-    const flushed = await flushWorkspaceSave({
-      syncActiveWorkspace: false,
-      refreshWorkspaceList: false,
-      showIndicator: true,
-    });
-    if (!flushed) {
-      return;
-    }
-
-    const workspace = await loadLinghuiWorkspace(workspaceId);
-    if (!workspace) {
-      message.error('无法加载所选灵绘项目');
-      return;
-    }
-
-    activateWorkspace(workspace);
-    setProjectPanelOpen(false);
-  }, [activateWorkspace, flushWorkspaceSave, message]);
-
-  const commitWorkspaceRename = useCallback((nextName?: string) => {
-    const current = activeWorkspaceRef.current;
-    if (!current) {
-      return;
-    }
-
-    const normalizedName = (nextName ?? workspaceNameDraft).trim() || DEFAULT_LINGHUI_WORKSPACE_NAME;
-    setWorkspaceNameDraft(normalizedName);
-
-    if (current.name === normalizedName) {
-      return;
-    }
-
-    scheduleWorkspaceSave({
-      ...current,
-      name: normalizedName,
-    }, {
-      syncActiveWorkspace: true,
-      refreshWorkspaceList: true,
-    });
-  }, [scheduleWorkspaceSave, workspaceNameDraft]);
-
-  const handleGraphChange = useCallback((
-    graphData: LinghuiGraphSnapshot,
-    viewport: LinghuiViewportState,
-    nextStats: LinghuiGraphStats,
-  ) => {
-    const current = activeWorkspaceRef.current;
-    if (!current) return;
-
-    // 画布异常态下不再写盘，避免错误中产生的空白/半空快照覆盖磁盘上的最近一次保存。
-    // 但如果新一帧 graphChange 是非空且与上一次差异属于"用户主动操作"（节点/边数变化），
-    // 说明 React Flow 已重新渲染正常，自动清除 crashed 标志，让用户无需手动恢复。
-    if (canvasCrashedRef.current) {
-      const looksHealthy = graphData.nodes.length > 0
-        && (graphData.nodes.length !== current.graphData.nodes.length
-          || graphData.edges.length !== current.graphData.edges.length);
-      if (looksHealthy) {
-        canvasCrashedRef.current = false;
-        linghuiCanvasLogger.info('canvas auto-recovered after non-empty graph change', {
-          workspaceId: current.id,
-          nodeCount: graphData.nodes.length,
-        });
-        // 继续走下面的正常保存路径
-      } else {
-        linghuiCanvasLogger.warn('graphChange suppressed during canvas crash recovery', {
-          workspaceId: current.id,
-        });
-        return;
-      }
-    }
-
-    // Data-loss guard：当前画布有节点但本次快照变成 0 节点 0 边时，几乎只可能来自渲染崩溃或异常重置；
-    // 不允许写入磁盘，避免把上一份工作完整清空。用户显式删除最后一个节点会经过相同分支，
-    // 但当时 current.nodeCount 已是 1->0 的中间态，由 UI 历史栈兜底；这里仍保留一次性快照来源。
-    if (
-      current.graphData.nodes.length > 0 &&
-      graphData.nodes.length === 0 &&
-      graphData.edges.length === 0 &&
-      (graphData.groups?.length ?? 0) === 0
-    ) {
-      linghuiCanvasLogger.warn('graphChange suppressed: empty snapshot would overwrite non-empty workspace', {
-        workspaceId: current.id,
-        previousNodeCount: current.graphData.nodes.length,
-      });
-      return;
-    }
-
-    const nextDraft = {
-      ...current,
-      graphData,
-      viewport,
-      nodeCount: nextStats.nodeCount,
-      linkCount: nextStats.linkCount,
-      groupCount: nextStats.groupCount,
-    };
-    const changeKind = detectCanvasMutationKind({
-      graphData: current.graphData,
-      viewport: current.viewport,
-    }, {
-      graphData,
-      viewport,
-    });
-
-    setStats(previous => (
-      previous.nodeCount === nextStats.nodeCount &&
-      previous.linkCount === nextStats.linkCount &&
-      previous.groupCount === nextStats.groupCount
-        ? previous
-        : nextStats
-    ));
-
-    activeWorkspaceRef.current = nextDraft;
-    if (pendingSaveRef.current) {
-      pendingSaveRef.current = {
-        ...pendingSaveRef.current,
-        doc: nextDraft,
-      };
-    }
-
-    if (changeKind !== 'content') {
-      return;
-    }
-
-    scheduleWorkspaceSave(nextDraft, {
-      syncActiveWorkspace: false,
-      refreshWorkspaceList: false,
-    });
-  }, [scheduleWorkspaceSave]);
-
-  const handleNodeMutate = useCallback((nodeId: string) => {
-    markNodesAsStale([nodeId], '上游节点参数已变更，请重新运行相关节点。');
-  }, [markNodesAsStale]);
-
-  const handleClearNodeRunState = useCallback((nodeId: string) => {
-    const currentWorkspace = activeWorkspaceRef.current;
-    const currentRuns = workspaceRuntimeRef.current.nodeRuns;
-    const currentLogs = workspaceRuntimeRef.current.executionLogs;
-    if (!currentWorkspace || !currentRuns[nodeId]) return;
-
-    const nextRuns = { ...currentRuns };
-    delete nextRuns[nodeId];
-    updateWorkspaceExecution(nextRuns, currentLogs);
-  }, [updateWorkspaceExecution]);
-
-  const handleCanvasCrash = useCallback((error: Error) => {
-    canvasCrashedRef.current = true;
-    if (saveTimerRef.current) {
-      window.clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
-    }
-    pendingSaveRef.current = null;
-    message.error({
-      content: `画布异常已暂停自动保存：${error.message || '未知错误'}`,
-      duration: 6,
-    });
-  }, [message]);
-
-  const handleCanvasRecover = useCallback(() => {
-    canvasCrashedRef.current = false;
-    message.success('已恢复画布自动保存');
-  }, [message]);
-
-  const handleCanvasReload = useCallback(() => {
-    const currentId = activeWorkspaceRef.current?.id;
-    canvasCrashedRef.current = false;
-    if (!currentId) {
-      message.info('当前没有可重新加载的工作区');
-      return;
-    }
-    void (async () => {
-      try {
-        const reloaded = await loadLinghuiWorkspace(currentId);
-        if (!reloaded) {
-          message.error('未找到工作区记录，无法重新加载');
-          return;
-        }
-        activateWorkspace(reloaded);
-        message.success('已从磁盘重新加载最近一次保存');
-      } catch (error: any) {
-        message.error(error?.message || '重新加载工作区失败');
-      }
-    })();
-  }, [activateWorkspace, message]);
-
-  const handleRestoreNodeRuns = useCallback((nextRuns: Record<string, LinghuiNodeRunState>) => {
-    const currentLogs = workspaceRuntimeRef.current.executionLogs;
-    const nextRuntime = {
-      nodeRuns: cloneSnapshotValue(nextRuns),
-      executionLogs: currentLogs,
-    };
-
-    workspaceRuntimeRef.current = nextRuntime;
-    setWorkspaceRuntime(nextRuntime);
-
-    if (activeWorkspaceRef.current) {
-      activeWorkspaceRef.current = {
-        ...activeWorkspaceRef.current,
-        nodeRuns: nextRuntime.nodeRuns,
-        executionLogs: nextRuntime.executionLogs,
-      };
-    }
-  }, []);
+  const {
+    handleCanvasCrash,
+    handleCanvasRecover,
+    handleCanvasReload,
+    handleClearNodeRunState,
+    handleGraphChange,
+    handleNodeMutate,
+    handleRestoreNodeRuns,
+  } = useLinghuiPageCanvasHandlers({
+    activeWorkspaceRef,
+    activateWorkspace,
+    canvasCrashedRef,
+    markNodesAsStale,
+    message,
+    pendingSaveRef,
+    saveTimerRef,
+    scheduleWorkspaceSave,
+    setStats,
+    setWorkspaceRuntime,
+    updateWorkspaceExecution,
+    workspaceRuntimeRef,
+  });
 
   const openExecutionPlan = useCallback(async (
     scopeLabel: string,
@@ -1562,86 +965,24 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
     }
   }, [message]);
 
-  const failedNodeIds = useMemo(() => Object.entries(nodeRuns)
-    .filter(([, item]) => item.status === 'failed')
-    .sort((left, right) => (right[1].updatedAt ?? 0) - (left[1].updatedAt ?? 0))
-    .map(([nodeId]) => nodeId), [nodeRuns]);
-
-  const staleNodeIds = useMemo(() => Object.entries(nodeRuns)
-    .filter(([, item]) => item.status === 'stale')
-    .sort((left, right) => (right[1].updatedAt ?? 0) - (left[1].updatedAt ?? 0))
-    .map(([nodeId]) => nodeId), [nodeRuns]);
-
-  const handleFocusFailedNode = useCallback(() => {
-    const targetNodeId = failedNodeIds[0];
-    if (!targetNodeId) {
-      message.info('当前没有失败节点');
-      return;
-    }
-    canvasRef.current?.focusNodes([targetNodeId], { select: true });
-  }, [failedNodeIds, message]);
-
-  const handleFocusLogNode = useCallback((nodeId: string) => {
-    if (!nodeId) {
-      return;
-    }
-    canvasRef.current?.focusNodes([nodeId], { select: true });
-  }, []);
-
-  const executionLogItems = useMemo(
-    () => workspaceRuntime.executionLogs.slice(-24).reverse(),
-    [workspaceRuntime.executionLogs],
-  );
-
-  const executionLogErrorCount = useMemo(
-    () => workspaceRuntime.executionLogs.filter(entry => entry.level === 'error').length,
-    [workspaceRuntime.executionLogs],
-  );
-
-  const executionLogLatest = executionLogItems[0];
-
-  const handleRerunAffected = useCallback(async () => {
-    if (staleNodeIds.length === 0) {
-      message.info('当前没有待重跑节点');
-      return;
-    }
-
-    await runWorkflow(staleNodeIds, {
-      successMessage: '已重跑受影响节点',
-    });
-  }, [message, runWorkflow, staleNodeIds]);
-
-  const handleRetryFailed = useCallback(async () => {
-    if (failedNodeIds.length === 0) {
-      message.info('当前没有失败节点');
-      return;
-    }
-
-    await runWorkflow(failedNodeIds, {
-      resolveTargetsOnly: true,
-      successMessage: '已重试失败节点',
-    });
-  }, [failedNodeIds, message, runWorkflow]);
-
-  const handleCancelRun = useCallback(() => {
-    const activeControllers = Array.from(executionBatchesRef.current).filter(
-      controller => !controller.signal.aborted,
-    );
-    if (activeControllers.length === 0) {
-      message.info('当前没有正在执行的队列');
-      return;
-    }
-
-    for (const controller of activeControllers) {
-      controller.abort('用户取消了本轮灵绘执行');
-    }
-    setExecutionQueue(current => current ? {
-      ...current,
-      status: 'canceling',
-      updatedAt: Date.now(),
-    } : current);
-    message.info('已请求取消，当前节点结束后将停止后续队列');
-  }, [message]);
+  const {
+    executionLogErrorCount,
+    executionLogItems,
+    executionLogLatest,
+    handleCancelRun,
+    handleFocusFailedNode,
+    handleFocusLogNode,
+    handleRerunAffected,
+    handleRetryFailed,
+  } = useLinghuiPageExecutionRailState({
+    canvasRef,
+    executionBatchesRef,
+    message,
+    nodeRuns,
+    runWorkflow,
+    setExecutionQueue,
+    workspaceLogs: workspaceRuntime.executionLogs,
+  });
 
   // preview binding 整套已移除：用户不使用，且 split-view 的"实时同步出图"概念被简化为
   // 普通的下游节点执行流（用户手动跑 image / video 节点即可）
@@ -1663,316 +1004,39 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
   }, [message, updateWorkspaceExecution]);
 
   const canvasFloatingRail = useMemo(() => (
-    <div
-      ref={railShellRef}
-      className={`linghuiCanvasRailShell ${projectPanelOpen ? 'isProjectPanelOpen' : ''}`}
-    >
-      <div className="linghuiCanvasRailGroup">
-        {onExit ? (
-          <button
-            type="button"
-            className="linghuiCanvasRailButton"
-            onClick={onExit}
-            title="返回上一页"
-            aria-label="返回上一页"
-          >
-            <span className="linghuiCanvasRailIcon"><ArrowLeft size={16} /></span>
-            <span className="linghuiCanvasRailLabel">返回</span>
-          </button>
-        ) : null}
-        <button
-          type="button"
-          className={`linghuiCanvasRailButton ${projectPanelOpen ? 'isActive' : ''}`}
-          onClick={() => {
-            setProjectPanelOpen(current => !current);
-            setExecutionLogPanelOpen(false);
-            closeActiveDrawer();
-          }}
-          title="打开项目列表"
-          aria-label="打开项目列表"
-        >
-          <span className="linghuiCanvasRailIcon"><FolderOpen size={16} /></span>
-          <span className="linghuiCanvasRailLabel">项目列表</span>
-        </button>
-        <button
-          type="button"
-          className={`linghuiCanvasRailButton ${saving ? 'isActive' : ''}`}
-          onClick={() => {
-            void handleManualSave();
-          }}
-          title="保存当前项目"
-          aria-label="保存当前项目"
-          disabled={saving}
-        >
-          <span className="linghuiCanvasRailIcon"><Save size={16} /></span>
-          <span className="linghuiCanvasRailLabel">{saving ? '保存中' : '保存'}</span>
-        </button>
-        <button
-          type="button"
-          className="linghuiCanvasRailButton"
-          onClick={() => {
-            void handleCreateWorkspace();
-          }}
-          title="创建新的灵绘项目"
-          aria-label="创建新的灵绘项目"
-        >
-          <span className="linghuiCanvasRailIcon"><Plus size={16} /></span>
-          <span className="linghuiCanvasRailLabel">新建</span>
-        </button>
-        <button
-          type="button"
-          className={`linghuiCanvasRailButton ${activeDrawer === 'workflow' ? 'isActive' : ''}`}
-          onClick={() => handleToggleDrawer('workflow')}
-          title="打开工作流面板"
-          aria-label="打开工作流面板"
-        >
-          <span className="linghuiCanvasRailIcon"><Workflow size={16} /></span>
-          <span className="linghuiCanvasRailLabel">工作流</span>
-        </button>
-        <button
-          type="button"
-          className={`linghuiCanvasRailButton ${activeDrawer === 'asset' ? 'isActive' : ''}`}
-          onClick={() => handleToggleDrawer('asset')}
-          title="打开资产面板"
-          aria-label="打开资产面板"
-        >
-          <span className="linghuiCanvasRailIcon"><Library size={16} /></span>
-          <span className="linghuiCanvasRailLabel">资产</span>
-        </button>
-        <button
-          type="button"
-          className={`linghuiCanvasRailButton ${activeDrawer === 'history' ? 'isActive' : ''}`}
-          onClick={() => handleToggleDrawer('history')}
-          title="打开历史面板"
-          aria-label="打开历史面板"
-        >
-          <span className="linghuiCanvasRailIcon"><History size={16} /></span>
-          <span className="linghuiCanvasRailLabel">历史</span>
-        </button>
-        <button
-          type="button"
-          className={`linghuiCanvasRailButton ${executionLogPanelOpen ? 'isActive' : ''} ${executionLogErrorCount > 0 ? 'hasAlert' : ''}`}
-          onClick={() => {
-            setExecutionLogPanelOpen(current => !current);
-            setProjectPanelOpen(false);
-            closeActiveDrawer();
-          }}
-          title="打开执行日志"
-          aria-label="打开执行日志"
-        >
-          <span className="linghuiCanvasRailIcon"><ClipboardList size={16} /></span>
-          <span className="linghuiCanvasRailLabel">执行日志</span>
-          {executionLogErrorCount > 0 ? (
-            <span className="linghuiCanvasRailCount">{executionLogErrorCount}</span>
-          ) : null}
-        </button>
-      </div>
-
-      {projectPanelOpen ? (
-        <div className="linghuiCanvasProjectPanel nopan nowheel">
-          <div className="linghuiCanvasProjectPanelHeader">
-            <div className="linghuiCanvasProjectPanelTitleBlock">
-              <div className="linghuiCanvasProjectPanelTitle">项目列表</div>
-              <div className="linghuiCanvasProjectPanelMeta">
-                {workspaceList.length} 个项目
-                {lastSavedAt ? ` · 最近保存 ${new Date(lastSavedAt).toLocaleTimeString()}` : ''}
-              </div>
-            </div>
-            <div className="linghuiCanvasProjectPanelActions">
-              <button
-                type="button"
-                className="linghuiCanvasProjectActionButton isIconOnly"
-                onClick={() => {
-                  void handleImportWorkspace();
-                }}
-                title="导入灵绘项目"
-                aria-label="导入灵绘项目"
-              >
-                <Upload size={14} />
-              </button>
-            </div>
-          </div>
-
-          <div className="linghuiCanvasProjectField">
-            <label className="linghuiCanvasProjectFieldLabel" htmlFor="linghui-project-name">
-              当前项目名称
-            </label>
-            <div className="linghuiCanvasProjectFieldRow">
-              <input
-                id="linghui-project-name"
-                ref={renameInputRef}
-                className="linghuiCanvasProjectNameInput"
-                value={workspaceNameDraft}
-                placeholder={DEFAULT_LINGHUI_WORKSPACE_NAME}
-                onChange={event => setWorkspaceNameDraft(event.target.value)}
-                onBlur={() => commitWorkspaceRename()}
-                onKeyDown={event => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault();
-                    commitWorkspaceRename();
-                    event.currentTarget.blur();
-                  } else if (event.key === 'Escape') {
-                    setWorkspaceNameDraft(activeWorkspace?.name ?? DEFAULT_LINGHUI_WORKSPACE_NAME);
-                    event.currentTarget.blur();
-                  }
-                }}
-              />
-              <button
-                type="button"
-                className="linghuiCanvasProjectActionButton isPrimary isIconOnly"
-                onClick={() => {
-                  void handleManualSave();
-                }}
-                disabled={saving}
-                title={saving ? '保存中' : '保存当前项目'}
-                aria-label={saving ? '保存中' : '保存当前项目'}
-              >
-                <Save size={14} />
-              </button>
-            </div>
-          </div>
-
-          <div className="linghuiCanvasProjectList">
-            {workspaceList.map(workspace => (
-              <div
-                key={workspace.id}
-                role="button"
-                tabIndex={0}
-                className={`linghuiCanvasProjectItem ${workspace.id === activeWorkspace?.id ? 'isActive' : ''}`}
-                onClick={() => {
-                  void handleSelectWorkspace(workspace.id);
-                }}
-                onKeyDown={event => {
-                  if (event.key !== 'Enter' && event.key !== ' ') return;
-                  event.preventDefault();
-                  void handleSelectWorkspace(workspace.id);
-                }}
-              >
-                <span className="linghuiCanvasProjectItemContent">
-                  <span className="linghuiCanvasProjectItemName">{workspace.name}</span>
-                  <span className="linghuiCanvasProjectItemMeta">
-                    更新于 {new Date(workspace.updatedAt).toLocaleString()}
-                  </span>
-                </span>
-                <span className="linghuiCanvasProjectItemActions">
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    className="linghuiCanvasProjectItemAction"
-                    onClick={event => {
-                      event.stopPropagation();
-                      void handleExportWorkspace(workspace.id);
-                    }}
-                    onKeyDown={event => {
-                      if (event.key !== 'Enter' && event.key !== ' ') return;
-                      event.preventDefault();
-                      event.stopPropagation();
-                      void handleExportWorkspace(workspace.id);
-                    }}
-                    title="导出项目"
-                    aria-label={`导出 ${workspace.name}`}
-                  >
-                    <Download size={13} />
-                  </span>
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    className="linghuiCanvasProjectItemAction isDanger"
-                    onClick={event => {
-                      event.stopPropagation();
-                      handleDeleteWorkspace(workspace.id);
-                    }}
-                    onKeyDown={event => {
-                      if (event.key !== 'Enter' && event.key !== ' ') return;
-                      event.preventDefault();
-                      event.stopPropagation();
-                      handleDeleteWorkspace(workspace.id);
-                    }}
-                    title="删除项目"
-                    aria-label={`删除 ${workspace.name}`}
-                  >
-                    <Trash2 size={13} />
-                  </span>
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : null}
-
-      {executionLogPanelOpen ? (
-        <section className={`linghuiCanvasExecutionLogPanel nopan nowheel ${executionLogCollapsed ? 'isCollapsed' : ''}`}>
-          <div className="linghuiCanvasExecutionLogPanelHeader">
-            <div className="linghuiCanvasExecutionLogPanelTitleBlock">
-              <div className="linghuiCanvasExecutionLogPanelTitle">执行日志</div>
-              <div className="linghuiCanvasExecutionLogPanelMeta">
-                {workspaceRuntime.executionLogs.length} 条记录
-                {executionLogLatest ? ` · 最近 ${new Date(executionLogLatest.createdAt).toLocaleTimeString()}` : ''}
-              </div>
-            </div>
-            <div className="linghuiCanvasExecutionLogPanelActions">
-              <button
-                type="button"
-                className="linghuiCanvasProjectActionButton isIconOnly"
-                onClick={() => setExecutionLogCollapsed(value => !value)}
-                title={executionLogCollapsed ? '展开执行日志' : '收起执行日志'}
-                aria-label={executionLogCollapsed ? '展开执行日志' : '收起执行日志'}
-              >
-                {executionLogCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
-              </button>
-              <button
-                type="button"
-                className="linghuiCanvasProjectActionButton isIconOnly"
-                onClick={() => setExecutionLogPanelOpen(false)}
-                title="关闭执行日志"
-                aria-label="关闭执行日志"
-              >
-                <X size={14} />
-              </button>
-            </div>
-          </div>
-
-          {!executionLogCollapsed ? (
-            <div className="linghuiCanvasExecutionLogPanelBody">
-              {executionLogItems.length === 0 ? (
-                <div className="linghuiCanvasExecutionLogEmpty">暂无执行记录。</div>
-              ) : (
-                <div className="linghuiCanvasExecutionLogList">
-                  {executionLogItems.map(entry => {
-                    const LevelIcon = EXECUTION_LOG_ICON_BY_LEVEL[entry.level] ?? Info;
-                    const isFocusable = Boolean(entry.nodeId);
-                    return (
-                      <button
-                        key={entry.id}
-                        type="button"
-                        className={`linghuiCanvasExecutionLogItem is-${entry.level} ${isFocusable ? 'isFocusable' : ''}`}
-                        disabled={!isFocusable}
-                        onClick={() => {
-                          if (entry.nodeId) {
-                            handleFocusLogNode(entry.nodeId);
-                          }
-                        }}
-                        title={isFocusable ? '定位相关节点' : entry.message}
-                      >
-                        <span className="linghuiCanvasExecutionLogIcon">
-                          <LevelIcon size={14} />
-                        </span>
-                        <span className="linghuiCanvasExecutionLogContent">
-                          <span className="linghuiCanvasExecutionLogMessage">{entry.message}</span>
-                          <span className="linghuiCanvasExecutionLogTime">
-                            {new Date(entry.createdAt).toLocaleString()}
-                          </span>
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          ) : null}
-        </section>
-      ) : null}
-    </div>
+    <LinghuiCanvasFloatingRail
+      railShellRef={railShellRef}
+      renameInputRef={renameInputRef}
+      activeDrawer={activeDrawer}
+      activeWorkspaceId={activeWorkspace?.id}
+      activeWorkspaceName={activeWorkspace?.name}
+      executionLogCollapsed={executionLogCollapsed}
+      executionLogErrorCount={executionLogErrorCount}
+      executionLogItems={executionLogItems}
+      executionLogLatest={executionLogLatest}
+      executionLogPanelOpen={executionLogPanelOpen}
+      lastSavedAt={lastSavedAt}
+      projectPanelOpen={projectPanelOpen}
+      saving={saving}
+      workspaceLogCount={workspaceRuntime.executionLogs.length}
+      workspaceList={workspaceList}
+      workspaceNameDraft={workspaceNameDraft}
+      onCloseActiveDrawer={closeActiveDrawer}
+      onCommitWorkspaceRename={commitWorkspaceRename}
+      onCreateWorkspace={handleCreateWorkspace}
+      onDeleteWorkspace={handleDeleteWorkspace}
+      onExit={onExit}
+      onExportWorkspace={handleExportWorkspace}
+      onFocusLogNode={handleFocusLogNode}
+      onImportWorkspace={handleImportWorkspace}
+      onManualSave={handleManualSave}
+      onSelectWorkspace={handleSelectWorkspace}
+      onSetExecutionLogCollapsed={setExecutionLogCollapsed}
+      onSetExecutionLogPanelOpen={setExecutionLogPanelOpen}
+      onSetProjectPanelOpen={setProjectPanelOpen}
+      onSetWorkspaceNameDraft={setWorkspaceNameDraft}
+      onToggleDrawer={handleToggleDrawer}
+    />
   ), [
     activeDrawer,
     activeWorkspace?.id,
@@ -1984,10 +1048,10 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
     executionLogItems,
     executionLogLatest,
     executionLogPanelOpen,
+    handleCreateWorkspace,
     handleDeleteWorkspace,
     handleExportWorkspace,
     handleFocusLogNode,
-    handleCreateWorkspace,
     handleImportWorkspace,
     handleManualSave,
     handleSelectWorkspace,

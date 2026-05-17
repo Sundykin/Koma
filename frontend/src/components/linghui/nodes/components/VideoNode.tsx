@@ -27,6 +27,7 @@ import { base64ToBytes } from '../../../../utils/encoding';
 import { cssVars } from '../../../../theme/runtime';
 import { LinghuiNodeRunError } from './LinghuiNodeRunError';
 import { LinghuiNodePorts } from './LinghuiNodeHandle';
+import { isPlayableUrlSource, inferVideoMimeType, drawVideoFrame } from '../state/videoNodeUtils';
 
 const STATUS_COLORS: Record<LinghuiRunStatus, string> = {
   idle: 'var(--token-text-muted)',
@@ -41,28 +42,6 @@ function getPreviewSource(source?: string): string {
 }
 
 const decodeLinghuiSource = fromKomaLocalUrl;
-
-function isPlayableUrlSource(source: string): boolean {
-  return (
-    source.startsWith('http://') ||
-    source.startsWith('https://') ||
-    source.startsWith('data:') ||
-    source.startsWith('blob:')
-  );
-}
-
-function inferVideoMimeType(source: string, mimeType?: string): string {
-  const normalizedMimeType = String(mimeType ?? '').trim();
-  if (normalizedMimeType) {
-    return normalizedMimeType;
-  }
-
-  const normalizedSource = source.split('?')[0].split('#')[0].toLowerCase();
-  if (normalizedSource.endsWith('.webm')) return 'video/webm';
-  if (normalizedSource.endsWith('.mov')) return 'video/quicktime';
-  if (normalizedSource.endsWith('.m4v')) return 'video/x-m4v';
-  return 'video/mp4';
-}
 
 async function resolvePlayableVideoSource(
   source: string,
@@ -91,62 +70,6 @@ async function resolvePlayableVideoSource(
   return {
     url: `data:${resolvedMimeType};base64,${base64}`,
   };
-}
-
-function drawVideoFrame(video: HTMLVideoElement, canvas: HTMLCanvasElement): boolean {
-  const width = Math.max(1, Math.round(canvas.clientWidth || canvas.offsetWidth || 0));
-  const height = Math.max(1, Math.round(canvas.clientHeight || canvas.offsetHeight || 0));
-  if (width <= 0 || height <= 0 || video.videoWidth <= 0 || video.videoHeight <= 0 || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
-    return false;
-  }
-
-  const devicePixelRatio = window.devicePixelRatio || 1;
-  const scaledWidth = Math.max(1, Math.round(width * devicePixelRatio));
-  const scaledHeight = Math.max(1, Math.round(height * devicePixelRatio));
-  if (canvas.width !== scaledWidth || canvas.height !== scaledHeight) {
-    canvas.width = scaledWidth;
-    canvas.height = scaledHeight;
-  }
-
-  let context: CanvasRenderingContext2D | null = null;
-  try {
-    context = canvas.getContext('2d');
-  } catch {
-    context = null;
-  }
-
-  if (!context) {
-    return false;
-  }
-
-  context.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
-  context.clearRect(0, 0, width, height);
-  context.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--token-bg-app').trim() || 'Canvas';
-  context.fillRect(0, 0, width, height);
-
-  const sourceRatio = video.videoWidth / video.videoHeight;
-  const targetRatio = width / height;
-  let drawWidth = width;
-  let drawHeight = height;
-  let offsetX = 0;
-  let offsetY = 0;
-
-  if (sourceRatio > targetRatio) {
-    drawHeight = height;
-    drawWidth = height * sourceRatio;
-    offsetX = (width - drawWidth) / 2;
-  } else {
-    drawWidth = width;
-    drawHeight = width / sourceRatio;
-    offsetY = (height - drawHeight) / 2;
-  }
-
-  try {
-    context.drawImage(video, offsetX, offsetY, drawWidth, drawHeight);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 function VideoNodeInner({ id, data, selected }: NodeProps) {
