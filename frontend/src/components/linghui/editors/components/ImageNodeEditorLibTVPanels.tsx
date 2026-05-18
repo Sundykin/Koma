@@ -156,6 +156,16 @@ export const ImageNodeEditorPreviewStage: React.FC<ImagePreviewStageProps> = ({
   </div>
 );
 
+function ratioToCssAspect(value: string): string {
+  const [rawW, rawH] = value.split(':');
+  const width = Number(rawW);
+  const height = Number(rawH);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return '1 / 1';
+  }
+  return `${width} / ${height}`;
+}
+
 export const ImageNodeEditorOutpaintPanel: React.FC<ImageOutpaintToolPanelProps> = ({
   currentImagePreview,
   imageAlt,
@@ -337,11 +347,28 @@ export const ImageNodeEditorGenericPanel: React.FC<ImageGenericToolPanelProps> =
   const toolDef = LINGHUI_IMAGE_TOOL_PRESETS[tool];
   const presets = toolDef.presets;
   const isCropTool = tool === 'crop';
+  const selectedPreset = presets.find(preset => preset.label === genericPresetLabel) ?? presets[0];
 
   return (
     <ImageNodeEditorLibTVToolShell title={toolDef.title} className="isCompactTool" onClose={onClose}>
       <div className="linghuiImageLibTVPanelBody isTwoColumn">
-        <ImageNodeEditorPreviewStage currentImagePreview={currentImagePreview} imageAlt={imageAlt} />
+        {isCropTool ? (
+          <div
+            className="linghuiImageLibTVPreviewStage isCropPreview"
+            style={cssVars({ '--linghui-crop-aspect': ratioToCssAspect(genericAspectRatio) })}
+          >
+            {currentImagePreview ? (
+              <img src={currentImagePreview} alt={imageAlt} draggable={false} />
+            ) : (
+              <ImageIcon size={30} />
+            )}
+            <div className="linghuiImageLibTVCropOverlay" aria-hidden="true">
+              <div className="linghuiImageLibTVCropFrame" />
+            </div>
+          </div>
+        ) : (
+          <ImageNodeEditorPreviewStage currentImagePreview={currentImagePreview} imageAlt={imageAlt} />
+        )}
         <div className="linghuiImageLibTVControlStack">
           <div className="linghuiImageLibTVSectionTitle">
             {toolDef.title}方式
@@ -358,6 +385,11 @@ export const ImageNodeEditorGenericPanel: React.FC<ImageGenericToolPanelProps> =
               </button>
             ))}
           </div>
+          {selectedPreset ? (
+            <div className="linghuiImageLibTVPresetHint">
+              {selectedPreset.description}
+            </div>
+          ) : null}
           {/* 裁剪类纯本地工具不需要追加 prompt；其它工具支持用户补充 prompt */}
           {!isCropTool && (
             <textarea

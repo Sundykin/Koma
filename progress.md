@@ -1,5 +1,123 @@
 # Progress Log
 
+## Session: 2026-05-18 Linghui LibTV Node Parity
+
+### Phase 5.9: Script / Storyboard Real Field + In-node Layout Fix
+- **Status:** complete
+- Actions taken:
+  - 根据用户反馈重新反编 LibTV `ScriptNode` / `VideoStoryNode`，确认故事板主要内容和操作在节点本体内部，而不是只靠外挂编辑器。
+  - 修正 `LinghuiStoryboardFrame` 数据结构，新增 `plotDescription / visualDescription / shotSize / characterAction / emotion / sceneTags / lightingAndAtmosphere / audioEffects / dialogue / imageGenerationPrompt / videoMotionPrompt`。
+  - 修正 `parseLinghuiScriptContent()`：JSON 输出中的剧情、画面、生图提示词、视频运动提示词会分别保留；`formatLinghuiScriptShots()` 也按不同字段输出。
+  - 修正故事板/脚本 system prompt：要求 LLM 输出不同的剧情描述、画面描述、生图提示词和视频运动提示词，避免再次生成一列多用的数据。
+  - 修正 `ScriptShotViews`：表格列从真实字段读取，不再把所有列回填成 `description`。
+  - 修正派生链路：`生成分镜图` 优先使用 `imageGenerationPrompt`，`生成视频流程` 优先使用 `videoMotionPrompt`。
+  - `ScriptNode` / `StoryboardNode` 本体新增 LibTV 式节点内故事板区域：节点内卡片/表格切换、全屏打开入口、选中镜头后节点内直接触发 `分镜图 / 视频流程`。
+- Validation:
+  - `npx tsc --noEmit --project frontend/tsconfig.json --pretty false`：passed。
+  - `cd frontend && npm run test -- --run src/components/linghui/nodes/tests/ScriptNode.test.tsx src/components/linghui/editors/tests/ScriptShotViews.test.tsx src/components/linghui/editors/tests/linghuiScriptNodeUtils.test.ts src/components/linghui/execution/tests/linghuiExecutionScriptNode.test.ts src/components/linghui/execution/tests/linghuiExecutionStoryboardNode.test.ts src/components/linghui/canvas/tests/useLinghuiCanvasDocumentOps.test.tsx`：6 files / 24 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json --pretty false`：passed。
+  - `git diff --check`：passed。
+- Next:
+  - 继续核对 LibTV `ScriptAggregatedGenerator` 和 full-screen table config：列显示/过滤、可编辑文本 cell、角色图和视频参考图上传，这些仍未完整迁移。
+
+### Phase 5.8: Script / Storyboard / Agent Local Prompt Presets
+- **Status:** complete
+- Actions taken:
+  - 继续按 LibTV 节点对齐思路处理可本地实现的预制提示词入口，而不是只做静态 UI。
+  - 新增 `linghuiScriptPromptPresets.ts`：脚本 LLM 生成态提供 `剧情分镜 / 多机位 / 产品短片 / 情绪蒙太奇`，点击后合并进真实 `prompt/systemPrompt`，不会重复叠加同一内置提示词。
+  - `StoryboardNodeEditor` 增加可见 compact scene preset 条：`四镜头 / 九镜头 / 16镜头 / 25镜头`，点击写入 `scene/targetShotCount`，底层继续由执行器拼入 LibTV scene 内置 prompt。
+  - 新增 `linghuiAgentPromptPresets.ts`：Agent 节点提供 `素材分析 / 生成方案 / 分镜检查 / 提示词优化`，点击写入 `prompt/systemPrompt/maxIterations`。
+  - 脚本、故事板和 Agent 统一复用扁平化 `linghuiScriptGeneratorPanel` / preset chip 尺度，减轻亮色主题下的大阴影和双层卡片感。
+- Validation:
+  - `npx tsc --noEmit --project frontend/tsconfig.json --pretty false`：passed。
+  - `cd frontend && npm run test -- --run src/components/linghui/editors/tests/linghuiPromptPresets.test.ts src/components/linghui/editors/tests/ImageNodeEditor.test.tsx src/components/linghui/editors/tests/LinghuiNodeEditor.test.tsx src/components/linghui/execution/tests/linghuiExecutionStoryboardNode.test.ts src/components/linghui/execution/tests/linghuiExecutionScriptNode.test.ts`：5 files / 31 tests passed；保留既有 AntD/jsdom/Three.js warning。
+  - `npx tsc --noEmit --project tsconfig.json --pretty false`：passed。
+  - `git diff --check`：passed。
+- Next:
+  - 继续下一个节点聚焦：建议复核 `agent` 结果态/工具白名单显示是否与 LibTV custom/text 生成器状态更一致，或回到 `image` 的擦除/抠图面板做更深的真实能力评估。
+
+### Phase 5.7: Image Generic Tools Preset + Crop Preview Pass
+- **Status:** complete
+- Actions taken:
+  - 图片通用工具补齐更多 LibTV 风格 preset：`去水印字幕 / 透明底素材 / 封面裁剪 / 手机屏幕 / 局部重排 / 替换文字`。
+  - `ImageNodeEditorGenericPanel` 对 `裁剪` 增加比例预览遮罩，跟随 `genericAspectRatio` 变化，明确它走本地 FFmpeg crop 链路。
+  - 非本地工具显示当前 preset 说明，避免用户把 prompt 派生工具误解为本地处理。
+- Validation:
+  - `npx tsc --noEmit --project frontend/tsconfig.json --pretty false`：passed。
+  - `cd frontend && npm run test -- --run src/components/linghui/editors/tests/ImageNodeEditor.test.tsx src/components/linghui/editors/tests/LinghuiNodeEditor.test.tsx`：2 files / 22 tests passed；保留既有测试环境 warning。
+  - `git diff --check`：passed。
+- Next:
+  - 没有本地模型的 `擦除 / 抠图 / 文字编辑` 继续保持图生图派生，不暴露成假本地按钮；后续如接入分割/修复服务再升级为真实本地/服务端执行。
+
+### Phase 5.4: SpaceScene720 Panorama Viewer Parity
+- **Status:** complete
+- Actions taken:
+  - 继续对标 LibTV `space-scene-720` / `SpaceScene360Viewer`，把反编出的全景 viewer 交互补到灵绘全景节点。
+  - `PanoramaViewport` 增加可控的九宫格构图线、右下角 yaw/pitch/fov HUD、交互开关，并保持节点内缩略预览默认不显示这些额外 HUD。
+  - `PanoramaViewer` 全屏 Modal 增加 LibTV 式底部紧凑工具条：快捷键面板、构图网格开关、拖拽交互开关、应用当前视角按钮；原 `应用此视角` 仍走真实 perspective 派生逻辑。
+  - `panoramaDetailCrop.ts` 增加 LibTV 4 向 / 12 向截图命名 helper 和 `全景截图组 (N 张)` helper；全景编辑器增加 `切 12 方向` 入口。
+  - `_media-panels.scss` 增加全景构图网格、HUD、底部工具条和快捷键面板样式，保持 26px 按钮和轻量扁平 HUD 尺度。
+- Validation:
+  - `cd frontend && npm run test -- --run src/components/linghui/panorama/panoramaPerspectiveExtractor.test.ts`：1 file / 11 tests passed。
+  - `npx tsc --noEmit --project frontend/tsconfig.json --pretty false`：passed。
+  - `npx tsc --noEmit --project tsconfig.json --pretty false`：passed。
+  - `git diff --check`：passed。
+- Next:
+  - 继续下一个 LibTV 节点差距，建议回到 `video` 的截图/解析/去字幕工具，或补 `image` 剩余擦除/抠图/crop 面板真实流程。
+
+### Phase 5.1: VideoGroup Storyboard Video Flow
+- **Status:** complete
+- Actions taken:
+  - 继续 `video_group` 迁移。根据 LibTV 反编结论，它不是裸露的普通节点，而是故事板图片组派生出的视频组容器。
+  - 改造 `useLinghuiCanvasStoryboardVideoDerivation.ts`：`生成视频流程` 现在创建一个 `group`，label 为 `视频组 · {故事板名}`，并写入 `sourceScriptNodeId / storyboardTitle / storyboardGroupType:"video"`。
+  - 每个镜头在 group 内生成一组分镜图节点 + 视频节点；图节点承接 shot.image/source 和描述，视频节点承接 shot.description / duration，并保留 script derivation metadata。
+  - group 右侧自动创建 `linghui/video-clip` 节点，`clips` 绑定所有分镜视频节点，后续视频生成完成后可直接合成。
+  - `LinghuiScriptDerivationKind` 增加 `video-clip`，`LinghuiVideoClipNodeProperties` 继承脚本派生 metadata，方便复用/刷新同一个合成节点。
+  - `useLinghuiCanvasDocumentOps.test.tsx` 增加 LibTV video_group parity 测试，覆盖 group、子节点、clip 节点和边。
+- Validation:
+  - `npx tsc --noEmit --project frontend/tsconfig.json --pretty false`：passed。
+  - `cd frontend && npm run test -- --run src/components/linghui/canvas/tests/useLinghuiCanvasDocumentOps.test.tsx src/components/linghui/execution/tests/linghuiExecutionVideoClipNode.test.ts src/components/linghui/library/tests/linghuiNodeDefs.test.ts`：3 files / 22 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json --pretty false`：passed。
+  - `git diff --check`：passed。
+- Next:
+  - 继续 `video-story`：把 LibTV 的 rows/columns 表格和全屏只读视图对齐到灵绘 `storyboard` 的 table/fullscreen 视图。
+
+### Phase 4-5: VideoClip Audit + Real FFmpeg Concat
+- **Status:** complete
+- Actions taken:
+  - 继续按用户要求搜集 LibTV 节点操作逻辑，深挖 `template_/libtv/15gvxu-nayl4w.js` 中 `VideoClipNode`。
+  - 记录 LibTV 证据：空态文案 `空空如也，请连接多个视频节点后操作` / `请连接2个及以上的视频/音频后操作`，可打开按钮 `打开视频合成`，资源态中央仍可打开合成并有下载按钮，节点不显示通用 generator 条。
+  - 修掉灵绘 `VideoClipNode.tsx` 的假入口：移除 `Modal.info("executor 尚未接入")`，`合成视频` 按钮改为调用真实 `onRunNode(id)`，不足 2 段时禁用并给 title。
+  - 新增 Electron FFmpeg `concatMediaClips` 桥：TS 与 public JS 镜像均包含 preload 白名单、controller 方法、service 队列任务和拼接实现。
+  - `concatMediaClips` 实现策略：每个视频/图片先标准化为同尺寸、同 fps、yuv420p、带音轨的临时 mp4；图片按默认时长 loop；最后用 concat demuxer 输出 mp4。
+  - 新增 `linghuiVideoClipExecutor.ts`，执行器读取显式 `properties.clips`，没有 clips 时回退上游 video/image 输入；少于 2 段时报 LibTV 同款输入不足文案；成功返回 `video` result。
+  - `ffmpegManager.ts` 增加 `getCacheDir` 和 `concatMediaClips`，并新增 passthrough 测试；新增 `linghuiExecutionVideoClipNode.test.ts` 覆盖显式 clips、上游 fallback 和输入不足。
+- Validation:
+  - `npx tsc --noEmit --project frontend/tsconfig.json --pretty false`：passed。
+  - `cd frontend && npm run test -- --run src/components/linghui/execution/tests/linghuiExecutionVideoClipNode.test.ts src/services/ffmpegManager.test.ts`：2 files / 7 tests passed。
+  - `npx tsc --noEmit --project tsconfig.json --pretty false`：passed。
+- Next:
+  - 已初步记录 `video_group` / `video-story`：下一步优先做“故事板/脚本 -> 分镜视频组”的派生流程，把多段视频生成后接到 `linghui/video-clip`。
+
+### Phase 1-3: Node Inventory + Audio Node Start
+- **Status:** complete
+- Actions taken:
+  - 按用户要求继续“搜集 LibTV 所有节点”，从 `template_/libtv` 打包产物中定位 `nodeTypes` 与 `wrapSelfVirtualizing`。
+  - 抽出 LibTV ReactFlow 节点类型：`custom/text/image/video/audio/temp/group/script/storyboard/video-story/video_group/video-clip/space-scene-720`。
+  - 对照灵绘当前节点：`text/agent/image/panorama/video/audio/script/storyboard/director3d/image-grid-slice/video-clip`。
+  - 已把新计划和差距矩阵写入 `task_plan.md`，把节点清单和 AudioNode 反编结论写入 `findings.md`。
+  - 选择 `audio` 作为本轮首个落地节点：LibTV 证据明确、灵绘已有空态派生但节点 UI / 资源态操作还没完整对齐。
+  - 新增 `useLinghuiAudioNodeUpload.ts` 和 `LinghuiAudioNodeUploadFloat.tsx`，让音频节点上方“上传”浮按钮走与图片/视频一致的本地选择、workspace 导入、写回 source、清运行态链路。
+  - `AudioNode.tsx` 改为使用 `resolveLinghuiAudioNodeViewState()`：支持 `empty_generate / pending / resource / generating / failed`，pending 态不显示等待文案，resource 态隐藏 target handle 并直接内嵌音频播放器。
+  - `_compact-nodes.scss` 增加 compact 音频 resource stage / disc / player 样式，保持 HUD 尺度和亮色主题扁平化。
+  - 新增 `AudioNode.test.tsx` 覆盖 empty、pending、resource 三个关键状态。
+- Validation:
+  - `cd frontend && npm run test -- --run src/components/linghui/nodes/tests/AudioNode.test.tsx`：1 file / 3 tests passed。
+  - `npx tsc --noEmit --project frontend/tsconfig.json --pretty false`：passed。
+  - `git diff --check`：passed。
+- Next:
+  - 继续反编并迁移 `group / video_group / video-story / video-clip`，确认 LibTV 的组合节点操作和灵绘对应差距。
+
 ## Session: 2026-05-17 Linghui Large Component/Hook Refactor Plan
 
 ### Phase 5.1: P1 Image Floating Toolbar Menu Extraction
@@ -2203,3 +2321,106 @@
   - `git diff --check`：passed。
 - Errors:
   - CDP 验证脚本曾因 Runtime.evaluate 字符串换行拼接触发 SyntaxError；已换成无换行表达式重新读取 DOM，确认非应用异常。
+
+## 2026-05-18 LibTV VideoStoryNode Parity Pass
+
+- Re-read planning files and ran planning catchup for the continuing LibTV node parity work.
+- Re-extracted LibTV `VideoStoryNode` from `template_/libtv/15gvxu-nayl4w.js`, including dynamic `rows` / `shotColumns`, image-column detection, default size/title, fullscreen reuse, and `暂无数据` empty state.
+- Updated `frontend/src/components/linghui/editors/components/ScriptShotViews.tsx` so `ScriptShotTable` now renders a LibTV-style dynamic storyboard table with image thumbnails, sticky headers, scrollable/selectable text cells, and the LibTV empty text.
+- Updated `frontend/src/components/linghui/editors/components/StoryboardNodeEditor.tsx` to remove its duplicate local card/table components and reuse `ScriptShotCards` / `ScriptShotTable`, so storyboard and script views share one behavior.
+- Added compact flat table/card styles in `frontend/src/components/linghui/page/styles/_node-editor-shell.scss` without increasing the editor HUD footprint.
+- Added `frontend/src/components/linghui/editors/tests/ScriptShotViews.test.tsx` covering dynamic columns, image cells, and `暂无数据`.
+
+## 2026-05-18 LibTV GroupNode First Parity Pass
+
+- Deep-read LibTV `GroupNodeToolbar` and group helper chunks from `template_/libtv/15gvxu-nayl4w.js`.
+- Extended Linghui group metadata typing in `frontend/src/types/linghui.ts` for LibTV storyboard group fields already used by derived video/image flows.
+- Added LibTV-compatible group count label helpers in `frontend/src/constants/linghuiWorkflowBlock.ts`.
+- Updated `frontend/src/components/linghui/canvas/hooks/useLinghuiCanvasFlowBridge.ts` so group data mutations preserve LibTV-style automatic count labels when the group label is still default-like.
+- Added selected-group compact floating toolbar in `frontend/src/components/linghui/nodes/components/CanvasGroupNode.tsx` with real color selection and real `宫格排列 / 水平排列 / 垂直排列` child layout operations.
+- Added compact flat group toolbar styles in `frontend/src/components/linghui/page/styles/_canvas-reactflow.scss`.
+- Added `frontend/src/components/linghui/canvas/tests/linghuiWorkflowBlock.test.ts` for label compatibility.
+- Validation: targeted Vitest, frontend TypeScript, root TypeScript, and `git diff --check` passed for this slice.
+
+## 2026-05-18 LibTV VideoNode Resource Tool Pass
+
+- **Status:** complete
+- Actions taken:
+  - Continued node-by-node LibTV parity on `linghui/video`, using LibTV `AVEditor` evidence for frame extraction / encode-style operations.
+  - Kept resource/import video nodes in tool-panel mode instead of clearing active video tools.
+  - Added real `截图` tool panel: 首帧 / 中帧 / 尾帧 / 首中尾, extracting frames with browser video + canvas and deriving downstream image nodes.
+  - Added real `剪辑` tool panel: compact start/end second inputs and `裁剪` button.
+  - Added Electron FFmpeg `trimVideo` IPC path in TS source and public runtime mirror: controller, preload whitelist/bridge, service queue, frontend manager.
+  - Wired trimmed output back to canvas through `onCreateDerivedVideoClips`, reusing the existing video derivation path to create downstream `linghui/video` nodes.
+  - Added compact styles for the clip range control without adding another large card layer.
+- Validation:
+  - `cd frontend && npm run test -- --run src/components/linghui/editors/tests/VideoNodeEditor.test.tsx src/services/ffmpegManager.test.ts`: 2 files / 17 tests passed.
+  - `npx tsc --noEmit --project frontend/tsconfig.json --pretty false`: passed.
+  - `npx tsc --noEmit --project tsconfig.json --pretty false`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - `高清` now uses local FFmpeg upscale instead of prompt presets.
+  - `解析` now creates a downstream editable `linghui/text` analysis node from current video source / duration / references / prompt; this is intentionally a structured draft, not a fake video-understanding claim.
+  - `智能去字幕` still lacks a real backend and remains non-executable instead of pretending to run.
+
+### Phase 5.5: VideoNode Upscale + Analysis Tool Parity
+- **Status:** complete
+- Actions taken:
+  - Added Electron FFmpeg `upscaleVideo` path in frontend manager, Electron controller/preload/service, and public runtime mirrors.
+  - Replaced `高清` prompt preset cards with real `高清 2x / 高清 4x` actions that materialize the current video, run FFmpeg upscale, and derive downstream `linghui/video` nodes.
+  - Added `useLinghuiCanvasVideoAnalysisDerivation.ts` and wired it through DocumentOps, overlay props, node editor context, `LinghuiNodeEditorSurface`, and `VideoNodeEditor`.
+  - Changed `解析` from prompt-skeleton-only behavior to a real downstream `linghui/text` node derivation containing video source, estimated duration, upstream reference summary, user prompt, shot-analysis draft, and a reusable generation prompt.
+  - Kept `智能去字幕` as a disabled/non-executable LibTV-parity entry until a real subtitle removal service exists.
+- Validation:
+  - `cd frontend && npm run test -- --run src/components/linghui/editors/tests/VideoNodeEditor.test.tsx src/components/linghui/canvas/tests/useLinghuiCanvasDocumentOps.test.tsx src/services/ffmpegManager.test.ts`: 3 files / 31 tests passed; existing React `act(...)` warnings remain.
+  - `npx tsc --noEmit --project frontend/tsconfig.json --pretty false`: passed.
+  - `npx tsc --noEmit --project tsconfig.json --pretty false`: passed.
+  - `git diff --check`: passed.
+- Next:
+  - Continue node-by-node LibTV parity. For video, remaining service-backed gaps are `智能去字幕` and cloud vocal split; next practical node slice can move to `video-clip` editor fidelity, `image` remaining erase/crop/remove-bg panels, or `script/storyboard` control details.
+
+### Phase 5.6: VideoClipNode UI Parity Pass
+- **Status:** complete
+- Actions taken:
+  - Continued LibTV node-by-node parity on `linghui/video-clip`.
+  - Changed the empty state to LibTV wording: `空空如也，请连接多个视频节点后操作`.
+  - Matched the executor's input rule in the node UI: compose is enabled for 2+ visual clips, or one video plus an audio track; otherwise the button title uses `请连接2个及以上的视频/音频后操作`.
+  - Renamed the node action from implementation-flavored `打开剪辑` to LibTV-style `打开视频合成`.
+  - Added resource/result preview mode for composed output: node shows a video preview and a floating `打开视频合成` action, plus a compact download link.
+  - Added `VideoClipNode.test.tsx` covering empty wording, insufficient input, result preview, and real `onRunNode` composition trigger.
+- Validation:
+  - `npx tsc --noEmit --project frontend/tsconfig.json --pretty false`: passed.
+  - `cd frontend && npm run test -- --run src/components/linghui/nodes/tests/VideoClipNode.test.tsx src/components/linghui/execution/tests/linghuiExecutionVideoClipNode.test.ts`: 2 files / 8 tests passed.
+  - `git diff --check`: passed.
+- Next:
+  - Continue the remaining node parity list. Good next candidates: `image` remaining erase/crop/remove-bg panel fidelity, or `script/storyboard` LibTV control details.
+
+### Phase 5.10: ScriptAggregatedGenerator In-node Action Pass
+- **Status:** complete
+- Actions taken:
+  - Continued deep LibTV decompile for `ScriptAggregatedGenerator` in `template_/libtv/15gvxu-nayl4w.js` instead of guessing from the current Linghui UI.
+  - Extended `LinghuiStoryboardFrame` with LibTV row metadata: `hiddenUuid`, `shotNumber`, `characters`, and `videoReference`.
+  - Updated `parseLinghuiScriptContent()` to preserve LibTV storyboard row character arrays and video reference frame images.
+  - Updated `ScriptShotTable` to show real character summaries, video reference thumbnails, shot size, scene tags, and audio effects instead of reducing rows to a few duplicated text columns.
+  - Moved storyboard generation controls out of the node info block into a LibTV-style compact floating generator below the node, shown only after row selection; no credit/power UI was migrated.
+  - Added/updated tests for selected-row generator behavior, character/video-reference table display, and parser preservation.
+- Validation:
+  - `npx tsc --noEmit --project frontend/tsconfig.json --pretty false`: passed.
+  - `cd frontend && npm run test -- --run src/components/linghui/nodes/tests/ScriptNode.test.tsx src/components/linghui/editors/tests/ScriptShotViews.test.tsx src/components/linghui/editors/tests/linghuiScriptNodeUtils.test.ts src/components/linghui/execution/tests/linghuiExecutionScriptNode.test.ts src/components/linghui/execution/tests/linghuiExecutionStoryboardNode.test.ts src/components/linghui/canvas/tests/useLinghuiCanvasDocumentOps.test.tsx`: 6 files / 26 tests passed.
+- Next:
+  - Continue script/storyboard parity with editable table cells, column visibility/filter config, and character/video reference image upload if we decide to bring the fullscreen table closer to LibTV.
+
+### Phase 5.11: Script Editor Table Edit + Selection Toolbar Pass
+- **Status:** complete
+- Actions taken:
+  - Continued LibTV script/storyboard parity with the fullscreen/table behavior.
+  - Added `serializeLinghuiScriptShots()` so manual script table edits can persist back to `properties.content` as structured JSON and be parsed again without losing LibTV row fields.
+  - Extended `ScriptShotTable` with optional editable text cells and row patch callbacks for LibTV-style editable fields.
+  - Enabled editable cells only for `ScriptNodeEditor` manual mode; generated script/storyboard results remain read-only because their source of truth is the run result, not editable node content.
+  - Moved editor-side storyboard actions out of the header into a bottom compact selection toolbar shown only when rows are selected, matching LibTV's selected-row generator pattern and reducing redundant header controls.
+  - Added tests for editable table patches and serialize/parse round-trip.
+- Validation:
+  - `npx tsc --noEmit --project frontend/tsconfig.json --pretty false`: passed.
+  - `cd frontend && npm run test -- --run src/components/linghui/editors/tests/ScriptShotViews.test.tsx src/components/linghui/editors/tests/linghuiScriptNodeUtils.test.ts src/components/linghui/nodes/tests/ScriptNode.test.tsx src/components/linghui/execution/tests/linghuiExecutionScriptNode.test.ts src/components/linghui/execution/tests/linghuiExecutionStoryboardNode.test.ts src/components/linghui/canvas/tests/useLinghuiCanvasDocumentOps.test.tsx`: 6 files / 28 tests passed.
+- Next:
+  - Continue LibTV parity on image/video-reference upload cells and column visibility/filter controls, or move to the next node in the inventory if the user wants broader node coverage first.

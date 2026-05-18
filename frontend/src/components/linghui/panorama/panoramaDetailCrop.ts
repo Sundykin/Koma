@@ -14,7 +14,18 @@ import { nanoid } from 'nanoid';
 import type { LinghuiImageAssetItem, LinghuiPanoramaProjectionMode } from '../../../types/linghui';
 import { safeFetch } from '../../../utils/safeFetch';
 
-export type PanoramaDetailDirectionCount = 4 | 6 | 8;
+export type PanoramaDetailDirectionCount = 4 | 6 | 8 | 12;
+
+export const PANORAMA_RING4_NODE_LABELS = ['全景截图-前方', '全景截图-左侧', '全景截图-后方', '全景截图-右侧'] as const;
+
+export function getPanoramaRing12NodeLabel(index: number): string {
+  const normalized = ((Math.round(index) % 12) + 12) % 12;
+  return `全景截图-逆时针${(30 * normalized) % 360}°`;
+}
+
+export function getPanoramaScreenshotGroupName(count: number): string {
+  return `全景截图组 (${Math.max(0, Math.round(count))} 张)`;
+}
 
 async function loadImageForCrop(url: string): Promise<HTMLImageElement> {
   let resolvedUrl = url;
@@ -41,8 +52,9 @@ async function loadImageForCrop(url: string): Promise<HTMLImageElement> {
   }
 }
 
-function getDirectionLabel(count: PanoramaDetailDirectionCount, index: number): string {
-  if (count === 4) return ['北 N', '东 E', '南 S', '西 W'][index] ?? `方向 ${index + 1}`;
+export function getPanoramaDetailDirectionLabel(count: PanoramaDetailDirectionCount, index: number): string {
+  if (count === 4) return PANORAMA_RING4_NODE_LABELS[index] ?? `全景截图-${index + 1}`;
+  if (count === 12) return getPanoramaRing12NodeLabel(index);
   if (count === 6) return ['N', '北东', '东南', '南', '南西', '北西'][index] ?? `方向 ${index + 1}`;
   return ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][index] ?? `方向 ${index + 1}`;
 }
@@ -113,7 +125,7 @@ export async function panoramaSplitDirections({
     items.push({
       id: `panorama-detail-${nanoid(6)}-${i + 1}`,
       source: dataUrl,
-      label: getDirectionLabel(count, i),
+      label: getPanoramaDetailDirectionLabel(count, i),
       width: targetWidth,
       height: targetHeight,
       mimeType: 'image/png',

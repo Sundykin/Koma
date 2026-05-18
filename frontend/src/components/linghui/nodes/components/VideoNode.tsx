@@ -126,6 +126,8 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
     '--linghui-progress': `${runState?.progress ?? 0}%`,
   });
   const isEditorVisible = useLinghuiNodeEditorVisibility(id, 'linghui/video');
+  const isGenerateNode = props.mode !== 'import' && !hasUploadedSource;
+  const shouldShowVideoGenerator = isGenerateNode && (selected || isEditorVisible);
   const normalizedRunProgress = typeof runState?.progress === 'number' && Number.isFinite(runState.progress)
     ? Math.max(0, Math.min(100, Math.round(runState.progress)))
     : 0;
@@ -425,7 +427,7 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
         <LinghuiNodeRunError runState={runState} surface="thumb" />
       </div>
 
-      {isEditorVisible ? <LinghuiNodeEditor nodeId={id} nodeType="linghui/video" /> : null}
+      {shouldShowVideoGenerator ? <LinghuiNodeEditor nodeId={id} nodeType="linghui/video" forceVisible /> : null}
     </div>
   );
 }

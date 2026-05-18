@@ -7,6 +7,7 @@ import type {
   LinghuiExecuteMultiAngleOptions,
   LinghuiGridType,
   LinghuiImageAssetItem,
+  LinghuiMediaItem,
   LinghuiMultiAngleConfig,
   LinghuiImageNodeProperties,
   LinghuiImageToolKey,
@@ -214,6 +215,15 @@ export interface LinghuiNodeEditorApi {
    * 对齐 LibTV "音频分离 → 音视频分离"，复用现有 FFmpeg splitAudio 链路。
    */
   onSeparateVideoAudio?: (nodeId: string) => void;
+  /** 视频工具"截图"：抽帧后派生下游图片节点。 */
+  onCreateDerivedVideoFrames?: (nodeId: string, items: LinghuiImageAssetItem[]) => void;
+  /** 视频工具"剪辑"：裁剪后派生下游视频节点。 */
+  onCreateDerivedVideoClips?: (nodeId: string, items: LinghuiMediaItem[]) => void;
+  /** 视频工具"解析"：派生可继续编辑的文本解析节点。 */
+  onCreateDerivedVideoAnalysis?: (
+    nodeId: string,
+    draft: { label?: string; content: string; source?: string; durationSec?: number },
+  ) => string | null;
 
   /**
    * LibTV TextNode EmptyState 4 actions（15gvxu:55145-55256 eJ/eY/eV/eW）。

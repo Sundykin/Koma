@@ -289,6 +289,14 @@ export const PanoramaNodeEditor: React.FC<PanoramaNodeEditorProps> = (props) => 
           >
             切 8 方向
           </Button>
+          <Button
+            size="small"
+            loading={splitting === 12}
+            disabled={splitting !== null}
+            onClick={() => { void handleSplitDirections(12); }}
+          >
+            切 12 方向
+          </Button>
           {detailCrops.length > 0 ? (
             <Button size="small" type="text" danger onClick={handleClearDirections}>
               清空 ({detailCrops.length})

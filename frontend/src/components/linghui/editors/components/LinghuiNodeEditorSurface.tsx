@@ -35,6 +35,9 @@ interface LinghuiNodeEditorSurfaceProps {
   activeVideoTool: LinghuiVideoToolKey | null;
   onImageToolChange: (tool: LinghuiImageToolKey | null) => void;
   onVideoToolChange: (tool: LinghuiVideoToolKey | null) => void;
+  onCreateDerivedVideoFrames?: React.ComponentProps<typeof VideoNodeEditor>['onCreateDerivedFrames'];
+  onCreateDerivedVideoClips?: React.ComponentProps<typeof VideoNodeEditor>['onCreateDerivedVideos'];
+  onCreateDerivedVideoAnalysis?: React.ComponentProps<typeof VideoNodeEditor>['onCreateDerivedAnalysis'];
   onExecuteMultiAngle?: (options: Parameters<React.ComponentProps<typeof ImageNodeEditor>['onExecuteMultiAngle']>[0]) => void;
   onApplyImageToolPreset?: React.ComponentProps<typeof ImageNodeEditor>['onApplyImageToolPreset'];
   onAssetLibraryMutate?: () => void;
@@ -58,6 +61,9 @@ export const LinghuiNodeEditorSurface: React.FC<LinghuiNodeEditorSurfaceProps> =
   activeVideoTool,
   onImageToolChange,
   onVideoToolChange,
+  onCreateDerivedVideoFrames,
+  onCreateDerivedVideoClips,
+  onCreateDerivedVideoAnalysis,
   onExecuteMultiAngle,
   onApplyImageToolPreset,
   onAssetLibraryMutate,
@@ -126,6 +132,9 @@ export const LinghuiNodeEditorSurface: React.FC<LinghuiNodeEditorSurfaceProps> =
         workspaceId={workspaceId}
         activeTool={activeVideoTool}
         onToolChange={onVideoToolChange}
+        onCreateDerivedFrames={onCreateDerivedVideoFrames}
+        onCreateDerivedVideos={onCreateDerivedVideoClips}
+        onCreateDerivedAnalysis={onCreateDerivedVideoAnalysis}
         onRun={() => onRunNode(nodeId)}
       />
     )}

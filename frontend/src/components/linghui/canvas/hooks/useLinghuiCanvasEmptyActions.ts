@@ -3,7 +3,7 @@ import { useLinghuiCanvasTextEmptyAction } from './useLinghuiCanvasTextEmptyActi
 import { useLinghuiCanvasVideoEmptyAction } from './useLinghuiCanvasVideoEmptyAction';
 import type { UseLinghuiCanvasEmptyActionParams } from './linghuiCanvasEmptyActionShared';
 
-/** LibTV TextNode EmptyState 4 actions: each action either edits current text or derives a subgraph. */
+/** LibTV TextNode EmptyState actions: edit current text or derive a subgraph. */
 export type LinghuiTextEmptyAction = 'edit' | 'video' | 'image-prompt' | 'music';
 
 /** LibTV VideoNode EmptyState 2 actions. */

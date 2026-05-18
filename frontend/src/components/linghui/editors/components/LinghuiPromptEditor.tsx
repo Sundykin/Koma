@@ -44,6 +44,7 @@ export const LinghuiPromptEditor: React.FC<LinghuiPromptEditorProps> = ({
   const extensionCompartmentRef = useRef(new Compartment());
   const onChangeRef = useRef(onChange);
   const isSyncingExternalRef = useRef(false);
+  const isComposingRef = useRef(false);
 
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -67,7 +68,19 @@ export const LinghuiPromptEditor: React.FC<LinghuiPromptEditorProps> = ({
         if (!update.docChanged || !onChangeRef.current || isSyncingExternalRef.current) {
           return;
         }
+        if (isComposingRef.current) {
+          return;
+        }
         onChangeRef.current(update.state.doc.toString());
+      }),
+      EditorView.domEventHandlers({
+        compositionstart() {
+          isComposingRef.current = true;
+        },
+        compositionend(_event, view) {
+          isComposingRef.current = false;
+          onChangeRef.current?.(view.state.doc.toString());
+        },
       }),
       EditorView.theme({
         '&': {
@@ -157,7 +170,7 @@ export const LinghuiPromptEditor: React.FC<LinghuiPromptEditorProps> = ({
 
   useEffect(() => {
     const view = editorRef.current;
-    if (!view || view.hasFocus) return;
+    if (!view || view.hasFocus || isComposingRef.current) return;
 
     const currentValue = view.state.doc.toString();
     if (currentValue === value) return;

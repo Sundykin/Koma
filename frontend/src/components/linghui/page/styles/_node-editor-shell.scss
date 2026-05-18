@@ -289,6 +289,11 @@
       flex: 0 0 100%;
       box-sizing: border-box;
     }
+
+    &.isTextGenerator {
+      overflow: visible;
+      scrollbar-gutter: auto;
+    }
   }
 
   &Backdrop {
@@ -376,6 +381,1314 @@
   }
 }
 
+.linghuiTextGeneratorPanel {
+  width: min(392px, calc(100vw - 32px));
+  padding: 8px;
+  border: 0.5px solid color-mix(in srgb, var(--token-border-base) 72%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--token-bg-card) 92%, transparent);
+  box-shadow: var(--canvas-shadow-dropdown, 0 8px 26px rgba(0, 0, 0, 0.28));
+  backdrop-filter: blur(24px);
+}
+
+.linghuiTextGeneratorRefs {
+  display: flex;
+  min-width: 0;
+  gap: 6px;
+  margin-bottom: 7px;
+  overflow-x: auto;
+  padding: 1px 1px 3px;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+.linghuiTextGeneratorRefCard {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 132px;
+  min-width: 0;
+  flex: 0 0 auto;
+  padding: 2px 7px 2px 2px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--token-bg-surface) 58%, transparent);
+  color: $lh-text-secondary;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.linghuiTextGeneratorRefThumb {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  overflow: hidden;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--token-bg-app) 72%, transparent);
+  color: $lh-text-muted;
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+}
+
+.linghuiTextGeneratorRefBadge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 12px;
+  height: 12px;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.58);
+  color: #fff;
+  font-size: 8px;
+  line-height: 12px;
+  text-align: center;
+}
+
+.linghuiTextGeneratorRefName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.linghuiTextGeneratorPrompt {
+  margin: 0;
+
+  .linghuiPromptEditorShell,
+  .cm-editor {
+    border-radius: 10px;
+  }
+
+  .cm-editor {
+    background: color-mix(in srgb, var(--token-bg-surface) 56%, transparent) !important;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--token-border-base) 42%, transparent) !important;
+  }
+
+  .cm-content {
+    padding: 9px 10px !important;
+    font-size: 13px;
+  }
+}
+
+.linghuiTextGeneratorOutput {
+  margin-top: 6px;
+  max-height: 98px;
+  overflow-y: auto;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--token-bg-surface) 74%, transparent);
+  color: $lh-text-secondary;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.linghuiTextGeneratorError {
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--token-status-error) 12%, transparent);
+  color: var(--token-status-error);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.linghuiTextGeneratorControlRow {
+  margin-top: 6px;
+  min-height: 32px;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: nowrap;
+}
+
+.linghuiTextGeneratorChip {
+  max-width: 206px;
+  height: 28px;
+  padding: 0 9px;
+  border-radius: 8px;
+  border: 0;
+  background: transparent;
+  color: $lh-text-secondary;
+  font-size: 12px;
+  line-height: 28px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+
+  &:hover {
+    background: color-mix(in srgb, var(--token-bg-hover) 78%, transparent);
+    color: $lh-text-strong;
+  }
+
+  &.isDisabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+}
+
+.linghuiTextGeneratorIconButton,
+.linghuiTextGeneratorSubmit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background $lh-transition-base, filter $lh-transition-base, opacity $lh-transition-base;
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.48;
+  }
+}
+
+.linghuiTextGeneratorIconButton {
+  background: transparent;
+  color: $lh-text-secondary;
+
+  &:hover {
+    background: color-mix(in srgb, var(--token-bg-hover) 78%, transparent);
+    color: $lh-text-strong;
+  }
+}
+
+.linghuiTextGeneratorSubmit {
+  background: var(--token-text-primary);
+  color: var(--token-bg-app);
+
+  &:hover:not(:disabled) {
+    filter: brightness(1.08);
+  }
+}
+
+.linghuiTextGeneratorSpinner {
+  width: 12px;
+  height: 12px;
+  border-radius: 9999px;
+  border: 2px solid color-mix(in srgb, currentColor 30%, transparent);
+  border-top-color: currentColor;
+  animation: linghuiCompactSpin 0.8s linear infinite;
+}
+
+.linghuiTextGeneratorSpinIcon {
+  animation: linghuiCompactSpin 0.8s linear infinite;
+}
+
+.linghuiTextGeneratorSpacer {
+  flex: 1 1 auto;
+  min-width: 8px;
+}
+
+.linghuiTextGeneratorDropdownMenu {
+  .ant-dropdown-menu {
+    max-width: min(280px, calc(100vw - 40px));
+  }
+}
+
+.linghuiVideoGeneratorPanel {
+  width: min(416px, calc(100vw - 32px));
+  padding: 8px;
+  border: 0.5px solid color-mix(in srgb, var(--token-border-base) 72%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--token-bg-card) 92%, transparent);
+  box-shadow: var(--canvas-shadow-dropdown, 0 8px 26px rgba(0, 0, 0, 0.28));
+  backdrop-filter: blur(24px);
+}
+
+.linghuiVideoGeneratorModes,
+.linghuiVideoGeneratorStatusRow {
+  display: flex;
+  min-width: 0;
+  gap: 6px;
+  margin-bottom: 7px;
+  overflow-x: auto;
+  padding: 1px 1px 3px;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+.linghuiVideoGeneratorModeTab,
+.linghuiVideoGeneratorStatusPill {
+  height: 26px;
+  flex: 0 0 auto;
+  padding: 0 9px;
+  border-radius: 8px;
+  border: 0;
+  background: color-mix(in srgb, var(--token-bg-surface) 58%, transparent);
+  color: $lh-text-secondary;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 26px;
+  white-space: nowrap;
+}
+
+.linghuiVideoGeneratorModeTab {
+  cursor: pointer;
+
+  &:hover {
+    background: color-mix(in srgb, var(--token-bg-hover) 78%, transparent);
+    color: $lh-text-strong;
+  }
+
+  &.isActive {
+    background: color-mix(in srgb, var(--token-accent-base) 18%, transparent);
+    color: $lh-text-success;
+  }
+}
+
+.linghuiVideoGeneratorRefs {
+  display: flex;
+  min-width: 0;
+  gap: 6px;
+  margin-bottom: 7px;
+  overflow-x: auto;
+  padding: 1px 1px 3px;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+.linghuiVideoGeneratorRefCard {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 132px;
+  min-width: 0;
+  flex: 0 0 auto;
+  padding: 2px 7px 2px 2px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--token-bg-surface) 58%, transparent);
+  color: $lh-text-secondary;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.linghuiVideoGeneratorRefThumb {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  overflow: hidden;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--token-bg-app) 72%, transparent);
+  color: $lh-text-muted;
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+}
+
+.linghuiVideoGeneratorRefBadge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 12px;
+  height: 12px;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.58);
+  color: #fff;
+  font-size: 8px;
+  line-height: 12px;
+  text-align: center;
+}
+
+.linghuiVideoGeneratorRefName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.linghuiVideoGeneratorPrompt {
+  margin: 0;
+  padding: 0;
+
+  .linghuiPromptEditorShell,
+  .cm-editor {
+    border-radius: 10px;
+  }
+
+  .cm-editor {
+    background: color-mix(in srgb, var(--token-bg-surface) 56%, transparent) !important;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--token-border-base) 42%, transparent) !important;
+  }
+
+  .cm-content {
+    padding: 9px 10px !important;
+    font-size: 13px;
+  }
+}
+
+.linghuiVideoGeneratorControlRow {
+  margin-top: 6px;
+  min-height: 32px;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: nowrap;
+  padding: 0;
+}
+
+.linghuiVideoGeneratorChip {
+  max-width: 238px;
+  height: 28px;
+  padding: 0 9px;
+  border-radius: 8px;
+  border: 0;
+  background: transparent;
+  color: $lh-text-secondary;
+  font-size: 12px;
+  line-height: 28px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+
+  &:hover {
+    background: color-mix(in srgb, var(--token-bg-hover) 78%, transparent);
+    color: $lh-text-strong;
+  }
+
+  &.isDisabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+}
+
+.linghuiVideoGeneratorIconButton,
+.linghuiVideoGeneratorSubmit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background $lh-transition-base, filter $lh-transition-base, opacity $lh-transition-base;
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.48;
+  }
+}
+
+.linghuiVideoGeneratorIconButton {
+  background: transparent;
+  color: $lh-text-secondary;
+
+  &:hover {
+    background: color-mix(in srgb, var(--token-bg-hover) 78%, transparent);
+    color: $lh-text-strong;
+  }
+}
+
+.linghuiVideoGeneratorSubmit {
+  background: var(--token-text-primary);
+  color: var(--token-bg-app);
+
+  &:hover:not(:disabled) {
+    filter: brightness(1.08);
+  }
+}
+
+.linghuiVideoGeneratorSpinner {
+  width: 12px;
+  height: 12px;
+  border-radius: 9999px;
+  border: 2px solid color-mix(in srgb, currentColor 30%, transparent);
+  border-top-color: currentColor;
+  animation: linghuiCompactSpin 0.8s linear infinite;
+}
+
+.linghuiVideoGeneratorSpacer {
+  flex: 1 1 auto;
+  min-width: 8px;
+}
+
+.linghuiAudioGeneratorPanel {
+  width: min(392px, calc(100vw - 32px));
+  padding: 8px;
+  border: 0.5px solid color-mix(in srgb, var(--token-border-base) 72%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--token-bg-card) 92%, transparent);
+  box-shadow: var(--canvas-shadow-dropdown, 0 8px 26px rgba(0, 0, 0, 0.28));
+  backdrop-filter: blur(24px);
+}
+
+.linghuiAudioGeneratorRefs {
+  display: flex;
+  min-width: 0;
+  gap: 6px;
+  margin-bottom: 7px;
+  overflow-x: auto;
+  padding: 1px 1px 3px;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+.linghuiAudioGeneratorRefCard {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 132px;
+  min-width: 0;
+  flex: 0 0 auto;
+  padding: 2px 7px 2px 2px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--token-bg-surface) 58%, transparent);
+  color: $lh-text-secondary;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.linghuiAudioGeneratorRefThumb {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  overflow: hidden;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--token-bg-app) 72%, transparent);
+  color: $lh-text-muted;
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+}
+
+.linghuiAudioGeneratorRefBadge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 12px;
+  height: 12px;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.58);
+  color: #fff;
+  font-size: 8px;
+  line-height: 12px;
+  text-align: center;
+}
+
+.linghuiAudioGeneratorRefName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.linghuiAudioGeneratorPrompt {
+  margin: 0;
+  padding: 0;
+
+  .linghuiPromptEditorShell,
+  .cm-editor {
+    border-radius: 10px;
+  }
+
+  .cm-editor {
+    background: color-mix(in srgb, var(--token-bg-surface) 56%, transparent) !important;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--token-border-base) 42%, transparent) !important;
+  }
+
+  .cm-content {
+    padding: 9px 10px !important;
+    font-size: 13px;
+  }
+}
+
+.linghuiAudioGeneratorResult {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--token-bg-surface) 62%, transparent);
+  color: $lh-text-secondary;
+  font-size: 11px;
+
+  audio {
+    width: 152px;
+    height: 28px;
+    flex: 0 0 auto;
+  }
+
+  span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.linghuiAudioGeneratorControlRow {
+  margin-top: 6px;
+  min-height: 32px;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: nowrap;
+  padding: 0;
+}
+
+.linghuiAudioGeneratorChip {
+  max-width: 188px;
+  height: 28px;
+  padding: 0 9px;
+  border-radius: 8px;
+  border: 0;
+  background: transparent;
+  color: $lh-text-secondary;
+  font-size: 12px;
+  line-height: 28px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+
+  &:hover {
+    background: color-mix(in srgb, var(--token-bg-hover) 78%, transparent);
+    color: $lh-text-strong;
+  }
+
+  &.isAction {
+    flex: 0 0 auto;
+    max-width: none;
+  }
+
+  &.isDisabled,
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+}
+
+.linghuiAudioGeneratorIconButton,
+.linghuiAudioGeneratorSubmit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background $lh-transition-base, filter $lh-transition-base, opacity $lh-transition-base;
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.48;
+  }
+}
+
+.linghuiAudioGeneratorIconButton {
+  background: transparent;
+  color: $lh-text-secondary;
+
+  &:hover {
+    background: color-mix(in srgb, var(--token-bg-hover) 78%, transparent);
+    color: $lh-text-strong;
+  }
+}
+
+.linghuiAudioGeneratorSubmit {
+  background: var(--token-text-primary);
+  color: var(--token-bg-app);
+
+  &:hover:not(:disabled) {
+    filter: brightness(1.08);
+  }
+}
+
+.linghuiAudioGeneratorSpinner {
+  width: 12px;
+  height: 12px;
+  border-radius: 9999px;
+  border: 2px solid color-mix(in srgb, currentColor 30%, transparent);
+  border-top-color: currentColor;
+  animation: linghuiCompactSpin 0.8s linear infinite;
+}
+
+.linghuiAudioGeneratorSpacer {
+  flex: 1 1 auto;
+  min-width: 8px;
+}
+
+.linghuiScriptGeneratorPanel {
+  width: min(440px, calc(100vw - 32px));
+  padding: 8px;
+  border: 0.5px solid color-mix(in srgb, var(--token-border-base) 72%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--token-bg-card) 92%, transparent);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--token-shadow, #000) 12%, transparent);
+  backdrop-filter: blur(24px);
+
+  .linghuiEditorRefModes {
+    margin-bottom: 7px;
+    padding: 2px;
+    border-radius: 9px;
+    background: color-mix(in srgb, var(--token-bg-surface) 52%, transparent);
+  }
+
+  .linghuiEditorRefModeTab {
+    height: 26px;
+    border-radius: 7px;
+    font-size: 12px;
+  }
+
+  .linghuiScriptPanel {
+    max-height: 252px;
+    margin-top: 8px;
+    padding: 8px 0 0;
+    overflow: auto;
+    border-top: 1px solid color-mix(in srgb, var(--token-border-base) 52%, transparent);
+  }
+}
+
+.linghuiScriptManualPanel {
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--token-shadow, #000) 12%, transparent);
+}
+
+.linghuiAgentGeneratorPanel {
+  .linghuiAgentGeneratorOutput {
+    max-height: 152px;
+    overflow: auto;
+    margin-top: 6px;
+    white-space: pre-wrap;
+  }
+}
+
+.linghuiStoryboardGeneratorPanel {
+  .linghuiScriptPanel {
+    max-height: 252px;
+  }
+}
+
+.linghuiStoryboardGeneratorSceneChip {
+  max-width: 94px;
+}
+
+.linghuiStoryboardGeneratorShotCount {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  flex: 0 0 auto;
+  padding: 0 6px 0 9px;
+  border-radius: 8px;
+  background: transparent;
+  color: $lh-text-secondary;
+  font-size: 12px;
+
+  .ant-input-number {
+    height: 24px;
+    border-radius: 7px;
+    border: 0;
+    background: color-mix(in srgb, var(--token-bg-surface) 62%, transparent);
+    color: $lh-text-primary;
+  }
+
+  .ant-input-number-input {
+    height: 22px;
+    padding: 0 4px;
+    font-size: 12px;
+  }
+}
+
+.linghuiScriptGeneratorRefs {
+  display: flex;
+  min-width: 0;
+  gap: 6px;
+  margin-bottom: 7px;
+  overflow-x: auto;
+  padding: 1px 1px 3px;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+.linghuiScriptGeneratorRefCard {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 132px;
+  min-width: 0;
+  flex: 0 0 auto;
+  padding: 2px 7px 2px 2px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--token-bg-surface) 58%, transparent);
+  color: $lh-text-secondary;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.linghuiScriptGeneratorRefThumb {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  overflow: hidden;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--token-bg-app) 72%, transparent);
+  color: $lh-text-muted;
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+}
+
+.linghuiScriptGeneratorRefBadge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 12px;
+  height: 12px;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.58);
+  color: #fff;
+  font-size: 8px;
+  line-height: 12px;
+  text-align: center;
+}
+
+.linghuiScriptGeneratorRefName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.linghuiScriptGeneratorPrompt {
+  margin: 0;
+  padding: 0;
+
+  .linghuiPromptEditorShell,
+  .cm-editor {
+    border-radius: 10px;
+  }
+
+  .cm-editor {
+    background: color-mix(in srgb, var(--token-bg-surface) 56%, transparent) !important;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--token-border-base) 42%, transparent) !important;
+  }
+
+  .cm-content {
+    padding: 9px 10px !important;
+    font-size: 13px;
+  }
+}
+
+.linghuiScriptPresetStrip {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+  overflow-x: auto;
+  padding-bottom: 1px;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+.linghuiStoryboardSceneStrip {
+  margin-top: 7px;
+}
+
+.linghuiScriptPresetChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  flex: 0 0 auto;
+  max-width: 112px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--token-bg-surface) 54%, transparent);
+  color: $lh-text-secondary;
+  font-size: 12px;
+  line-height: 26px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background $lh-transition-base, color $lh-transition-base;
+
+  svg {
+    flex: 0 0 auto;
+  }
+
+  &:hover,
+  &.isActive {
+    background: color-mix(in srgb, var(--token-accent-base) 12%, var(--token-bg-surface));
+    color: $lh-text-strong;
+  }
+}
+
+.linghuiScriptGeneratorError {
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--token-status-error) 12%, transparent);
+  color: $lh-text-danger;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.linghuiScriptGeneratorControlRow {
+  margin-top: 6px;
+  min-height: 32px;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: nowrap;
+  padding: 0;
+}
+
+.linghuiScriptGeneratorChip {
+  max-width: 214px;
+  height: 28px;
+  padding: 0 9px;
+  border-radius: 8px;
+  border: 0;
+  background: transparent;
+  color: $lh-text-secondary;
+  font-size: 12px;
+  line-height: 28px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+
+  &:hover {
+    background: color-mix(in srgb, var(--token-bg-hover) 78%, transparent);
+    color: $lh-text-strong;
+  }
+
+  &.isDisabled,
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+}
+
+.linghuiScriptGeneratorIconButton,
+.linghuiScriptGeneratorSubmit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background $lh-transition-base, filter $lh-transition-base, opacity $lh-transition-base;
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.48;
+  }
+}
+
+.linghuiScriptGeneratorIconButton {
+  background: transparent;
+  color: $lh-text-secondary;
+
+  &:hover {
+    background: color-mix(in srgb, var(--token-bg-hover) 78%, transparent);
+    color: $lh-text-strong;
+  }
+}
+
+.linghuiScriptGeneratorSubmit {
+  background: var(--token-text-primary);
+  color: var(--token-bg-app);
+
+  &:hover:not(:disabled) {
+    filter: brightness(1.08);
+  }
+}
+
+.linghuiScriptGeneratorSpinner {
+  width: 12px;
+  height: 12px;
+  border-radius: 9999px;
+  border: 2px solid color-mix(in srgb, currentColor 30%, transparent);
+  border-top-color: currentColor;
+  animation: linghuiCompactSpin 0.8s linear infinite;
+}
+
+.linghuiScriptGeneratorSpinIcon {
+  animation: linghuiCompactSpin 0.8s linear infinite;
+}
+
+.linghuiScriptGeneratorSpacer {
+  flex: 1 1 auto;
+  min-width: 8px;
+}
+
+.linghuiScriptPanelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.linghuiScriptPanelMeta,
+.linghuiScriptPanelActions {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 6px;
+}
+
+.linghuiScriptPanelMeta {
+  flex: 1 1 auto;
+  overflow: hidden;
+  color: $lh-text-muted;
+  font-size: 11px;
+  white-space: nowrap;
+
+  span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+.linghuiScriptPanelActions {
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+
+  .ant-btn-sm {
+    height: 26px;
+    border-radius: 7px;
+    font-size: 12px;
+  }
+}
+
+.linghuiScriptSelectionToolbar {
+  position: sticky;
+  bottom: 8px;
+  z-index: 3;
+  display: flex;
+  width: max-content;
+  max-width: 100%;
+  align-items: center;
+  gap: 4px;
+  margin: 8px auto 0;
+  padding: 4px;
+  border: 1px solid var(--canvas-controls-border);
+  border-radius: 10px;
+  background: var(--canvas-controls-bg);
+  box-shadow: var(--canvas-shadow-panel);
+  backdrop-filter: blur(12px);
+
+  button {
+    display: inline-flex;
+    height: 28px;
+    align-items: center;
+    gap: 5px;
+    padding: 0 9px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--canvas-controls-text);
+    font-size: 12px;
+    white-space: nowrap;
+    cursor: pointer;
+
+    &:hover:not(:disabled) {
+      background: var(--canvas-controls-hover);
+    }
+
+    &:disabled {
+      cursor: not-allowed;
+      opacity: 0.45;
+    }
+  }
+}
+
+.linghuiScriptSelectionToolbarCount {
+  padding: 0 6px;
+  color: var(--canvas-controls-text);
+  font-size: 12px;
+  opacity: 0.72;
+  white-space: nowrap;
+}
+
+.linghuiScriptSelectionToolbarDivider {
+  width: 0;
+  height: 20px;
+  border-left: 0.5px solid var(--canvas-controls-border);
+}
+
+.linghuiEditorToolChip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: $lh-text-secondary;
+  font-size: 12px;
+  cursor: pointer;
+
+  &:hover,
+  &.isActive {
+    background: color-mix(in srgb, var(--token-bg-hover) 78%, transparent);
+    color: $lh-text-strong;
+  }
+}
+
+.linghuiScriptShotGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.linghuiScriptShotCard {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 9px;
+  border: 1px solid color-mix(in srgb, var(--token-border-base) 54%, transparent);
+  background: color-mix(in srgb, var(--token-bg-surface) 50%, transparent);
+  color: $lh-text-primary;
+  cursor: pointer;
+
+  &.isSelected {
+    border-color: color-mix(in srgb, var(--token-accent-base) 58%, transparent);
+    background: color-mix(in srgb, var(--token-accent-base) 10%, var(--token-bg-surface));
+  }
+}
+
+.linghuiScriptShotCardHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.linghuiScriptShotIndex,
+.linghuiScriptShotDuration {
+  color: $lh-text-muted;
+  font-size: 11px;
+}
+
+.linghuiScriptShotDuration {
+  margin-left: auto;
+}
+
+.linghuiScriptShotPreview {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--token-bg-app) 72%, transparent);
+
+  img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+}
+
+.linghuiScriptShotTitle {
+  color: $lh-text-primary;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.linghuiScriptShotDescription {
+  display: -webkit-box;
+  overflow: hidden;
+  color: $lh-text-secondary;
+  font-size: 11px;
+  line-height: 1.45;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.linghuiScriptShotTableWrap {
+  max-width: 100%;
+  overflow: auto;
+  border: 1px solid color-mix(in srgb, var(--token-border-base) 52%, transparent);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--token-bg-surface) 42%, transparent);
+}
+
+.linghuiScriptShotTable {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+
+  thead {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+
+  th,
+  td {
+    border: 1px solid color-mix(in srgb, var(--token-border-base) 48%, transparent);
+  }
+
+  th {
+    padding: 5px 8px;
+    background: color-mix(in srgb, var(--token-bg-elevated) 78%, var(--token-bg-card));
+    color: $lh-text-muted;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.3;
+    text-align: left;
+    user-select: none;
+  }
+
+  td {
+    padding: 0;
+    vertical-align: top;
+    background: color-mix(in srgb, var(--token-bg-card) 54%, transparent);
+  }
+
+  tr:hover td {
+    background: color-mix(in srgb, var(--token-bg-hover) 66%, transparent);
+  }
+
+  tr.isSelected td {
+    background: color-mix(in srgb, var(--token-accent-base) 10%, var(--token-bg-card));
+  }
+}
+
+.linghuiScriptShotSelectCell {
+  width: 42px;
+  min-width: 42px;
+  text-align: center !important;
+  vertical-align: middle !important;
+
+  &.linghuiScriptShotSelectCell {
+    padding: 0;
+  }
+}
+
+.linghuiScriptShotTextCell {
+  height: 126px;
+  padding: 8px;
+  overflow: auto;
+  color: $lh-text-primary;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  cursor: text;
+  user-select: text;
+}
+
+.linghuiScriptShotEditableCell {
+  display: block;
+  width: 100%;
+  border: 0;
+  outline: 0;
+  resize: none;
+  background: transparent;
+  font-family: inherit;
+}
+
+.linghuiScriptShotEditableCell:focus {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--token-accent-base) 42%, transparent);
+}
+
+.linghuiScriptShotImageCell {
+  width: 90px;
+}
+
+.linghuiScriptShotImageBox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 126px;
+  padding: 6px;
+
+  img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    border-radius: 6px;
+    display: block;
+  }
+}
+
+.linghuiScriptShotMuted {
+  color: $lh-text-muted;
+}
+
+.linghuiScriptShotTableEmpty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+  color: $lh-text-muted;
+  font-size: 13px;
+}
+
 .linghuiNodeEditorDropdownIcon {
   flex: 0 0 36px;
   width: 36px;
@@ -394,4 +1707,39 @@
 .linghuiNodeEditorDropdownBody {
   min-width: 0;
   flex: 1 1 auto;
+}
+
+html[data-theme-mode='light'] {
+  .linghuiNodeEditorTopBar,
+  .linghuiNodeEditorToolRail.isLibTVVideo,
+  .linghuiTextGeneratorPanel,
+  .linghuiVideoGeneratorPanel,
+  .linghuiAudioGeneratorPanel,
+  .linghuiScriptGeneratorPanel,
+  .linghuiAgentGeneratorPanel,
+  .linghuiStoryboardGeneratorPanel,
+  .linghuiScriptManualPanel,
+  .linghuiNodeEditorDropdownMenu .ant-dropdown-menu {
+    box-shadow: none;
+  }
+
+  .linghuiNodeEditorTopBar,
+  .linghuiTextGeneratorPanel,
+  .linghuiVideoGeneratorPanel,
+  .linghuiAudioGeneratorPanel,
+  .linghuiScriptGeneratorPanel,
+  .linghuiAgentGeneratorPanel,
+  .linghuiStoryboardGeneratorPanel,
+  .linghuiScriptManualPanel {
+    border-color: var(--token-border-base);
+    background: var(--token-bg-card);
+    backdrop-filter: none;
+  }
+
+  .linghuiTextGeneratorPrompt .cm-editor,
+  .linghuiVideoGeneratorPrompt .cm-editor,
+  .linghuiAudioGeneratorPrompt .cm-editor,
+  .linghuiScriptGeneratorPrompt .cm-editor {
+    background: var(--token-bg-elevated) !important;
+  }
 }

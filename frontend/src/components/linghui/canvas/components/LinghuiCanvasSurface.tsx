@@ -94,6 +94,9 @@ export function LinghuiCanvasSurface({
     onSetGridSplitUpscaleFactor: overlayProps.onSetGridSplitUpscaleFactor,
     onRevertGridSplit: overlayProps.onRevertGridSplit,
     onSeparateVideoAudio: overlayProps.onSeparateVideoAudio,
+    onCreateDerivedVideoFrames: overlayProps.onCreateDerivedVideoFrames,
+    onCreateDerivedVideoClips: overlayProps.onCreateDerivedVideoClips,
+    onCreateDerivedVideoAnalysis: overlayProps.onCreateDerivedVideoAnalysis,
   }), [canvasInteractionVersion, overlayProps]);
 
   return (

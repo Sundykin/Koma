@@ -1,13 +1,16 @@
 import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { type NodeProps, useStore } from '@xyflow/react';
 import { Modal, Button } from 'antd';
-import { Film, Image as ImageIcon, Trash2, Combine, Scissors, ChevronUp, ChevronDown, Settings2 } from 'lucide-react';
+import { Film, Image as ImageIcon, Trash2, Combine, Scissors, ChevronUp, ChevronDown, Settings2, AudioLines, Download } from 'lucide-react';
 import type {
   LinghuiNodeData,
   LinghuiVideoClipNodeProperties,
 } from '../../../../types/linghui';
+import { getLinghuiResultPrimaryMedia } from '../../../../types/linghui';
+import { toFileSystemDisplayUrl } from '../../../../services/fileSystemPort';
 import {
   useLinghuiNodeInteraction,
+  useLinghuiNodeEditorApi,
   useLinghuiNodeMutation,
   useNodeRunState,
 } from '../state/LinghuiNodeRunsContext';
@@ -20,20 +23,32 @@ import { cssVars } from '../../../../theme/runtime';
 /**
  * 视频合成节点（VideoClip）。
  *
- * - **自动从上游拉片段**：监听所有指向本节点的入边，把上游 video/image 节点的 source 同步进 clips[]。
+ * - **自动从上游拉片段**：监听所有指向本节点的入边，把上游 video/image/audio 节点的 source 同步进 clips[]。
  *   节点连线就生效，无需手动编辑。源节点更新 source 时下游同步刷新。
  * - **clips 排序 + 删除**：节点内每条 clip 有上下移按钮 + 删除按钮；编辑后 properties.clips 持久化。
  * - **剪辑详情**：点"打开剪辑"按钮弹 Modal，显示完整剪辑列表 + 导出参数（分辨率 / fps / 图片片段时长）。
  *   这是简版终剪面板；完整时间轴 NLE 留下一阶段做。
  * - **合成**：点"合成视频"按钮 → 由 executor 读取 clips 调 FFmpeg concat 生成最终 mp4。
- *   executor 尚未实现时按钮 disable + 提示"暂未实现"。
  */
 interface IncomingClipCandidate {
   id: string;
-  kind: 'video' | 'image';
+  kind: 'video' | 'image' | 'audio';
   source: string;
   label?: string;
   durationSec?: number;
+}
+
+function canComposeVideoClip(clips: LinghuiVideoClipNodeProperties['clips']): boolean {
+  const visualClipCount = clips.filter(clip => clip.kind === 'video' || clip.kind === 'image').length;
+  const hasVideoClip = clips.some(clip => clip.kind === 'video');
+  const hasAudioClip = clips.some(clip => clip.kind === 'audio');
+  return visualClipCount >= 2 || (hasVideoClip && hasAudioClip);
+}
+
+function getVideoClipInputHint(clips: LinghuiVideoClipNodeProperties['clips']): string {
+  return clips.length === 0
+    ? '空空如也，请连接多个视频节点后操作'
+    : '请连接2个及以上的视频/音频后操作';
 }
 
 function VideoClipNodeInner({ id, data, selected }: NodeProps) {
@@ -41,10 +56,18 @@ function VideoClipNodeInner({ id, data, selected }: NodeProps) {
   const props = nodeData.properties as unknown as LinghuiVideoClipNodeProperties;
   const runState = useNodeRunState(id);
   const interactionHandlers = useLinghuiNodeInteraction(id);
+  const { onRunNode } = useLinghuiNodeEditorApi();
   const { updateNodeData } = useLinghuiNodeMutation();
   const isConnectTarget = useLinghuiConnectTarget(id);
   const status = runState?.status ?? 'idle';
   const clips = props.clips ?? [];
+  const primaryVideo = getLinghuiResultPrimaryMedia(runState?.result);
+  const resultSource = String(primaryVideo?.source ?? props.source ?? '').trim();
+  const resultPosterSource = String(primaryVideo?.posterSource ?? props.posterSource ?? '').trim();
+  const previewSource = toFileSystemDisplayUrl(resultSource) || resultSource;
+  const previewPosterSource = toFileSystemDisplayUrl(resultPosterSource) || resultPosterSource;
+  const canCompose = canComposeVideoClip(clips);
+  const inputHint = getVideoClipInputHint(clips);
 
   // 监听上游：从 edges + nodes 拉出所有 source 为 video/image、target === id 的节点 source。
   const incomingClips = useStore(state => {
@@ -63,6 +86,8 @@ function VideoClipNodeInner({ id, data, selected }: NodeProps) {
         candidates.push({ id: src.id, kind: 'video', source: srcSource, label: srcData.label });
       } else if (srcData.linghuiType === 'linghui/image') {
         candidates.push({ id: src.id, kind: 'image', source: srcSource, label: srcData.label });
+      } else if (srcData.linghuiType === 'linghui/audio') {
+        candidates.push({ id: src.id, kind: 'audio', source: srcSource, label: srcData.label });
       }
     }
     return candidates;
@@ -148,19 +173,38 @@ function VideoClipNodeInner({ id, data, selected }: NodeProps) {
         </span>
       </div>
 
-      {clips.length === 0 ? (
+      {resultSource ? (
+        <div className="linghuiVideoClipPreview">
+          <video
+            src={previewSource}
+            poster={previewPosterSource || undefined}
+            controls
+            playsInline
+            preload="metadata"
+          />
+          <button
+            type="button"
+            className="linghuiVideoClipPreviewOpen nodrag"
+            onClick={(event) => { event.stopPropagation(); setEditorOpen(true); }}
+          >
+            打开视频合成
+          </button>
+        </div>
+      ) : clips.length === 0 ? (
         <div className="linghuiVideoClipEmptyHint">
           <Scissors size={20} />
-          <span>从上游接入视频 / 图片节点</span>
-          <span style={{ opacity: 0.6, fontSize: 11 }}>连线后自动作为合成片段</span>
+          <span>空空如也，请连接多个视频节点后操作</span>
+          <span className="linghuiVideoClipEmptySub">支持视频、图片片段和音频轨道</span>
         </div>
       ) : (
         <ul className="linghuiVideoClipList nodrag nowheel">
           {clips.map((clip, index) => (
             <li key={clip.id} className="linghuiVideoClipListItem">
               <span className="linghuiVideoClipListIndex">{index + 1}</span>
-              {clip.kind === 'video' ? <Film size={14} /> : <ImageIcon size={14} />}
-              <span className="linghuiVideoClipListLabel">{clip.label || `${clip.kind === 'video' ? '视频' : '图片'} ${index + 1}`}</span>
+              {clip.kind === 'video' && <Film size={14} />}
+              {clip.kind === 'image' && <ImageIcon size={14} />}
+              {clip.kind === 'audio' && <AudioLines size={14} />}
+              <span className="linghuiVideoClipListLabel">{clip.label || `${clip.kind === 'video' ? '视频' : clip.kind === 'image' ? '图片' : '音频'} ${index + 1}`}</span>
               <span className="linghuiVideoClipListDuration">
                 {(clip.durationSec ?? (clip.kind === 'image' ? props.imageDurationSec : 0)).toFixed(1)}s
               </span>
@@ -203,23 +247,32 @@ function VideoClipNodeInner({ id, data, selected }: NodeProps) {
           className="linghuiVideoClipFooterButton nodrag"
           disabled={clips.length === 0}
           onClick={(event) => { event.stopPropagation(); setEditorOpen(true); }}
-          title="打开剪辑面板调整片段参数"
+          title="打开视频合成"
         >
           <Settings2 size={12} />
-          <span>打开剪辑</span>
+          <span>打开视频合成</span>
         </button>
+        {resultSource ? (
+          <a
+            className="linghuiVideoClipFooterButton nodrag"
+            href={previewSource}
+            download
+            onClick={event => event.stopPropagation()}
+            title="下载合成视频"
+          >
+            <Download size={12} />
+            <span>下载</span>
+          </a>
+        ) : null}
         <button
           type="button"
           className="linghuiVideoClipFooterButton nodrag"
-          disabled={clips.length === 0 || status === 'running'}
+          disabled={!canCompose || status === 'running'}
           onClick={(event) => {
             event.stopPropagation();
-            // 合成 executor 暂未接入：占位提示，用户能看到入口存在但知道当前需要等下一轮 FFmpeg 接通。
-            Modal.info({
-              title: '合成 executor 尚未接入',
-              content: '当前版本仅完成 UI + 数据流；FFmpeg concat 链路将在下一轮更新中接通。',
-            });
+            onRunNode(id);
           }}
+          title={!canCompose ? inputHint : '合成视频'}
         >
           <Combine size={12} />
           <span>{status === 'running' ? '合成中…' : '合成视频'}</span>
@@ -228,7 +281,7 @@ function VideoClipNodeInner({ id, data, selected }: NodeProps) {
 
       <Modal
         open={editorOpen}
-        title="视频合成 · 剪辑详情"
+        title="视频合成"
         onCancel={() => setEditorOpen(false)}
         footer={<Button onClick={() => setEditorOpen(false)}>关闭</Button>}
         width={680}
@@ -286,8 +339,10 @@ function VideoClipNodeInner({ id, data, selected }: NodeProps) {
             {clips.map((clip, index) => (
               <li key={clip.id}>
                 <span>{index + 1}.</span>
-                {clip.kind === 'video' ? <Film size={14} /> : <ImageIcon size={14} />}
-                <span style={{ flex: 1 }}>{clip.label || `${clip.kind === 'video' ? '视频' : '图片'} ${index + 1}`}</span>
+                {clip.kind === 'video' && <Film size={14} />}
+                {clip.kind === 'image' && <ImageIcon size={14} />}
+                {clip.kind === 'audio' && <AudioLines size={14} />}
+                <span style={{ flex: 1 }}>{clip.label || `${clip.kind === 'video' ? '视频' : clip.kind === 'image' ? '图片' : '音频'} ${index + 1}`}</span>
                 <span>{(clip.durationSec ?? (clip.kind === 'image' ? props.imageDurationSec : 0)).toFixed(1)}s</span>
               </li>
             ))}

@@ -4,6 +4,7 @@ import type {
   LinghuiExecuteMultiAngleOptions,
   LinghuiGridType,
   LinghuiImageAssetItem,
+  LinghuiMediaItem,
   LinghuiMultiAngleConfig,
   LinghuiImageNodeProperties,
   LinghuiNodeCatalogItem,
@@ -53,7 +54,7 @@ export interface LinghuiCanvasOverlaysProps {
     promptSnippet: string;
     properties?: Partial<LinghuiImageNodeProperties>;
   }) => void;
-  /** LibTV TextNode EmptyState 4 actions：派生上下游子图。 */
+  /** LibTV TextNode EmptyState actions：手写 / 派生上下游子图。 */
   onApplyTextEmptyAction?: (
     nodeId: string,
     action: 'edit' | 'video' | 'image-prompt' | 'music',
@@ -76,6 +77,15 @@ export interface LinghuiCanvasOverlaysProps {
   onRevertGridSplit: () => void;
   /** 视频工具栏"音频分离 → 音视频分离"，按 nodeId 工作，非右键菜单专用。 */
   onSeparateVideoAudio?: (nodeId: string) => void;
+  /** 视频工具栏"截图"，按 nodeId 派生图片节点。 */
+  onCreateDerivedVideoFrames?: (nodeId: string, items: LinghuiImageAssetItem[]) => void;
+  /** 视频工具栏"剪辑"，按 nodeId 派生视频片段节点。 */
+  onCreateDerivedVideoClips?: (nodeId: string, items: LinghuiMediaItem[]) => void;
+  /** 视频工具栏"解析"，按 nodeId 派生可编辑文本解析节点。 */
+  onCreateDerivedVideoAnalysis?: (
+    nodeId: string,
+    draft: { label?: string; content: string; source?: string; durationSec?: number },
+  ) => string | null;
   pendingGroupFrameStyle: CssVarStyle | null;
   pendingGroupActionsStyle: CssVarStyle | null;
   pendingGroupCreatableIds: string[];

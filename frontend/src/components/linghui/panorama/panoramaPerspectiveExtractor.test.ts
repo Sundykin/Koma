@@ -11,6 +11,12 @@ import {
   PANORAMA_PERSPECTIVE_EIGHT_DIRECTIONS,
   PANORAMA_PERSPECTIVE_SIX_FACES,
 } from './panoramaPerspectiveExtractor';
+import {
+  getPanoramaDetailDirectionLabel,
+  getPanoramaRing12NodeLabel,
+  getPanoramaScreenshotGroupName,
+  PANORAMA_RING4_NODE_LABELS,
+} from './panoramaDetailCrop';
 
 describe('panoramaPerspectiveExtractor 角度预设', () => {
   describe('PANORAMA_PERSPECTIVE_SIX_FACES (cube faces)', () => {
@@ -81,5 +87,31 @@ describe('panoramaPerspectiveExtractor 角度预设', () => {
         expect(view.label).toBe(`${i * 45}°`);
       }
     });
+  });
+});
+
+describe('panorama detail crop LibTV labels', () => {
+  it('uses LibTV ring-4 screenshot labels', () => {
+    expect(PANORAMA_RING4_NODE_LABELS).toEqual([
+      '全景截图-前方',
+      '全景截图-左侧',
+      '全景截图-后方',
+      '全景截图-右侧',
+    ]);
+    expect(Array.from({ length: 4 }, (_, index) => getPanoramaDetailDirectionLabel(4, index)))
+      .toEqual([...PANORAMA_RING4_NODE_LABELS]);
+  });
+
+  it('uses LibTV ring-12 counterclockwise labels', () => {
+    expect(getPanoramaRing12NodeLabel(0)).toBe('全景截图-逆时针0°');
+    expect(getPanoramaRing12NodeLabel(1)).toBe('全景截图-逆时针30°');
+    expect(getPanoramaRing12NodeLabel(11)).toBe('全景截图-逆时针330°');
+    expect(getPanoramaRing12NodeLabel(12)).toBe('全景截图-逆时针0°');
+    expect(Array.from({ length: 12 }, (_, index) => getPanoramaDetailDirectionLabel(12, index)))
+      .toHaveLength(12);
+  });
+
+  it('formats screenshot group name like LibTV', () => {
+    expect(getPanoramaScreenshotGroupName(12)).toBe('全景截图组 (12 张)');
   });
 });

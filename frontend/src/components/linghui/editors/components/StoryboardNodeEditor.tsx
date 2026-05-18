@@ -9,9 +9,9 @@
  *    （通过同样的 onDeriveShots / onGenerateImages / onGenerateVideos props 透传）
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Checkbox, Dropdown, InputNumber, Modal } from 'antd';
+import { Button, Dropdown, InputNumber, Modal } from 'antd';
 import type { MenuProps } from 'antd';
-import { ArrowUp, Expand, Image as ImageIcon, LayoutGrid, Rows3, Video, Wand2 } from 'lucide-react';
+import { ArrowUp, Expand, FileAudio, FileText, Image as ImageIcon, LayoutGrid, Rows3, Video, Wand2 } from 'lucide-react';
 import type {
   LinghuiNodeData,
   LinghuiNodeRunState,
@@ -19,12 +19,16 @@ import type {
   LinghuiStoryboardNodeProperties,
 } from '../../../../types/linghui';
 import { loadSettings } from '../../../../store/settings/core';
-import { toFileSystemDisplayUrl } from '../../../../services/fileSystemPort';
 import { listConfiguredModelSelectOptions } from '../../../../providers/channel/resolver';
 import { useLinghuiNodeMutation } from '../../nodes/state/LinghuiNodeRunsContext';
 import { LinghuiPromptEditor } from './LinghuiPromptEditor';
 import type { LinghuiPromptReferenceItem } from '../state/linghuiPromptReferences';
 import { useLinghuiActionLock } from '../hooks/useLinghuiActionLock';
+import {
+  LINGHUI_STORYBOARD_SCENES,
+  resolveLinghuiStoryboardScene,
+} from '../state/linghuiStoryboardScenes';
+import { ScriptShotCards, ScriptShotTable } from './ScriptShotViews';
 
 interface ProviderOption {
   value: string;
@@ -44,85 +48,6 @@ interface StoryboardNodeEditorProps {
   onGenerateVideos: (shots: LinghuiStoryboardFrame[]) => void;
 }
 
-function toPreviewSource(source?: string): string {
-  return toFileSystemDisplayUrl(source) || '';
-}
-
-function StoryboardShotCards(props: {
-  shots: LinghuiStoryboardFrame[];
-  selectedShotIds: string[];
-  onToggleShot: (shotId: string, checked: boolean) => void;
-}) {
-  const selectedSet = new Set(props.selectedShotIds);
-
-  return (
-    <div className="linghuiScriptShotGrid">
-      {props.shots.map((shot, index) => {
-        const previewSource = toPreviewSource(shot.image?.source);
-        const checked = selectedSet.has(shot.id);
-
-        return (
-          <label key={shot.id} className={`linghuiScriptShotCard ${checked ? 'isSelected' : ''}`}>
-            <div className="linghuiScriptShotCardHeader">
-              <Checkbox
-                checked={checked}
-                onChange={event => props.onToggleShot(shot.id, event.target.checked)}
-              />
-              <span className="linghuiScriptShotIndex">#{index + 1}</span>
-              <span className="linghuiScriptShotDuration">{Math.max(1, Math.round(shot.durationSec || 3))} 秒</span>
-            </div>
-            {previewSource ? (
-              <div className="linghuiScriptShotPreview">
-                <img src={previewSource} alt={shot.title} />
-              </div>
-            ) : null}
-            <div className="linghuiScriptShotTitle">{shot.title || `镜头 ${index + 1}`}</div>
-            <div className="linghuiScriptShotDescription">{shot.description || '暂无镜头描述'}</div>
-          </label>
-        );
-      })}
-    </div>
-  );
-}
-
-function StoryboardShotTable(props: {
-  shots: LinghuiStoryboardFrame[];
-  selectedShotIds: string[];
-  onToggleShot: (shotId: string, checked: boolean) => void;
-}) {
-  const selectedSet = new Set(props.selectedShotIds);
-
-  return (
-    <div className="linghuiScriptShotTableWrap">
-      <table className="linghuiScriptShotTable">
-        <thead>
-          <tr>
-            <th />
-            <th>镜头</th>
-            <th>描述</th>
-            <th>时长</th>
-          </tr>
-        </thead>
-        <tbody>
-          {props.shots.map((shot, index) => (
-            <tr key={shot.id} className={selectedSet.has(shot.id) ? 'isSelected' : ''}>
-              <td>
-                <Checkbox
-                  checked={selectedSet.has(shot.id)}
-                  onChange={event => props.onToggleShot(shot.id, event.target.checked)}
-                />
-              </td>
-              <td>{shot.title || `镜头 ${index + 1}`}</td>
-              <td>{shot.description || '暂无镜头描述'}</td>
-              <td>{Math.max(1, Math.round(shot.durationSec || 3))} 秒</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
 export const StoryboardNodeEditor: React.FC<StoryboardNodeEditorProps> = ({
   nodeId,
   nodeData,
@@ -137,7 +62,8 @@ export const StoryboardNodeEditor: React.FC<StoryboardNodeEditorProps> = ({
   const props = nodeData.properties as unknown as LinghuiStoryboardNodeProperties;
   const prompt = String(props.prompt ?? '');
   const llmSelection = String(props.llmSelection ?? '');
-  const targetShotCount = Math.max(4, Math.min(24, Math.round(Number(props.targetShotCount ?? 8))));
+  const sceneDef = useMemo(() => resolveLinghuiStoryboardScene(props.scene), [props.scene]);
+  const targetShotCount = Math.max(4, Math.min(25, Math.round(Number(props.targetShotCount ?? sceneDef.targetShotCount))));
   const viewMode = props.viewMode === 'table' ? 'table' : 'cards';
   const [providers, setProviders] = useState<ProviderOption[]>([]);
   const [selectedShotIds, setSelectedShotIds] = useState<string[]>([]);
@@ -216,6 +142,15 @@ export const StoryboardNodeEditor: React.FC<StoryboardNodeEditorProps> = ({
     [llmSelection, providers],
   );
   const modelSummary = selectedProvider?.label || '未配置 LLM';
+  const sceneSummary = sceneDef.shortLabel;
+  const canGenerateStoryboard = Boolean(prompt.trim() || promptReferences.length > 0);
+  const referenceCards = useMemo(() => (
+    promptReferences.map((reference, index) => ({
+      ...reference,
+      badge: String(index + 1),
+      preview: reference.previewSource || (typeof reference.source === 'string' ? reference.source : ''),
+    }))
+  ), [promptReferences]);
   const providerMenuItems = useMemo<MenuProps['items']>(() => (
     providers.map(provider => ({
       key: provider.value,
@@ -233,6 +168,39 @@ export const StoryboardNodeEditor: React.FC<StoryboardNodeEditorProps> = ({
       },
     }))
   ), [providers, updateProp]);
+  const sceneMenuItems = useMemo<MenuProps['items']>(() => (
+    LINGHUI_STORYBOARD_SCENES.map(scene => ({
+      key: scene.scene,
+      label: (
+        <div className="linghuiNodeEditorDropdownOption">
+          <div className="linghuiNodeEditorDropdownTitle">{scene.label}</div>
+          <div className="linghuiNodeEditorDropdownDesc">{scene.description}</div>
+        </div>
+      ),
+      onClick: ({ domEvent }) => {
+        domEvent.stopPropagation();
+        updateNodeData(nodeId, prev => ({
+          ...prev,
+          properties: {
+            ...prev.properties,
+            scene: scene.scene,
+            targetShotCount: scene.targetShotCount,
+          },
+        }), { markStale: false });
+      },
+    }))
+  ), [nodeId, updateNodeData]);
+
+  const handleApplyScene = useCallback((scene: typeof LINGHUI_STORYBOARD_SCENES[number]) => {
+    updateNodeData(nodeId, prev => ({
+      ...prev,
+      properties: {
+        ...prev.properties,
+        scene: scene.scene,
+        targetShotCount: scene.targetShotCount,
+      },
+    }), { markStale: false });
+  }, [nodeId, updateNodeData]);
 
   const renderShotView = (immersive = false) => {
     if (!previewState.shots.length) {
@@ -294,64 +262,88 @@ export const StoryboardNodeEditor: React.FC<StoryboardNodeEditorProps> = ({
                 全屏
               </Button>
             )}
-            <Button
-              size="small"
-              icon={<Wand2 size={14} />}
-              disabled={!selectedCount}
-              onClick={() => onDeriveShots(selectedShots)}
-            >
-              派生镜头文本
-            </Button>
-            <Button
-              size="small"
-              type="primary"
-              icon={<ImageIcon size={14} />}
-              disabled={!selectedCount || isGenerateImagesLocked}
-              onClick={() => handleGenerateImages(selectedShots)}
-            >
-              生成分镜图
-            </Button>
-            <Button
-              size="small"
-              icon={<Video size={14} />}
-              disabled={!selectedCount || isGenerateVideosLocked}
-              onClick={() => handleGenerateVideos(selectedShots)}
-            >
-              生成视频流程
-            </Button>
           </div>
         </div>
 
         {viewMode === 'table' ? (
-          <StoryboardShotTable
+          <ScriptShotTable
             shots={previewState.shots}
             selectedShotIds={selectedShotIds}
             onToggleShot={handleToggleShot}
           />
         ) : (
-          <StoryboardShotCards
+          <ScriptShotCards
             shots={previewState.shots}
             selectedShotIds={selectedShotIds}
             onToggleShot={handleToggleShot}
           />
         )}
+        {selectedCount > 0 ? (
+          <div className="linghuiScriptSelectionToolbar">
+            <span className="linghuiScriptSelectionToolbarCount">已选 {selectedCount}/{shotCount}</span>
+            <span className="linghuiScriptSelectionToolbarDivider" />
+            <button
+              type="button"
+              onClick={() => onDeriveShots(selectedShots)}
+            >
+              <Wand2 size={14} />
+              派生镜头文本
+            </button>
+            <button
+              type="button"
+              disabled={isGenerateImagesLocked}
+              onClick={() => handleGenerateImages(selectedShots)}
+            >
+              <ImageIcon size={14} />
+              生成分镜图
+            </button>
+            <button
+              type="button"
+              disabled={isGenerateVideosLocked}
+              onClick={() => handleGenerateVideos(selectedShots)}
+            >
+              <Video size={14} />
+              生成视频流程
+            </button>
+          </div>
+        ) : null}
       </>
     );
   };
 
   return (
     <>
-      <div className="linghuiEditorPanel" onMouseDown={event => event.stopPropagation()}>
-        <div className="linghuiEditorHeader">
-          <div>
-            <div className="linghuiEditorTitle">故事板节点</div>
-            <div className="linghuiEditorSubtitle">
-              只填剧情大纲，内置导演级提示词自动拆出可拍摄分镜
-            </div>
+      <div
+        className="linghuiEditorPanel linghuiScriptGeneratorPanel linghuiStoryboardGeneratorPanel"
+        onMouseDown={event => event.stopPropagation()}
+      >
+        {referenceCards.length > 0 ? (
+          <div className="linghuiScriptGeneratorRefs" aria-label="上游参考">
+            {referenceCards.map(reference => (
+              <div className="linghuiScriptGeneratorRefCard" key={reference.id} title={reference.name}>
+                <div className="linghuiScriptGeneratorRefThumb">
+                  {reference.kind === 'image' && reference.preview ? (
+                    <img src={reference.preview} alt="" draggable={false} />
+                  ) : reference.kind === 'video' && reference.preview ? (
+                    <img src={reference.preview} alt="" draggable={false} />
+                  ) : reference.kind === 'video' ? (
+                    <Video size={14} />
+                  ) : reference.kind === 'audio' ? (
+                    <FileAudio size={14} />
+                  ) : reference.kind === 'text' ? (
+                    <FileText size={14} />
+                  ) : (
+                    <ImageIcon size={14} />
+                  )}
+                  <span className="linghuiScriptGeneratorRefBadge">{reference.badge}</span>
+                </div>
+                <span className="linghuiScriptGeneratorRefName">{reference.name}</span>
+              </div>
+            ))}
           </div>
-        </div>
+        ) : null}
 
-        <div className="linghuiEditorPrompt linghuiEditorCompactPrompt">
+        <div className="linghuiEditorPrompt linghuiScriptGeneratorPrompt">
           <LinghuiPromptEditor
             value={prompt}
             onChange={value => updateProp('prompt', value)}
@@ -363,7 +355,25 @@ export const StoryboardNodeEditor: React.FC<StoryboardNodeEditorProps> = ({
           />
         </div>
 
-        <div className="linghuiEditorControlRow">
+        <div className="linghuiScriptPresetStrip linghuiStoryboardSceneStrip" aria-label="故事板场景模板">
+          {LINGHUI_STORYBOARD_SCENES.map(scene => (
+            <button
+              key={scene.scene}
+              type="button"
+              className={`linghuiScriptPresetChip ${sceneDef.scene === scene.scene ? 'isActive' : ''}`}
+              onClick={event => {
+                event.stopPropagation();
+                handleApplyScene(scene);
+              }}
+              title={scene.description}
+            >
+              <LayoutGrid size={12} />
+              {scene.shortLabel}
+            </button>
+          ))}
+        </div>
+
+        <div className="linghuiEditorControlRow linghuiScriptGeneratorControlRow">
           <Dropdown
             trigger={providers.length > 0 ? ['click'] : []}
             menu={{
@@ -377,38 +387,66 @@ export const StoryboardNodeEditor: React.FC<StoryboardNodeEditorProps> = ({
           >
             <button
               type="button"
-              className={`linghuiEditorInlineTrigger ${providers.length === 0 ? 'isDisabled' : ''}`}
+              className={`linghuiScriptGeneratorChip ${providers.length === 0 ? 'isDisabled' : ''}`}
               onClick={event => event.stopPropagation()}
               disabled={providers.length === 0}
+              title={modelSummary}
             >
               {modelSummary}
             </button>
           </Dropdown>
 
-          <div className="linghuiEditorInlineTrigger" onClick={event => event.stopPropagation()}>
-            <span style={{ marginRight: 6 }}>目标镜头</span>
+          <Dropdown
+            trigger={['click']}
+            menu={{
+              items: sceneMenuItems,
+              selectable: true,
+              selectedKeys: [sceneDef.scene],
+            }}
+            classNames={{ root: 'linghuiNodeEditorDropdownMenu' }}
+            getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
+            overlayClassName="linghuiNodeEditorDropdownOverlay"
+          >
+            <button
+              type="button"
+              className="linghuiScriptGeneratorChip linghuiStoryboardGeneratorSceneChip"
+              onClick={event => event.stopPropagation()}
+              title={sceneDef.label}
+            >
+              {sceneSummary}
+            </button>
+          </Dropdown>
+
+          <div className="linghuiStoryboardGeneratorShotCount" onClick={event => event.stopPropagation()} title="目标镜头数">
+            <span>镜头</span>
             <InputNumber
               size="small"
               min={4}
-              max={24}
+              max={25}
               value={targetShotCount}
               onChange={value => updateProp('targetShotCount', typeof value === 'number' ? value : 8)}
               controls
-              style={{ width: 64 }}
+              style={{ width: 58 }}
             />
           </div>
 
+          <div className="linghuiScriptGeneratorSpacer" />
+
           <div className="linghuiEditorActionGroup">
-            <Button
-              type="primary"
-              size="small"
-              icon={<ArrowUp size={12} />}
+            <button
+              type="button"
+              className="linghuiScriptGeneratorSubmit"
               onClick={handleRun}
-              disabled={isRunActionLocked || isGenerating}
-              loading={isGenerating}
+              disabled={isRunActionLocked || isGenerating || !canGenerateStoryboard}
+              aria-label="生成故事板"
+              title={canGenerateStoryboard ? '生成故事板' : '请先输入剧情大纲'}
             >
-              生成故事板
-            </Button>
+              {isGenerating ? (
+                <span className="linghuiScriptGeneratorSpinner" />
+              ) : (
+                <ArrowUp size={13} />
+              )}
+            </button>
           </div>
         </div>
 

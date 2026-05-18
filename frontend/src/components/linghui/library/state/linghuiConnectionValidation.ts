@@ -102,11 +102,12 @@ export const NODE_SLOT_LAYOUTS: Record<LinghuiNodeType, { inputs: LinghuiSlotDef
     inputs: [{ name: '主图', dataType: 'image' }],
     outputs: [{ name: 'slots', dataType: 'images' }],
   },
-  // 视频合成节点：多输入（视频 + 图片），单视频出
+  // 视频合成节点：多输入（视频 + 图片 + 音频），单视频出
   'linghui/video-clip': {
     inputs: [
       { name: '视频片段', dataType: 'video' },
       { name: '图片片段', dataType: 'image' },
+      { name: '音频', dataType: 'audio' },
     ],
     outputs: [{ name: 'video', dataType: 'video' }],
   },

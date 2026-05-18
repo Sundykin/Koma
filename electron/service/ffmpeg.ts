@@ -105,8 +105,36 @@ export interface ComposeVideoOptions {
   outputPath: string;
 }
 
+export interface ConcatMediaClipOptions {
+  clips: Array<{
+    kind: 'video' | 'image' | 'audio';
+    source: string;
+    durationSec?: number;
+    label?: string;
+  }>;
+  outputPath: string;
+  width: number;
+  height: number;
+  fps: 24 | 30 | 60;
+  imageDurationSec?: number;
+}
+
+export interface TrimVideoOptions {
+  input: string;
+  output: string;
+  startTime: number;
+  endTime: number;
+}
+
+export interface UpscaleVideoOptions {
+  input: string;
+  output: string;
+  factor?: 2 | 4;
+  sharpenAmount?: number;
+}
+
 // 任务类型
-type TaskType = 'getInfo' | 'extractFrames' | 'splitGridImage' | 'upscaleImage' | 'cropImage' | 'waveform' | 'splitAudio' | 'export' | 'composeVideo';
+type TaskType = 'getInfo' | 'extractFrames' | 'splitGridImage' | 'upscaleImage' | 'cropImage' | 'waveform' | 'splitAudio' | 'export' | 'composeVideo' | 'concatMediaClips' | 'trimVideo' | 'upscaleVideo';
 
 // 任务定义
 interface Task {
@@ -323,6 +351,27 @@ export class FFmpegService {
   }
 
   /**
+   * 拼接多个视频 / 图片片段为一个 mp4。
+   */
+  async concatMediaClips(options: ConcatMediaClipOptions, onProgress?: ProgressCallback): Promise<string> {
+    return this.queueTask<string>('concatMediaClips', options, onProgress);
+  }
+
+  /**
+   * 裁剪单个视频片段。
+   */
+  async trimVideo(options: TrimVideoOptions): Promise<string> {
+    return this.queueTask<string>('trimVideo', options);
+  }
+
+  /**
+   * 高清放大单个视频。
+   */
+  async upscaleVideo(options: UpscaleVideoOptions): Promise<string> {
+    return this.queueTask<string>('upscaleVideo', options);
+  }
+
+  /**
    * 添加任务到队列
    */
   private queueTask<T>(type: TaskType, args: any, onProgress?: ProgressCallback): Promise<T> {
@@ -376,6 +425,15 @@ export class FFmpegService {
           break;
         case 'composeVideo':
           result = await this.doComposeVideo(task.args, task.onProgress);
+          break;
+        case 'concatMediaClips':
+          result = await this.doConcatMediaClips(task.args, task.onProgress);
+          break;
+        case 'trimVideo':
+          result = await this.doTrimVideo(task.args);
+          break;
+        case 'upscaleVideo':
+          result = await this.doUpscaleVideo(task.args);
           break;
         default:
           throw new Error(`Unknown task type: ${task.type}`);
@@ -712,6 +770,111 @@ export class FFmpegService {
   }
 
   /**
+   * 快速裁剪视频片段。优先 stream copy，保持原视频质量并尽量快。
+   */
+  private async doTrimVideo(options: TrimVideoOptions): Promise<string> {
+    if (!this.ffmpegPath) {
+      throw new Error('FFmpeg not available');
+    }
+
+    const input = String(options.input ?? '').trim();
+    const output = String(options.output ?? '').trim();
+    const startTime = Math.max(0, Number(options.startTime) || 0);
+    const endTime = Math.max(startTime + 0.1, Number(options.endTime) || 0);
+    const duration = Math.max(0.1, endTime - startTime);
+    if (!input) {
+      throw new Error('Missing trim input video');
+    }
+    if (!output) {
+      throw new Error('Missing trim output video');
+    }
+
+    await fs.promises.mkdir(path.dirname(output), { recursive: true });
+
+    const args = [
+      '-ss', String(startTime),
+      '-i', input,
+      '-t', String(duration),
+      '-map', '0',
+      '-c', 'copy',
+      '-avoid_negative_ts', 'make_zero',
+      '-movflags', '+faststart',
+      '-y',
+      output,
+    ];
+
+    try {
+      await this.runFFmpeg(args);
+    } catch {
+      // 部分源格式 copy 裁剪可能失败，回退到 H.264/AAC 重编码。
+      await this.runFFmpeg([
+        '-ss', String(startTime),
+        '-i', input,
+        '-t', String(duration),
+        '-map', '0:v:0',
+        '-map', '0:a:0?',
+        '-c:v', 'libx264',
+        '-preset', 'veryfast',
+        '-pix_fmt', 'yuv420p',
+        '-c:a', 'aac',
+        '-b:a', '128k',
+        '-movflags', '+faststart',
+        '-y',
+        output,
+      ]);
+    }
+    return output;
+  }
+
+  /**
+   * 视频高清放大：Lanczos 缩放 + 轻锐化 + H.264/AAC mp4 输出。
+   */
+  private async doUpscaleVideo(options: UpscaleVideoOptions): Promise<string> {
+    if (!this.ffmpegPath) {
+      throw new Error('FFmpeg not available');
+    }
+
+    const input = String(options.input ?? '').trim();
+    const output = String(options.output ?? '').trim();
+    if (!input) {
+      throw new Error('Missing upscale input video');
+    }
+    if (!output) {
+      throw new Error('Missing upscale output video');
+    }
+
+    const factor = Number(options.factor) === 4 ? 4 : 2;
+    const sharpenAmount = Math.max(0, Math.min(2, Number.isFinite(options.sharpenAmount) ? Number(options.sharpenAmount) : 0.45));
+    await fs.promises.mkdir(path.dirname(output), { recursive: true });
+
+    const videoFilter = [
+      `scale=trunc(iw*${factor}/2)*2:trunc(ih*${factor}/2)*2:flags=lanczos`,
+      `unsharp=5:5:${sharpenAmount}:3:3:0.0`,
+      'setsar=1',
+      'format=yuv420p',
+    ].join(',');
+
+    const args = [
+      '-i', input,
+      '-map', '0:v:0',
+      '-map', '0:a:0?',
+      '-vf', videoFilter,
+      '-c:v', 'libx264',
+      '-preset', 'veryfast',
+      '-crf', factor === 4 ? '17' : '18',
+      '-pix_fmt', 'yuv420p',
+      '-c:a', 'aac',
+      '-b:a', '160k',
+      '-movflags', '+faststart',
+      '-y',
+      output,
+    ];
+
+    await this.runFFmpeg(args);
+    return output;
+  }
+
+  /**
    * 实际生成波形
    */
   private async doGenerateWaveform(options: WaveformOptions): Promise<string> {
@@ -889,6 +1052,193 @@ export class FFmpegService {
     await this.runFFmpegWithProgress(args, onProgress);
 
     return outputPath;
+  }
+
+  private quoteConcatPath(filePath: string): string {
+    return filePath.replace(/'/g, "'\\''");
+  }
+
+  /**
+   * 实际拼接多个媒体片段。
+   *
+   * 每个输入先转成同尺寸、同帧率、同像素格式、带音轨的临时 mp4，再使用 concat demuxer。
+   * 这样能稳定处理“视频 + 图片静帧 + 无声视频”混合输入。
+   */
+  private async doConcatMediaClips(options: ConcatMediaClipOptions, onProgress?: ProgressCallback): Promise<string> {
+    if (!this.ffmpegPath) {
+      throw new Error('FFmpeg not available');
+    }
+
+    const clips = Array.isArray(options.clips)
+      ? options.clips.filter(clip => String(clip.source ?? '').trim())
+      : [];
+    if (clips.length < 2) {
+      throw new Error('At least two media clips are required');
+    }
+
+    const outputPath = String(options.outputPath ?? '').trim();
+    if (!outputPath) {
+      throw new Error('Missing concat output path');
+    }
+
+    const width = Math.max(2, Math.round(Number(options.width) || 1920));
+    const height = Math.max(2, Math.round(Number(options.height) || 1080));
+    const fps = [24, 30, 60].includes(Number(options.fps)) ? Number(options.fps) : 30;
+    const imageDurationSec = Math.max(0.5, Math.min(60, Number(options.imageDurationSec) || 3));
+
+    await fs.promises.mkdir(path.dirname(outputPath), { recursive: true });
+    const workDir = path.join(this.workDir, 'concat-media', `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+    await fs.promises.mkdir(workDir, { recursive: true });
+
+    const normalizedPaths: string[] = [];
+    const audioPaths: string[] = [];
+    const total = clips.length;
+    try {
+      for (let index = 0; index < clips.length; index += 1) {
+        const clip = clips[index];
+        const source = String(clip.source).trim();
+        const segmentPath = path.join(workDir, `segment_${String(index + 1).padStart(3, '0')}.mp4`);
+        const isImage = clip.kind === 'image';
+        const isAudio = clip.kind === 'audio';
+        if (isAudio) {
+          audioPaths.push(source);
+          onProgress?.(Math.round(((index + 0.2) / total) * 20));
+          continue;
+        }
+        const duration = Math.max(0.5, Math.min(3600, Number(clip.durationSec) || imageDurationSec));
+        const videoFilter = [
+          `scale=${width}:${height}:force_original_aspect_ratio=decrease`,
+          `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2`,
+          'setsar=1',
+          `fps=${fps}`,
+          'format=yuv420p',
+        ].join(',');
+
+        let hasAudio = false;
+        if (!isImage && this.ffprobePath) {
+          try {
+            hasAudio = (await this.doGetMediaInfo(source)).hasAudio;
+          } catch {
+            hasAudio = false;
+          }
+        }
+
+        const args = isImage
+          ? [
+              '-loop', '1',
+              '-t', String(duration),
+              '-i', source,
+              '-f', 'lavfi',
+              '-t', String(duration),
+              '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
+              '-vf', videoFilter,
+              '-shortest',
+              '-c:v', 'libx264',
+              '-preset', 'veryfast',
+              '-pix_fmt', 'yuv420p',
+              '-c:a', 'aac',
+              '-b:a', '128k',
+              '-movflags', '+faststart',
+              '-y',
+              segmentPath,
+            ]
+          : hasAudio
+            ? [
+                '-i', source,
+                '-map', '0:v:0',
+                '-map', '0:a:0',
+                '-vf', videoFilter,
+                '-shortest',
+                '-c:v', 'libx264',
+                '-preset', 'veryfast',
+                '-pix_fmt', 'yuv420p',
+                '-r', String(fps),
+                '-c:a', 'aac',
+                '-ar', '44100',
+                '-ac', '2',
+                '-b:a', '128k',
+                '-movflags', '+faststart',
+                '-y',
+                segmentPath,
+              ]
+            : [
+                '-i', source,
+                '-f', 'lavfi',
+                '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
+                '-map', '0:v:0',
+                '-map', '1:a:0',
+                '-vf', videoFilter,
+                '-shortest',
+                '-c:v', 'libx264',
+                '-preset', 'veryfast',
+                '-pix_fmt', 'yuv420p',
+                '-r', String(fps),
+                '-c:a', 'aac',
+                '-b:a', '128k',
+                '-movflags', '+faststart',
+                '-y',
+                segmentPath,
+              ];
+
+        await this.runFFmpeg(args);
+
+        normalizedPaths.push(segmentPath);
+        onProgress?.(Math.round(((index + 0.8) / total) * 80));
+      }
+
+      if (normalizedPaths.length === 0) {
+        throw new Error('At least one video or image clip is required');
+      }
+
+      const listPath = path.join(workDir, 'concat.txt');
+      const listContent = normalizedPaths
+        .map(segmentPath => `file '${this.quoteConcatPath(segmentPath)}'`)
+        .join('\n');
+      await fs.promises.writeFile(listPath, listContent, 'utf8');
+
+      const mergedVideoPath = audioPaths.length > 0 ? path.join(workDir, 'merged-video.mp4') : outputPath;
+      await this.runFFmpeg([
+        '-f', 'concat',
+        '-safe', '0',
+        '-i', listPath,
+        '-c', 'copy',
+        '-movflags', '+faststart',
+        '-y',
+        mergedVideoPath,
+      ]);
+
+      if (audioPaths.length > 0) {
+        const args: string[] = ['-i', mergedVideoPath];
+        for (const audioPath of audioPaths) {
+          args.push('-i', audioPath);
+        }
+        const filterParts: string[] = [];
+        const audioInputs = ['[0:a]'];
+        for (let index = 0; index < audioPaths.length; index += 1) {
+          const inputIndex = index + 1;
+          filterParts.push(`[${inputIndex}:a]aresample=44100,asetpts=PTS-STARTPTS[a${index}]`);
+          audioInputs.push(`[a${index}]`);
+        }
+        filterParts.push(`${audioInputs.join('')}amix=inputs=${audioInputs.length}:duration=first:dropout_transition=0[aout]`);
+        args.push(
+          '-filter_complex', filterParts.join(';'),
+          '-map', '0:v:0',
+          '-map', '[aout]',
+          '-c:v', 'copy',
+          '-c:a', 'aac',
+          '-b:a', '128k',
+          '-shortest',
+          '-movflags', '+faststart',
+          '-y',
+          outputPath,
+        );
+        await this.runFFmpeg(args);
+      }
+      onProgress?.(100);
+      return outputPath;
+    } finally {
+      fs.promises.rm(workDir, { recursive: true, force: true }).catch(() => undefined);
+    }
   }
 
   /**

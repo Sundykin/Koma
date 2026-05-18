@@ -250,6 +250,49 @@
   text-align: center;
 }
 
+.linghuiVideoClipEmptySub {
+  opacity: 0.6;
+  font-size: 11px;
+}
+
+.linghuiVideoClipPreview {
+  position: relative;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--token-bg-canvas);
+  aspect-ratio: 16 / 9;
+
+  video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+}
+
+.linghuiVideoClipPreviewOpen {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, var(--token-border-inverse) 40%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--token-bg-elevated) 88%, transparent);
+  color: var(--token-text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+
+  &:hover {
+    background: var(--token-bg-elevated);
+  }
+}
+
 .linghuiVideoClipList {
   list-style: none;
   margin: 0;
@@ -403,6 +446,7 @@
   color: var(--token-text-primary);
   cursor: pointer;
   transition: background 120ms;
+  text-decoration: none;
 
   &:hover:not(:disabled) {
     background: color-mix(in srgb, var(--token-accent-base) 25%, transparent);
@@ -581,9 +625,151 @@
       .linghuiCompactInfo {
         padding: 10px;
         gap: 3px;
-      }
     }
   }
+}
+
+.linghuiCompactScriptThumb.hasStoryboardRows {
+  height: 260px;
+  padding: 0;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--token-bg-surface) 52%, transparent);
+}
+
+.linghuiCompactScriptNodeBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 30px;
+  padding: 0 8px 0 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--token-border-base) 48%, transparent);
+}
+
+.linghuiCompactScriptNodeCount {
+  color: $lh-text-muted;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.linghuiCompactScriptNodeActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+
+  button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: $lh-text-muted;
+    cursor: pointer;
+
+    &:hover,
+    &.isActive {
+      background: color-mix(in srgb, var(--token-bg-hover) 78%, transparent);
+      color: $lh-text-strong;
+    }
+  }
+}
+
+.linghuiCompactScriptNodeBody {
+  height: calc(100% - 30px);
+  overflow: auto;
+  padding: 8px;
+  scrollbar-width: thin;
+
+  .linghuiScriptShotGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .linghuiScriptShotTableWrap {
+    border-radius: 7px;
+  }
+
+  .linghuiScriptShotTextCell,
+  .linghuiScriptShotImageBox {
+    height: 96px;
+  }
+}
+
+.linghuiCompactScriptEmpty {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  color: $lh-text-muted;
+  font-size: 12px;
+}
+
+.linghuiCompactScriptGenerator {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  z-index: 4;
+  display: flex;
+  width: max-content;
+  max-width: 520px;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--canvas-controls-border);
+  border-radius: 10px;
+  background: var(--canvas-controls-bg);
+  box-shadow: var(--canvas-shadow-panel);
+  transform: translateX(-50%);
+  backdrop-filter: blur(12px);
+
+  .linghuiCompactScriptGeneratorIcon,
+  .linghuiCompactScriptGeneratorAction {
+    border: 0;
+    background: transparent;
+    color: var(--canvas-controls-text);
+    cursor: pointer;
+
+    &:hover {
+      background: var(--canvas-controls-hover);
+    }
+  }
+
+  .linghuiCompactScriptGeneratorIcon {
+    display: inline-flex;
+    width: 28px;
+    min-width: 28px;
+    height: 28px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+  }
+
+  .linghuiCompactScriptGeneratorAction {
+    display: inline-flex;
+    height: 28px;
+    align-items: center;
+    gap: 5px;
+    padding: 0 9px;
+    border-radius: 8px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+}
+
+.linghuiCompactScriptGeneratorCount {
+  padding: 0 6px;
+  color: var(--canvas-controls-text);
+  font-size: 12px;
+  opacity: 0.72;
+  white-space: nowrap;
+}
+
+.linghuiCompactScriptGeneratorDivider {
+  width: 0;
+  height: 20px;
+  border-left: 0.5px solid var(--canvas-controls-border);
+}
 
   &Thumb {
     position: relative;
@@ -1295,6 +1481,52 @@
   color: color-mix(in srgb, var(--token-text-primary) 18%, transparent);
 }
 
+.linghuiTextNodeResourceState {
+  width: 100%;
+  height: 100%;
+  min-height: 354px;
+  padding: 12px;
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--token-bg-elevated) 78%, transparent);
+  overflow: hidden;
+
+  &.isEditing {
+    cursor: text;
+  }
+}
+
+.linghuiTextNodeResourceText,
+.linghuiTextNodeResourceTextarea {
+  width: 100%;
+  height: 100%;
+  min-height: 330px;
+  color: $lh-text-strong;
+  font-size: 14px;
+  line-height: 1.72;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.linghuiTextNodeResourceText {
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.linghuiTextNodeResourceTextarea {
+  display: block;
+  resize: none;
+  border: 0;
+  outline: 0;
+  padding: 0;
+  background: transparent;
+  font: inherit;
+  caret-color: var(--token-accent-base);
+
+  &::placeholder {
+    color: $lh-text-muted;
+  }
+}
+
 .linghuiNodeEmptyState {
   display: flex;
   flex-direction: column;
@@ -1754,6 +1986,37 @@
       linear-gradient(135deg, color-mix(in srgb, var(--token-bg-surface) 94%, transparent), color-mix(in srgb, var(--token-bg-card) 98%, transparent));
   }
 
+  &AudioResourceStage {
+    @include lh-stack(16px);
+
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    padding: 34px 18px 52px;
+  }
+
+  &AudioDisc {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 94px;
+    height: 94px;
+    border-radius: 9999px;
+    color: color-mix(in srgb, var(--linghui-accent, var(--token-status-warning)) 72%, $lh-text-primary);
+    background:
+      radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--token-bg-card) 84%, transparent) 0 34%, transparent 35%),
+      radial-gradient(circle at 48% 46%, color-mix(in srgb, var(--linghui-accent, var(--token-status-warning)) 22%, transparent), transparent 66%),
+      color-mix(in srgb, var(--token-bg-app) 66%, transparent);
+    border: 1px solid color-mix(in srgb, var(--token-border-base) 62%, transparent);
+  }
+
+  &AudioPlayer {
+    width: min(260px, 100%);
+    height: 30px;
+    opacity: 0.92;
+  }
+
   &AudioWave {
     @include lh-inline(10px, nowrap, flex-end, flex-start);
 
@@ -1892,5 +2155,55 @@
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
+  }
+}
+
+html[data-theme-mode='light'] {
+  .linghuiCompactNode,
+  .linghuiRFNode {
+    box-shadow: none;
+
+    &::before {
+      inset: -1px;
+      filter: none;
+      background: transparent;
+      border: 1px solid color-mix(in srgb, var(--linghui-node-border, var(--token-border-focus)) 42%, transparent);
+    }
+
+    &.isSelected::before,
+    &.is-running::before,
+    &.is-failed::before,
+    &.is-stale::before {
+      opacity: 1;
+    }
+
+    &.isSelected {
+      transform: none;
+    }
+  }
+
+  .linghuiCompactThumbActionButton,
+  .linghuiCompactThumbExpand,
+  .linghuiImageFloatingToolbar,
+  .linghuiVideoNodeUploadFloat,
+  .linghuiNodeRunError {
+    box-shadow: none;
+  }
+
+  .linghuiNodeEmptyState,
+  .linghuiCompactTextThumb,
+  .linghuiCompactScriptThumb,
+  .linghuiCompactAudioThumb {
+    background: var(--token-bg-elevated);
+  }
+
+  .linghuiNodeEmptyStateActionItem:hover {
+    background: var(--token-bg-hover);
+  }
+
+  .linghuiCompactThumbActionButton,
+  .linghuiCompactThumbExpand,
+  .linghuiImageFloatingToolbar {
+    backdrop-filter: none;
   }
 }

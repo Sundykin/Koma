@@ -270,6 +270,12 @@ export const LINGHUI_IMAGE_TOOL_PRESETS: Record<LinghuiImageToolKey, LinghuiImag
         promptSnippet: '框选擦除指定区域中的干扰元素，并根据周围背景、光影和纹理自然补全，不改变主体身份与构图重心。',
         properties: { resolution: '2K' },
       },
+      {
+        label: '去水印字幕',
+        description: '清理画面水印、字幕和边角标识。',
+        promptSnippet: '移除画面中的水印、字幕、角标、logo 或多余文字痕迹，并根据周围背景纹理自然补全，不改变主体、构图和光影。',
+        properties: { resolution: '2K' },
+      },
     ],
   },
   'remove-bg': {
@@ -286,6 +292,12 @@ export const LINGHUI_IMAGE_TOOL_PRESETS: Record<LinghuiImageToolKey, LinghuiImag
         label: '商品白底',
         description: '适合电商图和素材整理。',
         promptSnippet: '商品白底抠图，保留商品材质、阴影和真实比例，背景简洁干净，边缘锐利，适合素材库或电商展示。',
+        properties: { aspectRatio: '1:1', resolution: '2K' },
+      },
+      {
+        label: '透明底素材',
+        description: '保留主体轮廓，生成适合后期叠放的素材。',
+        promptSnippet: '将主体从背景中干净分离，保留发丝、半透明材质、阴影边缘和真实轮廓，背景处理为透明底素材风格，主体不变形。',
         properties: { aspectRatio: '1:1', resolution: '2K' },
       },
     ],
@@ -315,6 +327,13 @@ export const LINGHUI_IMAGE_TOOL_PRESETS: Record<LinghuiImageToolKey, LinghuiImag
         properties: { aspectRatio: '16:9', resolution: '2K' },
         localAction: 'crop',
       },
+      {
+        label: '封面裁剪',
+        description: '裁成 4:5 社媒封面比例。',
+        promptSnippet: '将当前画面裁剪为 4:5 封面构图，主体保持完整，视觉焦点明确，适合社媒封面和商品展示。',
+        properties: { aspectRatio: '4:5', resolution: '2K' },
+        localAction: 'crop',
+      },
     ],
   },
   mockup: {
@@ -332,6 +351,12 @@ export const LINGHUI_IMAGE_TOOL_PRESETS: Record<LinghuiImageToolKey, LinghuiImag
         description: '放入桌面、展台或商业展示场景。',
         promptSnippet: '将当前主体放入产品展示 Mockup 场景，包含真实材质台面、柔和商业灯光和可读的空间透视，主体外观保持一致。',
         properties: { aspectRatio: '16:9', resolution: '2K' },
+      },
+      {
+        label: '手机屏幕',
+        description: '把画面放入移动端屏幕展示。',
+        promptSnippet: '将当前画面制作成手机屏幕 Mockup，保留内容清晰度，加入真实边框、轻微反光和自然环境光，画面比例与屏幕透视一致。',
+        properties: { aspectRatio: '9:16', resolution: '2K' },
       },
     ],
   },
@@ -351,6 +376,12 @@ export const LINGHUI_IMAGE_TOOL_PRESETS: Record<LinghuiImageToolKey, LinghuiImag
         promptSnippet: '在画面中添加与主体动作和剧情匹配的道具，保持手部关系、遮挡、光影和材质真实，不破坏原有构图。',
         properties: { resolution: '2K' },
       },
+      {
+        label: '局部重排',
+        description: '整理画面局部元素的位置关系。',
+        promptSnippet: '整理画面中的局部元素位置，保持主体身份、光影和构图风格一致，让元素间遮挡、比例和空间关系更自然。',
+        properties: { resolution: '2K' },
+      },
     ],
   },
   'edit-texts': {
@@ -367,6 +398,12 @@ export const LINGHUI_IMAGE_TOOL_PRESETS: Record<LinghuiImageToolKey, LinghuiImag
         label: '留出版面',
         description: '整理出可后期加字的干净区域。',
         promptSnippet: '整理画面中的文字区域，保留干净可编辑的版面留白，让背景、光影和主体关系自然，避免生成不可读乱码文字。',
+        properties: { resolution: '2K' },
+      },
+      {
+        label: '替换文字',
+        description: '重做画面文字区域，减少乱码和残影。',
+        promptSnippet: '重新整理画面文字区域，去除不可读乱码和残影，保留清晰可替换的文字版面，背景纹理、透视和光影自然衔接。',
         properties: { resolution: '2K' },
       },
     ],

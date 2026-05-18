@@ -7,7 +7,9 @@ import type {
   LinghuiCanvasSelection,
   LinghuiImageNodeProperties,
   LinghuiNodeData,
+  LinghuiStoryboardFrame,
   LinghuiTextNodeProperties,
+  LinghuiVideoClipNodeProperties,
   LinghuiVideoNodeProperties,
 } from '../../../../types/linghui';
 import { createNewNodeData } from '../../library/state/linghuiNodeDefs';
@@ -15,8 +17,10 @@ import { useLinghuiCanvasDocumentOps } from '../hooks/useLinghuiCanvasDocumentOp
 
 interface DocumentOpsHarnessHandle {
   createDerivedImageToolNodeFromNode: ReturnType<typeof useLinghuiCanvasDocumentOps>['createDerivedImageToolNodeFromNode'];
+  createDerivedVideoAnalysisNodeFromNode: ReturnType<typeof useLinghuiCanvasDocumentOps>['createDerivedVideoAnalysisNodeFromNode'];
   applyTextEmptyAction: ReturnType<typeof useLinghuiCanvasDocumentOps>['applyTextEmptyAction'];
   applyVideoEmptyAction: ReturnType<typeof useLinghuiCanvasDocumentOps>['applyVideoEmptyAction'];
+  deriveStoryboardVideosFromScript: ReturnType<typeof useLinghuiCanvasDocumentOps>['deriveStoryboardVideosFromScript'];
   getNodes: () => Node[];
   getEdges: () => Edge[];
   getEditorSelection: () => LinghuiCanvasSelection;
@@ -84,6 +88,18 @@ function createSourceVideoNode(): Node {
   };
 }
 
+function createSourceStoryboardNode(): Node {
+  const data = createNewNodeData('linghui/storyboard', { label: '故事板' });
+  return {
+    id: 'source-storyboard',
+    type: 'linghui-storyboard',
+    position: { x: 160, y: 120 },
+    width: 760,
+    selected: true,
+    data: data as unknown as Record<string, unknown>,
+  };
+}
+
 function DocumentOpsHarness({
   onReady,
   scheduleSnapshot,
@@ -143,13 +159,22 @@ function DocumentOpsHarness({
   useEffect(() => {
     onReady({
       createDerivedImageToolNodeFromNode: ops.createDerivedImageToolNodeFromNode,
+      createDerivedVideoAnalysisNodeFromNode: ops.createDerivedVideoAnalysisNodeFromNode,
       applyTextEmptyAction: ops.applyTextEmptyAction,
       applyVideoEmptyAction: ops.applyVideoEmptyAction,
+      deriveStoryboardVideosFromScript: ops.deriveStoryboardVideosFromScript,
       getNodes: () => nodesRef.current,
       getEdges: () => edgesRef.current,
       getEditorSelection: () => editorSelectionRef.current,
     });
-  }, [onReady, ops.createDerivedImageToolNodeFromNode, ops.applyTextEmptyAction, ops.applyVideoEmptyAction]);
+  }, [
+    onReady,
+    ops.createDerivedImageToolNodeFromNode,
+    ops.createDerivedVideoAnalysisNodeFromNode,
+    ops.applyTextEmptyAction,
+    ops.applyVideoEmptyAction,
+    ops.deriveStoryboardVideosFromScript,
+  ]);
 
   return <div ref={hostRef} />;
 }
@@ -226,6 +251,71 @@ describe('useLinghuiCanvasDocumentOps', () => {
       },
     }));
     expect(handle!.getEditorSelection()).toBeNull();
+    expect(scheduleSnapshot).toHaveBeenCalledTimes(1);
+  });
+
+  it('creates a selected text analysis node from a video resource tool', async () => {
+    const scheduleSnapshot = vi.fn();
+    let handle: DocumentOpsHarnessHandle | null = null;
+
+    render(
+      <DocumentOpsHarness
+        scheduleSnapshot={scheduleSnapshot}
+        initialNodes={[createSourceVideoNode()]}
+        initialSelection={{ kind: 'node', nodeId: 'source-video', nodeType: 'linghui/video', label: '视频节点' }}
+        onReady={nextHandle => {
+          handle = nextHandle;
+        }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(handle?.getNodes()).toHaveLength(1);
+    });
+
+    let createdId: string | null = null;
+    act(() => {
+      createdId = handle?.createDerivedVideoAnalysisNodeFromNode('source-video', {
+        label: '视频节点-解析',
+        content: '# 视频解析\n\n镜头运动稳定。',
+        source: '/tmp/source.mp4',
+        durationSec: 8,
+      }) ?? null;
+    });
+
+    await waitFor(() => {
+      expect(handle?.getNodes()).toHaveLength(2);
+      expect(handle?.getEdges()).toHaveLength(1);
+    });
+
+    const nodes = handle!.getNodes();
+    const sourceNode = nodes.find(node => node.id === 'source-video');
+    const createdNode = nodes.find(node => node.id === createdId);
+    expect(sourceNode?.selected).toBe(false);
+    expect(createdNode?.selected).toBe(true);
+    expect(createdNode?.type).toBe('linghui-text');
+
+    const createdData = createdNode?.data as unknown as LinghuiNodeData;
+    const createdProps = createdData.properties as unknown as LinghuiTextNodeProperties;
+    expect(createdData.label).toBe('视频节点-解析');
+    expect(createdProps).toEqual(expect.objectContaining({
+      mode: 'manual',
+      content: expect.stringContaining('镜头运动稳定'),
+      prompt: '',
+      systemPrompt: '',
+      llmSelection: '',
+    }));
+    expect(handle!.getEdges()[0]).toEqual(expect.objectContaining({
+      source: 'source-video',
+      target: createdId,
+      sourceHandle: 'output-0',
+      targetHandle: 'input-0',
+      type: 'linghui-edge',
+      data: {
+        sourceSlotType: 'video',
+        targetSlotType: 'text',
+      },
+    }));
     expect(scheduleSnapshot).toHaveBeenCalledTimes(1);
   });
 
@@ -512,6 +602,98 @@ describe('useLinghuiCanvasDocumentOps', () => {
       expect(result).toBeNull();
       expect(handle!.getNodes()).toHaveLength(1);
       expect(handle!.getEdges()).toHaveLength(0);
+    });
+  });
+
+  describe('deriveStoryboardVideosFromScript (LibTV video_group parity)', () => {
+    const shots: LinghuiStoryboardFrame[] = [
+      {
+        id: 'shot-1',
+        title: '镜头 1',
+        description: '角色推门进入',
+        durationSec: 4,
+        image: { kind: 'image', source: 'https://cdn.example.com/shot-1.png' },
+      },
+      {
+        id: 'shot-2',
+        title: '镜头 2',
+        description: '镜头切到反应',
+        durationSec: 6,
+        image: { kind: 'image', source: 'https://cdn.example.com/shot-2.png' },
+      },
+      {
+        id: 'shot-3',
+        title: '镜头 3',
+        description: '远景展示空间',
+        durationSec: 5,
+      },
+    ];
+
+    it('creates a video group with child storyboard image/video nodes and a downstream clip node', async () => {
+      const scheduleSnapshot = vi.fn();
+      let handle: DocumentOpsHarnessHandle | null = null;
+      render(
+        <DocumentOpsHarness
+          scheduleSnapshot={scheduleSnapshot}
+          initialNodes={[createSourceStoryboardNode()]}
+          initialSelection={{ kind: 'node', nodeId: 'source-storyboard', nodeType: 'linghui/storyboard', label: '故事板' }}
+          onReady={next => { handle = next; }}
+        />,
+      );
+      await waitFor(() => expect(handle?.getNodes()).toHaveLength(1));
+
+      let videoIds: string[] = [];
+      act(() => {
+        videoIds = handle!.deriveStoryboardVideosFromScript('source-storyboard', shots);
+      });
+
+      await waitFor(() => {
+        expect(handle?.getNodes().filter(node => node.type === 'group')).toHaveLength(1);
+        expect(handle?.getNodes().filter(node => (node.data as unknown as LinghuiNodeData).linghuiType === 'linghui/video')).toHaveLength(3);
+      });
+
+      expect(videoIds).toHaveLength(3);
+      const nodes = handle!.getNodes();
+      const group = nodes.find(node => node.type === 'group');
+      expect(group?.data).toEqual(expect.objectContaining({
+        label: '视频组 · 故事板',
+        sourceScriptNodeId: 'source-storyboard',
+        storyboardGroupType: 'video',
+      }));
+
+      const imageNodes = nodes.filter(node => (node.data as unknown as LinghuiNodeData).linghuiType === 'linghui/image');
+      const videoNodes = nodes.filter(node => (node.data as unknown as LinghuiNodeData).linghuiType === 'linghui/video');
+      const clipNode = nodes.find(node => (node.data as unknown as LinghuiNodeData).linghuiType === 'linghui/video-clip');
+      expect(imageNodes).toHaveLength(3);
+      expect(videoNodes).toHaveLength(3);
+      expect(clipNode).toBeTruthy();
+      expect(imageNodes.every(node => node.parentId === group?.id)).toBe(true);
+      expect(videoNodes.every(node => node.parentId === group?.id)).toBe(true);
+
+      const firstImageProps = (imageNodes[0].data as unknown as LinghuiNodeData).properties as unknown as LinghuiImageNodeProperties;
+      expect(firstImageProps.mode).toBe('import');
+      expect(firstImageProps.source).toBe('https://cdn.example.com/shot-1.png');
+      expect(firstImageProps.scriptDerivationKind).toBe('video-image');
+
+      const firstVideoProps = (videoNodes[0].data as unknown as LinghuiNodeData).properties as unknown as LinghuiVideoNodeProperties;
+      expect(firstVideoProps.prompt).toBe('角色推门进入');
+      expect(firstVideoProps.duration).toBe(4);
+      expect(firstVideoProps.scriptDerivationKind).toBe('video');
+
+      const clipProps = (clipNode!.data as unknown as LinghuiNodeData).properties as unknown as LinghuiVideoClipNodeProperties;
+      expect(clipProps.clips).toHaveLength(3);
+      expect(clipProps.clips.map(clip => clip.id)).toEqual(videoNodes.map(node => node.id));
+      expect(clipProps.scriptDerivationKind).toBe('video-clip');
+
+      const edges = handle!.getEdges();
+      expect(edges.some(edge => edge.source === 'source-storyboard' && edge.target === group?.id)).toBe(true);
+      for (const imageNode of imageNodes) {
+        expect(edges.some(edge => edge.source === 'source-storyboard' && edge.target === imageNode.id)).toBe(true);
+      }
+      for (const videoNode of videoNodes) {
+        expect(edges.some(edge => edge.source === videoNode.id && edge.target === clipNode!.id)).toBe(true);
+      }
+      expect(scheduleSnapshot).toHaveBeenCalledTimes(1);
     });
   });
 });

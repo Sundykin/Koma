@@ -3,7 +3,11 @@ import { nanoid } from 'nanoid';
 import { useCallback } from 'react';
 import type { Dispatch, MutableRefObject, RefObject, SetStateAction } from 'react';
 import type { LinghuiCanvasSelection, LinghuiNodeData } from '../../../../types/linghui';
-import { resolveLinghuiWorkflowBlockLabel } from '../../../../constants/linghuiWorkflowBlock';
+import {
+  buildLinghuiGroupCountLabel,
+  isAutoLinghuiGroupCountLabel,
+  resolveLinghuiWorkflowBlockLabel,
+} from '../../../../constants/linghuiWorkflowBlock';
 import {
   isLinghuiConnectionValid,
   resolveLinghuiCompatibleInputSlot,
@@ -347,7 +351,10 @@ export function useLinghuiCanvasFlowBridge({
       changed = true;
       return {
         ...node,
-        data: nextData as unknown as Record<string, unknown>,
+        data: withAutoGroupCountLabel(
+          { ...node, data: nextData as unknown as Record<string, unknown> },
+          currentNodes,
+        ).data as unknown as Record<string, unknown>,
       };
     }));
 
@@ -373,5 +380,32 @@ export function useLinghuiCanvasFlowBridge({
     handleConnectStart,
     handleConnectEnd,
     updateLinghuiNodeData,
+  };
+}
+
+function withAutoGroupCountLabel(node: Node, allNodes: Node[]): Node {
+  if (node.type !== 'group') return node;
+
+  const data = node.data as {
+    label?: string;
+    storyboardGroupType?: string;
+  } | undefined;
+  if (!isAutoLinghuiGroupCountLabel(data?.label)) {
+    return node;
+  }
+
+  const childCount = allNodes.filter(item => item.parentId === node.id && item.type !== 'group').length;
+  const storyboardGroup = data?.storyboardGroupType === 'image' || data?.storyboardGroupType === 'video';
+  const label = buildLinghuiGroupCountLabel(childCount, storyboardGroup);
+  if (data?.label === label) {
+    return node;
+  }
+
+  return {
+    ...node,
+    data: {
+      ...node.data,
+      label,
+    },
   };
 }

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Dropdown, InputNumber, Popover, Select } from 'antd';
+import { Dropdown, InputNumber, Popover, Select } from 'antd';
 import type { MenuProps } from 'antd';
-import { ArrowUp } from 'lucide-react';
+import { ArrowUp, FileAudio, FileText, Image as ImageIcon, Settings2, Video, Wand2 } from 'lucide-react';
 import { chatIPC, type MCPToolDefinition } from '../../../../chat/ipc';
 import type {
   LinghuiAgentNodeProperties,
@@ -15,6 +15,12 @@ import { useLinghuiNodeMutation } from '../../nodes/state/LinghuiNodeRunsContext
 import { LinghuiPromptEditor } from './LinghuiPromptEditor';
 import type { LinghuiPromptReferenceItem } from '../state/linghuiPromptReferences';
 import { useLinghuiActionLock } from '../hooks/useLinghuiActionLock';
+import {
+  LINGHUI_AGENT_PROMPT_PRESETS,
+  mergeLinghuiAgentPresetPrompt,
+  mergeLinghuiAgentPresetSystemPrompt,
+  type LinghuiAgentPromptPreset,
+} from '../state/linghuiAgentPromptPresets';
 
 interface ProviderOption {
   value: string;
@@ -103,11 +109,34 @@ export const AgentNodeEditor: React.FC<AgentNodeEditorProps> = ({
     }));
   }, [nodeId, updateNodeData]);
 
+  const handleApplyPromptPreset = useCallback((preset: LinghuiAgentPromptPreset) => {
+    updateNodeData(nodeId, prev => {
+      const prevProps = prev.properties as Partial<LinghuiAgentNodeProperties>;
+      return {
+        ...prev,
+        properties: {
+          ...prev.properties,
+          prompt: mergeLinghuiAgentPresetPrompt(String(prevProps.prompt ?? ''), preset),
+          systemPrompt: mergeLinghuiAgentPresetSystemPrompt(String(prevProps.systemPrompt ?? ''), preset),
+          maxIterations: preset.maxIterations ?? prevProps.maxIterations ?? 6,
+        },
+      };
+    }, { markStale: false });
+  }, [nodeId, updateNodeData]);
+
   const selectedProvider = useMemo(() => (
     providers.find(option => option.value === llmSelection) ?? providers[0]
   ), [llmSelection, providers]);
   const modelSummary = selectedProvider?.label || '未配置 LLM';
   const settingsSummary = `${maxIterations} 轮 · ${enabledTools.length > 0 ? `${enabledTools.length} 个工具` : '纯推理'}`;
+  const canRunAgent = Boolean(prompt.trim() || promptReferences.length > 0);
+  const referenceCards = useMemo(() => (
+    promptReferences.map((reference, index) => ({
+      ...reference,
+      badge: String(index + 1),
+      preview: reference.previewSource || (typeof reference.source === 'string' ? reference.source : ''),
+    }))
+  ), [promptReferences]);
 
   const providerMenuItems = useMemo<MenuProps['items']>(() => (
     providers.map(provider => ({
@@ -188,15 +217,37 @@ export const AgentNodeEditor: React.FC<AgentNodeEditorProps> = ({
   );
 
   return (
-    <div className="linghuiEditorPanel" onMouseDown={event => event.stopPropagation()}>
-      <div className="linghuiEditorHeader">
-        <div>
-          <div className="linghuiEditorTitle">Agent 节点</div>
-          <div className="linghuiEditorSubtitle">单 Agent 任务与工具推理</div>
+    <div
+      className="linghuiEditorPanel linghuiScriptGeneratorPanel linghuiAgentGeneratorPanel"
+      onMouseDown={event => event.stopPropagation()}
+    >
+      {referenceCards.length > 0 ? (
+        <div className="linghuiScriptGeneratorRefs" aria-label="上游参考">
+          {referenceCards.map(reference => (
+            <div className="linghuiScriptGeneratorRefCard" key={reference.id} title={reference.name}>
+              <div className="linghuiScriptGeneratorRefThumb">
+                {reference.kind === 'image' && reference.preview ? (
+                  <img src={reference.preview} alt="" draggable={false} />
+                ) : reference.kind === 'video' && reference.preview ? (
+                  <img src={reference.preview} alt="" draggable={false} />
+                ) : reference.kind === 'video' ? (
+                  <Video size={14} />
+                ) : reference.kind === 'audio' ? (
+                  <FileAudio size={14} />
+                ) : reference.kind === 'text' ? (
+                  <FileText size={14} />
+                ) : (
+                  <ImageIcon size={14} />
+                )}
+                <span className="linghuiScriptGeneratorRefBadge">{reference.badge}</span>
+              </div>
+              <span className="linghuiScriptGeneratorRefName">{reference.name}</span>
+            </div>
+          ))}
         </div>
-      </div>
+      ) : null}
 
-      <div className="linghuiEditorPrompt linghuiEditorCompactPrompt">
+      <div className="linghuiEditorPrompt linghuiScriptGeneratorPrompt">
         <LinghuiPromptEditor
           value={prompt}
           onChange={value => updateProp('prompt', value)}
@@ -208,20 +259,34 @@ export const AgentNodeEditor: React.FC<AgentNodeEditorProps> = ({
         />
       </div>
 
-      <div className="linghuiEditorField">
-        <div className="linghuiEditorInlineHeader">
-          <span className="linghuiEditorSettingsLabel">实时输出</span>
-          <span className="linghuiEditorSummaryPill">{outputText.length} 字</span>
-        </div>
-        <div
-          className="linghuiNodeTextarea linghuiEditorOutputText"
-          style={{ '--linghui-output-min-height': '172px' } as React.CSSProperties}
-        >
-          {outputText || (isStreaming ? '正在等待 Agent 返回首段内容...' : '执行后会在这里显示实时输出')}
-        </div>
+      <div className="linghuiScriptPresetStrip" aria-label="Agent 任务模板">
+        {LINGHUI_AGENT_PROMPT_PRESETS.map(preset => (
+          <button
+            key={preset.key}
+            type="button"
+            className="linghuiScriptPresetChip"
+            onClick={event => {
+              event.stopPropagation();
+              handleApplyPromptPreset(preset);
+            }}
+            title={preset.description}
+          >
+            <Wand2 size={12} />
+            {preset.label}
+          </button>
+        ))}
       </div>
 
-      <div className="linghuiEditorControlRow">
+      {(outputText || isStreaming) ? (
+        <div
+          className="linghuiTextGeneratorOutput linghuiAgentGeneratorOutput"
+          title={`${outputText.length} 字`}
+        >
+          {outputText || '正在等待 Agent 返回首段内容...'}
+        </div>
+      ) : null}
+
+      <div className="linghuiEditorControlRow linghuiScriptGeneratorControlRow">
         <Dropdown
           trigger={providers.length > 0 ? ['click'] : []}
           menu={{
@@ -235,13 +300,16 @@ export const AgentNodeEditor: React.FC<AgentNodeEditorProps> = ({
         >
           <button
             type="button"
-            className={`linghuiEditorInlineTrigger ${providers.length === 0 ? 'isDisabled' : ''}`}
+            className={`linghuiScriptGeneratorChip ${providers.length === 0 ? 'isDisabled' : ''}`}
             onClick={event => event.stopPropagation()}
             disabled={providers.length === 0}
+            title={modelSummary}
           >
             {modelSummary}
           </button>
         </Dropdown>
+
+        <div className="linghuiScriptGeneratorSpacer" />
 
         <Popover
           trigger="click"
@@ -253,24 +321,30 @@ export const AgentNodeEditor: React.FC<AgentNodeEditorProps> = ({
         >
           <button
             type="button"
-            className="linghuiEditorInlineTrigger"
+            className="linghuiScriptGeneratorIconButton"
             onClick={event => event.stopPropagation()}
+            aria-label={settingsSummary}
+            title={settingsSummary}
           >
-            {settingsSummary}
+            <Settings2 size={14} />
           </button>
         </Popover>
 
         <div className="linghuiEditorActionGroup">
-          <Button
-            type="primary"
-            size="small"
-            icon={<ArrowUp size={12} />}
+          <button
+            type="button"
+            className="linghuiScriptGeneratorSubmit"
             onClick={handleRun}
-            disabled={isRunActionLocked || isStreaming}
-            loading={isStreaming}
+            disabled={isRunActionLocked || isStreaming || !canRunAgent}
+            aria-label="执行 Agent"
+            title={canRunAgent ? '执行 Agent' : '请先输入任务目标'}
           >
-            执行
-          </Button>
+            {isStreaming ? (
+              <span className="linghuiScriptGeneratorSpinner" />
+            ) : (
+              <ArrowUp size={13} />
+            )}
+          </button>
         </div>
       </div>
     </div>
