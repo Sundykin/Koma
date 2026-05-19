@@ -8,10 +8,12 @@ import { electronService } from '../../../../services/electronService';
 const {
   useNodeRunStateMock,
   useLinghuiNodeInteractionMock,
+  useLinghuiNodeInteractionApiMock,
   useLinghuiNodeEditorVisibilityMock,
 } = vi.hoisted(() => ({
   useNodeRunStateMock: vi.fn(),
   useLinghuiNodeInteractionMock: vi.fn(),
+  useLinghuiNodeInteractionApiMock: vi.fn(),
   useLinghuiNodeEditorVisibilityMock: vi.fn(),
 }));
 
@@ -29,6 +31,7 @@ vi.mock('@xyflow/react', () => ({
 vi.mock('../state/LinghuiNodeRunsContext', () => ({
   useNodeRunState: (...args: unknown[]) => useNodeRunStateMock(...args),
   useLinghuiNodeInteraction: (...args: unknown[]) => useLinghuiNodeInteractionMock(...args),
+  useLinghuiNodeInteractionApi: () => useLinghuiNodeInteractionApiMock(),
   useLinghuiNodeEditorVisibility: (...args: unknown[]) => useLinghuiNodeEditorVisibilityMock(...args),
 }));
 
@@ -74,6 +77,7 @@ describe('VideoNode', () => {
     vi.restoreAllMocks();
     vi.clearAllMocks();
     useLinghuiNodeEditorVisibilityMock.mockReturnValue(false);
+    useLinghuiNodeInteractionApiMock.mockReturnValue({ openVideoToolPanel: vi.fn() });
   });
 
   it('在节点内联渲染视频并隔离播放按钮事件', async () => {
@@ -315,5 +319,48 @@ describe('VideoNode', () => {
     });
 
     expect(electronService.fs.readFileAsBase64).toHaveBeenCalledWith('/tmp/generated-video.mp4');
+  });
+
+  it('选中资源态视频时在节点本体显示 LibTV 式工具入口', async () => {
+    const openVideoToolPanel = vi.fn();
+    useLinghuiNodeInteractionApiMock.mockReturnValue({ openVideoToolPanel });
+    useNodeRunStateMock.mockReturnValue({
+      status: 'succeeded',
+      result: {
+        kind: 'video',
+        primary: {
+          kind: 'video',
+          source: 'https://cdn.example.com/cat.mp4',
+          posterSource: 'https://cdn.example.com/cat-poster.jpg',
+        },
+      },
+    });
+    useLinghuiNodeInteractionMock.mockReturnValue({});
+
+    render(
+      <VideoNode
+        {...({
+          id: 'video-node-tools',
+          data: createVideoNodeData(),
+          selected: true,
+          dragging: false,
+          zIndex: 1,
+          xPos: 0,
+          yPos: 0,
+          type: 'linghui-video',
+          isConnectable: true,
+        } as any)}
+      />
+    );
+
+    const screenshotButton = await screen.findByRole('button', { name: '截图' });
+    expect(screen.getByRole('button', { name: '剪辑' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '高清' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '解析' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '分离音频' })).toBeInTheDocument();
+
+    fireEvent.click(screenshotButton);
+
+    expect(openVideoToolPanel).toHaveBeenCalledWith('video-node-tools', 'screenshot');
   });
 });

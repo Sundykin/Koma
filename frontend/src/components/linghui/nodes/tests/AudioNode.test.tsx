@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LinghuiNodeData } from '../../../../types/linghui';
 import { AudioNode } from '../components/AudioNode';
@@ -8,11 +8,13 @@ const {
   useNodeRunStateMock,
   useLinghuiNodeInteractionMock,
   useLinghuiNodeEditorVisibilityMock,
+  useLinghuiNodeEditorApiMock,
   useStoreMock,
 } = vi.hoisted(() => ({
   useNodeRunStateMock: vi.fn(),
   useLinghuiNodeInteractionMock: vi.fn(),
   useLinghuiNodeEditorVisibilityMock: vi.fn(),
+  useLinghuiNodeEditorApiMock: vi.fn(),
   useStoreMock: vi.fn(),
 }));
 
@@ -31,7 +33,7 @@ vi.mock('../state/LinghuiNodeRunsContext', () => ({
   useNodeRunState: (...args: unknown[]) => useNodeRunStateMock(...args),
   useLinghuiNodeInteraction: (...args: unknown[]) => useLinghuiNodeInteractionMock(...args),
   useLinghuiNodeEditorVisibility: (...args: unknown[]) => useLinghuiNodeEditorVisibilityMock(...args),
-  useLinghuiNodeEditorApi: () => ({ workspaceId: null }),
+  useLinghuiNodeEditorApi: () => useLinghuiNodeEditorApiMock(),
   useLinghuiNodeMutation: () => ({
     clearNodeRunState: vi.fn(),
     updateNodeData: vi.fn(),
@@ -68,13 +70,13 @@ function createAudioNodeData(overrides: Partial<LinghuiNodeData['properties']> =
   };
 }
 
-function renderAudioNode(data = createAudioNodeData()) {
+function renderAudioNode(data = createAudioNodeData(), selected = false) {
   return render(
     <AudioNode
       {...({
         id: 'audio-node-1',
         data,
-        selected: false,
+        selected,
         dragging: false,
         zIndex: 1,
         xPos: 0,
@@ -93,6 +95,7 @@ describe('AudioNode', () => {
     useNodeRunStateMock.mockReturnValue(undefined);
     useLinghuiNodeInteractionMock.mockReturnValue({});
     useLinghuiNodeEditorVisibilityMock.mockReturnValue(false);
+    useLinghuiNodeEditorApiMock.mockReturnValue({ workspaceId: null, onApplyAudioEmptyAction: vi.fn() });
     useStoreMock.mockImplementation((selector: (state: { edges: unknown[]; connection?: unknown }) => unknown) => (
       selector({ edges: [], connection: { inProgress: false } })
     ));
@@ -126,5 +129,37 @@ describe('AudioNode', () => {
     expect(document.querySelector('audio')).toBeInstanceOf(HTMLAudioElement);
     expect(screen.getAllByTestId('handle')).toHaveLength(1);
     expect(screen.getByText('音频')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '切换播放速度' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '下载音频' })).toHaveAttribute('download', 'audio.mp3');
+  });
+
+  it('资源态速度按钮按 LibTV 节奏在 1x / 1.5x / 2x 间切换', () => {
+    renderAudioNode(createAudioNodeData({
+      mode: 'import',
+      source: 'https://cdn.example.com/audio.mp3',
+    }));
+
+    const speedButton = screen.getByRole('button', { name: '切换播放速度' });
+    expect(speedButton).toHaveTextContent('1x');
+
+    fireEvent.click(speedButton);
+    expect(speedButton).toHaveTextContent('1.5x');
+
+    fireEvent.click(speedButton);
+    expect(speedButton).toHaveTextContent('2x');
+  });
+
+  it('选中资源态音频时可从节点本体触发音频生视频', () => {
+    const onApplyAudioEmptyAction = vi.fn();
+    useLinghuiNodeEditorApiMock.mockReturnValue({ workspaceId: null, onApplyAudioEmptyAction });
+
+    renderAudioNode(createAudioNodeData({
+      mode: 'import',
+      source: 'https://cdn.example.com/audio.mp3',
+    }), true);
+
+    fireEvent.click(screen.getByRole('button', { name: '音频生视频' }));
+
+    expect(onApplyAudioEmptyAction).toHaveBeenCalledWith('audio-node-1', 'audio-to-video');
   });
 });

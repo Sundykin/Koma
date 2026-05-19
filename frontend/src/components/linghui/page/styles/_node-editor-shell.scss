@@ -1564,8 +1564,39 @@
   color: $lh-text-secondary;
   font-size: 11px;
   line-height: 1.45;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+}
+
+.linghuiScriptShotFieldList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.linghuiScriptShotCardField {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: start;
+  gap: 5px;
+  min-width: 0;
+  color: $lh-text-muted;
+  font-size: 10px;
+  line-height: 1.35;
+
+  span {
+    color: color-mix(in srgb, var(--token-accent-base) 72%, $lh-text-muted);
+    font-weight: 700;
+  }
+
+  em {
+    display: -webkit-box;
+    overflow: hidden;
+    color: $lh-text-secondary;
+    font-style: normal;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
 }
 
 .linghuiScriptShotTableWrap {

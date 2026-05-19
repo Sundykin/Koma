@@ -75,10 +75,27 @@ export function ScriptShotCards({ shots, selectedShotIds, onToggleShot }: Script
               </div>
             ) : null}
             <div className="linghuiScriptShotTitle">{shot.title || `镜头 ${index + 1}`}</div>
-            <div className="linghuiScriptShotDescription">{shot.description || '暂无镜头描述'}</div>
+            <div className="linghuiScriptShotDescription">{shot.plotDescription || shot.description || '暂无镜头描述'}</div>
+            <div className="linghuiScriptShotFieldList">
+              <ScriptShotCardField label="画面" value={shot.visualDescription} />
+              <ScriptShotCardField label="生图" value={shot.imageGenerationPrompt} />
+              <ScriptShotCardField label="视频" value={shot.videoMotionPrompt} />
+            </div>
           </label>
         );
       })}
+    </div>
+  );
+}
+
+function ScriptShotCardField({ label, value }: { label: string; value?: string }) {
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+
+  return (
+    <div className="linghuiScriptShotCardField">
+      <span>{label}</span>
+      <em>{text}</em>
     </div>
   );
 }

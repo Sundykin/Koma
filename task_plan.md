@@ -107,7 +107,7 @@
 | 2. Linghui Gap Matrix | in_progress | 对照灵绘 11 个节点类型，记录缺失节点、合并节点和已迁移缺口 |
 | 3. Audio Node Parity | complete | 先处理音频节点：状态机、上传浮按钮、资源态播放器和 compact generator |
 | 4. Group / VideoClip / Space Nodes Audit | complete | 已深挖 `video-clip`、`video_group`、`video-story`、`group` 和 `space-scene-720`，记录状态机、工具条、全景 HUD/截图命名证据 |
-| 5. Node-by-node Implementation | in_progress | 已完成 `audio`、`video_group`、`video-clip` 真实 FFmpeg concat；`video-story` 表格/全屏数据视图、`group` 计数/布局工具条、`space-scene-720` 全景 viewer HUD/网格/12 向截图已迁移；`video` 已补截图抽帧、本地剪辑、本地高清和解析文本派生；`image` 通用工具补 preset 与本地裁剪预览；`script/storyboard` 已修正分镜字段和节点内故事板布局，`agent` 已补可见预制提示词入口，继续按差距矩阵聚焦实现 |
+| 5. Node-by-node Implementation | in_progress | 已完成 `audio`、`video_group`、`video-clip` 真实 FFmpeg concat；`video-story` 表格/全屏数据视图、`group` 计数/布局工具条、`space-scene-720` 全景 viewer HUD/网格/12 向截图已迁移；`video` 已补截图抽帧、本地剪辑、本地高清和解析文本派生；`image` 通用工具补 preset 与本地裁剪预览；`script/storyboard` 已修正分镜字段和节点内故事板布局；`agent` 已补可见预制提示词入口；`image-grid-slice` 已补本地合成宫格能力，继续按差距矩阵聚焦实现 |
 
 ### Acceptance Criteria
 - 每个节点都必须先有 LibTV 证据：打包文件、格式化片段、文案、状态机或按钮顺序。
@@ -1043,3 +1043,26 @@
 | Error | Attempt | Resolution |
 |------|---------|------------|
 | CDP Runtime.evaluate 脚本字符串拼接出现 SyntaxError | 1 | 改用无换行表达式重新读取 Electron DOM；确认是验证脚本错误，不是应用异常 |
+
+## Session: 2026-05-18 Linghui LibTV Node Parity Continuation
+
+### Goal
+- 继续对标 `/Users/sunmeng/workspace/Koma/template_/libtv`，逐个把灵绘节点的操作逻辑和 UI 行为补实。
+- 保持操作面板紧凑、扁平、接近画布 HUD 尺寸；LibTV 在节点内部完成的操作，灵绘也优先在节点内部完成。
+- 不迁入积分/credit UI；没有真实本地或后端能力的入口不伪装成已完成。
+
+### Current Phases
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Script / Storyboard Node Parity | complete | 保留 LibTV row metadata，增加节点内选中行生成器与手动表格编辑 |
+| 2. Video Node Tool Parity | complete | 截图、剪辑、高清、解析等可本地落地的工具已补实，智能去字幕保持非伪装 |
+| 3. Image Tool Fidelity | complete | 裁剪补 3×3 锚点并走 FFmpeg；抠图/擦除明确当前是图生图任务而非本地模型 |
+| 4. Canvas Interaction Polish | complete | 连线拖拽纳入 `canvas-interacting`，Esc 取消连线同步退出交互态 |
+| 5. Audio Node Resource UI | complete | 资源态补波形播放器、速度切换和下载工具条，不迁入云端积分/水印逻辑 |
+| 6. Agent Node In-node Operation | complete | 节点本体补任务模板、运行按钮和流式输出摘要，复用灵绘已有 Agent 执行链路 |
+| 7. Next Node Slice | pending | 继续选择下一个节点/工具面板，对照 LibTV 反编译后实现 |
+
+### Error Log
+| Error | Attempt | Resolution |
+|------|---------|------------|
+| jsdom 没有 `PointerEvent` 导致新增取消连线测试失败 | 1 | 取消连线合成事件改为 `window.PointerEvent ?? window.MouseEvent` |

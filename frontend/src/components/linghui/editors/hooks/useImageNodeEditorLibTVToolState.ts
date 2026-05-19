@@ -18,6 +18,25 @@ import {
   LIBTV_MULTI_ANGLE_PRESETS,
 } from '../components/ImageNodeEditorUtils';
 
+export interface LinghuiImageCropAnchor {
+  key: string;
+  label: string;
+  x: number;
+  y: number;
+}
+
+export const LINGHUI_IMAGE_CROP_ANCHORS: LinghuiImageCropAnchor[] = [
+  { key: 'top-left', label: '左上', x: 0, y: 0 },
+  { key: 'top', label: '上', x: 0.5, y: 0 },
+  { key: 'top-right', label: '右上', x: 1, y: 0 },
+  { key: 'left', label: '左', x: 0, y: 0.5 },
+  { key: 'center', label: '居中', x: 0.5, y: 0.5 },
+  { key: 'right', label: '右', x: 1, y: 0.5 },
+  { key: 'bottom-left', label: '左下', x: 0, y: 1 },
+  { key: 'bottom', label: '下', x: 0.5, y: 1 },
+  { key: 'bottom-right', label: '右下', x: 1, y: 1 },
+];
+
 interface UseImageNodeEditorLibTVToolStateArgs {
   props: LinghuiImageNodeProperties;
   aspectRatio: string;
@@ -74,6 +93,7 @@ export function useImageNodeEditorLibTVToolState({
   const [genericAspectRatio, setGenericAspectRatio] = useState(aspectRatio);
   const [genericResolution, setGenericResolution] = useState(resolution);
   const [genericPrompt, setGenericPrompt] = useState('');
+  const [genericCropAnchor, setGenericCropAnchor] = useState<LinghuiImageCropAnchor>(LINGHUI_IMAGE_CROP_ANCHORS[4]!);
   const multiAnglePreset = useMemo(() => (
     LIBTV_MULTI_ANGLE_PRESETS.find(preset => preset.key === multiAngleConfig.presetKey)
     ?? LIBTV_MULTI_ANGLE_PRESETS[0]
@@ -130,10 +150,12 @@ export function useImageNodeEditorLibTVToolState({
     setGenericAspectRatio(String(firstPreset?.properties?.aspectRatio ?? aspectRatio));
     setGenericResolution(String(firstPreset?.properties?.resolution ?? resolution));
     setGenericPrompt('');
+    setGenericCropAnchor(LINGHUI_IMAGE_CROP_ANCHORS[4]!);
   }, [aspectRatio, genericTool, resolution]);
 
   return {
     genericAspectRatio,
+    genericCropAnchor,
     genericPresetLabel,
     genericPrompt,
     genericResolution,
@@ -169,6 +191,7 @@ export function useImageNodeEditorLibTVToolState({
     repaintPrompt,
     repaintResolution,
     setGenericAspectRatio,
+    setGenericCropAnchor,
     setGenericPresetLabel,
     setGenericPrompt,
     setGenericResolution,

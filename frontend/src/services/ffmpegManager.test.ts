@@ -49,6 +49,8 @@ describe('ffmpegManager', () => {
       input: '/tmp/source.png',
       output: '/tmp/cropped.png',
       aspectRatio: '9:16',
+      anchorX: 0,
+      anchorY: 1,
       sharpenAmount: 0.4,
     })).resolves.toBe('/tmp/cropped.png');
 
@@ -56,6 +58,8 @@ describe('ffmpegManager', () => {
       input: '/tmp/source.png',
       output: '/tmp/cropped.png',
       aspectRatio: '9:16',
+      anchorX: 0,
+      anchorY: 1,
       sharpenAmount: 0.4,
     });
   });

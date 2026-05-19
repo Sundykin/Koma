@@ -85,9 +85,10 @@ export const StoryboardNodeEditor: React.FC<StoryboardNodeEditorProps> = ({
   }, []);
 
   const previewState = useMemo(() => {
+    const editedShots = Array.isArray(props.editedShots) ? props.editedShots : [];
     if (nodeRun?.result?.kind === 'storyboard') {
       return {
-        shots: nodeRun.result.shots ?? [],
+        shots: editedShots.length > 0 ? editedShots : (nodeRun.result.shots ?? []),
         formattedText: String(nodeRun.result.text ?? ''),
         source: (nodeRun.status === 'running' ? 'stream' : 'result') as 'stream' | 'result',
       };
@@ -97,7 +98,7 @@ export const StoryboardNodeEditor: React.FC<StoryboardNodeEditorProps> = ({
       formattedText: '',
       source: 'plain' as const,
     };
-  }, [nodeRun]);
+  }, [nodeRun, props.editedShots]);
 
   useEffect(() => {
     const availableIds = new Set(previewState.shots.map(shot => shot.id));
@@ -134,6 +135,22 @@ export const StoryboardNodeEditor: React.FC<StoryboardNodeEditorProps> = ({
       return prev.filter(id => id !== shotId);
     });
   }, []);
+
+  const handleChangeShot = useCallback((shotId: string, patch: Partial<LinghuiStoryboardFrame>) => {
+    updateNodeData(nodeId, prev => {
+      const prevProps = prev.properties as Partial<LinghuiStoryboardNodeProperties>;
+      const baseShots = Array.isArray(prevProps.editedShots) && prevProps.editedShots.length > 0
+        ? prevProps.editedShots
+        : previewState.shots;
+      return {
+        ...prev,
+        properties: {
+          ...prev.properties,
+          editedShots: baseShots.map(shot => (shot.id === shotId ? { ...shot, ...patch } : shot)),
+        } as unknown as Record<string, unknown>,
+      };
+    }, { markStale: false });
+  }, [nodeId, previewState.shots, updateNodeData]);
 
   const selectedCount = selectedShotIds.length;
   const shotCount = previewState.shots.length;
@@ -270,6 +287,8 @@ export const StoryboardNodeEditor: React.FC<StoryboardNodeEditorProps> = ({
             shots={previewState.shots}
             selectedShotIds={selectedShotIds}
             onToggleShot={handleToggleShot}
+            editable
+            onChangeShot={handleChangeShot}
           />
         ) : (
           <ScriptShotCards

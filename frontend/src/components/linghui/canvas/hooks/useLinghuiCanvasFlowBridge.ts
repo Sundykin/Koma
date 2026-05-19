@@ -78,6 +78,7 @@ interface UseLinghuiCanvasFlowBridgeParams {
   onSelectionChangeRef: MutableRefObject<((selection: LinghuiCanvasSelection) => void) | undefined>;
   onNodeMutateRef: MutableRefObject<((nodeId: string) => void) | undefined>;
   onConnectionErrorRef: MutableRefObject<((message: string) => void) | undefined>;
+  onConnectionInteractionChange?: (interacting: boolean) => void;
 }
 
 function buildCanvasSelection(selectedNodes: Node[]): LinghuiCanvasSelection {
@@ -142,6 +143,7 @@ export function useLinghuiCanvasFlowBridge({
   onSelectionChangeRef,
   onNodeMutateRef,
   onConnectionErrorRef,
+  onConnectionInteractionChange,
 }: UseLinghuiCanvasFlowBridgeParams) {
   const handleNodesChange = useCallback((changes: NodeChange[]) => {
     const currentNodes = reactFlow.getNodes();
@@ -210,6 +212,7 @@ export function useLinghuiCanvasFlowBridge({
 
   const handleConnect = useCallback((connection: Connection) => {
     pendingConnectionCreateRef.current = null;
+    onConnectionInteractionChange?.(false);
     const source = connection.source ?? '';
     const target = connection.target ?? '';
     const allNodes = reactFlow.getNodes();
@@ -256,7 +259,7 @@ export function useLinghuiCanvasFlowBridge({
       }, currentEdges);
     });
     scheduleSnapshot();
-  }, [onConnectionErrorRef, pendingConnectionCreateRef, reactFlow, scheduleSnapshot, setEdges]);
+  }, [onConnectionErrorRef, onConnectionInteractionChange, pendingConnectionCreateRef, reactFlow, scheduleSnapshot, setEdges]);
 
   const handleIsValidConnection = useCallback((connection: Connection) => {
     const allNodes = reactFlow.getNodes();
@@ -292,6 +295,7 @@ export function useLinghuiCanvasFlowBridge({
   const handleConnectStart = useCallback((_event: MouseEvent | TouchEvent, params: OnConnectStartParams) => {
     if (!params.nodeId || params.handleType !== 'source') {
       pendingConnectionCreateRef.current = null;
+      onConnectionInteractionChange?.(false);
       return;
     }
 
@@ -301,19 +305,22 @@ export function useLinghuiCanvasFlowBridge({
 
     if (!sourceSlot) {
       pendingConnectionCreateRef.current = null;
+      onConnectionInteractionChange?.(false);
       return;
     }
 
+    onConnectionInteractionChange?.(true);
     pendingConnectionCreateRef.current = {
       sourceNodeId: params.nodeId,
       sourceHandleId: 'output-0',
       sourceDataType: sourceSlot.dataType,
     };
-  }, [pendingConnectionCreateRef, reactFlow]);
+  }, [onConnectionInteractionChange, pendingConnectionCreateRef, reactFlow]);
 
   const handleConnectEnd = useCallback((event: MouseEvent | TouchEvent, connectionState: FinalConnectionState) => {
     const pendingConnection = pendingConnectionCreateRef.current;
     pendingConnectionCreateRef.current = null;
+    onConnectionInteractionChange?.(false);
 
     const decision = resolveQuickCreateFromConnectEnd(
       event as unknown as { clientX?: number; clientY?: number; changedTouches?: TouchList; touches?: TouchList },
@@ -328,7 +335,7 @@ export function useLinghuiCanvasFlowBridge({
     openQuickCreateAt(decision.x, decision.y, {
       sourceConnection: decision.sourceConnection,
     });
-  }, [openQuickCreateAt, pendingConnectionCreateRef]);
+  }, [onConnectionInteractionChange, openQuickCreateAt, pendingConnectionCreateRef]);
 
   const updateLinghuiNodeData = useCallback((
     nodeId: string,

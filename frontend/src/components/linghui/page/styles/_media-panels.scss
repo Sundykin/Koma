@@ -575,17 +575,21 @@
 .linghuiImageLibTVCropOverlay {
   position: absolute;
   inset: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   pointer-events: none;
 }
 
 .linghuiImageLibTVCropFrame {
+  position: absolute;
+  left: var(--linghui-crop-anchor-x, 50%);
+  top: var(--linghui-crop-anchor-y, 50%);
   width: 78%;
   max-width: 82%;
   aspect-ratio: var(--linghui-crop-aspect, 1 / 1);
   max-height: 82%;
+  transform: translate(
+    calc(-1 * var(--linghui-crop-anchor-x, 50%)),
+    calc(-1 * var(--linghui-crop-anchor-y, 50%))
+  );
   border: 1px solid color-mix(in srgb, var(--token-accent-base) 82%, transparent);
   border-radius: 8px;
   box-shadow:
@@ -800,6 +804,34 @@
   color: color-mix(in srgb, var(--token-text-primary) 62%, transparent);
   font-size: 12px;
   line-height: 1.45;
+}
+
+.linghuiImageLibTVPresetHint.isWarning {
+  background: color-mix(in srgb, var(--token-status-warning) 10%, var(--token-bg-elevated));
+  color: color-mix(in srgb, var(--token-status-warning) 72%, var(--token-text-primary));
+}
+
+.linghuiImageLibTVCropAnchorGrid {
+  display: grid;
+  width: 84px;
+  grid-template-columns: repeat(3, 24px);
+  gap: 4px;
+
+  button {
+    width: 24px;
+    height: 24px;
+    border: 1px solid color-mix(in srgb, var(--token-border-base) 58%, transparent);
+    border-radius: 7px;
+    background: color-mix(in srgb, var(--token-bg-elevated) 50%, transparent);
+    cursor: pointer;
+
+    &:hover,
+    &.isActive {
+      border-color: color-mix(in srgb, var(--token-accent-base) 78%, transparent);
+      background: color-mix(in srgb, var(--token-accent-base) 14%, var(--token-bg-card));
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--token-accent-base) 32%, transparent);
+    }
+  }
 }
 
 .linghuiImageLibTVSliderRow,

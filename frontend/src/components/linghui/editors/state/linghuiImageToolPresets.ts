@@ -280,23 +280,23 @@ export const LINGHUI_IMAGE_TOOL_PRESETS: Record<LinghuiImageToolKey, LinghuiImag
   },
   'remove-bg': {
     title: '抠图',
-    description: '生成主体干净、背景可替换的图片任务节点。',
+    description: '创建主体分离方向的图生图任务；本地暂未内置透明抠图模型。',
     presets: [
       {
         label: '主体抠图',
-        description: '保留主体边缘细节，移除背景。',
+        description: '图生图主体分离任务，保留主体边缘细节。',
         promptSnippet: '主体抠图，保留人物/物体轮廓、发丝、透明材质和边缘细节，背景变为干净纯色或透明风格，主体不变形。',
         properties: { aspectRatio: '1:1', resolution: '2K' },
       },
       {
         label: '商品白底',
-        description: '适合电商图和素材整理。',
+        description: '图生图白底整理任务，适合电商图和素材整理。',
         promptSnippet: '商品白底抠图，保留商品材质、阴影和真实比例，背景简洁干净，边缘锐利，适合素材库或电商展示。',
         properties: { aspectRatio: '1:1', resolution: '2K' },
       },
       {
         label: '透明底素材',
-        description: '保留主体轮廓，生成适合后期叠放的素材。',
+        description: '图生图透明底素材任务，保留主体轮廓。',
         promptSnippet: '将主体从背景中干净分离，保留发丝、半透明材质、阴影边缘和真实轮廓，背景处理为透明底素材风格，主体不变形。',
         properties: { aspectRatio: '1:1', resolution: '2K' },
       },

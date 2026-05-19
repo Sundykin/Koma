@@ -27,7 +27,7 @@ import { LinghuiCanvasStage } from './LinghuiCanvasStage';
 interface LinghuiCanvasSurfaceProps {
   hostRef: RefObject<HTMLDivElement | null>;
   canvasMode: LinghuiCanvasMode;
-  /** LibTV interacting：节点/框选拖拽中，根节点挂 .canvas-interacting 暂停节点动画。 */
+  /** LibTV interacting：节点/框选/连线拖拽中，根节点挂 .canvas-interacting 暂停节点动画。 */
   interacting: boolean;
   canvasZoom: number;
   nodeInteraction: LinghuiNodeInteractionApi;

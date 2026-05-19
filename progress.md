@@ -2,6 +2,76 @@
 
 ## Session: 2026-05-18 Linghui LibTV Node Parity
 
+### Phase 5.16: GridSliceNode Local Compose Pass
+- **Status:** complete
+- Actions taken:
+  - 继续按 LibTV 区分 `九宫格 slash 生成` 与 `宫格切分 GridSplit` 的逻辑，处理灵绘本地 `image-grid-slice` 中间节点。
+  - `GridSliceNode` 新增 `合成宫格` 节点内操作：读取当前 slots，用浏览器 canvas 按当前宫格维度重新拼成一张 PNG，并通过已有 `onCreateDerivedImportImages` 派生为图片节点。
+  - `彻底切分` 保持原语义，只派生非空槽位为独立图片节点；空槽在合成图中保留轻背景和网格线，不改变槽位布局。
+  - 节点槽位补本地重排能力：非空切片可拖拽到其他槽位交换位置，槽位也可接收拖入的本地图片/URL 并写回 `slots[]`。
+  - 新增 `normalizeGridSliceSlots / buildGridSliceDerivedItems / composeGridSliceDataUrl` 纯函数边界，并补 `GridSliceNode.test.tsx` 覆盖槽位归一化、非空派生和空态禁用。
+- Validation:
+  - `cd frontend && npm run test -- --run src/components/linghui/nodes/tests/GridSliceNode.test.tsx`：1 file / 4 tests passed。
+  - `npx tsc --noEmit --project frontend/tsconfig.json --pretty false`：passed。
+- Next:
+  - 继续按节点矩阵推进下一个本地可实现节点；若回到 GridSplit，后续重点是拖入外部图片、拖拽排序和更接近 LibTV 的 slot 操作菜单。
+
+### Phase 5.17: VideoNode In-node Resource Toolbar
+- **Status:** complete
+- Actions taken:
+  - 继续对齐视频资源节点操作：选中已有视频资源时，视频预览内部显示 compact 工具条。
+  - 工具条包含 `截图 / 剪辑 / 高清 / 解析 / 分离音频`，点击后调用已有 `openVideoToolPanel(nodeId, tool)`，进入现有真实执行面板。
+  - 未迁入 `智能去字幕 / 人声分离` 到节点本体，因为本地没有对应服务；这两个仍不作为可执行本地能力展示。
+  - `_compact-nodes.scss` 增加扁平小尺寸视频资源工具条样式，避免亮色主题下出现大阴影/双层卡片。
+- Validation:
+  - `cd frontend && npm run test -- --run src/components/linghui/nodes/tests/VideoNode.test.tsx`：1 file / 4 tests passed。
+  - `npx tsc --noEmit --project frontend/tsconfig.json --pretty false`：passed。
+  - `git diff --check`：passed。
+- Next:
+  - 继续检查其他资源节点是否还有“真实操作只在外挂面板、节点本体不可达”的问题。
+
+### Phase 5.18: AudioNode Resource Derivation Action
+- **Status:** complete
+- Actions taken:
+  - 继续补音频资源节点本体操作：选中资源态音频时，播放器工具条显示 `生视频` 小按钮。
+  - 该按钮调用已有真实 `onApplyAudioEmptyAction(nodeId, 'audio-to-video')`，复用 LibTV 式音频到视频派生链路，不新增伪功能。
+  - 倍速切换和下载按钮保持原行为；新按钮只在选中资源态出现，避免常驻挤压播放器。
+- Validation:
+  - `cd frontend && npm run test -- --run src/components/linghui/nodes/tests/AudioNode.test.tsx`：1 file / 5 tests passed。
+  - `npx tsc --noEmit --project frontend/tsconfig.json --pretty false`：passed。
+  - `git diff --check`：passed。
+- Next:
+  - 继续检查 `image / script / storyboard / group` 的节点本体操作是否还有可本地闭环的缺口。
+
+### Phase 5.19: Storyboard Card Field Parity
+- **Status:** complete
+- Actions taken:
+  - 继续修正故事板节点本体展示：卡片视图不再只显示一个 `description` 摘要。
+  - `ScriptShotCards` 增加字段化展示：剧情摘要、画面描述、生图提示词、视频运动提示词在节点内分开可见。
+  - 保留表格视图的完整字段列和节点内分镜/视频组派生操作。
+- Validation:
+  - `cd frontend && npm run test -- --run src/components/linghui/nodes/tests/ScriptNode.test.tsx`：1 file / 3 tests passed。
+  - `npx tsc --noEmit --project frontend/tsconfig.json --pretty false`：passed。
+  - `git diff --check`：passed。
+- Next:
+  - 继续检查故事板行内编辑、字段 patch 和 LibTV 全屏表格能力，避免编辑器/节点两套视图割裂。
+
+### Phase 5.20: Storyboard In-node Table Editing
+- **Status:** complete
+- Actions taken:
+  - 继续对齐 LibTV 故事板/视频故事表格操作：节点本体表格从只读改为可编辑。
+  - `ScriptNode` 表格视图开启 `editable`，字段修改写入 `properties.editedShots`，并保持 `生成分镜 / 生成视频组` 使用编辑后的镜头字段。
+  - `LinghuiScriptNodeProperties` / `LinghuiStoryboardNodeProperties` 增加 `editedShots`，作为用户手动修正后的镜头数据源。
+  - `StoryboardNodeEditor` 读取并写回同一份 `editedShots`，避免节点内编辑和外挂编辑器展示不一致。
+  - 节点内聚合生成器补 `派生文本`，接入已有 `onDeriveScriptShots`，与编辑器的镜头文本/分镜图/视频组三类操作对齐。
+- Validation:
+  - `cd frontend && npm run test -- --run src/components/linghui/nodes/tests/ScriptNode.test.tsx src/components/linghui/editors/tests/ScriptShotViews.test.tsx`：2 files / 7 tests passed。
+  - `cd frontend && npm run test -- --run src/components/linghui/nodes/tests/ScriptNode.test.tsx`：1 file / 4 tests passed after adding `派生文本`。
+  - `npx tsc --noEmit --project frontend/tsconfig.json --pretty false`：passed。
+  - `git diff --check`：passed。
+- Next:
+  - 继续补 LibTV 式全屏表格的行级操作和批量选择/派生细节。
+
 ### Phase 5.9: Script / Storyboard Real Field + In-node Layout Fix
 - **Status:** complete
 - Actions taken:
@@ -2424,3 +2494,62 @@
   - `cd frontend && npm run test -- --run src/components/linghui/editors/tests/ScriptShotViews.test.tsx src/components/linghui/editors/tests/linghuiScriptNodeUtils.test.ts src/components/linghui/nodes/tests/ScriptNode.test.tsx src/components/linghui/execution/tests/linghuiExecutionScriptNode.test.ts src/components/linghui/execution/tests/linghuiExecutionStoryboardNode.test.ts src/components/linghui/canvas/tests/useLinghuiCanvasDocumentOps.test.tsx`: 6 files / 28 tests passed.
 - Next:
   - Continue LibTV parity on image/video-reference upload cells and column visibility/filter controls, or move to the next node in the inventory if the user wants broader node coverage first.
+
+### Phase 5.12: Image Crop Anchor + Honest Remove-bg Panel
+- **Status:** complete
+- Actions taken:
+  - Continued LibTV image tool parity on remaining `擦除 / 抠图 / 裁剪` panel gaps.
+  - Added 3×3 crop anchor state and UI to the image crop panel; preview frame follows the selected anchor.
+  - Extended crop execution options with `anchorX / anchorY` and passed them from editor panel through node editor API to canvas execution.
+  - Updated Electron FFmpeg `cropImage` to use crop expressions `(iw-ow)*anchorX` and `(ih-oh)*anchorY`, preserving non-center focal regions during local crop.
+  - Mirrored the FFmpeg crop anchor behavior into `public/electron/service/ffmpeg.js`.
+  - Updated remove-bg preset descriptions and panel warning copy to state that Linghui currently creates a graph image-to-image task, not a local transparent-background model.
+  - Added tests for crop anchor submission, remove-bg honesty copy, and FFmpeg crop bridge options.
+- Validation:
+  - `npx tsc --noEmit --project frontend/tsconfig.json --pretty false`: passed.
+  - `cd frontend && npm run test -- --run src/components/linghui/editors/tests/ImageNodeEditor.test.tsx src/services/ffmpegManager.test.ts src/components/linghui/editors/tests/LinghuiNodeEditor.test.tsx`: 3 files / 30 tests passed; existing jsdom/Three warnings remain.
+- Next:
+  - Continue image tool fidelity: either implement a real local mask/selection erase UI when a backend exists, or move to canvas interaction polish / next node parity slice.
+
+### Phase 5.13: Canvas Connection Interaction Polish
+- **Status:** complete
+- Actions taken:
+  - Continued LibTV parity on the canvas interaction layer after the image tool pass.
+  - Extended the existing `canvas-interacting` state from node/selection dragging to connection dragging as well.
+  - Wired valid source-handle connect start to enter interacting state; connect success, connect end, invalid connect start, and Esc cancel all exit it.
+  - Hardened Esc cancel by falling back from `PointerEvent` to `MouseEvent` in non-Chromium test environments.
+  - Added `useLinghuiCanvasInteractionHelpers.test.tsx` covering pending connection cancellation and interacting-state cleanup.
+- Validation:
+  - `npx tsc --noEmit --project frontend/tsconfig.json --pretty false`: passed.
+  - `cd frontend && npm run test -- --run src/components/linghui/canvas/tests/useLinghuiCanvasInteractionHelpers.test.tsx src/components/linghui/canvas/tests/useLinghuiCanvasHotkeys.test.tsx src/components/linghui/canvas/tests/useLinghuiCanvasFlowBridge.test.ts src/components/linghui/editors/tests/ImageNodeEditor.test.tsx src/services/ffmpegManager.test.ts`: 5 files / 38 tests passed; existing Three warning remains.
+- Next:
+  - Continue LibTV node parity on the next highest-friction node/tool surface, keeping operation panels compact and in-node where LibTV does so.
+
+### Phase 5.14: AudioNode Resource UI Parity
+- **Status:** complete
+- Actions taken:
+  - Continued node parity by decompiling LibTV `AudioNode` in `template_/libtv/0wanf5895ewvy.js`.
+  - Confirmed LibTV resource audio nodes use an in-node waveform/player surface with `AudioNodeToolbar` instead of only native audio controls.
+  - Reworked Linghui audio resource state to show a compact waveform stage, in-node speed switcher, download action, native audio control, and filename/duration readout.
+  - Kept cloud-only LibTV concepts out of Linghui: no credit UI, no VIP/watermark download branch, no CDN audit status badge.
+  - Added tests for resource toolbar presence, download filename, and `1x / 1.5x / 2x` speed cycling.
+- Validation:
+  - `cd frontend && npm run test -- --run src/components/linghui/nodes/tests/AudioNode.test.tsx`: 1 file / 4 tests passed.
+  - `npx tsc --noEmit --project frontend/tsconfig.json --pretty false`: passed.
+- Next:
+  - Run the broader Linghui targeted suite and root checks after the next slice, or before handing back if stopping.
+
+### Phase 5.15: AgentNode In-node Operation Pass
+- **Status:** complete
+- Actions taken:
+  - Continued node parity by tracing LibTV Canvas Agent/session code and comparing it to Linghui's current `linghui/agent` implementation.
+  - Kept Linghui on its existing local Agent execution path instead of faking LibTV's online WebSocket session stack.
+  - Added in-node Agent task template chips using `LINGHUI_AGENT_PROMPT_PRESETS`, so common Agent setup no longer requires opening the large editor panel.
+  - Added compact in-node settings and run controls; run uses the existing `onRunNode(nodeId)` path.
+  - Agent node now surfaces running state, output excerpt, tool count, and iteration count in the node body.
+  - Added `AgentNode.test.tsx` for preset application, run triggering, disabled/running behavior, and node-body controls.
+- Validation:
+  - `cd frontend && npm run test -- --run src/components/linghui/nodes/tests/AgentNode.test.tsx`: 1 file / 4 tests passed.
+  - `npx tsc --noEmit --project frontend/tsconfig.json --pretty false`: passed.
+- Next:
+  - Continue broad node parity or run the full targeted Linghui suite before committing.

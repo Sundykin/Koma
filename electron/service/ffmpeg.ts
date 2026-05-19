@@ -69,6 +69,9 @@ export interface CropImageOptions {
   output: string;
   // 目标比例，如 1:1 / 9:16 / 16:9；默认从中心做 cover crop。
   aspectRatio: string;
+  // 裁剪锚点，0=左/上，0.5=居中，1=右/下。
+  anchorX?: number;
+  anchorY?: number;
   sharpenAmount?: number;
 }
 
@@ -748,9 +751,11 @@ export class FFmpegService {
 
     const targetRatio = this.parseAspectRatioValue(options.aspectRatio);
     const sharpenAmount = Math.max(0, Math.min(2, Number.isFinite(options.sharpenAmount) ? Number(options.sharpenAmount) : 0.4));
+    const anchorX = Math.max(0, Math.min(1, Number.isFinite(options.anchorX) ? Number(options.anchorX) : 0.5));
+    const anchorY = Math.max(0, Math.min(1, Number.isFinite(options.anchorY) ? Number(options.anchorY) : 0.5));
     await fs.promises.mkdir(path.dirname(output), { recursive: true });
 
-    const cropExpression = `crop='if(gt(iw/ih,${targetRatio}),ih*${targetRatio},iw)':'if(gt(iw/ih,${targetRatio}),ih,iw/${targetRatio})':'(iw-ow)/2':'(ih-oh)/2'`;
+    const cropExpression = `crop='if(gt(iw/ih,${targetRatio}),ih*${targetRatio},iw)':'if(gt(iw/ih,${targetRatio}),ih,iw/${targetRatio})':'(iw-ow)*${anchorX}':'(ih-oh)*${anchorY}'`;
     const filters = [
       cropExpression,
       'setsar=1',

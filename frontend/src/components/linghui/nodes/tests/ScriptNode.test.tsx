@@ -10,12 +10,14 @@ const {
   useLinghuiNodeInteractionApiMock,
   useLinghuiNodeEditorApiMock,
   useLinghuiNodeEditorVisibilityMock,
+  useLinghuiNodeMutationMock,
 } = vi.hoisted(() => ({
   useNodeRunStateMock: vi.fn(),
   useLinghuiNodeInteractionMock: vi.fn(),
   useLinghuiNodeInteractionApiMock: vi.fn(),
   useLinghuiNodeEditorApiMock: vi.fn(),
   useLinghuiNodeEditorVisibilityMock: vi.fn(),
+  useLinghuiNodeMutationMock: vi.fn(),
 }));
 
 vi.mock('@xyflow/react', () => ({
@@ -32,6 +34,7 @@ vi.mock('../state/LinghuiNodeRunsContext', () => ({
   useLinghuiNodeInteractionApi: () => useLinghuiNodeInteractionApiMock(),
   useLinghuiNodeEditorApi: () => useLinghuiNodeEditorApiMock(),
   useLinghuiNodeEditorVisibility: (...args: unknown[]) => useLinghuiNodeEditorVisibilityMock(...args),
+  useLinghuiNodeMutation: () => useLinghuiNodeMutationMock(),
 }));
 
 vi.mock('../../editors/components/LinghuiNodeEditor', () => ({
@@ -92,10 +95,12 @@ describe('ScriptNode', () => {
     useLinghuiNodeInteractionMock.mockReturnValue({});
     useLinghuiNodeInteractionApiMock.mockReturnValue({ openNodeEditor: vi.fn() });
     useLinghuiNodeEditorApiMock.mockReturnValue({
+      onDeriveScriptShots: vi.fn(),
       onGenerateScriptImages: vi.fn(),
       onGenerateScriptVideos: vi.fn(),
     });
     useLinghuiNodeEditorVisibilityMock.mockReturnValue(false);
+    useLinghuiNodeMutationMock.mockReturnValue({ updateNodeData: vi.fn() });
     useNodeRunStateMock.mockReturnValue({
       status: 'succeeded',
       progress: 100,
@@ -117,11 +122,17 @@ describe('ScriptNode', () => {
   });
 
   it('renders storyboard content inside the node body and switches to table view', () => {
-    renderScriptNode();
+    const { container } = renderScriptNode();
 
     expect(screen.getByText('1镜头')).toBeInTheDocument();
     expect(screen.getByText('开场')).toBeInTheDocument();
     expect(screen.getAllByText('主角推门进入。').length).toBeGreaterThan(0);
+    expect(screen.getByText('画面')).toBeInTheDocument();
+    expect(screen.getByText('生图')).toBeInTheDocument();
+    expect(screen.getByText('视频')).toBeInTheDocument();
+    expect(screen.getByText('电影感逆光室内，中景构图。')).toBeInTheDocument();
+    expect(screen.getByText('镜头从门把手推到主角侧脸。')).toBeInTheDocument();
+    expect(screen.queryByTestId('script-node-editor')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '表格视图' }));
 
@@ -129,10 +140,14 @@ describe('ScriptNode', () => {
     expect(screen.getByText('逆光中景，雨夜门口。')).toBeInTheDocument();
     expect(screen.getByText('电影感逆光室内，中景构图。')).toBeInTheDocument();
     expect(screen.getByText('镜头从门把手推到主角侧脸。')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '展开节点' }));
+    expect(container.querySelector('[data-story-expanded="true"]')).toBeTruthy();
   });
 
   it('runs image/video derivation from node inline actions with selected storyboard rows', () => {
     const editorApi = {
+      onDeriveScriptShots: vi.fn(),
       onGenerateScriptImages: vi.fn(),
       onGenerateScriptVideos: vi.fn(),
     };
@@ -142,9 +157,13 @@ describe('ScriptNode', () => {
     fireEvent.click(screen.getByRole('checkbox'));
     expect(screen.getByText('已选 1/1')).toBeInTheDocument();
 
+    fireEvent.click(screen.getByRole('button', { name: /派生文本/ }));
     fireEvent.click(screen.getByRole('button', { name: /生成分镜/ }));
     fireEvent.click(screen.getByRole('button', { name: /生成视频组/ }));
 
+    expect(editorApi.onDeriveScriptShots).toHaveBeenCalledWith('storyboard-node-1', [expect.objectContaining({
+      plotDescription: '主角推门进入。',
+    })]);
     expect(editorApi.onGenerateScriptImages).toHaveBeenCalledWith('storyboard-node-1', [expect.objectContaining({
       imageGenerationPrompt: '电影感逆光室内，中景构图。',
     })]);
@@ -163,5 +182,26 @@ describe('ScriptNode', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '关闭分镜生成器' }));
     expect(screen.queryByText('已选 1/1')).not.toBeInTheDocument();
+  });
+
+  it('edits storyboard table fields from the node body and persists edited shots', () => {
+    const updateNodeData = vi.fn();
+    useLinghuiNodeMutationMock.mockReturnValue({ updateNodeData });
+
+    renderScriptNode();
+    fireEvent.click(screen.getByRole('button', { name: '表格视图' }));
+    fireEvent.change(screen.getByLabelText('plotDescription'), {
+      target: { value: '主角停在门口，意识到房间里有人。' },
+    });
+
+    expect(updateNodeData).toHaveBeenCalledWith('storyboard-node-1', expect.any(Function), { markStale: false });
+    const updater = updateNodeData.mock.calls[0][1] as (prev: LinghuiNodeData) => LinghuiNodeData;
+    const next = updater(createScriptNodeData());
+    expect((next.properties as any).editedShots[0]).toMatchObject({
+      id: 'shot-1',
+      plotDescription: '主角停在门口，意识到房间里有人。',
+      imageGenerationPrompt: '电影感逆光室内，中景构图。',
+      videoMotionPrompt: '镜头从门把手推到主角侧脸。',
+    });
   });
 });

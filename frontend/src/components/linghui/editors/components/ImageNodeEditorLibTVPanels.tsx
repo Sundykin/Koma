@@ -11,6 +11,10 @@ import {
   LINGHUI_IMAGE_TOOL_PRESETS,
   type LinghuiImageToolPresetDef,
 } from '../state/linghuiImageToolPresets';
+import {
+  LINGHUI_IMAGE_CROP_ANCHORS,
+  type LinghuiImageCropAnchor,
+} from '../hooks/useImageNodeEditorLibTVToolState';
 
 export interface ImageEditorOption {
   value: string;
@@ -81,10 +85,12 @@ interface ImageGenericToolPanelProps {
   imageAlt: string;
   aspectRatioChoices: ImageEditorOption[];
   genericPresetLabel: string;
+  genericCropAnchor: LinghuiImageCropAnchor;
   genericPrompt: string;
   genericAspectRatio: string;
   genericResolution: string;
   onSelectGenericPreset: (preset: LinghuiImageToolPresetDef) => void;
+  setGenericCropAnchor: (value: LinghuiImageCropAnchor) => void;
   setGenericPrompt: (value: string) => void;
   setGenericAspectRatio: (value: string) => void;
   setGenericResolution: (value: string) => void;
@@ -334,10 +340,12 @@ export const ImageNodeEditorGenericPanel: React.FC<ImageGenericToolPanelProps> =
   imageAlt,
   aspectRatioChoices,
   genericPresetLabel,
+  genericCropAnchor,
   genericPrompt,
   genericAspectRatio,
   genericResolution,
   onSelectGenericPreset,
+  setGenericCropAnchor,
   setGenericPrompt,
   setGenericAspectRatio,
   setGenericResolution,
@@ -355,7 +363,11 @@ export const ImageNodeEditorGenericPanel: React.FC<ImageGenericToolPanelProps> =
         {isCropTool ? (
           <div
             className="linghuiImageLibTVPreviewStage isCropPreview"
-            style={cssVars({ '--linghui-crop-aspect': ratioToCssAspect(genericAspectRatio) })}
+            style={cssVars({
+              '--linghui-crop-aspect': ratioToCssAspect(genericAspectRatio),
+              '--linghui-crop-anchor-x': `${genericCropAnchor.x * 100}%`,
+              '--linghui-crop-anchor-y': `${genericCropAnchor.y * 100}%`,
+            })}
           >
             {currentImagePreview ? (
               <img src={currentImagePreview} alt={imageAlt} draggable={false} />
@@ -399,6 +411,36 @@ export const ImageNodeEditorGenericPanel: React.FC<ImageGenericToolPanelProps> =
               onChange={event => setGenericPrompt(event.target.value)}
             />
           )}
+          {isCropTool ? (
+            <>
+              <div className="linghuiImageLibTVSectionTitle">裁剪锚点</div>
+              <div className="linghuiImageLibTVCropAnchorGrid" role="group" aria-label="裁剪锚点">
+                {LINGHUI_IMAGE_CROP_ANCHORS.map(anchor => (
+                  <button
+                    key={anchor.key}
+                    type="button"
+                    className={genericCropAnchor.key === anchor.key ? 'isActive' : ''}
+                    onClick={() => setGenericCropAnchor(anchor)}
+                    aria-label={`裁剪锚点 ${anchor.label}`}
+                    title={anchor.label}
+                  />
+                ))}
+              </div>
+              <div className="linghuiImageLibTVPresetHint">
+                本地裁剪会按所选锚点保留画面重点，不做 AI 补图。
+              </div>
+            </>
+          ) : null}
+          {tool === 'remove-bg' ? (
+            <div className="linghuiImageLibTVPresetHint isWarning">
+              当前未接入本地抠图模型，将创建图生图抠图任务节点；透明通道需要后续模型返回。
+            </div>
+          ) : null}
+          {tool === 'erase' ? (
+            <div className="linghuiImageLibTVPresetHint isWarning">
+              擦除需要图生图修复模型完成，当前会创建可编辑擦除任务节点。
+            </div>
+          ) : null}
           <div className="linghuiImageLibTVSectionTitle">比例</div>
           <div className="linghuiImageLibTVPresetButtons">
             {aspectRatioChoices.map(option => (

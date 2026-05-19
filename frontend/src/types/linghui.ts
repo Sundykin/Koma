@@ -195,6 +195,7 @@ export interface LinghuiScriptNodeProperties {
   systemPrompt: string;
   llmSelection: string;
   viewMode: LinghuiScriptNodeViewMode;
+  editedShots?: LinghuiStoryboardFrame[];
 }
 
 /**
@@ -213,6 +214,8 @@ export interface LinghuiStoryboardNodeProperties {
   viewMode: LinghuiScriptNodeViewMode;
   /** 目标镜头数。默认 8。允许 [4, 24]。 */
   targetShotCount: number;
+  /** 用户在节点/编辑器表格中手动修正后的镜头数据。 */
+  editedShots?: LinghuiStoryboardFrame[];
 }
 
 export type LinghuiGridType = 'none' | '2x2' | '3x3' | '4x4' | '5x5';

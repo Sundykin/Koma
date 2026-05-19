@@ -121,6 +121,23 @@ describe('storyboard image/video prompt visual templates', () => {
     const reasoningTemplate = getDefaultTemplate('storyboard_shot_prompt_generation').template;
     const ttiTemplate = getDefaultTemplate('tti_storyboard_shot_image').template;
 
+    expect(reasoningTemplate).toContain('横版 16:9 的电影导演分镜示意图');
+    expect(reasoningTemplate).toContain('专业影视前期视觉板、商业短剧分镜表、高清写实人物合成图');
+    expect(reasoningTemplate).toContain('白底黑线表格排版');
+    // 整体版式硬约束块（最高优先级，逐条钉死）
+    expect(reasoningTemplate).toContain('## 整体版式（硬约束 / 最高优先级');
+    expect(reasoningTemplate).toContain('画幅必须是横版 16:9');
+    expect(reasoningTemplate).toContain('**白底**');
+    expect(reasoningTemplate).toContain('**黑色细线**');
+    expect(reasoningTemplate).toContain('像导演分镜脚本板');
+    expect(reasoningTemplate).toContain('八大模块齐备，一个都不能少');
+    expect(reasoningTemplate).toContain('信息密集但整齐');
+    expect(reasoningTemplate).toContain('中文字体清晰');
+    expect(reasoningTemplate).toContain('专业导演案头资料感');
+    expect(reasoningTemplate).toContain('不能改写本节 0.1–0.8 的版式骨架');
+    // 输出格式区里的"整体版式"也必须升级成硬约束语气
+    expect(reasoningTemplate).toContain('整体版式（硬约束，全部必须满足');
+    expect(reasoningTemplate).toContain('横版 16:9，纯白底，黑色细线表格');
     expect(reasoningTemplate).toContain('电影分镜信息图海报感');
     expect(reasoningTemplate).toContain('剧情驱动，不机械填格');
     expect(reasoningTemplate).toContain('默认制作板模块');
@@ -133,16 +150,15 @@ describe('storyboard image/video prompt visual templates', () => {
     expect(reasoningTemplate).toContain('限制条件：{{storyboardConstraints}}');
     expect(reasoningTemplate).toContain('类型必须使用项目类型“{{projectType}}”');
     expect(reasoningTemplate).toContain('必须是当前分镜时长，不是项目总时长');
-    expect(reasoningTemplate).toContain('【角色设计区】');
-    expect(reasoningTemplate).toContain('【场景设计区】');
-    expect(reasoningTemplate).toContain('【俯视镜头调度图】');
-    expect(reasoningTemplate).toContain('【分镜故事区（N镜头）】');
-    expect(reasoningTemplate).toContain('【灯光与风格】');
-    expect(reasoningTemplate).toContain('【情绪关键词】');
-    expect(reasoningTemplate).toContain('【声音设计】');
-    expect(reasoningTemplate).toContain('【摄影说明】');
-    expect(reasoningTemplate).toContain('【色彩方案】');
-    expect(reasoningTemplate).toContain('焦段（24mm/35mm/50mm/85mm）');
+    expect(reasoningTemplate).toContain('【主视觉】');
+    expect(reasoningTemplate).toContain('【多角色设定区】');
+    expect(reasoningTemplate).toContain('【镜头风格与光线】');
+    expect(reasoningTemplate).toContain('【BGM与音效】');
+    expect(reasoningTemplate).toContain('【分镜脚本区（N格）】');
+    expect(reasoningTemplate).toContain('【场景调度图】');
+    expect(reasoningTemplate).toContain('【机位运动轨迹图】');
+    expect(reasoningTemplate).toContain('【情绪曲线图】');
+    expect(reasoningTemplate).toContain('焦段（24mm/35mm/50mm/85mm');
     expect(reasoningTemplate).toContain('镜头数由剧情决定，不机械补满');
     expect(reasoningTemplate).toContain('{{storyboardContinuityNotice}}');
     expect(reasoningTemplate).toContain('@previous_storyboard_anchor');
@@ -157,6 +173,24 @@ describe('storyboard image/video prompt visual templates', () => {
     expect(reasoningTemplate).toContain('风格前缀');
     expect(reasoningTemplate).toContain('严禁输出 `@Image N`');
     expect(reasoningTemplate).toContain('provider 协议');
+    // 输出格式区：直接对照用户给的参考结构
+    expect(reasoningTemplate).toContain('片名：《{{projectTitle}}》');
+    expect(reasoningTemplate).toContain('时长：{{shotDurationSeconds}}秒');
+    expect(reasoningTemplate).toContain('核心情绪：{{emotion}}');
+    expect(reasoningTemplate).toContain('故事概念：{一句话剧情概述}');
+    expect(reasoningTemplate).toContain('主视觉：');
+    expect(reasoningTemplate).toContain('多角色设定区：');
+    expect(reasoningTemplate).toContain('姓名：{角色1姓名}');
+    expect(reasoningTemplate).toContain('人物关系：{角色1与其他角色关系}');
+    expect(reasoningTemplate).toContain('镜头风格与光线：');
+    expect(reasoningTemplate).toContain('BGM与音效：');
+    expect(reasoningTemplate).toContain('分镜脚本区，共{镜头数量}格');
+    expect(reasoningTemplate).toContain('镜头1（{时间段1}秒）：');
+    expect(reasoningTemplate).toContain('底部图表：');
+    expect(reasoningTemplate).toContain('场景调度图：');
+    expect(reasoningTemplate).toContain('机位运动轨迹图：');
+    expect(reasoningTemplate).toContain('情绪曲线图：');
+    expect(reasoningTemplate).toContain('视觉要求：');
     expect(ttiTemplate).toContain('{{storyboardPrompt}}');
     expect(ttiTemplate).toContain('highly detailed cinematic storyboard infographic poster');
     expect(ttiTemplate).toContain('deep blue title bar');

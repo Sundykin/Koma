@@ -1,6 +1,6 @@
-import React, { memo, useMemo } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { type NodeProps, useStore } from '@xyflow/react';
-import { Disc3, LoaderCircle } from 'lucide-react';
+import { Disc3, Download, Gauge, LoaderCircle, Video } from 'lucide-react';
 import {
   getLinghuiResultPrimaryMedia,
   resolveLinghuiAudioNodeViewState,
@@ -8,7 +8,12 @@ import {
   type LinghuiNodeData,
   type LinghuiRunStatus,
 } from '../../../../types/linghui';
-import { useNodeRunState, useLinghuiNodeInteraction, useLinghuiNodeEditorVisibility } from '../state/LinghuiNodeRunsContext';
+import {
+  useLinghuiNodeEditorApi,
+  useNodeRunState,
+  useLinghuiNodeInteraction,
+  useLinghuiNodeEditorVisibility,
+} from '../state/LinghuiNodeRunsContext';
 import { useLinghuiConnectTarget } from '../state/useLinghuiConnectTarget';
 import { LinghuiNodeEditor } from '../../editors/components/LinghuiNodeEditor';
 import { EditableCompactNodeLabel } from './EditableCompactNodeLabel';
@@ -28,6 +33,15 @@ const STATUS_COLORS: Record<LinghuiRunStatus, string> = {
   failed: 'var(--token-status-error)',
   stale: 'var(--token-status-warning)',
 };
+const AUDIO_PLAYBACK_RATES = [1, 1.5, 2] as const;
+const AUDIO_WAVE_BARS = [
+  0.3, 0.5, 0.7, 0.4, 0.9, 0.6, 0.8, 0.3,
+  0.5, 0.7, 0.4, 0.6, 0.9, 0.5, 0.3, 0.8,
+  0.6, 0.4, 0.7, 0.5, 0.9, 0.3, 0.6, 0.8,
+  0.4, 0.7, 0.5, 0.3, 0.9, 0.6, 0.8, 0.4,
+  0.7, 0.5, 0.3, 0.6, 0.9, 0.5, 0.8, 0.4,
+  0.7, 0.3, 0.6, 0.5, 0.9, 0.4, 0.8, 0.3,
+];
 
 function formatDuration(durationSec?: number): string {
   if (!durationSec || !Number.isFinite(durationSec)) {
@@ -43,11 +57,119 @@ function formatDuration(durationSec?: number): string {
   return `${minutes}:${String(seconds).padStart(2, '0')}`;
 }
 
+function getAudioFilename(source: string, label: string): string {
+  const normalized = source.split('?')[0].split('#')[0];
+  const basename = normalized.split(/[\\/]/).pop()?.trim();
+  if (basename && basename.includes('.')) {
+    try {
+      return decodeURIComponent(basename);
+    } catch {
+      return basename;
+    }
+  }
+
+  const safeLabel = label.trim().replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ') || '音频';
+  return `${safeLabel}.mp3`;
+}
+
+function AudioResourcePlayer({
+  source,
+  label,
+  durationLabel,
+  showResourceActions,
+  onAudioToVideo,
+}: {
+  source: string;
+  label: string;
+  durationLabel: string;
+  showResourceActions: boolean;
+  onAudioToVideo: (event: React.MouseEvent<HTMLButtonElement>) => void;
+}) {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [playbackRate, setPlaybackRate] = useState<(typeof AUDIO_PLAYBACK_RATES)[number]>(1);
+
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.playbackRate = playbackRate;
+    }
+  }, [playbackRate]);
+
+  const handleCycleSpeed = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    setPlaybackRate(current => {
+      const nextIndex = (AUDIO_PLAYBACK_RATES.indexOf(current) + 1) % AUDIO_PLAYBACK_RATES.length;
+      return AUDIO_PLAYBACK_RATES[nextIndex] ?? 1;
+    });
+  }, []);
+
+  const handleDownload = useCallback((event: React.MouseEvent<HTMLAnchorElement>) => {
+    event.stopPropagation();
+  }, []);
+
+  return (
+    <div className="linghuiCompactAudioResourceStage">
+      <div className="linghuiCompactAudioToolbar nodrag nopan" onMouseDown={event => event.stopPropagation()}>
+        <button
+          type="button"
+          className="linghuiCompactAudioToolButton"
+          onClick={handleCycleSpeed}
+          aria-label="切换播放速度"
+          title="切换播放速度"
+        >
+          <Gauge size={13} aria-hidden="true" />
+          <span>{playbackRate === 1 ? '1x' : `${playbackRate}x`}</span>
+        </button>
+        <a
+          className="linghuiCompactAudioToolButton"
+          href={source}
+          download={getAudioFilename(source, label)}
+          onClick={handleDownload}
+          aria-label="下载音频"
+          title="下载音频"
+        >
+          <Download size={13} aria-hidden="true" />
+        </a>
+        {showResourceActions ? (
+          <button
+            type="button"
+            className="linghuiCompactAudioToolButton isPrimary"
+            onClick={onAudioToVideo}
+            aria-label="音频生视频"
+            title="音频生视频"
+          >
+            <Video size={13} aria-hidden="true" />
+            <span>生视频</span>
+          </button>
+        ) : null}
+      </div>
+      <div className="linghuiCompactAudioWaveform" aria-hidden="true">
+        {AUDIO_WAVE_BARS.map((height, index) => (
+          <span key={`${height}-${index}`} style={{ height: `${Math.round(height * 100)}%` }} />
+        ))}
+      </div>
+      <audio
+        ref={audioRef}
+        className="linghuiCompactAudioPlayer nodrag nopan"
+        src={source}
+        controls
+        onMouseDown={event => event.stopPropagation()}
+        onPointerDown={event => event.stopPropagation()}
+        onClick={event => event.stopPropagation()}
+      />
+      <div className="linghuiCompactAudioReadout">
+        <span>{label}</span>
+        {durationLabel ? <em>{durationLabel}</em> : null}
+      </div>
+    </div>
+  );
+}
+
 function AudioNodeInner({ id, data, selected }: NodeProps) {
   const nodeData = data as unknown as LinghuiNodeData;
   const props = nodeData.properties as unknown as LinghuiAudioNodeProperties;
   const runState = useNodeRunState(id);
   const interactionHandlers = useLinghuiNodeInteraction(id);
+  const editorApi = useLinghuiNodeEditorApi();
   const status = runState?.status ?? 'idle';
   const statusColor = STATUS_COLORS[status] ?? STATUS_COLORS.idle;
   const nodeStyle = cssVars({
@@ -82,6 +204,12 @@ function AudioNodeInner({ id, data, selected }: NodeProps) {
   const isConnectTarget = useLinghuiConnectTarget(id);
   const portInputs = props.mode === 'import' ? [] : nodeData.inputs;
 
+  const handleAudioToVideo = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    editorApi.onApplyAudioEmptyAction?.(id, 'audio-to-video');
+  }, [editorApi, id]);
+
   return (
     <div
       className={`linghuiCompactNode nopan is-${status} ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''} ${isEditorVisible ? 'hasInlineEditor' : ''} ${isConnectTarget ? 'isConnectTarget' : ''}`}
@@ -99,19 +227,13 @@ function AudioNodeInner({ id, data, selected }: NodeProps) {
         {viewState === 'empty_generate' ? (
           <LinghuiAudioNodeEmptyState nodeId={id} />
         ) : viewState === 'pending' ? null : audioSource ? (
-          <div className="linghuiCompactAudioResourceStage">
-            <div className="linghuiCompactAudioDisc" aria-hidden="true">
-              <Disc3 size={58} strokeWidth={1.1} />
-            </div>
-            <audio
-              className="linghuiCompactAudioPlayer nodrag nopan"
-              src={audioSource}
-              controls
-              onMouseDown={event => event.stopPropagation()}
-              onPointerDown={event => event.stopPropagation()}
-              onClick={event => event.stopPropagation()}
-            />
-          </div>
+          <AudioResourcePlayer
+            source={audioSource}
+            label={String(primaryAudio?.label ?? nodeData.label ?? '音频').trim() || '音频'}
+            durationLabel={durationLabel}
+            showResourceActions={selected}
+            onAudioToVideo={handleAudioToVideo}
+          />
         ) : (
           <div className="linghuiTextNodePendingState" aria-label="等待音频生成">
             <Disc3 size={80} strokeWidth={1.1} aria-hidden="true" />

@@ -40,7 +40,7 @@ interface LinghuiCanvasUiState {
   paneClickQuickCreateSuppressUntil: number;
   activeDrawer: LinghuiLibraryDrawerKey | null;
   /**
-   * LibTV `interacting` 状态：节点/框选拖拽中。挂载到画布根节点的 .canvas-interacting class，
+   * LibTV `interacting` 状态：节点/框选/连线拖拽中。挂载到画布根节点的 .canvas-interacting class，
    * 让 SCSS 暂停 glow-spin / connection-breathe / generating-breathing-* / skeleton-shimmer 等动画，
    * 避免拖拽时 GPU 被这些动画反复重绘。
    */

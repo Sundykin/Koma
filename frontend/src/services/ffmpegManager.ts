@@ -59,6 +59,8 @@ export interface CropImageOptions {
   input: string;
   output: string;
   aspectRatio: string;
+  anchorX?: number;
+  anchorY?: number;
   sharpenAmount?: number;
 }
 

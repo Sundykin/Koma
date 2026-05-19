@@ -92,7 +92,7 @@ function createImageNodeData(overrides?: Partial<LinghuiNodeData['properties']>)
 function renderEditor(
   nodeData: LinghuiNodeData,
   options?: {
-    activeTool?: 'focus' | 'mark' | 'multi-angle' | 'outpaint' | 'relight' | 'repaint' | null;
+    activeTool?: 'focus' | 'mark' | 'multi-angle' | 'outpaint' | 'relight' | 'repaint' | 'crop' | 'remove-bg' | 'erase' | null;
     nodeRun?: LinghuiNodeRunState;
     onToolChange?: (tool: any) => void;
     onExecuteMultiAngle?: (options?: any) => void;
@@ -540,5 +540,55 @@ describe('ImageNodeEditor', () => {
       }),
     }));
     expect(onToolChange).toHaveBeenCalledWith(null);
+  });
+
+  it('裁剪工具提供锚点选择并调用本地裁剪入口', async () => {
+    const onExecuteImageCrop = vi.fn();
+    const onToolChange = vi.fn();
+    useLinghuiNodeEditorApiMock.mockReturnValue({
+      executionQueue: null,
+      onExecuteImageCrop,
+    });
+    renderEditor(createImageNodeData({
+      source: 'https://cdn.example.com/original.png',
+      primaryResultSource: 'https://cdn.example.com/original.png',
+      aspectRatio: '3:4',
+    }), {
+      activeTool: 'crop',
+      onToolChange,
+    });
+
+    expect(await screen.findByRole('dialog', { name: '裁剪' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '裁剪锚点 左下' }));
+    fireEvent.click(screen.getByRole('button', { name: /横版裁剪/ }));
+    fireEvent.click(screen.getByRole('button', { name: '生成' }));
+
+    expect(onExecuteImageCrop).toHaveBeenCalledWith('image-node-1', {
+      aspectRatio: '16:9',
+      anchorX: 0,
+      anchorY: 1,
+      label: '横版裁剪',
+    });
+    expect(onToolChange).toHaveBeenCalledWith(null);
+  });
+
+  it('抠图工具明确展示非本地透明抠图能力说明', async () => {
+    const onApplyImageToolPreset = vi.fn();
+    renderEditor(createImageNodeData({
+      source: 'https://cdn.example.com/original.png',
+      primaryResultSource: 'https://cdn.example.com/original.png',
+    }), {
+      activeTool: 'remove-bg',
+      onApplyImageToolPreset,
+    });
+
+    expect(await screen.findByRole('dialog', { name: '抠图' })).toBeInTheDocument();
+    expect(screen.getByText(/当前未接入本地抠图模型/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '生成' }));
+
+    expect(onApplyImageToolPreset).toHaveBeenCalledWith(expect.objectContaining({
+      label: '主体抠图',
+      promptSnippet: expect.stringContaining('主体抠图'),
+    }));
   });
 });

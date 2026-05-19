@@ -132,7 +132,7 @@
   --linghui-node-border: var(--token-accent-base);
 }
 
-// 宫格切分中间节点：N×N 槽位网格 + 删除按钮 + "彻底切分" footer。
+// 宫格切分中间节点：N×N 槽位网格 + 删除按钮 + 合成/切分 footer。
 .linghuiGridSliceNode {
   display: flex;
   flex-direction: column;
@@ -168,6 +168,20 @@
     color: color-mix(in srgb, var(--token-text-primary) 30%, transparent);
   }
 
+  &.hasContent {
+    cursor: grab;
+  }
+
+  &.isDragging {
+    opacity: 0.55;
+  }
+
+  &:focus-within,
+  &:hover {
+    outline: 1px solid color-mix(in srgb, var(--token-accent-base) 55%, transparent);
+    outline-offset: -1px;
+  }
+
   img {
     width: 100%;
     height: 100%;
@@ -199,7 +213,9 @@
 
 .linghuiGridSliceFooter {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
+  gap: 6px;
 }
 
 .linghuiGridSliceFooterButton {
@@ -222,6 +238,55 @@
   &:disabled {
     opacity: 0.45;
     cursor: not-allowed;
+  }
+}
+
+.linghuiVideoNodeResourceToolbar {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  right: 8px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--token-bg-elevated) 82%, transparent);
+  border: 1px solid color-mix(in srgb, var(--token-border-base) 72%, transparent);
+  box-shadow: 0 6px 14px color-mix(in srgb, var(--token-bg-app) 18%, transparent);
+  backdrop-filter: blur(12px);
+}
+
+.linghuiVideoNodeResourceTool {
+  min-width: 0;
+  height: 24px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--token-text-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: 11px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+
+  &:hover {
+    background: color-mix(in srgb, var(--token-accent-base) 12%, transparent);
+  }
+}
+
+.linghuiCompactAudioToolButton.isPrimary {
+  padding-inline: 8px;
+  background: color-mix(in srgb, var(--token-accent-base) 14%, transparent);
+  color: var(--token-text-primary);
+
+  &:hover {
+    background: color-mix(in srgb, var(--token-accent-base) 24%, transparent);
   }
 }
 
@@ -636,6 +701,20 @@
   background: color-mix(in srgb, var(--token-bg-surface) 52%, transparent);
 }
 
+.linghuiCompactScriptNode.isStoryExpanded {
+  width: min(760px, var(--linghui-node-width, 760px));
+  min-height: 620px;
+
+  .linghuiCompactThumb,
+  .linghuiCompactTextExcerpt {
+    display: none;
+  }
+
+  .linghuiCompactInfo {
+    min-height: 0;
+  }
+}
+
 .linghuiCompactScriptNodeBar {
   display: flex;
   align-items: center;
@@ -678,22 +757,36 @@
 
 .linghuiCompactScriptNodeBody {
   height: calc(100% - 30px);
-  overflow: auto;
+  overflow: hidden;
   padding: 8px;
   scrollbar-width: thin;
 
+  .linghuiCompactScriptNode.isStoryExpanded & {
+    overflow: auto;
+  }
+}
+
+.linghuiCompactScriptNodeBodyInner {
+  width: var(--linghui-script-preview-width, 100%);
+  transform: scale(var(--linghui-script-preview-scale, 1));
+  transform-origin: top left;
+  will-change: transform;
   .linghuiScriptShotGrid {
-    grid-template-columns: 1fr;
+    align-content: start;
   }
+}
 
-  .linghuiScriptShotTableWrap {
-    border-radius: 7px;
-  }
+.linghuiCompactScriptNodeBody .linghuiScriptShotGrid {
+  grid-template-columns: 1fr;
+}
 
-  .linghuiScriptShotTextCell,
-  .linghuiScriptShotImageBox {
-    height: 96px;
-  }
+.linghuiCompactScriptNodeBody .linghuiScriptShotTableWrap {
+  border-radius: 7px;
+}
+
+.linghuiCompactScriptNodeBody .linghuiScriptShotTextCell,
+.linghuiCompactScriptNodeBody .linghuiScriptShotImageBox {
+  height: 96px;
 }
 
 .linghuiCompactScriptEmpty {
@@ -1893,6 +1986,7 @@
   &TextThumb {
     @include lh-stack(16px);
 
+    position: relative;
     align-items: flex-start;
     justify-content: center;
     padding: 28px 24px;
@@ -1929,6 +2023,85 @@
         width: 58%;
       }
     }
+  }
+
+  &AgentPresetStrip {
+    @include lh-inline(5px, nowrap, flex-start, center);
+
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    right: 10px;
+    z-index: 8;
+    overflow: hidden;
+  }
+
+  &AgentPresetChip {
+    @include lh-inline(4px, nowrap, center, center);
+
+    min-width: 0;
+    height: 23px;
+    padding: 0 7px;
+    border: 1px solid color-mix(in srgb, var(--token-border-base) 64%, transparent);
+    border-radius: 7px;
+    color: $lh-text-secondary;
+    background: color-mix(in srgb, var(--token-bg-elevated) 88%, transparent);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+    backdrop-filter: blur(10px);
+
+    span {
+      @include lh-ellipsis;
+    }
+
+    &:hover {
+      color: $lh-text-primary;
+      border-color: color-mix(in srgb, var(--linghui-accent, var(--token-accent-base)) 42%, transparent);
+      background: color-mix(in srgb, var(--token-bg-hover) 80%, var(--token-bg-elevated));
+    }
+  }
+
+  &AgentActionRow {
+    @include lh-inline(6px, nowrap, flex-end, center);
+
+    margin-top: 2px;
+  }
+
+  &AgentIconButton,
+  &AgentRunButton {
+    @include lh-inline(5px, nowrap, center, center);
+
+    height: 26px;
+    border: 1px solid color-mix(in srgb, var(--token-border-base) 66%, transparent);
+    border-radius: 7px;
+    color: $lh-text-secondary;
+    background: color-mix(in srgb, var(--token-bg-elevated) 76%, transparent);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+
+    &:hover:not(:disabled) {
+      color: $lh-text-primary;
+      background: color-mix(in srgb, var(--token-bg-hover) 84%, transparent);
+    }
+
+    &:disabled {
+      cursor: not-allowed;
+      opacity: 0.52;
+    }
+  }
+
+  &AgentIconButton {
+    width: 28px;
+    padding: 0;
+  }
+
+  &AgentRunButton {
+    padding: 0 9px;
+    color: color-mix(in srgb, var(--linghui-accent, var(--token-accent-base)) 72%, var(--token-text-primary));
   }
 
   &ScriptThumb {
@@ -1989,32 +2162,101 @@
   &AudioResourceStage {
     @include lh-stack(16px);
 
+    position: relative;
     align-items: center;
     justify-content: center;
     width: 100%;
     height: 100%;
-    padding: 34px 18px 52px;
+    padding: 46px 16px 52px;
   }
 
-  &AudioDisc {
-    display: inline-flex;
+  &AudioToolbar {
+    @include lh-inline(6px);
+
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 8;
+    padding: 3px;
+    border: 1px solid color-mix(in srgb, var(--token-border-base) 72%, transparent);
+    border-radius: 9px;
+    background: color-mix(in srgb, var(--token-bg-elevated) 90%, transparent);
+    backdrop-filter: blur(12px);
+  }
+
+  &AudioToolButton {
+    @include lh-inline(4px, nowrap, center, center);
+
+    min-width: 28px;
+    height: 24px;
+    padding: 0 7px;
+    border: 0;
+    border-radius: 7px;
+    color: $lh-text-secondary;
+    background: transparent;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    text-decoration: none;
+    cursor: pointer;
+
+    &:hover {
+      color: $lh-text-primary;
+      background: color-mix(in srgb, var(--token-bg-hover) 82%, transparent);
+    }
+  }
+
+  &AudioWaveform {
+    display: flex;
     align-items: center;
     justify-content: center;
-    width: 94px;
-    height: 94px;
-    border-radius: 9999px;
-    color: color-mix(in srgb, var(--linghui-accent, var(--token-status-warning)) 72%, $lh-text-primary);
-    background:
-      radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--token-bg-card) 84%, transparent) 0 34%, transparent 35%),
-      radial-gradient(circle at 48% 46%, color-mix(in srgb, var(--linghui-accent, var(--token-status-warning)) 22%, transparent), transparent 66%),
-      color-mix(in srgb, var(--token-bg-app) 66%, transparent);
-    border: 1px solid color-mix(in srgb, var(--token-border-base) 62%, transparent);
+    gap: 3px;
+    width: min(280px, 100%);
+    height: 82px;
+    padding: 0 10px;
+    color: color-mix(in srgb, var(--linghui-accent, var(--token-status-warning)) 58%, var(--token-text-primary));
+
+    span {
+      flex: 0 0 3px;
+      min-height: 12%;
+      border-radius: $lh-radius-pill;
+      background: currentColor;
+      opacity: 0.36;
+
+      &:nth-child(3n + 1) {
+        opacity: 0.62;
+      }
+
+      &:nth-child(4n + 2) {
+        opacity: 0.48;
+      }
+    }
   }
 
   &AudioPlayer {
     width: min(260px, 100%);
     height: 30px;
     opacity: 0.92;
+  }
+
+  &AudioReadout {
+    @include lh-inline(8px, nowrap, center, center);
+    @include lh-ellipsis;
+
+    max-width: min(260px, 100%);
+    color: $lh-text-secondary;
+    font-size: 12px;
+    line-height: 1.2;
+
+    span {
+      @include lh-ellipsis;
+    }
+
+    em {
+      flex: 0 0 auto;
+      color: $lh-text-muted;
+      font-style: normal;
+    }
   }
 
   &AudioWave {

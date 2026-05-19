@@ -320,7 +320,7 @@ export function useLinghuiCanvasImageToolExecutions({
     workspaceId,
   ]);
 
-  const executeImageCrop = useCallback(async (nodeId: string, options: { aspectRatio: string; label?: string }) => {
+  const executeImageCrop = useCallback(async (nodeId: string, options: { aspectRatio: string; label?: string; anchorX?: number; anchorY?: number }) => {
     const sourceNodeId = String(nodeId ?? '').trim();
     if (!sourceNodeId) {
       return;
@@ -368,6 +368,8 @@ export function useLinghuiCanvasImageToolExecutions({
         input: inputPath,
         output: outputPath,
         aspectRatio,
+        anchorX: options.anchorX,
+        anchorY: options.anchorY,
         sharpenAmount: 0.4,
       });
       const croppedItem = await createLinghuiImageAssetItemFromSource({

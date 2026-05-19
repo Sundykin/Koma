@@ -196,7 +196,7 @@ export interface LinghuiNodeEditorApi {
     label?: string;
   }) => string | null;
   onExecuteImageUpscale?: (nodeId: string, options?: { factor?: 2 | 4 }) => void;
-  onExecuteImageCrop?: (nodeId: string, options: { aspectRatio: string; label?: string }) => void;
+  onExecuteImageCrop?: (nodeId: string, options: { aspectRatio: string; label?: string; anchorX?: number; anchorY?: number }) => void;
   onCreatePanoramaPreview?: (nodeId: string) => void;
   onExecuteMultiAngle?: (options?: LinghuiExecuteMultiAngleOptions) => void;
   onApplyImageToolPreset?: (preset: {

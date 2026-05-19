@@ -113,6 +113,40 @@
   - 图片派生优先使用 `imageGenerationPrompt`；视频派生优先使用 `videoMotionPrompt`。
   - `ScriptNode` / `StoryboardNode` 本体直接显示故事板卡片/表格，并提供节点内 `分镜图 / 视频流程` 操作，编辑器不再是唯一可见故事板载体。
 
+### 2026-05-19 GridSliceNode 本地合成边界
+
+- LibTV 证据仍保持两条不同链路：`剧情推演九宫格 / 多机位九宫格 / 16宫格 / 25宫格` 属于 slash image 分镜生成；`宫格切分` 属于已有宫格图片的 GridSplit editor，二者不能互相替代。
+- 灵绘 `linghui/image-grid-slice` 是本地切图中间节点，不是 LibTV 的剧情生成入口；因此本轮只补可本地闭环的操作，不把它伪装成云端分镜生成器。
+- 本轮对齐点：在节点本体 footer 增加 `合成宫格`，用浏览器 canvas 按当前槽位和 `2x2 / 3x3 / 4x4 / 5x5` 重新拼成一张图片，再走已有 `onCreateDerivedImportImages` 派生图片节点。
+- 现有 `彻底切分` 保持原语义：只把非空槽位派生为独立图片节点。空槽在合成图中保留轻背景和网格线，避免用户清空后误以为布局被压缩。
+- 继续补齐本地可实现的 slot 操作：已有图片槽位可拖拽换位，空槽/任意槽位可接收拖入的本地图片或 URL；这只更新 `slots[]`，不触发剧情分镜生成。
+
+### 2026-05-19 VideoNode 资源态节点内工具条
+
+- LibTV 视频资源节点的操作入口靠近节点本体，而不是只藏在外部面板；已有反编结论包含截图、剪辑、高清、解析、音频分离等资源态工具。
+- 灵绘这些工具已有真实执行面板：截图抽帧、剪辑派生、本地高清、解析文本和 FFmpeg 音轨分离。`智能去字幕` 和 `人声分离` 仍依赖云端/专用服务，本轮不放进节点本体工具条。
+- 本轮对齐点：选中资源态 `VideoNode` 时，在视频预览上方显示紧凑扁平工具条，点击后调用 `openVideoToolPanel(nodeId, tool)` 打开对应真实工具面板。
+
+### 2026-05-19 AudioNode 资源态节点内派生入口
+
+- LibTV 音频节点的 `音频生视频` 是明确的派生动作：以音频节点为输入，在右侧创建视频节点，并补一个图片输入节点。
+- 灵绘已有同名真实派生链路 `onApplyAudioEmptyAction(nodeId, 'audio-to-video')`，此前只在空态 EmptyState 中可见。
+- 本轮对齐点：选中资源态音频节点时，播放器工具条增加 `生视频` 小按钮，直接触发同一条派生链路；倍速和下载保持原资源态操作。
+
+### 2026-05-19 Storyboard 卡片字段化展示
+
+- 用户此前指出故事板字段“故事描述 / 画面提示词 / 视频提示词 / 画面描述”一模一样且像样子货；数据解析已修正，但节点内卡片视图仍只露摘要，容易看不出字段差异。
+- LibTV 的故事板/视频故事节点在节点本体里直接展示表格/卡片数据，而不是只靠外挂编辑器；字段应在节点内可扫描。
+- 本轮对齐点：`ScriptShotCards` 在卡片中分开展示 `剧情描述 / 画面 / 生图 / 视频`，表格视图继续保留完整列。
+
+### 2026-05-19 Storyboard 节点内表格编辑
+
+- LibTV 的故事板/视频故事表格允许在节点/全屏表格里直接处理字段，不应只作为不可编辑预览。
+- 灵绘已有 `ScriptShotTable` editable 机制，但此前只在脚本编辑器 manual 模式里使用；节点本体表格仍是只读。
+- 本轮对齐点：`ScriptNode` 节点内表格开启 editable，修改后的镜头数据写入节点 `properties.editedShots`；节点内 `生成分镜 / 生成视频组` 会读取编辑后的字段。
+- `StoryboardNodeEditor` 也读取/写入同一份 `editedShots`，减少节点本体和外挂编辑器之间的数据割裂。
+- 节点内聚合生成器补齐 `派生文本`，调用已有 `onDeriveScriptShots`，与编辑器里的 `派生镜头文本 / 分镜图 / 视频流程` 三类操作保持一致。
+
 ## 2026-05-17 灵绘大组件 / 大 hooks 拆分扫描
 
 - 扫描命令口径：`rg --files frontend/src/components/linghui -g '*.tsx' -g '*.ts' -g '!**/*.test.ts' -g '!**/*.test.tsx' -g '!**/tests/**'`，组件取 `.tsx`，hooks 取 `use*.ts(x)`，阈值 `>500` 行。
@@ -1289,3 +1323,31 @@ LibTV 节点类型中**灵绘未实现**：
 - LibTV 表格文本单元格在非只读时是可编辑 cell：`editableTextCells: !readonly`，字段包括 `durationSeconds/plotDescription/shotSize/characterAction/emotion/sceneTags/lightingAndAtmosphere/audioEffects/dialogue/imageGenerationPrompt/videoMotionPrompt`。
 - 灵绘当前可安全落地的编辑范围是 `ScriptNodeEditor` 的 `manual` 模式，因为它的 source of truth 是 `properties.content`。LLM/storyboard 运行结果应保持只读，避免编辑 transient run result 而不持久化。
 - 本轮把编辑器分镜操作从表头按钮区移成选中后底部 toolbar，和节点内 `ScriptAggregatedGenerator` 的出现条件保持一致；表头只保留视图切换、全选和全屏。
+
+## 2026-05-18 Image Crop / Remove-bg Tool Fidelity
+
+- LibTV 的 `抠图` 入口是云端能力，打包代码里能看到 `removeBackgroundInference` API；灵绘当前本地没有等价透明抠图模型或分割模型，因此不能把按钮包装成“本地一键抠图成功”。
+- 灵绘已具备真实本地图片裁剪链路：`ImageNodeEditorGenericPanel -> onExecuteImageCrop -> useLinghuiCanvasImageToolExecutions.executeImageCrop -> ffmpegManager.cropImage -> Electron FFmpeg cropImage`。
+- 本轮选择把裁剪继续补实：增加 3×3 裁剪锚点，并把锚点传给 Electron FFmpeg crop expression，支持保留左/右/上/下重点区域，而不是永远中心裁剪。
+- `抠图` / `擦除` 面板保留可执行图生图派生任务，但明确提示当前不是本地透明抠图/本地修复模型，避免继续形成“样子货”误导。
+
+## 2026-05-18 Canvas Interaction Fidelity
+
+- 现有画布已经有 LibTV 风格 `resolveQuickCreateFromConnectEnd()`：连线拖到空白处松开时打开 quick-create，且不再依赖 `.react-flow__pane` target。
+- `canvas-interacting` 之前只覆盖节点拖拽和框选拖拽；连线拖拽时节点 glow / generating / skeleton 动画仍可能继续跑，和 LibTV 拖拽中压低节点动画的体验不一致。
+- `Esc` 取消连线已在热键层优先消费，但取消路径只清 pending connection；如果连线拖拽也进入 interacting 状态，取消路径必须同步退出 interacting。
+- jsdom 没有 `PointerEvent`，取消连线合成 `pointerup` 需要 `window.PointerEvent ?? window.MouseEvent` fallback；Electron Chromium 仍会走 PointerEvent。
+
+## 2026-05-18 LibTV AudioNode Findings
+
+- LibTV `AudioNode` 在 `template_/libtv/0wanf5895ewvy.js` 中，资源态不是简单原生 `<audio>` 下挂，而是 `AudioPlayer` + `AudioNodeToolbar`。
+- 资源态工具条包含速度切换，播放速率固定轮转 `1 / 1.5 / 2`；另有下载入口。灵绘无 LibTV 水印/VIP 下载概念，因此只迁入普通本地/URL 下载。
+- LibTV 音频资源态主体有波形条背景，生成中也复用波形视觉；空生成态只显示 `音频生视频`，待上游态为空内容但保留上传浮条。
+- 灵绘已有 `音频生视频` 和上传浮条逻辑，本轮可聚焦资源态播放器视觉与工具条，不引入 LibTV 的云端审核、CDN 上传、积分或水印逻辑。
+
+## 2026-05-19 LibTV Canvas Agent Findings
+
+- LibTV 中 `CanvasAgent` 是独立会话/流式运行能力（见 `CHAT_CANVAS_AGENT_ID = "canvasAgent"`、`ProxiedCopilotRuntimeAgent`、WebSocket session/run/abort 逻辑），不是静态说明卡。
+- 灵绘已有 `linghui/agent` 执行器、模型选择、工具白名单和 preset 编辑器，但节点本体仍只是静态 AI 缩略图；常用的任务模板与运行入口都需要展开编辑器。
+- 对齐方向不是伪造 LibTV WebSocket 会话，而是把灵绘已有 Agent 能力前移到节点本体：节点内显示紧凑任务模板、工具/迭代摘要、运行按钮和流式输出摘要。
+- 任务模板应复用 `LINGHUI_AGENT_PROMPT_PRESETS`，运行仍走已有 `onRunNode`，不迁入 LibTV 登录、在线项目会话、积分或云端工具注册逻辑。
