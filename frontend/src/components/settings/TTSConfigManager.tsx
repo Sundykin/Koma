@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import React, { useCallback, useMemo } from 'react';
 import {
   App,
@@ -110,7 +111,7 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
     loadConfigs,
   } = useMediaConfigManager<TTSModelConfig>('tts', loadBuiltins, onConfigChange);
 
-  const showChannelConfigCreateEntry = false;
+  const showChannelConfigCreateEntry = import.meta.env.DEV;
 
   const currentProviderType = Form.useWatch('providerType', form) as string | undefined;
   const currentDefinition = currentProviderType ? definitionMap.get(currentProviderType) : undefined;

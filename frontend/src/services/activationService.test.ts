@@ -30,6 +30,7 @@ type ActivationTestCategory = 'llm' | 'tti' | 'itv' | 'tts';
 const ACTIVATION_CATEGORY_BY_ID: Record<string, ActivationTestCategory> = {
   [KOMAAPI_ACTIVATION_CHANNEL_IDS.llm]: 'llm',
   [KOMAAPI_ACTIVATION_CHANNEL_IDS.tti]: 'tti',
+  [KOMAAPI_ACTIVATION_CHANNEL_IDS.ttiGptImage2]: 'tti',
   [KOMAAPI_ACTIVATION_CHANNEL_IDS.itv]: 'itv',
   [KOMAAPI_ACTIVATION_CHANNEL_IDS.itvJimeng]: 'itv',
   [KOMAAPI_ACTIVATION_CHANNEL_IDS.tts]: 'tts',
@@ -217,9 +218,10 @@ describe('activationService legacy activation migration', () => {
     });
 
     const createCalls = mocks.ipcInvoke.mock.calls.filter(([channel]) => channel === 'channel:create');
-    // 5 个 koma-activation 管理渠道：llm / tti / itv（grok）/ itvJimeng（即梦）/ tts
-    expect(createCalls).toHaveLength(5);
+    // 6 个 koma-activation 管理渠道：llm / tti（grok）/ tti（gpt-image-2）/ itv（grok）/ itvJimeng（即梦）/ tts
+    expect(createCalls).toHaveLength(6);
     expect(createCalls.map(([, args]) => args.providerConfig.apiKey)).toEqual([
+      FAKE_LEGACY_KEY,
       FAKE_LEGACY_KEY,
       FAKE_LEGACY_KEY,
       FAKE_LEGACY_KEY,
@@ -229,6 +231,7 @@ describe('activationService legacy activation migration', () => {
     expect(createCalls.map(([, args]) => args.name)).toEqual([
       'Koma官方',
       'Koma官方',
+      'Koma官方-gpt-image-2',
       'Koma官方',
       'Koma官方-即梦',
       'Koma 官方 TTS',
@@ -239,8 +242,10 @@ describe('activationService legacy activation migration', () => {
       KOMA_ACTIVATION_MANAGED_BY,
       KOMA_ACTIVATION_MANAGED_BY,
       KOMA_ACTIVATION_MANAGED_BY,
+      KOMA_ACTIVATION_MANAGED_BY,
     ]);
     expect(createCalls.map(([, args]) => args.providerConfig.activationManaged)).toEqual([
+      true,
       true,
       true,
       true,
@@ -326,6 +331,7 @@ describe('activationService ensureDefaultModelChannels', () => {
     const categoryById: Record<string, ActivationTestCategory> = {
       [KOMAAPI_ACTIVATION_CHANNEL_IDS.llm]: 'llm',
       [KOMAAPI_ACTIVATION_CHANNEL_IDS.tti]: 'tti',
+      [KOMAAPI_ACTIVATION_CHANNEL_IDS.ttiGptImage2]: 'tti',
       [KOMAAPI_ACTIVATION_CHANNEL_IDS.itv]: 'itv',
       [KOMAAPI_ACTIVATION_CHANNEL_IDS.itvJimeng]: 'itv',
       [KOMAAPI_ACTIVATION_CHANNEL_IDS.tts]: 'tts',
@@ -368,11 +374,12 @@ describe('activationService ensureDefaultModelChannels', () => {
 
     expect(result.success).toBe(true);
     const updateCalls = mocks.ipcInvoke.mock.calls.filter(([channel]) => channel === 'channel:update');
-    // 5 个管理渠道：llm / tti / itv（grok） / itvJimeng（即梦） / tts
-    expect(updateCalls).toHaveLength(5);
+    // 6 个管理渠道：llm / tti（grok）/ tti（gpt-image-2）/ itv（grok）/ itvJimeng（即梦）/ tts
+    expect(updateCalls).toHaveLength(6);
     expect(updateCalls.map(([, args]) => args.patch.name)).toEqual([
       'Koma官方',
       'Koma官方',
+      'Koma官方-gpt-image-2',
       'Koma官方',
       'Koma官方-即梦',
       'Koma 官方 TTS',
@@ -383,8 +390,10 @@ describe('activationService ensureDefaultModelChannels', () => {
       KOMA_ACTIVATION_MANAGED_BY,
       KOMA_ACTIVATION_MANAGED_BY,
       KOMA_ACTIVATION_MANAGED_BY,
+      KOMA_ACTIVATION_MANAGED_BY,
     ]);
     expect(updateCalls.map(([, args]) => args.patch.providerConfig.activationManaged)).toEqual([
+      true,
       true,
       true,
       true,
