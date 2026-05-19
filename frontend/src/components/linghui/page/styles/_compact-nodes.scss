@@ -752,6 +752,13 @@
       background: color-mix(in srgb, var(--token-bg-hover) 78%, transparent);
       color: $lh-text-strong;
     }
+
+    &.isText {
+      width: auto;
+      padding: 0 7px;
+      font-size: 11px;
+      white-space: nowrap;
+    }
   }
 }
 
@@ -796,6 +803,52 @@
   justify-content: center;
   color: $lh-text-muted;
   font-size: 12px;
+}
+
+.linghuiCompactScriptComposer {
+  display: flex;
+  height: 100%;
+  min-height: 176px;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.linghuiCompactScriptComposerInput {
+  flex: 1;
+  min-height: 0;
+  resize: none;
+  border: 1px solid color-mix(in srgb, var(--token-border-base) 58%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--token-bg-app) 72%, transparent);
+  color: $lh-text-primary;
+  font-size: 12px;
+  line-height: 1.55;
+  outline: none;
+  padding: 8px;
+
+  &:focus {
+    border-color: color-mix(in srgb, var(--token-accent-base) 54%, transparent);
+  }
+}
+
+.linghuiCompactScriptComposerRun {
+  display: inline-flex;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--token-accent-base);
+  color: var(--token-bg-card);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+  }
 }
 
 .linghuiCompactScriptGenerator {

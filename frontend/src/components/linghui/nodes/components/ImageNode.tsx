@@ -20,7 +20,7 @@ import {
   useLinghuiNodeEditorVisibility,
 } from '../state/LinghuiNodeRunsContext';
 import { useLinghuiConnectTarget } from '../state/useLinghuiConnectTarget';
-import { extractPerspectiveViewFromViewerCamera } from '../../panorama/panoramaPerspectiveExtractor';
+import { snapshotPanoramaPerspective } from '../../panorama/panoramaPerspectiveSnapshot';
 import { LinghuiNodeEditor } from '../../editors/components/LinghuiNodeEditor';
 import { PanoramaViewer, PanoramaViewport } from '../../panorama/PanoramaViewer';
 import { resolvePanoramaProjectionMode } from '../../panorama/panoramaProjection';
@@ -112,15 +112,13 @@ function ImageNodeInner({ id, data, selected }: NodeProps) {
   // 全景节点"应用此视角"：把当前预览的 yaw/pitch/fovDeg 抽成 perspective 图，
   // 派生为下游 linghui/image (mode='import') 节点。仅在全景节点上生效。
   //
-  // 使用 extractPerspectiveViewFromViewerCamera —— 它的坐标系约定与 PanoramaViewer 内部相机完全一致：
-  //  - panorama 中心朝 +Z（与 cam.lookAt 公式一致）
-  //  - pitch>0 = 朝上 → 抽到 panorama 顶部（v<0.5）
-  //  - yaw>0 = 朝右
-  // 不需要再手动做 yaw+π / -pitch 转换；直接传 viewer 的快照值即可所见即所抽。
+  // 走 snapshotPanoramaPerspective —— 它复用 PanoramaViewer 同一份相机 lookAt 公式
+  // 和 sphere/cylinder/flat 几何工厂（panoramaSceneBuilder），离屏渲一帧，所见即所抽。
   const panoramaApplyPerspectiveHandler = useCallback(async (view: { yaw: number; pitch: number; fovDeg: number }) => {
     if (!isPanoramaNode || !primaryDisplayItem?.preview) return;
     try {
-      const result = await extractPerspectiveViewFromViewerCamera(primaryDisplayItem.preview, {
+      const result = await snapshotPanoramaPerspective({
+        sourceUrl: primaryDisplayItem.preview,
         yaw: view.yaw,
         pitch: view.pitch,
         fovDeg: view.fovDeg,

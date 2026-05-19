@@ -1,6 +1,6 @@
 import React, { memo, useMemo, useState } from 'react';
 import { type NodeProps } from '@xyflow/react';
-import { Maximize2, Minimize2, Table2, LayoutGrid, Image as ImageIcon, Video, Wand2, X } from 'lucide-react';
+import { ArrowUp, LoaderCircle, Maximize2, Minimize2, Table2, LayoutGrid, Image as ImageIcon, Video, Wand2, X } from 'lucide-react';
 import type {
   LinghuiNodeData,
   LinghuiNodeType,
@@ -109,8 +109,23 @@ function ScriptNodeInner({ id, data, selected }: NodeProps) {
       };
     }, { markStale: false });
   };
+  const handlePromptChange = (value: string) => {
+    updateNodeData(id, prev => ({
+      ...prev,
+      properties: {
+        ...prev.properties,
+        prompt: value,
+      } as unknown as Record<string, unknown>,
+    }));
+  };
+  const handleRunStoryboard = () => {
+    if (!String(props.prompt ?? '').trim() || status === 'running') return;
+    editorApi.onRunNode(id);
+  };
   const selectedShots = shots.filter(shot => effectiveSelectedShotIds.includes(shot.id));
   const canUseShotActions = selectedShots.length > 0;
+  const areAllShotsSelected = shots.length > 0 && effectiveSelectedShotIds.length === shots.length;
+  const canRunStoryboard = Boolean(String(props.prompt ?? '').trim()) && status !== 'running';
   const previewScale = getScriptNodePreviewScale(shots.length, nodeViewMode, isStoryExpanded);
   const storyNodeStyle = cssVars({
     ...nodeStyle,
@@ -158,6 +173,20 @@ function ScriptNodeInner({ id, data, selected }: NodeProps) {
             >
               <Table2 size={12} />
             </button>
+            {shots.length > 0 ? (
+              <button
+                type="button"
+                className="isText"
+                aria-label={areAllShotsSelected ? '清空选择' : '全选镜头'}
+                title={areAllShotsSelected ? '清空选择' : '全选镜头'}
+                onClick={event => {
+                  event.stopPropagation();
+                  setSelectedShotIds(areAllShotsSelected ? [] : shots.map(shot => shot.id));
+                }}
+              >
+                {areAllShotsSelected ? '清选' : '全选'}
+              </button>
+            ) : null}
             <button
               type="button"
               aria-label={isStoryExpanded ? '收起节点' : '展开节点'}
@@ -190,7 +219,32 @@ function ScriptNodeInner({ id, data, selected }: NodeProps) {
                 />
               )
             ) : (
-              <div className="linghuiCompactScriptEmpty">运行后在节点内展示故事板</div>
+              <div className="linghuiCompactScriptComposer">
+                <textarea
+                  className="linghuiCompactScriptComposerInput nodrag nowheel"
+                  value={String(props.prompt ?? '')}
+                  placeholder="写下剧情大纲，节点内生成故事板"
+                  onChange={event => handlePromptChange(event.target.value)}
+                  onClick={event => event.stopPropagation()}
+                  onMouseDown={event => event.stopPropagation()}
+                  onKeyDown={event => event.stopPropagation()}
+                  aria-label="故事板剧情大纲"
+                />
+                <button
+                  type="button"
+                  className="linghuiCompactScriptComposerRun nodrag"
+                  disabled={!canRunStoryboard}
+                  onClick={event => {
+                    event.stopPropagation();
+                    handleRunStoryboard();
+                  }}
+                  aria-label="生成故事板"
+                  title={canRunStoryboard ? '生成故事板' : '请先输入剧情大纲'}
+                >
+                  {status === 'running' ? <LoaderCircle size={13} className="linghuiCompactInlineSpinner" /> : <ArrowUp size={13} />}
+                  <span>{status === 'running' ? '生成中' : '生成故事板'}</span>
+                </button>
+              </div>
             )}
           </div>
         </div>

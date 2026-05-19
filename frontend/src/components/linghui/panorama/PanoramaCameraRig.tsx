@@ -1,6 +1,7 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
+import { applyPanoramaCameraLookAt } from './panoramaSceneBuilder';
 
 interface CameraRigProps {
   yawTargetRef: React.MutableRefObject<number>;
@@ -17,7 +18,6 @@ export const CameraRig: React.FC<CameraRigProps> = React.memo(function CameraRig
   fovRef, autoRotateUntilRef, isDraggingRef,
 }) {
   const { camera, size, gl } = useThree();
-  const tmpVec = useRef(new THREE.Vector3());
 
   useEffect(() => {
     const cam = camera as THREE.PerspectiveCamera;
@@ -35,10 +35,7 @@ export const CameraRig: React.FC<CameraRigProps> = React.memo(function CameraRig
     const LERP = 0.18;
     yawCurrentRef.current += (yawTargetRef.current - yawCurrentRef.current) * LERP;
     pitchCurrentRef.current += (pitchTargetRef.current - pitchCurrentRef.current) * LERP;
-    const yaw = yawCurrentRef.current, pitch = pitchCurrentRef.current;
-    tmpVec.current.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
-    cam.position.set(0, 0, 0);
-    cam.lookAt(tmpVec.current);
+    applyPanoramaCameraLookAt(cam, yawCurrentRef.current, pitchCurrentRef.current);
   });
 
   return null;

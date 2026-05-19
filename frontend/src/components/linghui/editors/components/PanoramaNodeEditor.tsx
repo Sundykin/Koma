@@ -32,11 +32,10 @@ import { useLinghuiNodeMutation } from '../../nodes/state/LinghuiNodeRunsContext
 import { resolveLinghuiImageCollection } from '../state/linghuiImageCollections';
 import type { LinghuiImageAssetItem, LinghuiPanoramaPerspectiveView } from '../../../../types/linghui';
 import {
-  extractPerspectiveView,
   PANORAMA_PERSPECTIVE_EIGHT_DIRECTIONS,
   PANORAMA_PERSPECTIVE_SIX_FACES,
 } from '../../panorama/panoramaPerspectiveExtractor';
-import { extractPerspectiveViewGpu } from '../../panorama/panoramaGpuExtractor';
+import { snapshotPanoramaPerspectives } from '../../panorama/panoramaPerspectiveSnapshot';
 import { persistMediaAsset } from '../../../../services/mediaPersistenceService';
 import { toFileSystemDisplayUrl } from '../../../../services/fileSystemPort';
 import { nanoid } from 'nanoid';
@@ -161,20 +160,23 @@ export const PanoramaNodeEditor: React.FC<PanoramaNodeEditorProps> = (props) => 
       // 球面采样需要正常 URL（http 或 file:// koma-local 转换后），先把 koma-local 转成 displayUrl
       const displaySrc = toFileSystemDisplayUrl(seamPreviewUrl) || seamPreviewUrl;
       const outputSize = preset === 'six' ? 1024 : 768;
-      const newViews: LinghuiPanoramaPerspectiveView[] = [];
-      for (let i = 0; i < config.length; i++) {
-        const angle = config[i];
-        const extractOptions = {
+      // 复用 PanoramaViewer 同一份 lookAt + 几何（panoramaSceneBuilder），离屏共享一个
+      // WebGLRenderer 渲 N 张，所见即所抽。
+      const snapshots = await snapshotPanoramaPerspectives(
+        displaySrc,
+        currentProjection,
+        config.map(angle => ({
           yaw: angle.yaw,
           pitch: angle.pitch,
           fovDeg: angle.fovDeg,
           width: outputSize,
           height: outputSize,
-          projectionMode: currentProjection,
-        };
-        const extracted = await extractPerspectiveViewGpu(displaySrc, extractOptions).catch(() => (
-          extractPerspectiveView(displaySrc, extractOptions)
-        ));
+        })),
+      );
+      const newViews: LinghuiPanoramaPerspectiveView[] = [];
+      for (let i = 0; i < config.length; i += 1) {
+        const angle = config[i];
+        const extracted = snapshots[i];
         // 落盘成 koma-local URL（下游 grok / 视频 provider 才能读）
         const persisted = await persistMediaAsset({
           projectId: 'linghui',

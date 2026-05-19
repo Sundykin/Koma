@@ -177,6 +177,12 @@ describe('ScriptNode', () => {
 
     expect(screen.queryByText('已选 1/1')).not.toBeInTheDocument();
 
+    fireEvent.click(screen.getByRole('button', { name: '全选镜头' }));
+    expect(screen.getByText('已选 1/1')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '清空选择' }));
+    expect(screen.queryByText('已选 1/1')).not.toBeInTheDocument();
+
     fireEvent.click(screen.getByRole('checkbox'));
     expect(screen.getByText('已选 1/1')).toBeInTheDocument();
 
@@ -203,5 +209,30 @@ describe('ScriptNode', () => {
       imageGenerationPrompt: '电影感逆光室内，中景构图。',
       videoMotionPrompt: '镜头从门把手推到主角侧脸。',
     });
+  });
+
+  it('lets an empty storyboard node edit prompt and run inside the node', () => {
+    const updateNodeData = vi.fn();
+    const onRunNode = vi.fn();
+    useLinghuiNodeMutationMock.mockReturnValue({ updateNodeData });
+    useLinghuiNodeEditorApiMock.mockReturnValue({
+      onDeriveScriptShots: vi.fn(),
+      onGenerateScriptImages: vi.fn(),
+      onGenerateScriptVideos: vi.fn(),
+      onRunNode,
+    });
+    useNodeRunStateMock.mockReturnValue({ status: 'idle' });
+
+    renderScriptNode(createScriptNodeData());
+
+    const promptInput = screen.getByRole('textbox', { name: '故事板剧情大纲' });
+    fireEvent.change(promptInput, { target: { value: '主角在暴雨夜发现失踪线索。' } });
+
+    expect(updateNodeData).toHaveBeenCalledWith('storyboard-node-1', expect.any(Function));
+    const updater = updateNodeData.mock.calls[0][1] as (prev: LinghuiNodeData) => LinghuiNodeData;
+    expect((updater(createScriptNodeData()).properties as any).prompt).toBe('主角在暴雨夜发现失踪线索。');
+
+    fireEvent.click(screen.getByRole('button', { name: '生成故事板' }));
+    expect(onRunNode).toHaveBeenCalledWith('storyboard-node-1');
   });
 });

@@ -64,9 +64,13 @@
   - `LinghuiScriptNodeProperties` / `LinghuiStoryboardNodeProperties` 增加 `editedShots`，作为用户手动修正后的镜头数据源。
   - `StoryboardNodeEditor` 读取并写回同一份 `editedShots`，避免节点内编辑和外挂编辑器展示不一致。
   - 节点内聚合生成器补 `派生文本`，接入已有 `onDeriveScriptShots`，与编辑器的镜头文本/分镜图/视频组三类操作对齐。
+  - 空态故事板节点新增节点内剧情输入和 `生成故事板` 按钮，直接调用 `onRunNode`。
+  - 节点右上角补 `全选/清选`，收起态使用缩放总览避免滚动条和内容截断，展开态放大节点并在节点内看完整内容。
 - Validation:
   - `cd frontend && npm run test -- --run src/components/linghui/nodes/tests/ScriptNode.test.tsx src/components/linghui/editors/tests/ScriptShotViews.test.tsx`：2 files / 7 tests passed。
   - `cd frontend && npm run test -- --run src/components/linghui/nodes/tests/ScriptNode.test.tsx`：1 file / 4 tests passed after adding `派生文本`。
+  - `cd frontend && npm run test -- --run src/components/linghui/nodes/tests/ScriptNode.test.tsx`：1 file / 5 tests passed after adding in-node prompt/run.
+  - `cd frontend && npm run test -- --run src/components/linghui/nodes/tests/ScriptNode.test.tsx src/components/linghui/editors/tests/ScriptShotViews.test.tsx`：2 files / 8 tests passed after adding full-select controls.
   - `npx tsc --noEmit --project frontend/tsconfig.json --pretty false`：passed。
   - `git diff --check`：passed。
 - Next:
