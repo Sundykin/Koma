@@ -1,4 +1,4 @@
-import React, { memo, useMemo } from 'react';
+import React, { memo, useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { type NodeProps, useStore } from '@xyflow/react';
 import { FileText } from 'lucide-react';
 import type {
@@ -7,7 +7,12 @@ import type {
   LinghuiTextNodeProperties,
 } from '../../../../types/linghui';
 import { getLinghuiResultText, resolveLinghuiTextNodeViewState } from '../../../../types/linghui';
-import { useLinghuiNodeInteraction, useLinghuiNodeEditorVisibility, useNodeRunState } from '../state/LinghuiNodeRunsContext';
+import {
+  useLinghuiNodeInteraction,
+  useLinghuiNodeEditorVisibility,
+  useLinghuiNodeMutation,
+  useNodeRunState,
+} from '../state/LinghuiNodeRunsContext';
 import { useLinghuiConnectTarget } from '../state/useLinghuiConnectTarget';
 import { LinghuiNodeEditor } from '../../editors/components/LinghuiNodeEditor';
 import { EditableCompactNodeLabel } from './EditableCompactNodeLabel';
@@ -26,11 +31,67 @@ const STATUS_COLORS: Record<LinghuiRunStatus, string> = {
   stale: 'var(--token-status-warning)',
 };
 
+interface TextNodeManualResourceEditorProps {
+  value: string;
+  onCommit: (value: string) => void;
+}
+
+const TextNodeManualResourceEditor: React.FC<TextNodeManualResourceEditorProps> = ({
+  value,
+  onCommit,
+}) => {
+  const [draft, setDraft] = useState(value);
+  const isComposingRef = useRef(false);
+
+  useEffect(() => {
+    if (isComposingRef.current) return;
+    setDraft(value);
+  }, [value]);
+
+  const commit = useCallback((nextValue: string) => {
+    onCommit(nextValue);
+  }, [onCommit]);
+
+  return (
+    <textarea
+      className="linghuiTextNodeResourceTextarea"
+      value={draft}
+      placeholder="请编写内容，开始你的创作。"
+      autoFocus
+      onCompositionStart={() => {
+        isComposingRef.current = true;
+      }}
+      onCompositionEnd={event => {
+        isComposingRef.current = false;
+        const nextValue = event.currentTarget.value;
+        setDraft(nextValue);
+        commit(nextValue);
+      }}
+      onChange={event => {
+        const nextValue = event.target.value;
+        setDraft(nextValue);
+        if (!isComposingRef.current) {
+          commit(nextValue);
+        }
+      }}
+      onBlur={() => {
+        if (!isComposingRef.current && draft !== value) {
+          commit(draft);
+        }
+      }}
+      onPointerDown={event => event.stopPropagation()}
+      onMouseDown={event => event.stopPropagation()}
+      onKeyDown={event => event.stopPropagation()}
+    />
+  );
+};
+
 function TextNodeInner({ id, data, selected }: NodeProps) {
   const nodeData = data as unknown as LinghuiNodeData;
   const props = nodeData.properties as unknown as LinghuiTextNodeProperties;
   const runState = useNodeRunState(id);
   const interactionHandlers = useLinghuiNodeInteraction(id);
+  const { updateNodeData } = useLinghuiNodeMutation();
   const status = runState?.status ?? 'idle';
   const statusColor = STATUS_COLORS[status] ?? STATUS_COLORS.idle;
 
@@ -58,9 +119,23 @@ function TextNodeInner({ id, data, selected }: NodeProps) {
     (props.mode === 'manual' ? props.content : props.prompt) ??
     '',
   ).trim();
+  const content = String(props.content ?? '');
   const modeLabel = props.mode === 'generate' ? 'LLM 生成' : '手动文本';
   const viewMode = resolveLinghuiNodeViewMode(nodeData.viewMode);
   const isEditorVisible = useLinghuiNodeEditorVisibility(id, 'linghui/text');
+  const isManualMode = props.mode === 'manual';
+  const isManualEditorVisible = isManualMode && isEditorVisible && !selected;
+  const shouldShowTextGenerator = selected || isEditorVisible;
+
+  const updateContent = useCallback((content: string) => {
+    updateNodeData(id, prev => ({
+      ...prev,
+      properties: {
+        ...prev.properties,
+        content,
+      },
+    }));
+  }, [id, updateNodeData]);
 
   // LibTV `hideTargetHandle = isResourceAction(action)`：manual 模式（=TEXT_RESOURCE）隐藏左 target handle。
   // 资源态不需要上游输入，掩盖 handle 避免误连。
@@ -83,42 +158,65 @@ function TextNodeInner({ id, data, selected }: NodeProps) {
         <div className="linghuiTextNodePendingState" aria-label="等待上游产出">
           <FileText size={90} strokeWidth={1.2} aria-hidden="true" />
         </div>
-      ) : (
-        <>
-          <div className="linghuiCompactThumb linghuiCompactTextThumb">
-            <div className="linghuiCompactTextGlyph linghuiCompactAccentText">
-              T
-            </div>
-            <div className="linghuiCompactTextLines">
-              <span className="linghuiCompactAccentLineStrong" />
-              <span className="linghuiCompactAccentLineMedium" />
-              <span className="linghuiCompactAccentLineSoft" />
-            </div>
-          </div>
-
-          <div className="linghuiCompactInfo">
-            <EditableCompactNodeLabel
-              nodeId={id}
-              label={nodeData.label}
-              fallbackLabel="文本"
-            />
-            <span className="linghuiCompactMeta">{modeLabel}</span>
-            {previewText ? (
-              <div className="linghuiCompactTextExcerpt">
-                {previewText.slice(0, 72)}
-              </div>
-            ) : null}
-            <LinghuiNodeRunError runState={runState} />
-            {status === 'running' && (
-              <div className="linghuiCompactProgress">
-                <div className="linghuiCompactProgressBar" />
+      ) : isManualMode ? (
+        previewText || isManualEditorVisible ? (
+          <div className={`linghuiTextNodeResourceState ${isManualEditorVisible ? 'isEditing' : ''}`}>
+            {isManualEditorVisible ? (
+              <TextNodeManualResourceEditor
+                value={content}
+                onCommit={updateContent}
+              />
+            ) : (
+              <div className="linghuiTextNodeResourceText">
+                {previewText}
               </div>
             )}
           </div>
+        ) : (
+          <LinghuiTextNodeEmptyState nodeId={id} variant="manual" />
+        )
+      ) : (
+        <>
+          {previewText ? (
+            <>
+              <div className="linghuiCompactThumb linghuiCompactTextThumb">
+                <div className="linghuiCompactTextGlyph linghuiCompactAccentText">
+                  T
+                </div>
+                <div className="linghuiCompactTextLines">
+                  <span className="linghuiCompactAccentLineStrong" />
+                  <span className="linghuiCompactAccentLineMedium" />
+                  <span className="linghuiCompactAccentLineSoft" />
+                </div>
+              </div>
+
+              <div className="linghuiCompactInfo">
+                <EditableCompactNodeLabel
+                  nodeId={id}
+                  label={nodeData.label}
+                  fallbackLabel="文本"
+                />
+                <span className="linghuiCompactMeta">{modeLabel}</span>
+                <div className="linghuiCompactTextExcerpt">
+                  {previewText.slice(0, 72)}
+                </div>
+                <LinghuiNodeRunError runState={runState} />
+                {status === 'running' && (
+                  <div className="linghuiCompactProgress">
+                    <div className="linghuiCompactProgressBar" />
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="linghuiTextNodePendingState" aria-label="等待 LLM 生成文本">
+              <FileText size={90} strokeWidth={1.2} aria-hidden="true" />
+            </div>
+          )}
         </>
       )}
 
-      {isEditorVisible ? <LinghuiNodeEditor nodeId={id} nodeType="linghui/text" /> : null}
+      {shouldShowTextGenerator ? <LinghuiNodeEditor nodeId={id} nodeType="linghui/text" forceVisible /> : null}
     </div>
   );
 }

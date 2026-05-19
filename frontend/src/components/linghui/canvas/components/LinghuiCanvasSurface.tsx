@@ -27,7 +27,7 @@ import { LinghuiCanvasStage } from './LinghuiCanvasStage';
 interface LinghuiCanvasSurfaceProps {
   hostRef: RefObject<HTMLDivElement | null>;
   canvasMode: LinghuiCanvasMode;
-  /** LibTV interacting：节点/框选拖拽中，根节点挂 .canvas-interacting 暂停节点动画。 */
+  /** LibTV interacting：节点/框选/连线拖拽中，根节点挂 .canvas-interacting 暂停节点动画。 */
   interacting: boolean;
   canvasZoom: number;
   nodeInteraction: LinghuiNodeInteractionApi;
@@ -94,6 +94,9 @@ export function LinghuiCanvasSurface({
     onSetGridSplitUpscaleFactor: overlayProps.onSetGridSplitUpscaleFactor,
     onRevertGridSplit: overlayProps.onRevertGridSplit,
     onSeparateVideoAudio: overlayProps.onSeparateVideoAudio,
+    onCreateDerivedVideoFrames: overlayProps.onCreateDerivedVideoFrames,
+    onCreateDerivedVideoClips: overlayProps.onCreateDerivedVideoClips,
+    onCreateDerivedVideoAnalysis: overlayProps.onCreateDerivedVideoAnalysis,
   }), [canvasInteractionVersion, overlayProps]);
 
   return (

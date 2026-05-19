@@ -76,6 +76,45 @@
 | planning catchup reported unsynced prior context | 1 | Checked `git status` / `git diff --stat`; current branch was clean before this planning edit, so treated catchup as historical context only |
 | planning catchup reported unsynced panorama perspective context | 1 | Checked `git diff --stat`; identified existing `ImageNode.tsx` and `panoramaPerspectiveExtractor.ts` changes from prior context and left them untouched during toolbar refactor |
 
+## Session: 2026-05-18 Linghui LibTV Node Parity Plan
+
+### Goal
+- 继续反编 `/Users/sunmeng/workspace/Koma/template_/libtv`，收集 LibTV 所有 ReactFlow 节点类型。
+- 建立 LibTV 节点 UI / 操作逻辑到灵绘节点的差距矩阵。
+- 一个节点一个节点迁移，要求 UI 尺度、浮动操作、空态派生、生成器条和真实执行参数基本对齐，不做“样子货”。
+
+### LibTV Node Inventory
+| LibTV node type | LibTV role | Linghui equivalent | Status |
+|---|---|---|---|
+| `custom` | 自定义轻量节点 / fallback shell | none | pending reverse-engineering |
+| `text` | 文字节点，5 状态机 + EmptyState + generator | `linghui/text` | partial: 已做 LLM/手输入口，仍需全屏/markdown toolbar 细节 |
+| `image` | 图片节点，图片工具条、打光、多角度、九宫格 slash | `linghui/image` | partial: 已多轮迁移，仍需逐项复核 |
+| `video` | 视频节点，6 状态机 + 7 按钮工具条 + 8 mode generator | `linghui/video` | partial: 已接资源态工具条、截图抽帧、本地剪辑、本地高清和解析文本派生；剩智能去字幕/云端人声分离待服务 |
+| `audio` | 音频节点，5 状态机 + 音频生视频 EmptyState + resource player | `linghui/audio` | in_progress |
+| `temp` | 临时占位节点 | none | pending, likely not exposed |
+| `group` | 分组节点 | `group` / `CanvasGroupNode` | partial: 已迁移默认计数标题、颜色和布局悬浮工具条 |
+| `script` | 脚本节点 / 分镜脚本 | `linghui/script` | partial: 已把故事板内容和操作迁回节点本体 |
+| `storyboard` | 与 script 共用实现 | `linghui/storyboard` | partial: 已加入场景 preset、执行 prompt、节点内故事板表格/卡片 |
+| `video-story` | 视频故事 / 剧情视频流程节点 | `linghui/storyboard` + `linghui/script` table view | partial: 动态字段表格已迁移，节点内展示已补；仍需继续核对 LibTV editable rows / fullscreen 过滤 |
+| `video_group` | 视频组合节点 | `group` + `linghui/video` children + `linghui/video-clip` | complete: 故事板生成视频流程已改为视频组派生 |
+| `video-clip` | 视频剪辑 / 合成节点 | `linghui/video-clip` | partial: 已接真实 FFmpeg concat，并对齐 LibTV 空态/输入不足文案、资源态预览和“打开视频合成”入口 |
+| `space-scene-720` | 720 全景空间场景节点 | `linghui/panorama` | partial: 已接 Three.js 全景和 slash defaults |
+
+### Phases
+| Phase | Status | Description |
+|---|---|---|
+| 1. LibTV Node Inventory Extraction | complete | 从 `15gvxu-nayl4w.js` / `13h1xgiucfbcg.js` 的 `nodeTypes` 映射抽出 12 个 LibTV 节点类型 |
+| 2. Linghui Gap Matrix | in_progress | 对照灵绘 11 个节点类型，记录缺失节点、合并节点和已迁移缺口 |
+| 3. Audio Node Parity | complete | 先处理音频节点：状态机、上传浮按钮、资源态播放器和 compact generator |
+| 4. Group / VideoClip / Space Nodes Audit | complete | 已深挖 `video-clip`、`video_group`、`video-story`、`group` 和 `space-scene-720`，记录状态机、工具条、全景 HUD/截图命名证据 |
+| 5. Node-by-node Implementation | in_progress | 已完成 `audio`、`video_group`、`video-clip` 真实 FFmpeg concat；`video-story` 表格/全屏数据视图、`group` 计数/布局工具条、`space-scene-720` 全景 viewer HUD/网格/12 向截图已迁移；`video` 已补截图抽帧、本地剪辑、本地高清和解析文本派生；`image` 通用工具补 preset 与本地裁剪预览；`script/storyboard` 已修正分镜字段和节点内故事板布局；`agent` 已补可见预制提示词入口；`image-grid-slice` 已补本地合成宫格能力，继续按差距矩阵聚焦实现 |
+
+### Acceptance Criteria
+- 每个节点都必须先有 LibTV 证据：打包文件、格式化片段、文案、状态机或按钮顺序。
+- 灵绘无积分体系，任何 Power / credit UI 都不得迁入。
+- 节点面板必须保持当前画布 HUD 尺度，优先悬浮、扁平、轻阴影或无阴影。
+- 影响 UI 的验证必须用 Electron remote debugging port `9333`，不能普通浏览器打开 Vite。
+
 ## Session: 2026-05-16 Linghui Canvas LibTV Recreation
 
 ### Goal
@@ -1004,3 +1043,26 @@
 | Error | Attempt | Resolution |
 |------|---------|------------|
 | CDP Runtime.evaluate 脚本字符串拼接出现 SyntaxError | 1 | 改用无换行表达式重新读取 Electron DOM；确认是验证脚本错误，不是应用异常 |
+
+## Session: 2026-05-18 Linghui LibTV Node Parity Continuation
+
+### Goal
+- 继续对标 `/Users/sunmeng/workspace/Koma/template_/libtv`，逐个把灵绘节点的操作逻辑和 UI 行为补实。
+- 保持操作面板紧凑、扁平、接近画布 HUD 尺寸；LibTV 在节点内部完成的操作，灵绘也优先在节点内部完成。
+- 不迁入积分/credit UI；没有真实本地或后端能力的入口不伪装成已完成。
+
+### Current Phases
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Script / Storyboard Node Parity | complete | 保留 LibTV row metadata，增加节点内选中行生成器与手动表格编辑 |
+| 2. Video Node Tool Parity | complete | 截图、剪辑、高清、解析等可本地落地的工具已补实，智能去字幕保持非伪装 |
+| 3. Image Tool Fidelity | complete | 裁剪补 3×3 锚点并走 FFmpeg；抠图/擦除明确当前是图生图任务而非本地模型 |
+| 4. Canvas Interaction Polish | complete | 连线拖拽纳入 `canvas-interacting`，Esc 取消连线同步退出交互态 |
+| 5. Audio Node Resource UI | complete | 资源态补波形播放器、速度切换和下载工具条，不迁入云端积分/水印逻辑 |
+| 6. Agent Node In-node Operation | complete | 节点本体补任务模板、运行按钮和流式输出摘要，复用灵绘已有 Agent 执行链路 |
+| 7. Next Node Slice | pending | 继续选择下一个节点/工具面板，对照 LibTV 反编译后实现 |
+
+### Error Log
+| Error | Attempt | Resolution |
+|------|---------|------------|
+| jsdom 没有 `PointerEvent` 导致新增取消连线测试失败 | 1 | 取消连线合成事件改为 `window.PointerEvent ?? window.MouseEvent` |

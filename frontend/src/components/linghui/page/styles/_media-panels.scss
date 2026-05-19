@@ -557,6 +557,46 @@
   }
 }
 
+.linghuiImageLibTVPreviewStage.isCropPreview {
+  background:
+    linear-gradient(45deg, color-mix(in srgb, var(--token-bg-elevated) 70%, transparent) 25%, transparent 25%),
+    linear-gradient(-45deg, color-mix(in srgb, var(--token-bg-elevated) 70%, transparent) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, color-mix(in srgb, var(--token-bg-elevated) 70%, transparent) 75%),
+    linear-gradient(-45deg, transparent 75%, color-mix(in srgb, var(--token-bg-elevated) 70%, transparent) 75%);
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  background-size: 16px 16px;
+
+  img {
+    max-width: 86%;
+    max-height: 86%;
+  }
+}
+
+.linghuiImageLibTVCropOverlay {
+  position: absolute;
+  inset: 12px;
+  pointer-events: none;
+}
+
+.linghuiImageLibTVCropFrame {
+  position: absolute;
+  left: var(--linghui-crop-anchor-x, 50%);
+  top: var(--linghui-crop-anchor-y, 50%);
+  width: 78%;
+  max-width: 82%;
+  aspect-ratio: var(--linghui-crop-aspect, 1 / 1);
+  max-height: 82%;
+  transform: translate(
+    calc(-1 * var(--linghui-crop-anchor-x, 50%)),
+    calc(-1 * var(--linghui-crop-anchor-y, 50%))
+  );
+  border: 1px solid color-mix(in srgb, var(--token-accent-base) 82%, transparent);
+  border-radius: 8px;
+  box-shadow:
+    0 0 0 999px color-mix(in srgb, var(--token-bg-app) 46%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--token-bg-card) 62%, transparent);
+}
+
 .linghuiImageLibTVLightingStage {
   min-height: 226px;
   padding: 0;
@@ -755,6 +795,43 @@
   font-size: 12px;
   line-height: 1.2;
   font-weight: 700;
+}
+
+.linghuiImageLibTVPresetHint {
+  padding: 7px 9px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--token-bg-elevated) 52%, transparent);
+  color: color-mix(in srgb, var(--token-text-primary) 62%, transparent);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.linghuiImageLibTVPresetHint.isWarning {
+  background: color-mix(in srgb, var(--token-status-warning) 10%, var(--token-bg-elevated));
+  color: color-mix(in srgb, var(--token-status-warning) 72%, var(--token-text-primary));
+}
+
+.linghuiImageLibTVCropAnchorGrid {
+  display: grid;
+  width: 84px;
+  grid-template-columns: repeat(3, 24px);
+  gap: 4px;
+
+  button {
+    width: 24px;
+    height: 24px;
+    border: 1px solid color-mix(in srgb, var(--token-border-base) 58%, transparent);
+    border-radius: 7px;
+    background: color-mix(in srgb, var(--token-bg-elevated) 50%, transparent);
+    cursor: pointer;
+
+    &:hover,
+    &.isActive {
+      border-color: color-mix(in srgb, var(--token-accent-base) 78%, transparent);
+      background: color-mix(in srgb, var(--token-accent-base) 14%, var(--token-bg-card));
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--token-accent-base) 32%, transparent);
+    }
+  }
 }
 
 .linghuiImageLibTVSliderRow,
@@ -1233,6 +1310,45 @@
     text-shadow: 0 1px 2px color-mix(in srgb, var(--token-bg-app) 76%, transparent);
   }
 
+  &CompositionGrid {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    pointer-events: none;
+    background:
+      linear-gradient(to right, transparent 33.2%, color-mix(in srgb, var(--token-text-primary) 22%, transparent) 33.33%, transparent 33.45%),
+      linear-gradient(to right, transparent 66.55%, color-mix(in srgb, var(--token-text-primary) 22%, transparent) 66.67%, transparent 66.8%),
+      linear-gradient(to bottom, transparent 33.2%, color-mix(in srgb, var(--token-text-primary) 22%, transparent) 33.33%, transparent 33.45%),
+      linear-gradient(to bottom, transparent 66.55%, color-mix(in srgb, var(--token-text-primary) 22%, transparent) 66.67%, transparent 66.8%);
+  }
+
+  &Hud {
+    position: absolute;
+    right: 10px;
+    bottom: 10px;
+    z-index: 6;
+    min-width: 126px;
+    padding: 6px 8px;
+    border: 1px solid color-mix(in srgb, var(--token-text-primary) 12%, transparent);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--token-bg-app) 78%, transparent);
+    color: var(--token-text-secondary);
+    display: grid;
+    grid-template-columns: 14px 1fr;
+    gap: 2px 6px;
+    align-items: center;
+    font-size: 10px;
+    line-height: 1.25;
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
+    backdrop-filter: blur(10px);
+
+    svg {
+      grid-row: span 2;
+      color: var(--token-text-muted);
+    }
+  }
+
   &FullscreenButton {
     position: absolute;
     top: 8px;
@@ -1260,6 +1376,92 @@
       transform: translateY(-1px);
       border-color: color-mix(in srgb, var(--token-accent-base) 52%, transparent);
       background: color-mix(in srgb, var(--token-bg-app) 78%, transparent);
+    }
+  }
+
+  &ViewerToolbar {
+    position: absolute;
+    left: 50%;
+    bottom: 14px;
+    z-index: 8;
+    transform: translateX(-50%);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px;
+    border: 1px solid color-mix(in srgb, var(--token-text-primary) 10%, transparent);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--token-bg-app) 82%, transparent);
+    backdrop-filter: blur(12px);
+
+    button {
+      height: 26px;
+      border: 0;
+      border-radius: 7px;
+      padding: 0 8px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: transparent;
+      color: var(--token-text-secondary);
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+      cursor: pointer;
+
+      &:hover,
+      &.isActive {
+        background: color-mix(in srgb, var(--token-accent-base) 12%, transparent);
+        color: var(--token-text-primary);
+      }
+
+      &:disabled {
+        cursor: not-allowed;
+        opacity: 0.55;
+      }
+    }
+
+    .linghuiPanoramaToolbarPrimary {
+      background: var(--token-accent-base);
+      color: var(--token-accent-contrast);
+
+      &:hover {
+        background: color-mix(in srgb, var(--token-accent-base) 88%, var(--token-text-primary));
+        color: var(--token-accent-contrast);
+      }
+    }
+  }
+
+  &ShortcutPanel {
+    position: absolute;
+    left: 50%;
+    bottom: 54px;
+    z-index: 8;
+    width: 180px;
+    transform: translateX(-50%);
+    padding: 8px;
+    border: 1px solid color-mix(in srgb, var(--token-text-primary) 10%, transparent);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--token-bg-app) 86%, transparent);
+    backdrop-filter: blur(12px);
+    display: grid;
+    gap: 6px;
+
+    div {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      color: var(--token-text-secondary);
+      font-size: 11px;
+    }
+
+    span {
+      color: var(--token-text-muted);
+    }
+
+    b {
+      font-weight: 600;
     }
   }
 

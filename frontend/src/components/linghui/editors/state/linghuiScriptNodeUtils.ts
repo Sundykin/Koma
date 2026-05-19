@@ -46,6 +46,57 @@ function stripLeadingIndex(text: string): string {
   return text.replace(/^\s*(?:镜头|shot)?\s*[-#]?\s*\d+[\.\):：、-]?\s*/i, '').trim();
 }
 
+function readString(record: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+    if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  }
+  return '';
+}
+
+function readNumber(record: Record<string, unknown>, keys: string[]): number | undefined {
+  for (const key of keys) {
+    const value = record[key];
+    const numberValue = Number(value);
+    if (Number.isFinite(numberValue)) return numberValue;
+  }
+  return undefined;
+}
+
+function normalizeStoryboardCharacters(value: unknown): LinghuiStoryboardFrame['characters'] {
+  if (!Array.isArray(value)) return undefined;
+  const characters = value
+    .map(item => {
+      if (typeof item === 'string') {
+        const characterName = item.trim();
+        return characterName ? { characterName } : null;
+      }
+      if (!item || typeof item !== 'object') return null;
+      const record = item as Record<string, unknown>;
+      const characterName = readString(record, ['characterName', 'character_name', 'name']);
+      const characterDescription = readString(record, ['characterDescription', 'character_description', 'description']);
+      const characterImageUrl = readString(record, ['characterImageUrl', 'character_image_url', 'imageUrl', 'image_url', 'url']);
+      if (!characterName && !characterDescription && !characterImageUrl) return null;
+      return { characterName, characterDescription, characterImageUrl };
+    })
+    .filter(Boolean) as NonNullable<LinghuiStoryboardFrame['characters']>;
+  return characters.length > 0 ? characters : undefined;
+}
+
+function normalizeVideoReference(value: unknown): LinghuiStoryboardFrame['videoReference'] {
+  if (typeof value === 'string' && value.trim()) {
+    return { referenceFrameImage: value.trim() };
+  }
+  if (!value || typeof value !== 'object') return undefined;
+  const record = value as Record<string, unknown>;
+  const referenceFrameImage = readString(record, ['referenceFrameImage', 'reference_frame_image', 'image', 'url']);
+  const startTime = readNumber(record, ['startTime', 'start_time']);
+  const endTime = readNumber(record, ['endTime', 'end_time']);
+  if (!referenceFrameImage && startTime == null && endTime == null) return undefined;
+  return { referenceFrameImage, startTime, endTime };
+}
+
 function normalizeShotRecord(value: unknown, index: number): LinghuiStoryboardFrame | null {
   if (typeof value === 'string') {
     const description = value.trim();
@@ -70,13 +121,22 @@ function normalizeShotRecord(value: unknown, index: number): LinghuiStoryboardFr
     record.shot ??
     `镜头 ${index + 1}`,
   ).trim() || `镜头 ${index + 1}`;
-  const description = String(
-    record.description ??
-    record.prompt ??
-    record.content ??
-    record.summary ??
-    '',
-  ).trim();
+  const plotDescription = readString(record, ['plotDescription', 'plot_description', 'storyDescription', 'story_description', 'description', 'summary', 'content']);
+  const visualDescription = readString(record, ['visualDescription', 'visual_description', 'pictureDescription', 'picture_description', 'screenDescription', 'screen_description']);
+  const imageGenerationPrompt = readString(record, ['imageGenerationPrompt', 'image_generation_prompt', 'imagePrompt', 'image_prompt', 'picturePrompt', 'picture_prompt']);
+  const videoMotionPrompt = readString(record, ['videoMotionPrompt', 'video_motion_prompt', 'videoPrompt', 'video_prompt', 'motionPrompt', 'motion_prompt']);
+  const characterAction = readString(record, ['characterAction', 'character_action', 'action']);
+  const emotion = readString(record, ['emotion', 'mood']);
+  const sceneTags = readString(record, ['sceneTags', 'scene_tags', 'sceneTag', 'scene_tag']);
+  const lightingAndAtmosphere = readString(record, ['lightingAndAtmosphere', 'lighting_atmosphere', 'lighting', 'atmosphere']);
+  const audioEffects = readString(record, ['audioEffects', 'audio_effects', 'sound', 'sfx']);
+  const dialogue = readString(record, ['dialogue', 'dialog', 'line']);
+  const shotSize = readString(record, ['shotSize', 'shot_size', 'shotType', 'shot_type', 'framing']);
+  const description = plotDescription
+    || visualDescription
+    || readString(record, ['prompt', 'content'])
+    || imageGenerationPrompt
+    || videoMotionPrompt;
 
   if (!title && !description) {
     return null;
@@ -84,10 +144,25 @@ function normalizeShotRecord(value: unknown, index: number): LinghuiStoryboardFr
 
   return {
     id: typeof record.id === 'string' && record.id.trim() ? record.id.trim() : `shot-${index + 1}`,
+    hiddenUuid: readString(record, ['hiddenUuid', 'hidden_uuid', 'uuid']) || undefined,
+    shotNumber: readNumber(record, ['shotNumber', 'shot_number']),
     title,
     description: description || title,
     durationSec: toDurationSec(record.durationSec ?? record.duration ?? record.seconds),
     image: normalizeMediaItem(record.image ?? record.referenceImage ?? record.thumbnail),
+    plotDescription: plotDescription || description || title,
+    visualDescription,
+    characters: normalizeStoryboardCharacters(record.characters),
+    videoReference: normalizeVideoReference(record.videoReference ?? record.video_reference),
+    shotSize,
+    characterAction,
+    emotion,
+    sceneTags,
+    lightingAndAtmosphere,
+    audioEffects,
+    dialogue,
+    imageGenerationPrompt,
+    videoMotionPrompt,
   };
 }
 
@@ -214,10 +289,47 @@ export function formatLinghuiScriptShots(shots: LinghuiStoryboardFrame[]): strin
   return shots
     .map((shot, index) => {
       const title = shot.title?.trim() || `镜头 ${index + 1}`;
-      const description = shot.description?.trim() || title;
-      return `${index + 1}. ${title}\n画面：${description}\n时长：${toDurationSec(shot.durationSec)} 秒`;
+      const plot = shot.plotDescription?.trim() || shot.description?.trim() || title;
+      const visual = shot.visualDescription?.trim();
+      const imagePrompt = shot.imageGenerationPrompt?.trim();
+      const videoPrompt = shot.videoMotionPrompt?.trim();
+      return [
+        `${index + 1}. ${title}`,
+        `剧情：${plot}`,
+        visual ? `画面：${visual}` : '',
+        imagePrompt ? `生图：${imagePrompt}` : '',
+        videoPrompt ? `视频：${videoPrompt}` : '',
+        `时长：${toDurationSec(shot.durationSec)} 秒`,
+      ].filter(Boolean).join('\n');
     })
     .join('\n\n');
+}
+
+export function serializeLinghuiScriptShots(shots: LinghuiStoryboardFrame[]): string {
+  return JSON.stringify({
+    shots: shots.map((shot, index) => ({
+      id: shot.id || `shot-${index + 1}`,
+      hiddenUuid: shot.hiddenUuid,
+      shotNumber: shot.shotNumber || index + 1,
+      title: shot.title || `镜头 ${index + 1}`,
+      description: shot.description || shot.plotDescription || shot.visualDescription || '',
+      durationSec: toDurationSec(shot.durationSec),
+      image: shot.image,
+      plotDescription: shot.plotDescription,
+      visualDescription: shot.visualDescription,
+      characters: shot.characters,
+      videoReference: shot.videoReference,
+      shotSize: shot.shotSize,
+      characterAction: shot.characterAction,
+      emotion: shot.emotion,
+      sceneTags: shot.sceneTags,
+      lightingAndAtmosphere: shot.lightingAndAtmosphere,
+      audioEffects: shot.audioEffects,
+      dialogue: shot.dialogue,
+      imageGenerationPrompt: shot.imageGenerationPrompt,
+      videoMotionPrompt: shot.videoMotionPrompt,
+    })),
+  }, null, 2);
 }
 
 export function parseLinghuiScriptContent(rawContent: string): LinghuiScriptParseResult {

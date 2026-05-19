@@ -13,7 +13,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Modal } from 'antd';
-import { Maximize2 } from 'lucide-react';
+import { Grid3X3, Keyboard, Maximize2, MousePointer2, Navigation, ScanLine } from 'lucide-react';
 import { Canvas } from '@react-three/fiber';
 import type { PanoramaProjectionMode, PanoramaViewerMode } from './panoramaProjection';
 import { resolvePanoramaViewerMode } from './panoramaProjection';
@@ -35,12 +35,30 @@ export interface PanoramaViewportProps {
   viewerMode?: PanoramaViewerMode;
   ratioString?: string;
   onCurrentViewChange?: (view: { yaw: number; pitch: number; fovDeg: number }) => void;
+  showCompositionGrid?: boolean;
+  interactionEnabled?: boolean;
+  showHud?: boolean;
+}
+
+function formatDeg(rad: number): number {
+  return Math.round((rad * 180) / Math.PI);
+}
+
+function formatViewHud(view: { yaw: number; pitch: number; fovDeg: number }): { yaw: number; pitch: number; fov: number; zoom: string } {
+  const fov = Math.round(view.fovDeg);
+  return {
+    yaw: formatDeg(view.yaw),
+    pitch: formatDeg(view.pitch),
+    fov,
+    zoom: (FOV_INITIAL / Math.max(1, view.fovDeg)).toFixed(2),
+  };
 }
 
 export const PanoramaViewport: React.FC<PanoramaViewportProps> = ({
   imageUrl, mountReady = true, placeholder, showFovHint = true,
   onRequestFullscreen, projectionMode, viewerMode: viewerModeOverride,
-  ratioString, onCurrentViewChange,
+  ratioString, onCurrentViewChange, showCompositionGrid = false,
+  interactionEnabled = true, showHud = false,
 }) => {
   const yawTargetRef = useRef(0);
   const pitchTargetRef = useRef(0);
@@ -51,6 +69,7 @@ export const PanoramaViewport: React.FC<PanoramaViewportProps> = ({
   const isDraggingRef = useRef(false);
   const lastPointer = useRef<{ x: number; y: number } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [hudView, setHudView] = useState({ yaw: 0, pitch: 0, fovDeg: FOV_INITIAL });
   const [, forceFovTick] = useState(0);
   const textureState = usePanoramaTexture(mountReady ? imageUrl : '');
 
@@ -68,6 +87,7 @@ export const PanoramaViewport: React.FC<PanoramaViewportProps> = ({
       yawTargetRef.current = 0; pitchTargetRef.current = 0;
       yawCurrentRef.current = 0; pitchCurrentRef.current = 0;
       fovRef.current = FOV_INITIAL;
+      setHudView({ yaw: 0, pitch: 0, fovDeg: FOV_INITIAL });
       autoRotateUntilRef.current = Date.now() + AUTO_ROTATE_DURATION_MS;
       isDraggingRef.current = false; setIsDragging(false);
       lastPointer.current = null;
@@ -75,13 +95,15 @@ export const PanoramaViewport: React.FC<PanoramaViewportProps> = ({
   }, [mountReady, imageUrl]);
 
   const onPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!interactionEnabled) return;
     (e.target as Element).setPointerCapture?.(e.pointerId);
     lastPointer.current = { x: e.clientX, y: e.clientY };
     isDraggingRef.current = true; setIsDragging(true);
     autoRotateUntilRef.current = 0;
-  }, []);
+  }, [interactionEnabled]);
 
   const onPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!interactionEnabled) return;
     if (!isDraggingRef.current || !lastPointer.current) return;
     const dx = e.clientX - lastPointer.current.x;
     const dy = e.clientY - lastPointer.current.y;
@@ -94,21 +116,29 @@ export const PanoramaViewport: React.FC<PanoramaViewportProps> = ({
     }
     const next = pitchTargetRef.current + dy * sensitivity;
     pitchTargetRef.current = Math.max(-pitchLimit, Math.min(pitchLimit, next));
-  }, [pitchLimit, viewerMode]);
+    setHudView({ yaw: yawTargetRef.current, pitch: pitchTargetRef.current, fovDeg: fovRef.current });
+  }, [interactionEnabled, pitchLimit, viewerMode]);
 
   const onPointerUp = useCallback(() => {
     lastPointer.current = null;
     isDraggingRef.current = false; setIsDragging(false);
-    onCurrentViewChange?.({ yaw: yawTargetRef.current, pitch: pitchTargetRef.current, fovDeg: fovRef.current });
+    const view = { yaw: yawTargetRef.current, pitch: pitchTargetRef.current, fovDeg: fovRef.current };
+    setHudView(view);
+    onCurrentViewChange?.(view);
   }, [onCurrentViewChange]);
 
   const onWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
+    if (!interactionEnabled) return;
     const next = fovRef.current + (e.deltaY > 0 ? 2 : -2);
     fovRef.current = Math.max(FOV_MIN, Math.min(FOV_MAX, next));
     autoRotateUntilRef.current = 0;
     if (showFovHint) forceFovTick(n => n + 1);
-    onCurrentViewChange?.({ yaw: yawTargetRef.current, pitch: pitchTargetRef.current, fovDeg: fovRef.current });
-  }, [onCurrentViewChange, showFovHint]);
+    const view = { yaw: yawTargetRef.current, pitch: pitchTargetRef.current, fovDeg: fovRef.current };
+    setHudView(view);
+    onCurrentViewChange?.(view);
+  }, [interactionEnabled, onCurrentViewChange, showFovHint]);
+
+  const hud = useMemo(() => formatViewHud(hudView), [hudView]);
 
   return (
     <div className={`linghuiPanoramaViewport nodrag nopan nowheel ${imageUrl ? 'hasImage' : ''} ${isDragging ? 'isDragging' : ''}`}
@@ -138,6 +168,16 @@ export const PanoramaViewport: React.FC<PanoramaViewportProps> = ({
             : (placeholder ?? '加载中…')}
         </div>
       )}
+      {showCompositionGrid && imageUrl && mountReady && textureState.status === 'ready' ? (
+        <div className="linghuiPanoramaCompositionGrid" aria-hidden="true" />
+      ) : null}
+      {showHud && imageUrl && mountReady && textureState.status === 'ready' ? (
+        <div className="linghuiPanoramaHud" aria-label="全景视角参数">
+          <Navigation size={12} />
+          <span>横 {hud.yaw}° · 纵 {hud.pitch}°</span>
+          <span>缩放 {hud.fov}°×{hud.zoom}</span>
+        </div>
+      ) : null}
       {showFovHint && imageUrl && mountReady && textureState.status === 'ready' && (
         <div className="linghuiPanoramaFovHint">拖拽旋转 · 滚轮缩放（视野 {Math.round(fovRef.current)}°）</div>
       )}
@@ -164,6 +204,9 @@ export const PanoramaViewer: React.FC<PanoramaViewerProps> = ({
   open, imageUrl, title, onClose, projectionMode, viewerMode, ratioString, onApplyPerspective,
 }) => {
   const [mountReady, setMountReady] = useState(false);
+  const [showCompositionGrid, setShowCompositionGrid] = useState(false);
+  const [interactionEnabled, setInteractionEnabled] = useState(true);
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const handleAfterOpenChange = useCallback((nextOpen: boolean) => setMountReady(p => p === nextOpen ? p : nextOpen), []);
   const currentViewRef = useRef<{ yaw: number; pitch: number; fovDeg: number }>({ yaw: 0, pitch: 0, fovDeg: 75 });
   const [applying, setApplying] = useState(false);
@@ -181,13 +224,53 @@ export const PanoramaViewer: React.FC<PanoramaViewerProps> = ({
       <div className="linghuiPanoramaModalViewport">
         <PanoramaViewport imageUrl={imageUrl} mountReady={mountReady} projectionMode={projectionMode}
           viewerMode={viewerMode} ratioString={ratioString}
+          showCompositionGrid={showCompositionGrid}
+          interactionEnabled={interactionEnabled}
+          showHud
           onCurrentViewChange={view => { currentViewRef.current = view; }} />
-        {onApplyPerspective ? (
-          <button type="button" className="linghuiPanoramaApplyButton"
-            onClick={e => { e.stopPropagation(); void handleApply(); }} disabled={applying}
-            title="把当前视角抽成 perspective 图，派生为下游图片节点">
-            {applying ? '生成中…' : '应用此视角到图片节点'}
+        <div className="linghuiPanoramaViewerToolbar">
+          <button
+            type="button"
+            className={showShortcuts ? 'isActive' : ''}
+            onClick={() => setShowShortcuts(value => !value)}
+            title={showShortcuts ? '关闭快捷键面板' : '快捷键'}
+          >
+            <Keyboard size={13} />
+            快捷键
           </button>
+          <button
+            type="button"
+            className={showCompositionGrid ? 'isActive' : ''}
+            onClick={() => setShowCompositionGrid(value => !value)}
+            title="构图网格"
+          >
+            <Grid3X3 size={13} />
+            网格
+          </button>
+          <button
+            type="button"
+            className={interactionEnabled ? 'isActive' : ''}
+            onClick={() => setInteractionEnabled(value => !value)}
+            title={interactionEnabled ? '关闭拖拽交互' : '开启拖拽交互'}
+          >
+            <MousePointer2 size={13} />
+            交互
+          </button>
+          {onApplyPerspective ? (
+            <button type="button" className="linghuiPanoramaToolbarPrimary"
+              onClick={e => { e.stopPropagation(); void handleApply(); }} disabled={applying}
+              title="把当前视角抽成 perspective 图，派生为下游图片节点">
+              <ScanLine size={13} />
+              {applying ? '生成中…' : '应用视角'}
+            </button>
+          ) : null}
+        </div>
+        {showShortcuts ? (
+          <div className="linghuiPanoramaShortcutPanel">
+            <div><span>拖拽</span><b>旋转视角</b></div>
+            <div><span>滚轮</span><b>缩放视野</b></div>
+            <div><span>Esc</span><b>关闭预览</b></div>
+          </div>
         ) : null}
       </div>
     </Modal>

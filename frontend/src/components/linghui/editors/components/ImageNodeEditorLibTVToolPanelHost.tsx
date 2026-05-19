@@ -124,10 +124,12 @@ export function renderImageNodeEditorLibTVToolPanel({
         imageAlt={imageAlt}
         aspectRatioChoices={aspectRatioChoices}
         genericPresetLabel={tools.genericPresetLabel}
+        genericCropAnchor={tools.genericCropAnchor}
         genericPrompt={tools.genericPrompt}
         genericAspectRatio={tools.genericAspectRatio}
         genericResolution={tools.genericResolution}
         onSelectGenericPreset={tools.handleSelectGenericPreset}
+        setGenericCropAnchor={tools.setGenericCropAnchor}
         setGenericPrompt={tools.setGenericPrompt}
         setGenericAspectRatio={tools.setGenericAspectRatio}
         setGenericResolution={tools.setGenericResolution}

@@ -154,6 +154,7 @@ export const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasP
     createGroupFromSelection,
     createDerivedImageNodesFromNode,
     createDerivedVideoNodesFromNode,
+    createDerivedVideoAnalysisNodeFromNode,
     createDerivedPanoramaNodeFromNode,
     createDerivedAudioNodeFromVideo,
     createDerivedMultiAngleImageNodeFromNode,
@@ -209,11 +210,15 @@ export const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasP
     onRunAll?.();
   }, [onRunAll, onRunSelection, selectedNodeIds.length]);
 
+  const interacting = useLinghuiCanvasStore((s: any) => s.interacting);
+  const setInteracting = useLinghuiCanvasStore((s: any) => s.setInteracting);
+
   // LibTV canvas:cancel-connect
   const { cancelPendingConnection, confirmDeleteNodes, selectSingleEdge, handleEdgeClick, handleEdgeContextMenu } = useLinghuiCanvasInteractionHelpers({
     setNodes, setEdges, setEditorSelection, setActiveNodeTool, setPendingGroupFrame,
     closeContextMenu, closeQuickCreate, openContextMenuAt,
     deleteNodesByIds, deleteEdgesByIds, nodeRuns, pendingConnectionCreateRef,
+    setInteracting,
   });
 
   useLinghuiCanvasHotkeys({
@@ -236,6 +241,7 @@ export const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasP
     reactFlow, hostRef, onNodesChange, onEdgesChange, setNodes, setEdges,
     setSelection, setEditorSelection, setCanvasRect, scheduleSnapshot, emitSnapshot,
     openQuickCreateAt, pendingConnectionCreateRef, onSelectionChangeRef, onNodeMutateRef, onConnectionErrorRef,
+    onConnectionInteractionChange: setInteracting,
   });
 
   const {
@@ -250,8 +256,6 @@ export const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasP
     openQuickCreateAt: (x, y) => openQuickCreateAt(x, y),
   });
 
-  const interacting = useLinghuiCanvasStore((s: any) => s.interacting);
-  const setInteracting = useLinghuiCanvasStore((s: any) => s.setInteracting);
   const handleSelectionDragStart = useCallback((...a: any[]) => { setInteracting(true); (handleSelectionDragStartBase as any)?.(...a); }, [handleSelectionDragStartBase, setInteracting]);
   const handleSelectionDragStop = useCallback((...a: any[]) => { setInteracting(false); (handleSelectionDragStopBase as any)?.(...a); }, [handleSelectionDragStopBase, setInteracting]);
   // @@Linghui 行内：handleNodeDragStart/handleNodeDragStop 仅有 8+4 行
@@ -293,8 +297,9 @@ export const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasP
     onRunSingleNodeRef, openQuickCreateAt, closeContextMenu,
     insertNodeAtScreenPosition,
     deriveStoryboardShotsFromScript, deriveStoryboardImagesFromScript, deriveStoryboardVideosFromScript,
-    createDerivedImageNodesFromNode, createDerivedVideoNodesFromNode, createDerivedPanoramaNodeFromNode,
-    createDerivedAudioNodeFromVideo, createDerivedMultiAngleImageNodeFromNode, createDerivedImageToolNodeFromNode,
+    createDerivedImageNodesFromNode, createDerivedVideoNodesFromNode, createDerivedVideoAnalysisNodeFromNode,
+    createDerivedPanoramaNodeFromNode, createDerivedAudioNodeFromVideo,
+    createDerivedMultiAngleImageNodeFromNode, createDerivedImageToolNodeFromNode,
     applyTextEmptyAction, applyVideoEmptyAction, applyAudioEmptyAction,
     copySelectionToClipboard, duplicateSelection, pasteClipboardSnapshot,
     deleteNodesByIds, deleteEdgesByIds, ungroupGroupsByIds,

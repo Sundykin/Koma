@@ -90,7 +90,9 @@ export function useLinghuiCanvasVideoResultDerivation({
               ...createdProps,
               source: String(item.source ?? ''),
               posterSource: String(item.posterSource ?? ''),
+              duration: typeof item.durationSec === 'number' ? item.durationSec : createdProps.duration,
               videoCapability: 'video.reference-to-video',
+              sourceMetadata: item.metadata,
             } as unknown as Record<string, unknown>,
           } as unknown as Record<string, unknown>,
         };

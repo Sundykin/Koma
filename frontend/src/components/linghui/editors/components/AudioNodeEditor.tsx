@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { App, Button, Dropdown, Popover, Select } from 'antd';
 import type { MenuProps } from 'antd';
-import { ArrowUp, Music4, Trash2, UploadCloud } from 'lucide-react';
+import { ArrowUp, FileAudio, FileText, Image as ImageIcon, Music4, Settings2, Trash2, UploadCloud, Video } from 'lucide-react';
 import {
   getLinghuiResultPrimaryMedia,
   type LinghuiAudioNodeProperties,
@@ -268,6 +268,13 @@ export const AudioNodeEditor: React.FC<AudioNodeEditorProps> = ({
   ), [voiceId, voiceOptions]);
   const modelSummary = selectedProvider?.label || '未配置 TTS';
   const voiceSummary = selectedVoice?.label || (voiceId ? `音色 / ${voiceId}` : '默认音色');
+  const referenceCards = useMemo(() => (
+    promptReferences.map((reference, index) => ({
+      ...reference,
+      badge: String(index + 1),
+      preview: reference.previewSource || (typeof reference.source === 'string' ? reference.source : ''),
+    }))
+  ), [promptReferences]);
   const providerMenuItems = useMemo<MenuProps['items']>(() => (
     providers.map(provider => ({
       key: provider.value,
@@ -322,6 +329,159 @@ export const AudioNodeEditor: React.FC<AudioNodeEditorProps> = ({
       ) : null}
     </div>
   );
+
+  if (!source) {
+    return (
+      <div className="linghuiEditorPanel linghuiAudioGeneratorPanel" onMouseDown={e => e.stopPropagation()}>
+        {referenceCards.length > 0 ? (
+          <div className="linghuiAudioGeneratorRefs" aria-label="上游参考">
+            {referenceCards.map(reference => (
+              <div className="linghuiAudioGeneratorRefCard" key={reference.id} title={reference.name}>
+                <div className="linghuiAudioGeneratorRefThumb">
+                  {reference.kind === 'image' && reference.preview ? (
+                    <img src={reference.preview} alt="" draggable={false} />
+                  ) : reference.kind === 'video' && reference.preview ? (
+                    <img src={reference.preview} alt="" draggable={false} />
+                  ) : reference.kind === 'video' ? (
+                    <Video size={14} />
+                  ) : reference.kind === 'audio' ? (
+                    <FileAudio size={14} />
+                  ) : reference.kind === 'text' ? (
+                    <FileText size={14} />
+                  ) : (
+                    <ImageIcon size={14} />
+                  )}
+                  <span className="linghuiAudioGeneratorRefBadge">{reference.badge}</span>
+                </div>
+                <span className="linghuiAudioGeneratorRefName">{reference.name}</span>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        <div className="linghuiEditorPrompt linghuiAudioGeneratorPrompt">
+          <LinghuiPromptEditor
+            value={prompt}
+            onChange={value => updateProp('prompt', value)}
+            references={promptReferences}
+            placeholder="输入要合成的旁白、对白或音频描述，@ 引用素材"
+            surfaceStyle="fusion"
+            minHeight="86px"
+            maxHeight="168px"
+          />
+        </div>
+
+        {generatedAudioSource ? (
+          <div className="linghuiAudioGeneratorResult">
+            <audio
+              src={generatedAudioSource}
+              controls
+              onMouseDown={event => event.stopPropagation()}
+              onClick={event => event.stopPropagation()}
+            />
+            <span>
+              {generatedAudioLabel}
+              {generatedAudioDuration ? ` · ${Math.max(1, Math.round(generatedAudioDuration))}秒` : ''}
+            </span>
+          </div>
+        ) : null}
+
+        <div className="linghuiEditorControlRow linghuiAudioGeneratorControlRow">
+          <Dropdown
+            trigger={providers.length > 0 ? ['click'] : []}
+            menu={{
+              items: providerMenuItems,
+              selectable: true,
+              selectedKeys: selectedProvider ? [selectedProvider.value] : [],
+            }}
+            classNames={{ root: 'linghuiNodeEditorDropdownMenu linghuiAudioGeneratorDropdownMenu' }}
+            getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
+            overlayClassName="linghuiNodeEditorDropdownOverlay"
+          >
+            <button
+              type="button"
+              className={`linghuiAudioGeneratorChip ${providers.length === 0 ? 'isDisabled' : ''}`}
+              onClick={event => event.stopPropagation()}
+              disabled={providers.length === 0}
+              title={modelSummary}
+            >
+              {modelSummary}
+            </button>
+          </Dropdown>
+
+          <div className="linghuiAudioGeneratorSpacer" />
+
+          <button
+            type="button"
+            className="linghuiAudioGeneratorIconButton"
+            onClick={handleSelectAudio}
+            aria-label="上传音频"
+            title="上传音频"
+          >
+            <UploadCloud size={14} />
+          </button>
+
+          <Popover
+            trigger="click"
+            placement="bottomRight"
+            content={audioSettingsContent}
+            overlayClassName="linghuiEditorPopover"
+            getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
+            zIndex={1200}
+          >
+            <button
+              type="button"
+              className="linghuiAudioGeneratorIconButton"
+              onClick={event => event.stopPropagation()}
+              aria-label={voiceSummary}
+              title={voiceSummary}
+            >
+              <Settings2 size={14} />
+            </button>
+          </Popover>
+
+          {generatedAudioSource ? (
+            <>
+              <button
+                type="button"
+                className="linghuiAudioGeneratorChip isAction"
+                disabled={!canReuseGeneratedAudio}
+                onClick={handleReuseGeneratedAudio}
+              >
+                写回素材
+              </button>
+              <button
+                type="button"
+                className="linghuiAudioGeneratorIconButton"
+                onClick={() => void handleCreateAudioAsset()}
+                aria-label="保存为资产"
+                title="保存为资产"
+              >
+                <Music4 size={14} />
+              </button>
+            </>
+          ) : null}
+
+          <div className="linghuiEditorActionGroup">
+            <button
+              type="button"
+              className="linghuiAudioGeneratorSubmit"
+              onClick={handleRun}
+              disabled={isRunActionLocked || isAudioGenerating}
+              aria-label="生成音频"
+              title="生成音频"
+            >
+              {isAudioGenerating ? (
+                <span className="linghuiAudioGeneratorSpinner" />
+              ) : (
+                <ArrowUp size={13} />
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="linghuiEditorPanel" onMouseDown={e => e.stopPropagation()}>

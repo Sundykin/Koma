@@ -47,7 +47,7 @@ interface UseImageNodeEditorLibTVToolsArgs {
     promptSnippet: string;
     properties?: Partial<LinghuiImageNodeProperties>;
   }) => void;
-  onExecuteImageCrop?: (nodeId: string, options: { aspectRatio: string; label?: string }) => void;
+  onExecuteImageCrop?: (nodeId: string, options: { aspectRatio: string; label?: string; anchorX?: number; anchorY?: number }) => void;
   handleRun: () => void;
   updateNodeData: (
     nodeId: string,
@@ -85,6 +85,7 @@ export function useImageNodeEditorLibTVTools({
   });
   const {
     genericAspectRatio,
+    genericCropAnchor,
     genericPresetLabel,
     genericPrompt,
     genericResolution,
@@ -120,6 +121,7 @@ export function useImageNodeEditorLibTVTools({
     repaintPrompt,
     repaintResolution,
     setGenericAspectRatio,
+    setGenericCropAnchor,
     setGenericPresetLabel,
     setGenericPrompt,
     setGenericResolution,
@@ -391,6 +393,8 @@ export function useImageNodeEditorLibTVTools({
     if (preset.localAction === 'crop' && onExecuteImageCrop) {
       onExecuteImageCrop(nodeId, {
         aspectRatio: String(preset.properties?.aspectRatio ?? genericAspectRatio),
+        anchorX: genericCropAnchor.x,
+        anchorY: genericCropAnchor.y,
         label: preset.label,
       });
       onToolChange(null);
@@ -419,6 +423,7 @@ export function useImageNodeEditorLibTVTools({
     });
   }, [
     genericAspectRatio,
+    genericCropAnchor,
     genericPresetLabel,
     genericPrompt,
     genericResolution,
@@ -436,6 +441,7 @@ export function useImageNodeEditorLibTVTools({
     applyMultiAnglePreset,
     applyRelightPreset,
     genericAspectRatio,
+    genericCropAnchor,
     genericPresetLabel,
     genericPrompt,
     genericResolution,
@@ -472,6 +478,7 @@ export function useImageNodeEditorLibTVTools({
     repaintPresets,
     repaintPrompt,
     setGenericAspectRatio,
+    setGenericCropAnchor,
     setGenericPrompt,
     setGenericResolution,
     setMultiAngleMode,

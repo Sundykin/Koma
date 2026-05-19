@@ -18,6 +18,7 @@ interface UseLinghuiCanvasInteractionHelpersParams {
   deleteEdgesByIds: (edgeIds: string[]) => void;
   nodeRuns: Record<string, LinghuiNodeRunState>;
   pendingConnectionCreateRef: React.MutableRefObject<PendingConnectionCreateState | null>;
+  setInteracting: (interacting: boolean) => void;
 }
 
 export function useLinghuiCanvasInteractionHelpers({
@@ -33,16 +34,19 @@ export function useLinghuiCanvasInteractionHelpers({
   deleteEdgesByIds,
   nodeRuns,
   pendingConnectionCreateRef,
+  setInteracting,
 }: UseLinghuiCanvasInteractionHelpersParams) {
   const cancelPendingConnection = useCallback(() => {
     if (!pendingConnectionCreateRef.current) return false;
     pendingConnectionCreateRef.current = null;
+    setInteracting(false);
     if (typeof window !== 'undefined') {
-      const evt = new PointerEvent('pointerup', { bubbles: true, cancelable: true });
+      const PointerUpEvent = window.PointerEvent ?? window.MouseEvent;
+      const evt = new PointerUpEvent('pointerup', { bubbles: true, cancelable: true });
       window.dispatchEvent(evt);
     }
     return true;
-  }, [pendingConnectionCreateRef]);
+  }, [pendingConnectionCreateRef, setInteracting]);
 
   const confirmDeleteNodes = useCallback((nodeIds: string[]) => {
     if (!nodeIds.length) return;

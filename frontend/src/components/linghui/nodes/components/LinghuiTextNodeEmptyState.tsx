@@ -8,7 +8,7 @@ import {
 
 /**
  * LibTV TextNode empty_generate 态（15gvxu:55643-55675）。
- * 4 actions：
+ * actions：
  *   1. 自己编写内容 (TextIcon 14)    → eJ：切到 manual + 清空 content + 进入编辑
  *   2. 文生视频 (VideoAddS 14)       → eY：写示例文本 + 右侧派生 VideoNode + 自动连线
  *   3. 图片反推提示词 (ImageS 14)    → eV：左侧派生 ImageNode + 反向连线 + 反推 prompt
@@ -18,22 +18,28 @@ import {
  */
 interface LinghuiTextNodeEmptyStateProps {
   nodeId: string;
+  variant?: 'generate' | 'manual';
 }
 
-export const LinghuiTextNodeEmptyState: React.FC<LinghuiTextNodeEmptyStateProps> = ({ nodeId }) => {
+export const LinghuiTextNodeEmptyState: React.FC<LinghuiTextNodeEmptyStateProps> = ({ nodeId, variant = 'generate' }) => {
   const editorApi = useLinghuiNodeEditorApi();
 
   const actions = useMemo<LinghuiNodeEmptyStateAction[]>(() => {
     const fire = (action: 'edit' | 'video' | 'image-prompt' | 'music') => () => {
       editorApi.onApplyTextEmptyAction?.(nodeId, action);
     };
+    if (variant === 'manual') {
+      return [
+        { key: 'edit', label: '自己编写内容', icon: <FileText size={14} />, onClick: fire('edit') },
+      ];
+    }
     return [
       { key: 'edit',          label: '自己编写内容',     icon: <FileText size={14} />,  onClick: fire('edit') },
       { key: 'video',         label: '文生视频',         icon: <Video size={14} />,     onClick: fire('video') },
       { key: 'image-prompt',  label: '图片反推提示词',   icon: <ImageIcon size={14} />, onClick: fire('image-prompt') },
       { key: 'music',         label: '文字生音乐',       icon: <Music size={14} />,     onClick: fire('music') },
     ];
-  }, [editorApi, nodeId]);
+  }, [editorApi, nodeId, variant]);
 
   const icon = <FileText size={80} strokeWidth={1.2} aria-hidden="true" />;
 

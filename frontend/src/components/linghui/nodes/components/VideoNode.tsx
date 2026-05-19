@@ -1,15 +1,17 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { type NodeProps, useStore } from '@xyflow/react';
-import { LoaderCircle, Pause, Play, Video as VideoIcon } from 'lucide-react';
+import { AudioLines, FileText, Image as ImageIcon, LoaderCircle, Pause, Play, Scissors, Video as VideoIcon, Wand2 } from 'lucide-react';
 import type {
   LinghuiNodeData,
   LinghuiRunStatus,
+  LinghuiVideoToolKey,
   LinghuiVideoNodeProperties,
 } from '../../../../types/linghui';
 import { getLinghuiResultPrimaryMedia, resolveLinghuiVideoNodeViewState } from '../../../../types/linghui';
 import {
   useNodeRunState,
   useLinghuiNodeInteraction,
+  useLinghuiNodeInteractionApi,
   useLinghuiNodeEditorVisibility,
 } from '../state/LinghuiNodeRunsContext';
 import { useLinghuiConnectTarget } from '../state/useLinghuiConnectTarget';
@@ -36,6 +38,18 @@ const STATUS_COLORS: Record<LinghuiRunStatus, string> = {
   failed: 'var(--token-status-error)',
   stale: 'var(--token-status-warning)',
 };
+
+const VIDEO_RESOURCE_TOOLBAR_ITEMS: Array<{
+  key: LinghuiVideoToolKey;
+  label: string;
+  icon: React.ReactNode;
+}> = [
+  { key: 'screenshot', label: '截图', icon: <ImageIcon size={13} /> },
+  { key: 'clip', label: '剪辑', icon: <Scissors size={13} /> },
+  { key: 'upscale', label: '高清', icon: <Wand2 size={13} /> },
+  { key: 'analyze', label: '解析', icon: <FileText size={13} /> },
+  { key: 'audio-separation', label: '分离音频', icon: <AudioLines size={13} /> },
+];
 
 function getPreviewSource(source?: string): string {
   return toFileSystemDisplayUrl(source) || '';
@@ -77,6 +91,7 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
   const props = nodeData.properties as unknown as LinghuiVideoNodeProperties;
   const runState = useNodeRunState(id);
   const interactionHandlers = useLinghuiNodeInteraction(id);
+  const { openVideoToolPanel } = useLinghuiNodeInteractionApi();
   const status = runState?.status ?? 'idle';
   const statusColor = STATUS_COLORS[status] ?? STATUS_COLORS.idle;
 
@@ -126,6 +141,8 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
     '--linghui-progress': `${runState?.progress ?? 0}%`,
   });
   const isEditorVisible = useLinghuiNodeEditorVisibility(id, 'linghui/video');
+  const isGenerateNode = props.mode !== 'import' && !hasUploadedSource;
+  const shouldShowVideoGenerator = isGenerateNode && (selected || isEditorVisible);
   const normalizedRunProgress = typeof runState?.progress === 'number' && Number.isFinite(runState.progress)
     ? Math.max(0, Math.min(100, Math.round(runState.progress)))
     : 0;
@@ -135,6 +152,7 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
     : hasUploadedSource
       ? '透传输出'
       : modeLabel;
+  const shouldShowResourceToolbar = selected && viewState === 'resource' && Boolean(rawVideoSource);
 
   const syncVideoFrame = useCallback(() => {
     const video = videoRef.current;
@@ -255,6 +273,14 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
     setHasMediaLoaded(true);
   }, []);
 
+  const handleOpenResourceTool = useCallback((
+    event: React.SyntheticEvent,
+    tool: LinghuiVideoToolKey,
+  ) => {
+    stopSurfaceEvent(event);
+    openVideoToolPanel(id, tool);
+  }, [id, openVideoToolPanel, stopSurfaceEvent]);
+
   const handleVideoPause = useCallback(() => {
     setIsPlaying(false);
     requestAnimationFrame(() => {
@@ -368,6 +394,25 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
               </div>
             ) : null}
             <div className={`linghuiCompactVideoOverlay ${isPlaying ? 'isPlaying' : ''}`}>
+              {shouldShowResourceToolbar ? (
+                <div className="linghuiVideoNodeResourceToolbar nodrag nopan" aria-label="视频节点操作">
+                  {VIDEO_RESOURCE_TOOLBAR_ITEMS.map(item => (
+                    <button
+                      key={item.key}
+                      type="button"
+                      className="linghuiVideoNodeResourceTool"
+                      onMouseDown={stopSurfaceEvent}
+                      onPointerDown={stopSurfaceEvent}
+                      onClick={event => handleOpenResourceTool(event, item.key)}
+                      title={item.label}
+                      aria-label={item.label}
+                    >
+                      {item.icon}
+                      <span>{item.label}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
               <button
                 type="button"
                 className={`linghuiCompactVideoToggle nodrag nopan ${isPlaying ? 'isPlaying' : ''}`}
@@ -425,7 +470,7 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
         <LinghuiNodeRunError runState={runState} surface="thumb" />
       </div>
 
-      {isEditorVisible ? <LinghuiNodeEditor nodeId={id} nodeType="linghui/video" /> : null}
+      {shouldShowVideoGenerator ? <LinghuiNodeEditor nodeId={id} nodeType="linghui/video" forceVisible /> : null}
     </div>
   );
 }

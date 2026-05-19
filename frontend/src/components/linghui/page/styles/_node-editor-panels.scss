@@ -181,6 +181,10 @@
   &ToolPresetCard {
     @include lh-inline(12px, nowrap, flex-start, space-between);
     @include lh-plain-card(12px, color-mix(in srgb, var(--token-text-primary) 5%, transparent), 14px);
+
+    &.isVideoClipRange {
+      align-items: center;
+    }
   }
 
   &ToolPresetBody {
@@ -191,6 +195,39 @@
 
   &ToolPresetDesc {
     @include lh-text($lh-text-muted);
+  }
+
+  .linghuiVideoClipRangeControls {
+    display: grid;
+    grid-template-columns: 96px 96px auto;
+    align-items: end;
+    gap: 8px;
+
+    label {
+      @include lh-stack(4px);
+      @include lh-text($lh-text-muted, 11px, 1.2, 600);
+      position: relative;
+    }
+
+    label em {
+      position: absolute;
+      right: 8px;
+      bottom: 7px;
+      color: $lh-text-muted;
+      font-style: normal;
+      font-size: 10px;
+      pointer-events: none;
+    }
+
+    .ant-input-number {
+      width: 100%;
+    }
+
+    .ant-input-number,
+    .ant-input-number-group-addon {
+      border-color: color-mix(in srgb, var(--token-border-base) 72%, transparent);
+      background: color-mix(in srgb, var(--token-bg-card) 86%, transparent);
+    }
   }
 
   &Refs,

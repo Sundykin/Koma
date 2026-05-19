@@ -6,6 +6,7 @@ import {
   AudioWaveform,
   Captions,
   ChevronDown,
+  Images,
   ScanLine,
   Scissors,
   Sparkles,
@@ -16,6 +17,7 @@ import { VIDEO_TOOL_PRESETS } from '../state/videoNodeEditorShared';
 export const VIDEO_TOOLBAR_ITEMS: Array<{ key: LinghuiVideoToolKey; label: string }> = [
   { key: 'clip', label: '剪辑' },
   { key: 'upscale', label: '高清' },
+  { key: 'screenshot', label: '截图' },
   { key: 'analyze', label: '解析' },
   { key: 'subtitle-remove', label: '智能去字幕' },
   { key: 'audio-separation', label: '音频分离' },
@@ -106,6 +108,17 @@ export const LinghuiNodeEditorVideoToolbar: React.FC<LinghuiNodeEditorVideoToolb
         >
           <span className="linghuiNodeEditorToolButtonBadge">HD</span>
           <span>高清</span>
+        </button>
+      </Tooltip>
+
+      <Tooltip title={VIDEO_TOOL_PRESETS.screenshot.description}>
+        <button
+          type="button"
+          className={`linghuiNodeEditorToolButton ${activeVideoTool === 'screenshot' ? 'isActive' : ''}`}
+          onClick={() => activateTool('screenshot')}
+        >
+          <Images size={14} className="linghuiNodeEditorToolButtonIcon" />
+          <span>截图</span>
         </button>
       </Tooltip>
 

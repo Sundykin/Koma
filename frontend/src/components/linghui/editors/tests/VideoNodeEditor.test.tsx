@@ -97,10 +97,13 @@ function createVideoNodeData(overrides?: Partial<LinghuiNodeData['properties']>)
 function renderEditor(
   nodeData: LinghuiNodeData,
   options?: {
-    activeTool?: 'clip' | 'upscale' | 'analyze' | 'subtitle-remove' | 'audio-separation' | null;
-    onToolChange?: (tool: any) => void;
-    nodeRun?: LinghuiNodeRunState;
-    onRun?: () => void;
+    activeTool?: 'clip' | 'upscale' | 'screenshot' | 'analyze' | 'subtitle-remove' | 'audio-separation' | null;
+  onToolChange?: (tool: any) => void;
+  nodeRun?: LinghuiNodeRunState;
+  onRun?: () => void;
+  onCreateDerivedFrames?: React.ComponentProps<typeof VideoNodeEditor>['onCreateDerivedFrames'];
+  onCreateDerivedVideos?: React.ComponentProps<typeof VideoNodeEditor>['onCreateDerivedVideos'];
+  onCreateDerivedAnalysis?: React.ComponentProps<typeof VideoNodeEditor>['onCreateDerivedAnalysis'];
   },
 ) {
   return render(
@@ -115,6 +118,9 @@ function renderEditor(
         promptReferences={[]}
         activeTool={options?.activeTool ?? null}
         onToolChange={options?.onToolChange ?? vi.fn()}
+        onCreateDerivedFrames={options?.onCreateDerivedFrames}
+        onCreateDerivedVideos={options?.onCreateDerivedVideos}
+        onCreateDerivedAnalysis={options?.onCreateDerivedAnalysis}
         onRun={options?.onRun ?? vi.fn()}
       />
     </App>
@@ -142,7 +148,7 @@ describe('VideoNodeEditor', () => {
     useLinghuiNodeEditorApiMock.mockReturnValue({ executionQueue: null });
   });
 
-  it('带本地 source 的视频节点直接进入透传态并清空激活工具', async () => {
+  it('带本地 source 的视频节点直接进入透传态并保留可执行工具面板', async () => {
     const onToolChange = vi.fn();
 
     renderEditor(
@@ -155,13 +161,13 @@ describe('VideoNodeEditor', () => {
       },
     );
 
-    await waitFor(() => {
-      expect(onToolChange).toHaveBeenCalledWith(null);
-    });
-
     // LibTV 1:1：视频参考节点编辑器面板精简为文件名 pill + 下载按钮（取消大预览图重复）。
     expect(screen.getByText('imported-cat.mp4')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /下载/ })).toBeInTheDocument();
+    expect(screen.getByText('高清')).toBeInTheDocument();
+    expect(screen.getByText('高清 2x')).toBeInTheDocument();
+    expect(screen.getByText('高清 4x')).toBeInTheDocument();
+    expect(onToolChange).not.toHaveBeenCalledWith(null);
     expect(screen.queryByText('提示词')).not.toBeInTheDocument();
     expect(screen.queryByText('模型与参数')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '生成' })).not.toBeInTheDocument();
@@ -170,6 +176,93 @@ describe('VideoNodeEditor', () => {
     expect(screen.queryByText('不进入生成')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '在系统播放器打开' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '打开所在位置' })).not.toBeInTheDocument();
+  });
+
+  it('截图工具提供首帧 / 中帧 / 尾帧 / 首中尾抽取入口', async () => {
+    renderEditor(
+      createVideoNodeData({
+        source: '/tmp/imported-cat.mp4',
+      }),
+      {
+        activeTool: 'screenshot',
+      },
+    );
+
+    expect(screen.getByText('截图')).toBeInTheDocument();
+    expect(screen.getByText('首帧')).toBeInTheDocument();
+    expect(screen.getByText('中帧')).toBeInTheDocument();
+    expect(screen.getByText('尾帧')).toBeInTheDocument();
+    expect(screen.getByText('首中尾')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '抽取首帧' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '抽取中帧' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '抽取尾帧' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '抽取首中尾' })).toBeInTheDocument();
+  });
+
+  it('剪辑工具提供起止时间和真实裁剪入口', async () => {
+    renderEditor(
+      createVideoNodeData({
+        source: '/tmp/imported-cat.mp4',
+        duration: 8,
+      }),
+      {
+        activeTool: 'clip',
+        onCreateDerivedVideos: vi.fn(),
+      },
+    );
+
+    expect(screen.getByText('剪辑')).toBeInTheDocument();
+    expect(screen.getByText('片段范围')).toBeInTheDocument();
+    expect(screen.getByText('视频时长 8.0s')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '裁剪' })).toBeInTheDocument();
+  });
+
+  it('高清工具提供本地 2x / 4x 放大入口', async () => {
+    renderEditor(
+      createVideoNodeData({
+        source: '/tmp/imported-cat.mp4',
+      }),
+      {
+        activeTool: 'upscale',
+        onCreateDerivedVideos: vi.fn(),
+      },
+    );
+
+    expect(screen.getByText('高清')).toBeInTheDocument();
+    expect(screen.getByText('高清 2x')).toBeInTheDocument();
+    expect(screen.getByText('高清 4x')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '放大2倍' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '放大4倍' })).toBeInTheDocument();
+    expect(screen.queryByText('1080P 电影质感')).not.toBeInTheDocument();
+  });
+
+  it('解析工具提供真实文本节点派生入口', async () => {
+    const onCreateDerivedAnalysis = vi.fn(() => 'analysis-node');
+    const onToolChange = vi.fn();
+
+    renderEditor(
+      createVideoNodeData({
+        source: '/tmp/imported-cat.mp4',
+        duration: 8,
+      }),
+      {
+        activeTool: 'analyze',
+        onToolChange,
+        onCreateDerivedAnalysis,
+      },
+    );
+
+    expect(screen.getByText('解析')).toBeInTheDocument();
+    expect(screen.getByText('生成解析节点')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '生成视频解析节点' }));
+
+    expect(onCreateDerivedAnalysis).toHaveBeenCalledWith('video-node-1', expect.objectContaining({
+      label: '视频节点-解析',
+      content: expect.stringContaining('## 镜头解析草稿'),
+      source: '/tmp/imported-cat.mp4',
+      durationSec: 8,
+    }));
+    expect(onToolChange).toHaveBeenCalledWith(null);
   });
 
   it('生成态视频节点改成摘要式模型与参数控件且不再渲染结果预览', async () => {
@@ -278,7 +371,7 @@ describe('VideoNodeEditor', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: '下载' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '下载视频' })).toBeInTheDocument();
     });
 
     expect(screen.queryByText('生成结果')).not.toBeInTheDocument();

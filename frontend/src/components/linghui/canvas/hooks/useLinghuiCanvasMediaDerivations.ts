@@ -3,6 +3,7 @@ import { useLinghuiCanvasImageResultDerivation } from './useLinghuiCanvasImageRe
 import { useLinghuiCanvasImageToolDerivation } from './useLinghuiCanvasImageToolDerivation';
 import { useLinghuiCanvasMultiAngleImageDerivation } from './useLinghuiCanvasMultiAngleImageDerivation';
 import { useLinghuiCanvasPanoramaDerivation } from './useLinghuiCanvasPanoramaDerivation';
+import { useLinghuiCanvasVideoAnalysisDerivation } from './useLinghuiCanvasVideoAnalysisDerivation';
 import { useLinghuiCanvasVideoResultDerivation } from './useLinghuiCanvasVideoResultDerivation';
 import type { UseLinghuiCanvasMediaDerivationParams } from './linghuiCanvasMediaDerivationShared';
 
@@ -11,6 +12,7 @@ export function useLinghuiCanvasMediaDerivations(params: UseLinghuiCanvasMediaDe
     createDerivedImageNodesFromNode: useLinghuiCanvasImageResultDerivation(params),
     createDerivedPanoramaNodeFromNode: useLinghuiCanvasPanoramaDerivation(params),
     createDerivedVideoNodesFromNode: useLinghuiCanvasVideoResultDerivation(params),
+    createDerivedVideoAnalysisNodeFromNode: useLinghuiCanvasVideoAnalysisDerivation(params),
     createDerivedAudioNodeFromVideo: useLinghuiCanvasAudioFromVideoDerivation(params),
     createDerivedMultiAngleImageNodeFromNode: useLinghuiCanvasMultiAngleImageDerivation(params),
     createDerivedImageToolNodeFromNode: useLinghuiCanvasImageToolDerivation(params),

@@ -40,6 +40,7 @@ import { executePanoramaNodeWithImageExecutor } from './linghuiPanoramaExecutor'
 import { executeAgentNode, executeTextNode } from './linghuiTextAgentExecutors';
 import { executeScriptNode, executeStoryboardNode } from './linghuiScriptExecutors';
 import { executeAudioNode, executeVideoNode } from './linghuiMediaNodeExecutors';
+import { executeVideoClipNode } from './linghuiVideoClipExecutor';
 import type { NodeExecutionProgressHandler } from './linghuiNodeExecutorTypes';
 import { createLogger } from '../../../../store/logger';
 import { runWithTask } from '../../../../services/taskRunner';
@@ -51,6 +52,7 @@ export { executeDirector3DNode } from './linghuiDirector3DExecutor';
 export { executeAgentNode, executeTextNode } from './linghuiTextAgentExecutors';
 export { executeScriptNode, executeStoryboardNode } from './linghuiScriptExecutors';
 export { executeAudioNode, executeVideoNode } from './linghuiMediaNodeExecutors';
+export { executeVideoClipNode } from './linghuiVideoClipExecutor';
 
 // 节点类型 → TaskManager subType 映射，便于面板按图标分组
 const LINGHUI_NODE_TASK_SUBTYPE: Record<string, TaskSubType> = {
@@ -61,6 +63,7 @@ const LINGHUI_NODE_TASK_SUBTYPE: Record<string, TaskSubType> = {
   'linghui/panorama': 'linghui-image',
   'linghui/video': 'linghui-video',
   'linghui/audio': 'linghui-audio',
+  'linghui/video-clip': 'linghui-video',
   'linghui/script': 'linghui-script',
   // 故事板节点本质上和 script 走同一条 LLM 链路，subtype 复用 linghui-script
   'linghui/storyboard': 'linghui-script',
@@ -316,6 +319,8 @@ async function executeNodeInner(
       return executeVideoNode(node, onProgress, signal);
     case 'linghui/audio':
       return executeAudioNode(node, onProgress, signal);
+    case 'linghui/video-clip':
+      return executeVideoClipNode(node, onProgress);
     case 'linghui/script':
       return executeScriptNode(node, onProgress, signal);
     case 'linghui/storyboard':

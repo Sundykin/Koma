@@ -75,9 +75,10 @@ export type LinghuiImageToolKey =
   | 'edit-texts'
   | 'grid-split';
 /**
- * 视频节点工具。对齐 LibTV 截图工具条：剪辑 / 高清 / 解析 / 智能去字幕 / 音频分离。
+ * 视频节点工具。对齐 LibTV 截图工具条：剪辑 / 高清 / 截图 / 解析 / 智能去字幕 / 音频分离。
  * - clip               剪辑：本地 FFmpeg trim 派生新视频节点
  * - upscale            高清：FFmpeg 倍率放大派生
+ * - screenshot         截图：从当前视频抽首帧/中帧/尾帧派生图片节点
  * - analyze            解析：把视频转写为提示词/分镜文本
  * - subtitle-remove    智能去字幕（LibTV: "AI一键去除视频字幕，仅支持中英文字幕"，后端服务待接入）
  * - audio-separation   音频分离（一级菜单容器，下挂"音视频分离"和"人声分离"二级）
@@ -86,6 +87,7 @@ export type LinghuiImageToolKey =
 export type LinghuiVideoToolKey =
   | 'clip'
   | 'upscale'
+  | 'screenshot'
   | 'analyze'
   | 'subtitle-remove'
   | 'audio-separation';
@@ -156,7 +158,12 @@ export type LinghuiTextNodeViewState =
   | 'empty_generate';
 export type LinghuiScriptNodeMode = 'manual' | 'generate';
 export type LinghuiScriptNodeViewMode = 'cards' | 'table';
-export type LinghuiScriptDerivationKind = 'text' | 'image' | 'video-image' | 'video';
+export type LinghuiScriptDerivationKind = 'text' | 'image' | 'video-image' | 'video' | 'video-clip';
+export type LinghuiStoryboardScene =
+  | 'plot_deduction_four_grid'
+  | 'plot_deduction_nine_grid'
+  | 'coherent_storyboard_16'
+  | 'coherent_storyboard_25';
 
 export interface LinghuiScriptDerivedProperties {
   scriptSourceNodeId?: string;
@@ -188,6 +195,7 @@ export interface LinghuiScriptNodeProperties {
   systemPrompt: string;
   llmSelection: string;
   viewMode: LinghuiScriptNodeViewMode;
+  editedShots?: LinghuiStoryboardFrame[];
 }
 
 /**
@@ -200,10 +208,14 @@ export interface LinghuiStoryboardNodeProperties {
   /** 剧情大纲。用户唯一需要填的字段。 */
   prompt: string;
   llmSelection: string;
+  /** LibTV slash scene：用 scene 驱动内置剧情推演 / 连贯分镜提示词。 */
+  scene?: LinghuiStoryboardScene;
   /** 视图模式与 script 节点共享，沿用 cards / table 复用 ScriptShot UI */
   viewMode: LinghuiScriptNodeViewMode;
   /** 目标镜头数。默认 8。允许 [4, 24]。 */
   targetShotCount: number;
+  /** 用户在节点/编辑器表格中手动修正后的镜头数据。 */
+  editedShots?: LinghuiStoryboardFrame[];
 }
 
 export type LinghuiGridType = 'none' | '2x2' | '3x3' | '4x4' | '5x5';
@@ -356,8 +368,8 @@ export interface LinghuiImageGridSliceNodeProperties {
  *  - durationSec：合成结果总时长（来自 FFmpeg 输出）
  *  - status：'idle' | 'composing' | 'ready' | 'failed'
  */
-export interface LinghuiVideoClipNodeProperties {
-  clips: Array<{ id: string; kind: 'video' | 'image'; source: string; durationSec?: number; label?: string }>;
+export interface LinghuiVideoClipNodeProperties extends LinghuiScriptDerivedProperties {
+  clips: Array<{ id: string; kind: 'video' | 'image' | 'audio'; source: string; durationSec?: number; label?: string }>;
   resolution: '720p' | '1080p' | '4K';
   fps: 24 | 30 | 60;
   /** 每张图片片段默认时长（秒），仅 kind='image' 时生效；缺省 3s */
@@ -970,6 +982,29 @@ export interface LinghuiStoryboardFrame {
   description: string;
   durationSec: number;
   image?: LinghuiImageMediaItem;
+  hiddenUuid?: string;
+  shotNumber?: number;
+  plotDescription?: string;
+  visualDescription?: string;
+  characters?: Array<{
+    characterName?: string;
+    characterDescription?: string;
+    characterImageUrl?: string;
+  }>;
+  videoReference?: {
+    startTime?: number;
+    endTime?: number;
+    referenceFrameImage?: string;
+  };
+  shotSize?: string;
+  characterAction?: string;
+  emotion?: string;
+  sceneTags?: string;
+  lightingAndAtmosphere?: string;
+  audioEffects?: string;
+  dialogue?: string;
+  imageGenerationPrompt?: string;
+  videoMotionPrompt?: string;
 }
 
 export interface LinghuiNodeResultMetadata {
@@ -1280,6 +1315,14 @@ export interface LinghuiCanvasGroupData {
   label: string;
   color: string;
   collapsed?: boolean;
+  sourceScriptNodeId?: string;
+  storyboardTitle?: string;
+  storyboardGroupType?: 'image' | 'video' | string;
+  standaloneStoryboardImageGrid?: boolean;
+  childNodeIds?: string[];
+  storyboardManualGridCols?: number;
+  storyboardManualGridRows?: number;
+  showStoryboardShotNumbers?: boolean;
 }
 
 export interface LinghuiSubgraphSnapshot {

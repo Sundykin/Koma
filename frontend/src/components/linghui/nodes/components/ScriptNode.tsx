@@ -1,13 +1,19 @@
-import React, { memo, useMemo } from 'react';
+import React, { memo, useMemo, useState } from 'react';
 import { type NodeProps } from '@xyflow/react';
+import { Maximize2, Minimize2, Table2, LayoutGrid, Image as ImageIcon, Video, Wand2, X } from 'lucide-react';
 import type {
   LinghuiNodeData,
   LinghuiNodeType,
   LinghuiRunStatus,
   LinghuiScriptNodeProperties,
+  LinghuiStoryboardFrame,
 } from '../../../../types/linghui';
-import { useLinghuiNodeInteraction, useLinghuiNodeEditorVisibility, useNodeRunState } from '../state/LinghuiNodeRunsContext';
-import { LinghuiNodeEditor } from '../../editors/components/LinghuiNodeEditor';
+import {
+  useLinghuiNodeEditorApi,
+  useLinghuiNodeInteraction,
+  useLinghuiNodeMutation,
+  useNodeRunState,
+} from '../state/LinghuiNodeRunsContext';
 import { EditableCompactNodeLabel } from './EditableCompactNodeLabel';
 import { parseLinghuiScriptContent } from '../../editors/state/linghuiScriptNodeUtils';
 import { resolveLinghuiNodeViewMode } from '../../editors/state/linghuiNodeViewMode';
@@ -15,6 +21,7 @@ import { resolveDefaultCompactNodeStyle } from '../state/linghuiNodeCardSizing';
 import { cssVars } from '../../../../theme/runtime';
 import { LinghuiNodeRunError } from './LinghuiNodeRunError';
 import { LinghuiNodePorts } from './LinghuiNodeHandle';
+import { ScriptShotCards, ScriptShotTable } from '../../editors/components/ScriptShotViews';
 
 const STATUS_COLORS: Record<LinghuiRunStatus, string> = {
   idle: 'var(--token-text-muted)',
@@ -24,11 +31,23 @@ const STATUS_COLORS: Record<LinghuiRunStatus, string> = {
   stale: 'var(--token-status-warning)',
 };
 
+function getScriptNodePreviewScale(shotCount: number, viewMode: 'cards' | 'table', expanded: boolean): number {
+  if (expanded) return 1;
+  if (viewMode === 'table') return shotCount > 8 ? 0.62 : 0.7;
+  if (shotCount >= 20) return 0.42;
+  if (shotCount >= 12) return 0.48;
+  if (shotCount >= 8) return 0.56;
+  if (shotCount >= 4) return 0.68;
+  return 0.82;
+}
+
 function ScriptNodeInner({ id, data, selected }: NodeProps) {
   const nodeData = data as unknown as LinghuiNodeData;
   const props = nodeData.properties as unknown as LinghuiScriptNodeProperties;
   const runState = useNodeRunState(id);
   const interactionHandlers = useLinghuiNodeInteraction(id);
+  const editorApi = useLinghuiNodeEditorApi();
+  const { updateNodeData } = useLinghuiNodeMutation();
   const status = runState?.status ?? 'idle';
   const statusColor = STATUS_COLORS[status] ?? STATUS_COLORS.idle;
   const nodeStyle = cssVars({
@@ -42,14 +61,23 @@ function ScriptNodeInner({ id, data, selected }: NodeProps) {
     ? 'linghui/storyboard'
     : 'linghui/script';
   const isStoryboard = linghuiType === 'linghui/storyboard';
+  const [nodeViewMode, setNodeViewMode] = useState<'cards' | 'table'>(props.viewMode === 'table' ? 'table' : 'cards');
+  const [selectedShotIds, setSelectedShotIds] = useState<string[]>([]);
+  const [isStoryExpanded, setIsStoryExpanded] = useState(false);
   const fallbackShots = useMemo(() => (
     !isStoryboard && props.mode === 'manual'
       ? parseLinghuiScriptContent(String(props.content ?? '')).shots
       : []
   ), [isStoryboard, props.content, props.mode]);
-  const shots = runState?.result?.kind === 'storyboard'
+  const sourceShots = runState?.result?.kind === 'storyboard'
     ? (runState.result.shots ?? [])
     : fallbackShots;
+  const editedShots = Array.isArray(props.editedShots) ? props.editedShots : [];
+  const shots = editedShots.length > 0 ? editedShots : sourceShots;
+  const availableShotIds = useMemo(() => new Set(shots.map(shot => shot.id)), [shots]);
+  const effectiveSelectedShotIds = useMemo(() => {
+    return selectedShotIds.filter(shotId => availableShotIds.has(shotId));
+  }, [availableShotIds, selectedShotIds, shots]);
   const previewLine = shots[0]?.description
     || shots[0]?.title
     || (runState?.result?.kind === 'storyboard' ? String(runState.result.text ?? '').trim() : '')
@@ -57,29 +85,114 @@ function ScriptNodeInner({ id, data, selected }: NodeProps) {
   const modeLabel = isStoryboard
     ? '故事板'
     : props.mode === 'generate' ? '脚本生成' : '结构化脚本';
-  const viewLabel = props.viewMode === 'table' ? '表格视图' : '卡片视图';
+  const viewLabel = nodeViewMode === 'table' ? '表格视图' : '卡片视图';
   const viewMode = resolveLinghuiNodeViewMode(nodeData.viewMode);
-  const isEditorVisible = useLinghuiNodeEditorVisibility(id, linghuiType);
+  const handleToggleShot = (shotId: string, checked: boolean) => {
+    setSelectedShotIds(prev => {
+      const base = prev.filter(id => availableShotIds.has(id));
+      if (checked) return base.includes(shotId) ? base : [...base, shotId];
+      return base.filter(id => id !== shotId);
+    });
+  };
+  const handleChangeShot = (shotId: string, patch: Partial<LinghuiStoryboardFrame>) => {
+    updateNodeData(id, prev => {
+      const prevProps = prev.properties as Partial<LinghuiScriptNodeProperties>;
+      const baseShots = Array.isArray(prevProps.editedShots) && prevProps.editedShots.length > 0
+        ? prevProps.editedShots
+        : shots;
+      return {
+        ...prev,
+        properties: {
+          ...prev.properties,
+          editedShots: baseShots.map(shot => (shot.id === shotId ? { ...shot, ...patch } : shot)),
+        } as unknown as Record<string, unknown>,
+      };
+    }, { markStale: false });
+  };
+  const selectedShots = shots.filter(shot => effectiveSelectedShotIds.includes(shot.id));
+  const canUseShotActions = selectedShots.length > 0;
+  const previewScale = getScriptNodePreviewScale(shots.length, nodeViewMode, isStoryExpanded);
+  const storyNodeStyle = cssVars({
+    ...nodeStyle,
+    '--linghui-script-preview-scale': String(previewScale),
+    '--linghui-script-preview-width': `${Math.round(100 / previewScale)}%`,
+    '--linghui-node-width': isStoryExpanded ? '760px' : undefined,
+    '--linghui-thumb-height': isStoryExpanded ? '620px' : undefined,
+  });
 
   return (
     <div
-      className={`linghuiCompactNode nopan is-${status} ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''} ${isEditorVisible ? 'hasInlineEditor' : ''}`}
+      className={`linghuiCompactNode linghuiCompactScriptNode nopan is-${status} ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''} ${isStoryExpanded ? 'isStoryExpanded' : ''}`}
       data-view-mode={viewMode}
-      style={nodeStyle}
+      data-story-expanded={isStoryExpanded ? 'true' : undefined}
+      style={storyNodeStyle}
       {...interactionHandlers}
     >
       <LinghuiNodePorts accent={nodeData.accent} inputs={nodeData.inputs} outputs={nodeData.outputs} />
 
-      <div className="linghuiCompactThumb linghuiCompactScriptThumb">
-        <div className="linghuiCompactScriptFrame">
-          <span className="linghuiCompactAccentLineStrong" />
-          <span className="linghuiCompactAccentLineMedium" />
-          <span className="linghuiCompactAccentLineSoft" />
+      <div className={`linghuiCompactThumb linghuiCompactScriptThumb ${shots.length > 0 ? 'hasStoryboardRows' : ''}`}>
+        <div className="linghuiCompactScriptNodeBar">
+          <span className="linghuiCompactScriptNodeCount">{shots.length > 0 ? `${shots.length}镜头` : '暂无数据'}</span>
+          <div className="linghuiCompactScriptNodeActions">
+            <button
+              type="button"
+              className={nodeViewMode === 'cards' ? 'isActive' : ''}
+              aria-label="卡片视图"
+              title="卡片视图"
+              onClick={event => {
+                event.stopPropagation();
+                setNodeViewMode('cards');
+              }}
+            >
+              <LayoutGrid size={12} />
+            </button>
+            <button
+              type="button"
+              className={nodeViewMode === 'table' ? 'isActive' : ''}
+              aria-label="表格视图"
+              title="表格视图"
+              onClick={event => {
+                event.stopPropagation();
+                setNodeViewMode('table');
+              }}
+            >
+              <Table2 size={12} />
+            </button>
+            <button
+              type="button"
+              aria-label={isStoryExpanded ? '收起节点' : '展开节点'}
+              title={isStoryExpanded ? '收起节点' : '展开节点'}
+              onClick={event => {
+                event.stopPropagation();
+                setIsStoryExpanded(value => !value);
+              }}
+            >
+              {isStoryExpanded ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
+            </button>
+          </div>
         </div>
-        <div className="linghuiCompactScriptGrid">
-          {Array.from({ length: 4 }, (_, index) => (
-            <span key={index} className="linghuiCompactAccentBorder" />
-          ))}
+        <div className="linghuiCompactScriptNodeBody nodrag nowheel">
+          <div className="linghuiCompactScriptNodeBodyInner">
+            {shots.length > 0 ? (
+              nodeViewMode === 'table' ? (
+                <ScriptShotTable
+                  shots={shots}
+                  selectedShotIds={effectiveSelectedShotIds}
+                  onToggleShot={handleToggleShot}
+                  editable
+                  onChangeShot={handleChangeShot}
+                />
+              ) : (
+                <ScriptShotCards
+                  shots={shots}
+                  selectedShotIds={effectiveSelectedShotIds}
+                  onToggleShot={handleToggleShot}
+                />
+              )
+            ) : (
+              <div className="linghuiCompactScriptEmpty">运行后在节点内展示故事板</div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -110,7 +223,60 @@ function ScriptNodeInner({ id, data, selected }: NodeProps) {
         )}
       </div>
 
-      {isEditorVisible ? <LinghuiNodeEditor nodeId={id} nodeType={linghuiType} /> : null}
+      {canUseShotActions ? (
+        <div className="linghuiCompactScriptGenerator nodrag nopan nowheel">
+          <button
+            type="button"
+            className="linghuiCompactScriptGeneratorIcon"
+            aria-label="关闭分镜生成器"
+            title="关闭分镜生成器"
+            onClick={event => {
+              event.stopPropagation();
+              setSelectedShotIds([]);
+            }}
+          >
+            <X size={12} />
+          </button>
+          <span className="linghuiCompactScriptGeneratorDivider" />
+          <span className="linghuiCompactScriptGeneratorCount">
+            已选 {selectedShots.length}/{shots.length}
+          </span>
+          <span className="linghuiCompactScriptGeneratorDivider" />
+          <button
+            type="button"
+            className="linghuiCompactScriptGeneratorAction"
+            onClick={event => {
+              event.stopPropagation();
+              editorApi.onDeriveScriptShots(id, selectedShots);
+            }}
+          >
+            <Wand2 size={13} />
+            派生文本
+          </button>
+          <button
+            type="button"
+            className="linghuiCompactScriptGeneratorAction"
+            onClick={event => {
+              event.stopPropagation();
+              editorApi.onGenerateScriptImages(id, selectedShots);
+            }}
+          >
+            <ImageIcon size={13} />
+            生成分镜
+          </button>
+          <button
+            type="button"
+            className="linghuiCompactScriptGeneratorAction"
+            onClick={event => {
+              event.stopPropagation();
+              editorApi.onGenerateScriptVideos(id, selectedShots);
+            }}
+          >
+            <Video size={13} />
+            生成视频组
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -1,5 +1,152 @@
 # Findings
 
+## 2026-05-18 LibTV 全节点清单与迁移顺序
+
+- 使用 `rg -l "nodeTypes|wrapSelfVirtualizing|space-scene-720" template_/libtv -g '*.js'` 定位节点映射所在 chunk；关键映射在 `template_/libtv/15gvxu-nayl4w.js` 与 `template_/libtv/13h1xgiucfbcg.js`。
+- LibTV `nodeTypes` 映射原始片段：
+  - `custom`
+  - `text`
+  - `image`
+  - `video`
+  - `audio`
+  - `temp`
+  - `group`
+  - `script`
+  - `storyboard`
+  - `video-story`
+  - `video_group`
+  - `video-clip`
+  - `space-scene-720`
+- 灵绘当前一等节点类型：
+  - `linghui/text`
+  - `linghui/agent`
+  - `linghui/image`
+  - `linghui/panorama`
+  - `linghui/video`
+  - `linghui/audio`
+  - `linghui/script`
+  - `linghui/storyboard`
+  - `linghui/director3d`
+  - `linghui/image-grid-slice`
+  - `linghui/video-clip`
+- 差距判断：
+  - LibTV `text/image/video/audio/script/storyboard/video-clip/space-scene-720/group` 都有灵绘对应物或近似物。
+  - LibTV `custom/temp/video-story/video_group` 在灵绘没有一等价物，需要继续反编确认是否应迁移为隐藏中间节点、合并进故事板/视频合成，还是不暴露。
+  - 灵绘 `agent/director3d/image-grid-slice` 是本项目扩展或为 LibTV 能力拆出的专用节点，不是 LibTV 直接节点映射。
+- 当前优先顺序：
+  1. `audio`：代码面较小，LibTV 证据明确，适合作为本轮节点对齐首个落点。
+  2. `group/video-clip/video_group`：涉及组合操作和最终剪辑，用户要求“所有节点”时必须补齐。
+  3. `image`：已有大量迁移，但还需要逐按钮核验真实执行路径。
+  4. `video`：深度反编已有，剩余截图/解析/去字幕/8 mode generator 继续补。
+  5. `script/storyboard/video-story`：故事板已改，需确认 LibTV `video-story` 是否对应独立剧情视频流程。
+
+### LibTV AudioNode 反编结论
+
+- 关键证据在 `template_/libtv/15gvxu-nayl4w.js`，`AudioNode` 片段附近包含 `K.displayName="AudioNode"`。
+- 状态机：`eT = generating / failed / resource / pending / empty_generate`，条件为 running task、failed task、有音频 URL、有上游、否则空生成。
+- `resource` 态：渲染音频播放器 `a.default({ url, playbackRate, nodeId, onDurationReady })`，并在 `AUDIO_RESOURCE` 且非资产音频时显示上传入口。
+- `empty_generate` 态：中心 `AudioDisc` 66px，只有一个 action：`音频生视频`，点击后写当前节点为 `AUDIO_RESOURCE` preset，并在右侧创建 `VIDEO_GENERATE`，下方创建 preset 图片节点，两条边接入视频。
+- `pending` 态：LibTV 直接渲染 `null`，没有“等待上游”文案。
+- 灵绘已实现 `LinghuiAudioNodeEmptyState` 和 `useLinghuiCanvasAudioEmptyAction` 的派生逻辑；本轮应补齐 AudioNode 自身状态机使用、上传浮按钮和资源态 compact 操作面板。
+
+### LibTV VideoClipNode 反编结论
+
+- 关键证据在 `template_/libtv/15gvxu-nayl4w.js`，`VideoClipNode` 片段附近包含 `rC.displayName="VideoClipNode"`。
+- 可见节点 label fallback 是 `n?.name || n?.label || "视频合成节点"`；节点 shell 里 `shouldShowGenerator:false`，不是普通视频 generator 条。
+- 空态组件 `rI` 的逻辑：
+  - `canOpen = m && (b || C)`，即至少有一个视频输入，并且“2 个及以上视频”或“有音频输入”时可以打开合成。
+  - 不可打开时显示两类文案：无输入为 `空空如也，请连接多个视频节点后操作`，输入不足为 `请连接2个及以上的视频/音频后操作`。
+  - 可打开按钮文案是 `打开视频合成`；生成中显示 `生成中`。
+- 资源态 `rw` 会显示视频预览，中央浮一个 `打开视频合成` 按钮；右上有下载按钮。
+- 与灵绘差距：灵绘已有 `linghui/video-clip` 节点、clips 自动同步和剪辑详情 Modal，但合成按钮仍是 `Modal.info("executor 尚未接入")` 假入口；本轮应先接通真实 FFmpeg concat，后续再继续复刻 LibTV 的内嵌 clip editor / editingClipNodeId 全屏预览。
+- 2026-05-18 继续对齐：`VideoClipNode` 资源态应显示合成结果预览，并以 `打开视频合成` 作为主入口；空态和输入不足文案直接使用 LibTV 原文。灵绘仍保留现有 compact 片段列表和真实 FFmpeg concat，不把 Modal 调参文案暴露为“打开剪辑”。
+
+### LibTV VideoGroupNode / VideoStoryNode 初步反编结论
+
+- `video_group`：关键片段含 `rx.displayName="VideoGroupNode"`，它不是普通视频节点，而是 storyboard image group 生成出来的视频组容器。
+  - `libtv.canvas.storyboard.generate_video_group.click` 上报说明它从故事板图片组入口触发。
+  - 生成时读取脚本行 `videoMotionPrompt`、分镜图片 `url[0]`、portrait asset，并创建一组 `VIDEO_GENERATE` 子节点，命名 `分镜视频-#${shotNumber}`，父节点是新的 group，group data 包含 `storyboardGroupType:"video"`、`sourceScriptNodeId`、`storyboardTitle:"视频组 · ..."`。
+  - 顶部有 `全部重生`、视图切换、全屏展开；能响应脚本变更，重新绑定/触发分镜图或视频节点。
+- `video-story`：关键片段含 `r_.displayName="VideoStoryNode"`，更像视频故事数据表节点。
+  - 默认标题 `视频故事`，读取 `rows` 和 `shotColumns`，自动推导列集合；图片 URL 列用缩略图，文本列用可选中/可双击选择的 scroll cell。
+  - 节点默认尺寸 800×400，支持全屏展开，空态显示 `暂无数据`。
+- 灵绘映射建议：
+  - `video_group` 不应立刻新增裸菜单节点，优先落到“故事板/脚本 -> 生成分镜视频组”的派生流程：创建 group + 多个 `linghui/video` 子节点 + 可后接 `linghui/video-clip`。
+  - `video-story` 可映射为现有 `linghui/storyboard` 的 table/fullscreen 视图增强，或新增只读 `视频故事` 节点；需要先看用户是否需要从 LLM 生成视频故事表再派生视频组。
+- 本轮落地：
+  - 灵绘 `生成视频流程` 已从“散落 image/video 节点”改为 LibTV 式视频组：创建 group，data 写入 `sourceScriptNodeId/storyboardTitle/storyboardGroupType:"video"`，label 为 `视频组 · {故事板名}`。
+  - 每个镜头在 group 内生成首帧/分镜图节点和视频节点；视频节点保留 `scriptSourceNodeId/scriptShotId/scriptDerivationKind:"video"`，prompt/duration 来自镜头描述和时长。
+  - group 右侧自动创建 `linghui/video-clip`，`clips` 绑定这些分镜视频节点，后续视频生成完成后可直接合成。
+
+### LibTV SpaceScene360Viewer / space-scene-720 反编结论
+
+- 关键证据在 `template_/libtv/15gvxu-nayl4w.js`，`nodeTypes` 中 `"space-scene-720": wrapSelfVirtualizing(s.default)`，并能搜到 `SpaceScene360Viewer` 相关实现。
+- LibTV 全景预览不是静态图：使用 Three.js / WebGL viewer，加载态文案为 `全景预览加载中 {percent}%`，空态为 `暂无全景图`。
+- 预览层有可选九宫格构图线，右下角 HUD 显示当前视角：
+  - `横 0° · 纵 0°`
+  - `缩放 60°×1.00`
+- 全屏预览底部有紧凑工具条，包含 `快捷键`、`关闭快捷键面板` 一类按钮；同时有构图网格和交互开关语义。
+- 全景截图命名不是普通 N/E/S/W：
+  - 4 向常量：`全景截图-前方`、`全景截图-左侧`、`全景截图-后方`、`全景截图-右侧`
+  - 12 向函数：`全景截图-逆时针${30*index%360}°`
+  - 截图组名称：`全景截图组 (${count} 张)`
+- 灵绘落地策略：保留现有 `PanoramaViewport` 的 Three.js 预览与 GPU 抽取，补齐 HUD / 构图网格 / 全屏底部工具条 / 12 向截图和 LibTV 命名，避免再做静态图片面板。
+
+### 2026-05-18 Image / Script / Storyboard / Agent 预制能力对齐
+
+- 图片通用工具的可本地落地点是 `crop`：灵绘已有 `ffmpegManager.cropImage`，本轮 UI 增加裁剪比例预览遮罩，`封面裁剪 4:5` 走同一条本地 FFmpeg 裁剪链路。
+- `擦除 / 抠图 / Mockup / 编辑元素 / 编辑文本` 当前没有本地分割、修复或文字编辑模型，不能伪装成本地处理；本轮只补 LibTV 式 preset 和说明，继续走真实图生图派生节点。
+- `ScriptNodeEditor` 的 LLM 生成态适合承接本地预制提示词：本轮新增 `剧情分镜 / 多机位 / 产品短片 / 情绪蒙太奇`，点击后写入真实 `prompt/systemPrompt`，后续执行器会按现有 LLM JSON 契约生成 storyboard result。
+- `StoryboardNodeEditor` 的 scene preset 底层已经由 `executeStoryboardNode` 拼入 `buildStoryboardSystemPrompt` 和 compiled prompt；本轮把 `四镜头 / 九镜头 / 16镜头 / 25镜头` 从隐藏下拉升级为可见紧凑 preset 条，点击写入 `scene/targetShotCount`。
+- `AgentNodeEditor` 本轮补 `素材分析 / 生成方案 / 分镜检查 / 提示词优化` 本地任务模板，写入真实 `prompt/systemPrompt/maxIterations`，不是装饰按钮；工具白名单仍保留在设置弹层中。
+
+### 2026-05-18 Script / Storyboard 节点内故事板反编与修正
+
+- 用户指出“故事描述、画面提示词、视频提示词、画面描述一模一样”是正确问题：灵绘 `ScriptShotViews.toShotTableRow()` 原先把 `plotDescription / visualDescription / imageGenerationPrompt / videoMotionPrompt` 全部回填为 `shot.description`，导致故事板不可用。
+- LibTV `ScriptNode` 证据在 `template_/libtv/15gvxu-nayl4w.js`：节点本体内部渲染表格或卡片，节点头部有 view mode 切换和全屏按钮；选中行后才在节点下方显示 `ScriptAggregatedGenerator`。不是单纯外挂编辑器展示。
+- LibTV `VideoStoryNode` 证据同在 `15gvxu-nayl4w.js` / `13h1xgiucfbcg.js`：节点 shell 内部直接渲染动态表格，空态显示 `暂无数据`，全屏 overlay 也复用同一表格。
+- LibTV 表格字段包含：`durationSeconds`、`plotDescription`、动态 `characters`、`videoReference`、`shotSize`、`characterAction`、`emotion`、`sceneTags`、`lightingAndAtmosphere`、`audioEffects`、`dialogue`、`imageGenerationPrompt`、`videoMotionPrompt`。
+- 本轮修正方向：
+  - `LinghuiStoryboardFrame` 扩展上述关键字段。
+  - JSON 解析器保留这些字段，`description` 只作为兼容摘要，不再驱动所有列。
+  - story/script system prompt 要求 LLM 输出不同的 `plotDescription / visualDescription / imageGenerationPrompt / videoMotionPrompt`。
+  - 图片派生优先使用 `imageGenerationPrompt`；视频派生优先使用 `videoMotionPrompt`。
+  - `ScriptNode` / `StoryboardNode` 本体直接显示故事板卡片/表格，并提供节点内 `分镜图 / 视频流程` 操作，编辑器不再是唯一可见故事板载体。
+
+### 2026-05-19 GridSliceNode 本地合成边界
+
+- LibTV 证据仍保持两条不同链路：`剧情推演九宫格 / 多机位九宫格 / 16宫格 / 25宫格` 属于 slash image 分镜生成；`宫格切分` 属于已有宫格图片的 GridSplit editor，二者不能互相替代。
+- 灵绘 `linghui/image-grid-slice` 是本地切图中间节点，不是 LibTV 的剧情生成入口；因此本轮只补可本地闭环的操作，不把它伪装成云端分镜生成器。
+- 本轮对齐点：在节点本体 footer 增加 `合成宫格`，用浏览器 canvas 按当前槽位和 `2x2 / 3x3 / 4x4 / 5x5` 重新拼成一张图片，再走已有 `onCreateDerivedImportImages` 派生图片节点。
+- 现有 `彻底切分` 保持原语义：只把非空槽位派生为独立图片节点。空槽在合成图中保留轻背景和网格线，避免用户清空后误以为布局被压缩。
+- 继续补齐本地可实现的 slot 操作：已有图片槽位可拖拽换位，空槽/任意槽位可接收拖入的本地图片或 URL；这只更新 `slots[]`，不触发剧情分镜生成。
+
+### 2026-05-19 VideoNode 资源态节点内工具条
+
+- LibTV 视频资源节点的操作入口靠近节点本体，而不是只藏在外部面板；已有反编结论包含截图、剪辑、高清、解析、音频分离等资源态工具。
+- 灵绘这些工具已有真实执行面板：截图抽帧、剪辑派生、本地高清、解析文本和 FFmpeg 音轨分离。`智能去字幕` 和 `人声分离` 仍依赖云端/专用服务，本轮不放进节点本体工具条。
+- 本轮对齐点：选中资源态 `VideoNode` 时，在视频预览上方显示紧凑扁平工具条，点击后调用 `openVideoToolPanel(nodeId, tool)` 打开对应真实工具面板。
+
+### 2026-05-19 AudioNode 资源态节点内派生入口
+
+- LibTV 音频节点的 `音频生视频` 是明确的派生动作：以音频节点为输入，在右侧创建视频节点，并补一个图片输入节点。
+- 灵绘已有同名真实派生链路 `onApplyAudioEmptyAction(nodeId, 'audio-to-video')`，此前只在空态 EmptyState 中可见。
+- 本轮对齐点：选中资源态音频节点时，播放器工具条增加 `生视频` 小按钮，直接触发同一条派生链路；倍速和下载保持原资源态操作。
+
+### 2026-05-19 Storyboard 卡片字段化展示
+
+- 用户此前指出故事板字段“故事描述 / 画面提示词 / 视频提示词 / 画面描述”一模一样且像样子货；数据解析已修正，但节点内卡片视图仍只露摘要，容易看不出字段差异。
+- LibTV 的故事板/视频故事节点在节点本体里直接展示表格/卡片数据，而不是只靠外挂编辑器；字段应在节点内可扫描。
+- 本轮对齐点：`ScriptShotCards` 在卡片中分开展示 `剧情描述 / 画面 / 生图 / 视频`，表格视图继续保留完整列。
+
+### 2026-05-19 Storyboard 节点内表格编辑
+
+- LibTV 的故事板/视频故事表格允许在节点/全屏表格里直接处理字段，不应只作为不可编辑预览。
+- 灵绘已有 `ScriptShotTable` editable 机制，但此前只在脚本编辑器 manual 模式里使用；节点本体表格仍是只读。
+- 本轮对齐点：`ScriptNode` 节点内表格开启 editable，修改后的镜头数据写入节点 `properties.editedShots`；节点内 `生成分镜 / 生成视频组` 会读取编辑后的字段。
+- `StoryboardNodeEditor` 也读取/写入同一份 `editedShots`，减少节点本体和外挂编辑器之间的数据割裂。
+- 节点内聚合生成器补齐 `派生文本`，调用已有 `onDeriveScriptShots`，与编辑器里的 `派生镜头文本 / 分镜图 / 视频流程` 三类操作保持一致。
+
 ## 2026-05-17 灵绘大组件 / 大 hooks 拆分扫描
 
 - 扫描命令口径：`rg --files frontend/src/components/linghui -g '*.tsx' -g '*.ts' -g '!**/*.test.ts' -g '!**/*.test.tsx' -g '!**/tests/**'`，组件取 `.tsx`，hooks 取 `use*.ts(x)`，阈值 `>500` 行。
@@ -1132,3 +1279,75 @@ LibTV 节点类型中**灵绘未实现**：
 - 实现后确认：人骑马组合不需要 nested transform；使用 group 元数据能让编辑器做组合联动，同时保留导出 / timeline 对 actor 世界坐标的既有假设。
 - 旋转 pivot 应优先用 groupRole=`mount` 的坐骑位置，而不是选中骑手自身位置；否则选中骑手旋转时马会绕人转，物理关系不对。
 - 视口高度操控应保持和现有拖拽一样只在 pointerup 提交，pointermove 只更新 R3F 局部 preview，避免每帧 updateNodeData 造成全局重渲染。
+
+## 2026-05-18 LibTV VideoStoryNode Findings
+
+- LibTV `video-story` 在 `template_/libtv/15gvxu-nayl4w.js` 中由 `r_.displayName="VideoStoryNode"` 导出，并在 `nodeTypes` 里注册为 `"video-story"`。
+- 节点默认标题回退为 `视频故事`，默认尺寸读取 `nodeWidth || 800`、`nodeHeight || 400`。
+- 数据模型不是固定四列，而是 `rows` + 可选 `shotColumns`：先从 rows 的 key 动态收集列，再用 `shotColumns[].field/label` 映射列名。
+- 图片列判断逻辑是：某列任一值是 http 图片 URL 且后缀匹配 `jpg/jpeg/png/gif/webp/bmp/svg`，该列按 90px 缩略图列渲染；`visual_description/content/focal_depth/lighting` 等文本列更宽。
+- 空数据状态直接显示 `暂无数据`；有数据时标题栏显示全屏按钮，全屏中复用同一张表。
+- 文本单元格是可选择、可滚动、保留换行的内容块，双击会选中当前单元格文本。
+
+## 2026-05-18 LibTV GroupNode Findings
+
+- LibTV `group` 节点有独立悬浮 `GroupNodeToolbar`，不是只靠右键菜单。工具条包含颜色 swatch、布局菜单、整组执行、添加/更新工具箱、转分镜组、解组、下载等入口。
+- 颜色 palette 固定为 `null/#FF3B30/#FF9500/#FFCC00/#34C759/#30D5C8/#007AFF/#5856D6/#FF2D95/#8E8E93`，弹层是紧凑网格。
+- 布局菜单真实包含 `宫格排列 / 水平排列 / 垂直排列` 三项，触发 group 内节点重排。
+- LibTV 自动命名逻辑 `buildGroupCountUpdate` 只在 label 为空或当前 label 已是默认计数名时更新：普通组 `分组 N 个节点`，分镜组 `分镜组 N 个节点`；用户自定义名不覆盖。
+- 分镜图片组额外数据包括 `standaloneStoryboardImageGrid`、`storyboardGroupType:"image"`、`sourceScriptNodeId`、`childNodeIds`、`storyboardManualGridCols/Rows`、`showStoryboardShotNumbers`，后续拼接和生成视频组会依赖这些字段。
+
+## 2026-05-18 LibTV VideoNode Tool Findings
+
+- LibTV 视频节点资源态工具条包含 `剪辑 / 高清 / 解析 / 智能去字幕 / 音频分离`，资源视频不能因为是 import/pass-through 就隐藏工具面板。
+- LibTV chunk `template_/libtv/03q.v7x2zzn0-.js` 中有 `AVEditor` 类，字段包括 `_frameCount`、`_frames`、`_extractFramesViaWorker()` 和 `encode(startTime,endTime)`，说明视频节点工具不仅是 prompt preset，还包含前端抽帧/剪辑能力。
+- 灵绘对齐策略：
+  - `截图` 作为 LibTV `AVEditor` 抽帧能力的本地落点：首帧 / 中帧 / 尾帧 / 首中尾抽取后派生 `linghui/image` 节点。
+  - `剪辑` 作为 LibTV `encode(start,end)` 的本地落点：使用 Electron FFmpeg `trimVideo` 裁出本地片段，再派生 `linghui/video` 节点。
+  - `高清` 不再保留提示词 preset 假入口，改为 Electron FFmpeg `upscaleVideo` 的 2x / 4x 本地视频放大，再派生 `linghui/video` 节点。
+  - `解析` 在没有视频理解云服务前，不能伪装成真实内容识别；当前落点是基于视频源、时长、上游参考和用户提示词派生 `linghui/text` 解析草稿节点，供用户继续编辑。
+  - `音频分离` 继续复用已有 FFmpeg splitAudio 链路。
+  - `智能去字幕` 仍缺本地 AI/云端服务，不应伪装成已接入的成功操作；后续要么接真实后端，要么从可执行入口中降级展示。
+
+## 2026-05-18 ScriptAggregatedGenerator Deep Dive
+
+- LibTV `ScriptNode` 在 `template_/libtv/15gvxu-nayl4w.js` 中的结构确认：节点本体内部渲染 table/card；只有 `showSelection` 且存在选中行时，才在节点下方 `top: calc(100% + 8px)` 挂 `ScriptAggregatedGenerator`。
+- `ScriptAggregatedGenerator` 不是编辑器外置面板，而是节点内选中行的紧凑浮动生成器；内容包含关闭按钮、模型选择、参数菜单、镜头/相机控制、已选 N/总数和提交按钮。积分计算存在于 LibTV，但灵绘无积分体系，不能迁入。
+- LibTV 批量生成会按选中行过滤 rows，读取 `imageGenerationPrompt || plotDescription` 作为生图 prompt；同时把 `characters[].characterImageUrl` 作为 image2image 参考图并创建分镜图 group。
+- LibTV 表格行字段还包含 `hiddenUuid/shotNumber/characters/videoReference`。灵绘此前只保留了主要文案字段，后续如果不承接这些字段，角色图和视频参考图会在解析后丢失。
+- 本轮落地方向：灵绘 `ScriptNode` 选中分镜后显示节点底部紧凑生成器，生成器触发真实的 `onGenerateScriptImages / onGenerateScriptVideos`；解析器和表格先保留/展示角色与视频参考图，不迁入 LibTV 积分 UI。
+
+## 2026-05-18 Script / Storyboard Fullscreen Table Follow-up
+
+- LibTV `ScriptNode` 全屏表格与节点内表格共用行数据，但全屏中仍保留 selected rows 和 `ScriptAggregatedGenerator` 的生成语义；表头主要负责视图/列过滤等，不把生成按钮长期堆在表头。
+- LibTV 表格文本单元格在非只读时是可编辑 cell：`editableTextCells: !readonly`，字段包括 `durationSeconds/plotDescription/shotSize/characterAction/emotion/sceneTags/lightingAndAtmosphere/audioEffects/dialogue/imageGenerationPrompt/videoMotionPrompt`。
+- 灵绘当前可安全落地的编辑范围是 `ScriptNodeEditor` 的 `manual` 模式，因为它的 source of truth 是 `properties.content`。LLM/storyboard 运行结果应保持只读，避免编辑 transient run result 而不持久化。
+- 本轮把编辑器分镜操作从表头按钮区移成选中后底部 toolbar，和节点内 `ScriptAggregatedGenerator` 的出现条件保持一致；表头只保留视图切换、全选和全屏。
+
+## 2026-05-18 Image Crop / Remove-bg Tool Fidelity
+
+- LibTV 的 `抠图` 入口是云端能力，打包代码里能看到 `removeBackgroundInference` API；灵绘当前本地没有等价透明抠图模型或分割模型，因此不能把按钮包装成“本地一键抠图成功”。
+- 灵绘已具备真实本地图片裁剪链路：`ImageNodeEditorGenericPanel -> onExecuteImageCrop -> useLinghuiCanvasImageToolExecutions.executeImageCrop -> ffmpegManager.cropImage -> Electron FFmpeg cropImage`。
+- 本轮选择把裁剪继续补实：增加 3×3 裁剪锚点，并把锚点传给 Electron FFmpeg crop expression，支持保留左/右/上/下重点区域，而不是永远中心裁剪。
+- `抠图` / `擦除` 面板保留可执行图生图派生任务，但明确提示当前不是本地透明抠图/本地修复模型，避免继续形成“样子货”误导。
+
+## 2026-05-18 Canvas Interaction Fidelity
+
+- 现有画布已经有 LibTV 风格 `resolveQuickCreateFromConnectEnd()`：连线拖到空白处松开时打开 quick-create，且不再依赖 `.react-flow__pane` target。
+- `canvas-interacting` 之前只覆盖节点拖拽和框选拖拽；连线拖拽时节点 glow / generating / skeleton 动画仍可能继续跑，和 LibTV 拖拽中压低节点动画的体验不一致。
+- `Esc` 取消连线已在热键层优先消费，但取消路径只清 pending connection；如果连线拖拽也进入 interacting 状态，取消路径必须同步退出 interacting。
+- jsdom 没有 `PointerEvent`，取消连线合成 `pointerup` 需要 `window.PointerEvent ?? window.MouseEvent` fallback；Electron Chromium 仍会走 PointerEvent。
+
+## 2026-05-18 LibTV AudioNode Findings
+
+- LibTV `AudioNode` 在 `template_/libtv/0wanf5895ewvy.js` 中，资源态不是简单原生 `<audio>` 下挂，而是 `AudioPlayer` + `AudioNodeToolbar`。
+- 资源态工具条包含速度切换，播放速率固定轮转 `1 / 1.5 / 2`；另有下载入口。灵绘无 LibTV 水印/VIP 下载概念，因此只迁入普通本地/URL 下载。
+- LibTV 音频资源态主体有波形条背景，生成中也复用波形视觉；空生成态只显示 `音频生视频`，待上游态为空内容但保留上传浮条。
+- 灵绘已有 `音频生视频` 和上传浮条逻辑，本轮可聚焦资源态播放器视觉与工具条，不引入 LibTV 的云端审核、CDN 上传、积分或水印逻辑。
+
+## 2026-05-19 LibTV Canvas Agent Findings
+
+- LibTV 中 `CanvasAgent` 是独立会话/流式运行能力（见 `CHAT_CANVAS_AGENT_ID = "canvasAgent"`、`ProxiedCopilotRuntimeAgent`、WebSocket session/run/abort 逻辑），不是静态说明卡。
+- 灵绘已有 `linghui/agent` 执行器、模型选择、工具白名单和 preset 编辑器，但节点本体仍只是静态 AI 缩略图；常用的任务模板与运行入口都需要展开编辑器。
+- 对齐方向不是伪造 LibTV WebSocket 会话，而是把灵绘已有 Agent 能力前移到节点本体：节点内显示紧凑任务模板、工具/迭代摘要、运行按钮和流式输出摘要。
+- 任务模板应复用 `LINGHUI_AGENT_PROMPT_PRESETS`，运行仍走已有 `onRunNode`，不迁入 LibTV 登录、在线项目会话、积分或云端工具注册逻辑。

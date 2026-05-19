@@ -68,7 +68,10 @@ export function useLinghuiCanvasStoryboardImageDerivation({
         : absolutePosition;
       const normalizedLabel = shot.title?.trim() || `镜头 ${index + 1}`;
       const normalizedSource = String(shot.image?.source ?? '').trim();
-      const normalizedPrompt = shot.description?.trim() || normalizedLabel;
+      const normalizedPrompt = shot.imageGenerationPrompt?.trim()
+        || shot.visualDescription?.trim()
+        || shot.description?.trim()
+        || normalizedLabel;
       const existingNode = existingByShotId.get(shot.id);
 
       if (existingNode) {

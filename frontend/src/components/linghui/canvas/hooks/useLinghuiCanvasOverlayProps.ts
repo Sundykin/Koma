@@ -91,6 +91,12 @@ interface UseLinghuiCanvasOverlayPropsParams {
   deriveStoryboardVideosFromScript: (nodeId: string, shots: LinghuiStoryboardFrame[]) => string[];
   createDerivedImageNodesFromNode: (sourceNodeId: string, items: LinghuiImageAssetItem[]) => string[];
   createDerivedVideoNodesFromNode: (sourceNodeId: string, items: LinghuiMediaItem[]) => string[];
+  createDerivedVideoAnalysisNodeFromNode: (sourceNodeId: string, draft: {
+    label?: string;
+    content: string;
+    source?: string;
+    durationSec?: number;
+  }) => string | null;
   createDerivedPanoramaNodeFromNode: (sourceNodeId: string, item: LinghuiImageAssetItem) => string | null;
   createDerivedAudioNodeFromVideo: (
     sourceNodeId: string,
@@ -188,6 +194,7 @@ export function useLinghuiCanvasOverlayProps({
   deriveStoryboardVideosFromScript,
   createDerivedImageNodesFromNode,
   createDerivedVideoNodesFromNode,
+  createDerivedVideoAnalysisNodeFromNode,
   createDerivedPanoramaNodeFromNode,
   createDerivedAudioNodeFromVideo,
   createDerivedMultiAngleImageNodeFromNode,
@@ -431,6 +438,15 @@ export function useLinghuiCanvasOverlayProps({
       executeMultiAngle(options);
     },
     onApplyImageToolPreset: applyImageToolPreset,
+    onCreateDerivedVideoFrames(nodeId, items) {
+      createDerivedImageNodesFromNode(nodeId, items);
+    },
+    onCreateDerivedVideoClips(nodeId, items) {
+      createDerivedVideoNodesFromNode(nodeId, items);
+    },
+    onCreateDerivedVideoAnalysis(nodeId, draft) {
+      return createDerivedVideoAnalysisNodeFromNode(nodeId, draft);
+    },
     onApplyTextEmptyAction: applyTextEmptyAction,
     onApplyVideoEmptyAction: applyVideoEmptyAction,
     onApplyAudioEmptyAction: applyAudioEmptyAction,

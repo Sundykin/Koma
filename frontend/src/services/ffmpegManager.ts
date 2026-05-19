@@ -59,6 +59,8 @@ export interface CropImageOptions {
   input: string;
   output: string;
   aspectRatio: string;
+  anchorX?: number;
+  anchorY?: number;
   sharpenAmount?: number;
 }
 
@@ -103,6 +105,35 @@ export interface ComposeVideoOptions {
   }>;
   outputPath: string;
   onProgress?: (percent: number) => void;
+}
+
+export interface ConcatMediaClipOptions {
+  clips: Array<{
+    kind: 'video' | 'image' | 'audio';
+    source: string;
+    durationSec?: number;
+    label?: string;
+  }>;
+  outputPath: string;
+  width: number;
+  height: number;
+  fps: 24 | 30 | 60;
+  imageDurationSec?: number;
+  onProgress?: (percent: number) => void;
+}
+
+export interface TrimVideoOptions {
+  input: string;
+  output: string;
+  startTime: number;
+  endTime: number;
+}
+
+export interface UpscaleVideoOptions {
+  input: string;
+  output: string;
+  factor?: 2 | 4;
+  sharpenAmount?: number;
 }
 
 // 获取 FFmpeg API
@@ -505,6 +536,71 @@ class FFmpegManager {
     const { onProgress: _onProgress, ...rest } = options;
     void _onProgress;
     return await api.composeVideo(rest);
+  }
+
+  async getCacheDir(subDir?: string): Promise<string> {
+    await this.init();
+    const api = getFFmpegAPI();
+    if (api) {
+      return await api.getCacheDir(subDir);
+    }
+    return subDir ? `/tmp/koma-ffmpeg/${subDir}` : '/tmp/koma-ffmpeg';
+  }
+
+  /**
+   * 拼接多个视频 / 图片片段为单一 mp4。
+   */
+  async concatMediaClips(options: ConcatMediaClipOptions): Promise<string> {
+    await this.init();
+    const api = getFFmpegAPI();
+    if (!api) {
+      throw new Error('FFmpeg 不可用');
+    }
+
+    const available = await this.isAvailable();
+    if (!available) {
+      throw new Error('FFmpeg 不可用');
+    }
+
+    const { onProgress: _onProgress, ...rest } = options;
+    void _onProgress;
+    return await api.concatMediaClips(rest);
+  }
+
+  /**
+   * 裁剪单个视频片段，输出新的本地 mp4。
+   */
+  async trimVideo(options: TrimVideoOptions): Promise<string> {
+    await this.init();
+    const api = getFFmpegAPI();
+    if (!api) {
+      throw new Error('FFmpeg 不可用');
+    }
+
+    const available = await this.isAvailable();
+    if (!available) {
+      throw new Error('FFmpeg 不可用');
+    }
+
+    return await api.trimVideo(options);
+  }
+
+  /**
+   * 高清放大单个视频，输出新的本地 mp4。
+   */
+  async upscaleVideo(options: UpscaleVideoOptions): Promise<string> {
+    await this.init();
+    const api = getFFmpegAPI();
+    if (!api) {
+      throw new Error('FFmpeg 不可用');
+    }
+
+    const available = await this.isAvailable();
+    if (!available) {
+      throw new Error('FFmpeg 不可用');
+    }
+
+    return await api.upscaleVideo(options);
   }
 
   /**

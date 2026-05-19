@@ -162,6 +162,11 @@ export const VIDEO_TOOL_PRESETS: Record<LinghuiVideoToolKey, {
       },
     ],
   },
+  screenshot: {
+    title: '截图',
+    description: '从当前视频抽取首帧、中帧或尾帧，派生为图片节点继续编辑。',
+    buildPresets: () => [],
+  },
   'subtitle-remove': {
     title: '智能去字幕',
     description: 'AI 一键去除视频字幕，仅支持中英文字幕（待接入服务）。',

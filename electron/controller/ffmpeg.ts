@@ -12,6 +12,9 @@ import type {
   CropImageOptions,
   WaveformOptions,
   ComposeVideoOptions,
+  ConcatMediaClipOptions,
+  TrimVideoOptions,
+  UpscaleVideoOptions,
 } from '../service/ffmpeg';
 
 class FFmpegController {
@@ -85,6 +88,30 @@ class FFmpegController {
   async composeVideo(args: ComposeVideoOptions, _event: IpcMainInvokeEvent) {
     await ensureServicesReady();
     return services.ffmpeg.composeVideo(args);
+  }
+
+  /**
+   * 拼接多个视频 / 图片片段。
+   */
+  async concatMediaClips(args: ConcatMediaClipOptions, _event: IpcMainInvokeEvent) {
+    await ensureServicesReady();
+    return services.ffmpeg.concatMediaClips(args);
+  }
+
+  /**
+   * 裁剪单个视频片段。
+   */
+  async trimVideo(args: TrimVideoOptions, _event: IpcMainInvokeEvent) {
+    await ensureServicesReady();
+    return services.ffmpeg.trimVideo(args);
+  }
+
+  /**
+   * 高清放大单个视频。
+   */
+  async upscaleVideo(args: UpscaleVideoOptions, _event: IpcMainInvokeEvent) {
+    await ensureServicesReady();
+    return services.ffmpeg.upscaleVideo(args);
   }
 
   /**

@@ -53,6 +53,7 @@ import {
 interface LinghuiNodeEditorProps {
   nodeId: string;
   nodeType: LinghuiNodeType;
+  forceVisible?: boolean;
 }
 
 /**
@@ -66,6 +67,7 @@ const IMPORT_HIDDEN_IMAGE_TOOLS = new Set<LinghuiImageToolKey>(['focus', 'mark']
 export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
   nodeId,
   nodeType,
+  forceVisible = false,
 }) => {
   const {
     selection,
@@ -79,8 +81,11 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
     onDeriveScriptShots,
     onGenerateScriptImages,
     onGenerateScriptVideos,
+    onCreateDerivedVideoAnalysis,
     onExecuteMultiAngle,
     onApplyImageToolPreset,
+    onCreateDerivedVideoFrames,
+    onCreateDerivedVideoClips,
     onSetGridSplitType,
     onClearGridSplitCells,
     onExecuteGridSplit,
@@ -95,7 +100,7 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
   const nodes = useNodes();
   const nodeEntry = useNodesData(nodeId);
 
-  const isVisible = selection?.kind === 'node' && selection.nodeId === nodeId && selection.nodeType === nodeType;
+  const isVisible = forceVisible || (selection?.kind === 'node' && selection.nodeId === nodeId && selection.nodeType === nodeType);
   const nodeData = useMemo(() => (
     (nodeEntry?.data as unknown as LinghuiNodeData | undefined) ?? null
   ), [nodeEntry]);
@@ -162,10 +167,18 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
   const activeVideoTool = activeTool?.kind === 'video' && activeTool.nodeId === nodeId
     ? activeTool.tool
     : null;
+  const isVideoToolPanelOpen = nodeType === 'linghui/video' && hasCurrentVideo && Boolean(activeVideoTool);
   const isGridSplitMode = nodeType === 'linghui/image' && activeImageTool === 'grid-split';
   const isLibTVImageToolPanelOpen = nodeType === 'linghui/image'
     && hasCurrentImage
     && ['multi-angle', 'relight', 'outpaint', 'repaint'].includes(activeImageTool ?? '');
+  const isTextGeneratorPanel = nodeType === 'linghui/text';
+  const isVideoGeneratorPanel = nodeType === 'linghui/video' && !isVideoPassThroughNode;
+  const isAudioGeneratorPanel = nodeType === 'linghui/audio';
+  const isScriptGeneratorPanel = nodeType === 'linghui/script'
+    && String((nodeData?.properties as { mode?: unknown } | undefined)?.mode ?? '') === 'generate';
+  const isAgentGeneratorPanel = nodeType === 'linghui/agent';
+  const isStoryboardGeneratorPanel = nodeType === 'linghui/storyboard';
   const isImageToolbarOnlyTopBar = nodeType === 'linghui/image' && hasCurrentImage && !isGridSplitMode;
   const useMinimalTopBar = nodeType === 'linghui/image' && !hasCurrentImage && !isGridSplitMode;
   // 区分"导入素材节点"和"生成节点"。前者执行器只是回放上传图，不消费 prompt，
@@ -191,7 +204,7 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
   const toolbarWidth = isGridSplitMode
     ? 640
     : nodeType === 'linghui/video'
-      ? (isVideoPassThroughNode || !hasCurrentVideo ? 248 : Math.max(248, VIDEO_TOOLBAR_ITEMS.length * 88 + 108))
+      ? (!hasCurrentVideo ? 248 : Math.max(248, VIDEO_TOOLBAR_ITEMS.length * 88 + 108))
       : nodeType === 'linghui/image'
         ? (useMinimalTopBar ? 240 : 500)
         : 248;
@@ -202,8 +215,38 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
       : activeImageTool === 'multi-angle'
         ? 560
         : 640
+    : isVideoToolPanelOpen
+      ? 416
+      : isTextGeneratorPanel
+      ? 392
+      : isVideoGeneratorPanel
+        ? 416
+        : isAudioGeneratorPanel
+          ? 392
+          : isScriptGeneratorPanel
+            ? 440
+            : isAgentGeneratorPanel
+              ? 440
+              : isStoryboardGeneratorPanel
+                ? 440
     : getPanelWidth(nodeType);
-  const panelMaxHeight = isLibTVImageToolPanelOpen ? 620 : getPanelMaxHeight(nodeType);
+  const panelMaxHeight = isLibTVImageToolPanelOpen
+    ? 620
+    : isVideoToolPanelOpen
+      ? 360
+      : isTextGeneratorPanel
+      ? 420
+      : isVideoGeneratorPanel
+        ? 430
+        : isAudioGeneratorPanel
+          ? 420
+          : isScriptGeneratorPanel
+            ? 520
+            : isAgentGeneratorPanel
+              ? 420
+              : isStoryboardGeneratorPanel
+                ? 520
+          : getPanelMaxHeight(nodeType);
 
   const toolbarStyle = useMemo(() => cssVars({
     '--linghui-node-editor-bottom': `calc(100% + ${(TOOLBAR_STANDOFF / safeZoom).toFixed(3)}px)`,
@@ -251,12 +294,6 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
   useEffect(() => {
     setOpenDropdownKey(null);
   }, [isVisible, isGridSplitMode, nodeId, nodeType]);
-
-  useEffect(() => {
-    if (isVideoPassThroughNode && activeTool?.kind === 'video' && activeTool.nodeId === nodeId) {
-      setActiveTool(null);
-    }
-  }, [activeTool, isVideoPassThroughNode, nodeId, setActiveTool]);
 
   useEffect(() => {
     if (!hasCurrentVideo && activeTool?.kind === 'video' && activeTool.nodeId === nodeId) {
@@ -380,7 +417,7 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
     }
 
     if (nodeType === 'linghui/video') {
-      if (isVideoPassThroughNode || !hasCurrentVideo) {
+      if (!hasCurrentVideo) {
         return null;
       }
 
@@ -403,45 +440,47 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
 
   return (
     <div className="linghuiNodeEditorContainer nodrag nopan nowheel">
-      <div
-        className={`linghuiNodeEditorTopBar ${useMinimalTopBar ? 'isMinimal' : ''} ${isImageToolbarOnlyTopBar ? 'isImageToolbarOnly' : ''}`}
-        style={toolbarStyle}
-        onClick={handleStopPropagation}
-        onMouseDown={handleStopPropagation}
-        onPointerDown={handleStopPropagation}
-      >
-        {!isImageToolbarOnlyTopBar && (
-          <div className="linghuiNodeEditorTopBarMeta">
-            <EditableCompactNodeLabel
-              nodeId={nodeId}
-              label={nodeData.label}
-              fallbackLabel={getNodeTypeLabel(nodeType)}
-              variant="editor"
-              title="双击重命名节点"
-            />
-            {!useMinimalTopBar && (
-              <div className="linghuiNodeEditorTopBarType">{getNodeTypeLabel(nodeType)}</div>
+      {!isTextGeneratorPanel && !isVideoGeneratorPanel && !isAudioGeneratorPanel && !isScriptGeneratorPanel && !isAgentGeneratorPanel && !isStoryboardGeneratorPanel && (
+        <div
+          className={`linghuiNodeEditorTopBar ${useMinimalTopBar ? 'isMinimal' : ''} ${isImageToolbarOnlyTopBar ? 'isImageToolbarOnly' : ''}`}
+          style={toolbarStyle}
+          onClick={handleStopPropagation}
+          onMouseDown={handleStopPropagation}
+          onPointerDown={handleStopPropagation}
+        >
+          {!isImageToolbarOnlyTopBar && (
+            <div className="linghuiNodeEditorTopBarMeta">
+              <EditableCompactNodeLabel
+                nodeId={nodeId}
+                label={nodeData.label}
+                fallbackLabel={getNodeTypeLabel(nodeType)}
+                variant="editor"
+                title="双击重命名节点"
+              />
+              {!useMinimalTopBar && (
+                <div className="linghuiNodeEditorTopBarType">{getNodeTypeLabel(nodeType)}</div>
+              )}
+            </div>
+          )}
+          <div className="linghuiNodeEditorTopBarActions">
+            {toolbarContent}
+            {!isImageToolbarOnlyTopBar && (
+              <button
+                type="button"
+                className="linghuiNodeEditorCloseButton"
+                onClick={handleClose}
+                aria-label="关闭节点编辑"
+              >
+                <X size={14} />
+              </button>
             )}
           </div>
-        )}
-        <div className="linghuiNodeEditorTopBarActions">
-          {toolbarContent}
-          {!isImageToolbarOnlyTopBar && (
-            <button
-              type="button"
-              className="linghuiNodeEditorCloseButton"
-              onClick={handleClose}
-              aria-label="关闭节点编辑"
-            >
-              <X size={14} />
-            </button>
-          )}
         </div>
-      </div>
+      )}
 
       {!isGridSplitMode && (
         <div
-          className="linghuiNodeEditorMainSurface"
+          className={`linghuiNodeEditorMainSurface ${isTextGeneratorPanel || isVideoGeneratorPanel || isAudioGeneratorPanel || isScriptGeneratorPanel || isAgentGeneratorPanel || isStoryboardGeneratorPanel ? 'isTextGenerator' : ''}`}
           style={panelStyle}
           onClick={handleStopPropagation}
           onMouseDown={handleStopPropagation}
@@ -461,6 +500,9 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
             activeVideoTool={activeVideoTool}
             onImageToolChange={tool => setActiveTool(tool ? { kind: 'image', nodeId, tool } : null)}
             onVideoToolChange={tool => setActiveTool(tool ? { kind: 'video', nodeId, tool } : null)}
+            onCreateDerivedVideoFrames={onCreateDerivedVideoFrames}
+            onCreateDerivedVideoClips={onCreateDerivedVideoClips}
+            onCreateDerivedVideoAnalysis={onCreateDerivedVideoAnalysis}
             onExecuteMultiAngle={onExecuteMultiAngle}
             onApplyImageToolPreset={onApplyImageToolPreset}
             onAssetLibraryMutate={onAssetLibraryMutate}

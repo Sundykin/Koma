@@ -14,6 +14,7 @@ import {
   LIBTV_PANORAMA_WITH_PROMPT_SCENE,
   getLibTVPanoramaRatioForModel,
 } from '../../panorama/panoramaPromptTemplate';
+import { DEFAULT_LINGHUI_STORYBOARD_SCENE } from '../../editors/state/linghuiStoryboardScenes';
 
 export interface LinghuiNodeMeta {
   type: LinghuiNodeType;
@@ -276,8 +277,9 @@ export const NODE_PROPERTY_DEFAULTS: Record<LinghuiNodeType, Record<string, unkn
   'linghui/storyboard': {
     prompt: '',
     llmSelection: '',
+    scene: DEFAULT_LINGHUI_STORYBOARD_SCENE,
     viewMode: 'cards',
-    targetShotCount: 8,
+    targetShotCount: 9,
   },
   'linghui/director3d': {
     prompt: '',
