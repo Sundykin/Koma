@@ -35,6 +35,11 @@ export default defineConfig(({ mode }) => {
     define: {
       'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+      // ee-bin 在 spawn vite 之前会把 process.env.NODE_ENV 设成字符串 "undefined"，
+      // 导致 Vite 推导出的 import.meta.env.DEV=true、PROD=false 泄漏进正式包。
+      // 这里强制按 mode 钉死，避免任何 NODE_ENV 异常污染。
+      'import.meta.env.DEV': JSON.stringify(mode !== 'production'),
+      'import.meta.env.PROD': JSON.stringify(mode === 'production'),
     },
     resolve: {
       alias: {

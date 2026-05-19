@@ -5,6 +5,9 @@ export const KOMA_ACTIVATION_MANAGED_BY = 'koma-activation';
 export const KOMAAPI_ACTIVATION_CHANNEL_IDS = {
   llm: 'komaapi-default-llm',
   tti: 'komaapi-default-tti',
+  // gpt-image-2（OpenAI 标准协议）：与 grok 文生图并列的第二个内置 TTI 渠道，
+  // 走 https://komaapi.com 网关，激活 Key 共用，支持文生图 + 图生图。
+  ttiGptImage2: 'komaapi-default-tti-gpt-image-2',
   itv: 'komaapi-default-itv',
   // 即梦视频（Koma 即梦上游 seedance）：与 grok 视频共用 OpenAI /v1/videos 协议，
   // 通过 model 字段在 new-api 端分流到不同上游渠道。

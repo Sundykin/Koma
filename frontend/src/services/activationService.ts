@@ -448,6 +448,38 @@ export const activationService = {
         enabled: true,
         source: 'builtin' as const,
       },
+      // gpt-image-2（OpenAI 标准协议）：与 grok 文生图并列的第二个 Koma 官方 TTI 渠道。
+      // baseUrl 走 komaapi.com 网关，apiKey 复用激活 Key（providerConfig.apiKey 走
+      // 主进程 x-koma-channel-id 注入路径，与 grok 渠道一致）。
+      // OpenAICompatibleTTIProvider 识别到 gpt-image-* 系模型 + 有参考图时会自动
+      // 切到 /v1/images/edits multipart（图生图），无参考图时走 /v1/images/generations。
+      // 不抢占 tti 默认渠道；保持 grok 为默认，用户可在设置里切换。
+      {
+        id: KOMAAPI_ACTIVATION_CHANNEL_IDS.ttiGptImage2,
+        category: 'tti' as const,
+        providerType: 'openai-compatible-tti',
+        name: 'Koma官方-gpt-image-2',
+        providerConfig: withKomaActivationChannelMarker({
+          baseUrl: 'https://komaapi.com',
+          apiKey,
+          promptProtocol: 'grok-image-index',
+          defaultSize: '720x1280',
+        }),
+        defaultModelId: 'gpt-image-2',
+        models: [
+          {
+            id: 'gpt-image-2',
+            label: 'gpt-image-2',
+            providerModelName: 'gpt-image-2',
+            capabilities: [
+              'image.text-to-image' as ModelCapability,
+              'image.image-to-image' as ModelCapability,
+            ],
+          },
+        ],
+        enabled: true,
+        source: 'builtin' as const,
+      },
       {
         id: KOMAAPI_ACTIVATION_CHANNEL_IDS.itv,
         category: 'itv' as const,
@@ -569,8 +601,11 @@ export const activationService = {
         }
 
         // 设置为该类型的默认；同一 category 下后注册的渠道不抢占默认。
-        // 即梦渠道作为 grok 的并行选项，仅在用户手动切换时生效。
-        if (cfg.id === KOMAAPI_ACTIVATION_CHANNEL_IDS.itvJimeng) {
+        // 即梦渠道、gpt-image-2 渠道都作为 grok 的并行选项，仅在用户手动切换时生效。
+        if (
+          cfg.id === KOMAAPI_ACTIVATION_CHANNEL_IDS.itvJimeng
+          || cfg.id === KOMAAPI_ACTIVATION_CHANNEL_IDS.ttiGptImage2
+        ) {
           continue;
         }
         await channelConfigService.setMediaDefault(cfg.category, {
@@ -649,6 +684,36 @@ export const activationService = {
       source: 'builtin',
     };
 
+    // gpt-image-2（OpenAI 标准协议）：与 grok 文生图并列的第二个 TTI 渠道。
+    // 早期激活流程没建过这个渠道，老用户重启时走 reconcile 兜底补齐。
+    // apiKey 由后端从 sourceChannelIds 解密继承。
+    const ttiGptImage2Cfg: Parameters<typeof channelConfigService.reconcileActivationChannels>[0][number] = {
+      id: KOMAAPI_ACTIVATION_CHANNEL_IDS.ttiGptImage2,
+      category: 'tti',
+      providerType: 'openai-compatible-tti',
+      name: 'Koma官方-gpt-image-2',
+      providerConfig: withKomaActivationChannelMarker({
+        baseUrl: 'https://komaapi.com',
+        // apiKey 由后端从 sourceChannelIds 解密继承
+        promptProtocol: 'grok-image-index',
+        defaultSize: '720x1280',
+      }),
+      defaultModelId: 'gpt-image-2',
+      models: [
+        {
+          id: 'gpt-image-2',
+          label: 'gpt-image-2',
+          providerModelName: 'gpt-image-2',
+          capabilities: [
+            'image.text-to-image' as ModelCapability,
+            'image.image-to-image' as ModelCapability,
+          ],
+        },
+      ],
+      enabled: true,
+      source: 'builtin',
+    };
+
     // Koma 官方 TTS（qwen-tts）：v1 激活流程没建过 tts 管理渠道，老用户重启时
     // 走 reconcile 兜底补齐。这里同样不带 apiKey（后端从 sourceChannelIds 解密继承）。
     const ttsCfg: Parameters<typeof channelConfigService.reconcileActivationChannels>[0][number] = {
@@ -678,6 +743,7 @@ export const activationService = {
     // 期望管理渠道清单：[(id, expected providerType, 期望完整配置)]
     const expected = [
       { id: itvJimengCfg.id!, providerType: itvJimengCfg.providerType, cfg: itvJimengCfg },
+      { id: ttiGptImage2Cfg.id!, providerType: ttiGptImage2Cfg.providerType, cfg: ttiGptImage2Cfg },
       { id: ttsCfg.id!, providerType: ttsCfg.providerType, cfg: ttsCfg },
       // 其它管理渠道（llm/tti/itv）原 ensureDefaultModelChannels 已建出，
       // 这里也可以加进来作为额外保护（落入 update 路径），但目前没有 providerType 漂移问题，先不加。
