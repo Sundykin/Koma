@@ -7,6 +7,14 @@ import { app, shell } from 'electron';
 import { BaseController } from './base';
 import { getRuntimeStorageRoot, getStyleReferencesDir } from '../service/paths';
 import { resolveKomaTTSVoiceSamplePath } from '../service/ttsVoiceSamples';
+import {
+  readVoiceLibraryManifest,
+  writeVoiceLibraryManifest,
+  saveVoiceLibrarySample,
+  removeVoiceLibrarySample,
+  resolveVoiceLibrarySamplePath,
+  type VoiceLibraryManifest,
+} from '../service/voiceLibrary';
 
 const ALLOWED_PATH_NAMES = new Set([
   'home', 'appData', 'userData', 'temp', 'desktop',
@@ -187,6 +195,39 @@ class AppController extends BaseController {
     await fs.promises.writeFile(absPath, buffer);
     const stat = await fs.promises.stat(absPath);
     return { localPath: absPath, filename, mtimeMs: stat.mtimeMs };
+  }
+
+  // ───── 全局音色库 ─────
+  //
+  // 数据落 ~/.koma/voiceLibrary/，library.json + samples/。
+  // 内置 Koma 46 个音色不写库，前端 voiceLibraryService 启动时合并。
+
+  async getVoiceLibrary(): Promise<VoiceLibraryManifest> {
+    return readVoiceLibraryManifest();
+  }
+
+  async saveVoiceLibrary(args: { manifest: VoiceLibraryManifest }): Promise<{ success: true }> {
+    await writeVoiceLibraryManifest(args.manifest);
+    return { success: true };
+  }
+
+  async uploadVoiceSample(args: { voiceId: string; dataBase64: string; ext: string }): Promise<{
+    sampleFile: string;
+    localPath: string;
+  }> {
+    const sampleFile = await saveVoiceLibrarySample(args);
+    const localPath = resolveVoiceLibrarySamplePath(sampleFile);
+    return { sampleFile, localPath };
+  }
+
+  deleteVoiceSample(args: { voiceId: string }): { removed: number } {
+    return { removed: removeVoiceLibrarySample(args.voiceId) };
+  }
+
+  /** 解析 sampleFile（相对 voiceLibrary 根的子路径）为绝对路径，前端用 koma-local:// 加载 */
+  getVoiceSamplePath(args: { sampleFile: string }): { localPath: string | null } {
+    const abs = resolveVoiceLibrarySamplePath(args.sampleFile);
+    return { localPath: abs || null };
   }
 
   /**

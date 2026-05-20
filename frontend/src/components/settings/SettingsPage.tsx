@@ -32,6 +32,7 @@ import { LLMConfigManager } from './LLMConfigManager';
 import { TTIConfigManager } from './TTIConfigManager';
 import { ITVConfigManager } from './ITVConfigManager';
 import { TTSConfigManager } from './TTSConfigManager';
+import { VoiceLibraryManager } from './VoiceLibraryManager';
 import { VisualStyleManager } from './VisualStyleManager';
 import { PromptStudio } from './PromptStudio';
 import { PluginManager } from '../plugins';
@@ -76,6 +77,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     { key: 'models-tti', icon: <PictureOutlined />, label: t('settings.tti'), group: t('settings.modelConfig') },
     { key: 'models-itv', icon: <VideoCameraOutlined />, label: t('settings.itv'), group: t('settings.modelConfig') },
     { key: 'models-tts', icon: <SoundOutlined />, label: t('settings.tts'), group: t('settings.modelConfig') },
+    { key: 'models-voices', icon: <SoundOutlined />, label: '音色库', group: t('settings.modelConfig') },
     { key: 'workflow-visual', icon: <BgColorsOutlined />, label: t('settings.visualStyle'), group: t('settings.workflow') },
     { key: 'workflow-prompts', icon: <CodeOutlined />, label: t('settings.promptTemplate'), group: t('settings.workflow') },
     { key: 'system-storage', icon: <FolderOutlined />, label: t('settings.storageAndCache'), group: t('settings.system') },
@@ -257,6 +259,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
         return <ITVConfigManager onConfigChange={handleConfigChange} />;
       case 'models-tts':
         return <TTSConfigManager onConfigChange={handleConfigChange} />;
+      case 'models-voices':
+        return <VoiceLibraryManager />;
       case 'workflow-visual':
         return <VisualStyleManager onStyleChange={handleConfigChange} />;
       case 'workflow-prompts':

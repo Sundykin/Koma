@@ -91,3 +91,21 @@ export function getUpdaterCacheDir(): string {
 export function getMarketplaceCacheDir(): string {
   return path.join(getBusinessRoot(), 'marketplace-cache');
 }
+
+/**
+ * 全局音色库目录。跨项目共享，固定在业务根下；
+ * 不跟随 runtime storage root（音色资源对单台机器是配置一次到处用的全局资产）。
+ */
+export function getVoiceLibraryDir(): string {
+  return path.join(getBusinessRoot(), 'voiceLibrary');
+}
+
+/** 全局音色库样本音频目录（用户上传的 wav / mp3 落这里） */
+export function getVoiceLibrarySamplesDir(): string {
+  return path.join(getVoiceLibraryDir(), 'samples');
+}
+
+/** 全局音色库元数据 JSON（分类 + 自定义 profile 清单） */
+export function getVoiceLibraryManifestPath(): string {
+  return path.join(getVoiceLibraryDir(), 'library.json');
+}

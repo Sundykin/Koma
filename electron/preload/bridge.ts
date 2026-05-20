@@ -56,6 +56,12 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'controller/app/clearStyleReferenceImage',
   'controller/app/saveProjectStyleReferenceImage',
   'controller/app/clearProjectStyleReferenceImage',
+  // 全局音色库
+  'controller/app/getVoiceLibrary',
+  'controller/app/saveVoiceLibrary',
+  'controller/app/uploadVoiceSample',
+  'controller/app/deleteVoiceSample',
+  'controller/app/getVoiceSamplePath',
   'controller/project/setStorageRoot',
   'controller/project/list', 'controller/project/create',
   'controller/project/load', 'controller/project/loadFull',
@@ -249,6 +255,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   app: {
     getPath: (name: string) => invokeMain('controller/app/getPath', { name }),
     getVersion: () => invokeMain('controller/app/getVersion', {}),
+    voiceLibrary: {
+      get: () => invokeMain('controller/app/getVoiceLibrary', {}),
+      save: (manifest: any) => invokeMain('controller/app/saveVoiceLibrary', { manifest }),
+      uploadSample: (voiceId: string, dataBase64: string, ext: string) =>
+        invokeMain('controller/app/uploadVoiceSample', { voiceId, dataBase64, ext }),
+      deleteSample: (voiceId: string) =>
+        invokeMain('controller/app/deleteVoiceSample', { voiceId }),
+      getSamplePath: (sampleFile: string) =>
+        invokeMain('controller/app/getVoiceSamplePath', { sampleFile }),
+    },
   },
   // 渲染进程读取 File 绝对路径的官方 API（Electron 32+ 已移除 File.path 扩展）
   webUtils: {

@@ -57,6 +57,13 @@ interface ElectronAPI {
   app: {
     getPath: (name: string) => Promise<string | { path: string }>;
     getVersion: () => Promise<string | { version: string }>;
+    voiceLibrary?: {
+      get: () => Promise<{ _version: 1; categories: any[]; profiles: any[] }>;
+      save: (manifest: { _version: 1; categories: any[]; profiles: any[] }) => Promise<{ success: boolean }>;
+      uploadSample: (voiceId: string, dataBase64: string, ext: string) => Promise<{ sampleFile: string; localPath: string }>;
+      deleteSample: (voiceId: string) => Promise<{ removed: number }>;
+      getSamplePath: (sampleFile: string) => Promise<{ localPath: string | null }>;
+    };
   };
   diagnostics?: {
     appendRendererLog: (payload: DiagnosticsRendererLogPayload) => Promise<{ success: boolean }>;

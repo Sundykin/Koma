@@ -1,5 +1,87 @@
 # Findings
 
+## 2026-05-20 Koma 当前系统能力规格化初始发现
+
+- 用户目标是为 Koma 自底向上重构建立“现状基线”：底层规划、持久化存储、文件存储、后台任务、插件系统、系统数据管理、主题系统。
+- 本轮文档应从代码实现反推逻辑需求，不把未来计划写成已实现能力。
+- 仓库已有可复用材料：`docs/ARCHITECTURE_REVIEW.md`、`docs/STORAGE_COMPARISON.md`、`docs/PLUGIN_ARCHITECTURE_REVIEW.md`、`docs/PLUGIN_SYSTEM_ANALYSIS.md`、`docs/THEME_ARCHITECTURE.md`、`docs/THEME_SYSTEM_PLAN.md`、`docs/TECH_DEBT.md` 等。
+- 根目录已有长期规划文件，需追加本会话内容而非覆盖历史上下文。
+- 本次产物已落为 `docs/当前系统能力需求规格说明书.md`，按现状能力、实现依据和限制三层组织。
+
+### 初始代码盘点
+
+- 根 `package.json` 表明 Koma 是 Electron + ee-core 应用，构建前会运行内置插件构建；核心依赖包含 `better-sqlite3`、`electron-store`、`electron-updater`、MCP SDK、LangChain 与 `zod`。
+- Electron 侧能力集中在：
+  - `electron/main.ts`：应用启动、单实例、远程调试端口、preload 和系统级初始化。
+  - `electron/preload/**`：安全桥接与前端可见 API。
+  - `electron/service/storage/**`：SQLite schema、BaseDB、SettingsDB、项目/任务/资产/角色等 repository。
+  - `electron/service/tasks/**`：后台任务 IPC、TaskService、TaskRunner、delegate 与处理器。
+  - `electron/service/plugin/**` 与 `electron/service/marketplace/**`：插件运行时、能力注册、市场安装。
+- 前端侧能力集中在：
+  - `frontend/src/store/**`：项目、任务、设置、插件、持久化 helper、恢复和自动保存。
+  - `frontend/src/services/tasks*.ts`、`taskRunner.ts`、`taskHandlers/**`：前端任务抽象与本地处理器。
+  - `frontend/src/theme/**`：主题 token、palette、theme、CSS vars 编译、AntD 配置和运行时 Provider。
+  - `frontend/src/components/plugins/**`：插件管理、导入、权限展示和 Host。
+- 插件生态还包含 `packages/plugin-sdk/**`、`packages/plugins/**`、`examples/plugins/**` 以及验证脚本 `scripts/verify:plugin*`。
+
+### 启动、安全桥接与路径职责
+
+- `electron/main.ts` 将 Electron/Chromium 的 `userData` 放到 `~/.koma/_userData`，业务根保留为 `~/.koma`，并在开发环境启用自定义 Chromium remote debugging port，默认 `9333`。
+- `electron/main.ts` 注册 `koma-local://` privileged scheme，使 renderer 可以通过安全协议加载本地图片/视频/fetch，支持 range/stream 与跨源访问。
+- `electron/preload/index.ts` 的初始化顺序是：注册本地协议和安全头、注册内置 LLM provider、注册 chat/settings/tasks IPC 与任务处理器，然后初始化 services；初始化完成后执行任务 reconcile/gc、恢复可恢复任务队列，再启动 updater 与 plugin marketplace。
+- `electron/preload/bridge.ts` 通过 `ALLOWED_INVOKE_CHANNELS` / `ALLOWED_LISTEN_CHANNELS` 明确白名单，renderer 只能调用被列出的 IPC；对外暴露 `electronAPI` 命名空间，包括 window/dialog/fs/diagnostics/project/linghui/ffmpeg/plugin/net/llm/chat/tasks/updater/marketplace。
+- `electron/service/paths.ts` 明确区分业务根、当前可配置存储根、插件运行目录、插件暂存目录、settings.db、ffmpeg cache、updater cache、marketplace cache、全局音色库、风格参考图等路径。
+- `electron/service/index.ts` 初始化全局 `settingsDB`、项目服务、诊断服务、灵绘服务、FFmpeg 服务、插件服务，并在关闭时关闭 `baseDB` 与 `settingsDB`。
+
+### 持久化与文件存储发现
+
+- `electron/service/storage/BaseDB.ts` 管理当前 storageRoot 下的 `db/koma.db`，启用 WAL、foreign keys、busy timeout，并通过 `schema_version` 表做增量迁移。
+- `electron/service/storage/SettingsDB.ts` 管理固定业务根 `~/.koma/settings.db`，用于跨项目共享的 channel configs、media defaults、app KV、chat history、通用后台 tasks。
+- `electron/service/storage/schema.ts` 当前项目库 schema 版本为 9；结构化表覆盖项目、角色、场景、道具、分镜、分镜版本、资产、集数、时间线、时间线轨道/片段/转场/关键帧/动画、实体与集数/分镜关系、分镜媒体条目、灵绘工作区/节点/边/运行/日志/模板/资产/历史。
+- `ProjectService.init()` 当前把 SQLite 初始化在 `storageRoot/db/koma.db`，而不是每个 `projects/{id}/koma.db`；项目目录仍按 `projects/{id}/assets/images|videos|audio|fonts`、`shots`、`cache/thumbnails|waveforms|previews`、`exports`、`temp`、`episodes` 建立文件结构。
+- `ProjectService` 的项目删除会数据库级联删除项目数据、清理 `project:{id}` scope 的通用任务，并删除项目文件目录。
+- 项目导出会从数据库组装 `loadProjectFull()`，写入项目目录临时 `_export_data.json` 后压缩项目目录；导入支持新格式 `_export_data.json` 和旧格式 `meta.json`，并把结构化数据写回仓储，同时复制资源文件。
+- `LinghuiService` 使用同一个 `baseDB` 存储灵绘工作区的 graph meta、groups、nodes、edges、node runs、execution logs、workflow templates、workspace assets、history records；实际媒体/文本结果落在 `linghui-workspaces/{workspaceId}/assets|history|resources` 等文件目录。
+- 灵绘工作区导出支持 JSON 或 zip 包；zip 包包含 `manifest.json`、`workspace.json`、`records/*.json` 与本地资源文件，资源引用会改写为 `koma-archive://`，导入时会重新映射 workspace/node/group/edge id 并做路径越界校验。
+- 风险：`linghui_global_assets` 只在 `schema.ts` 的 v8/v9 migration 中出现，未在 `CREATE_TABLES_SQL` 初始建库部分命中；全新数据库若直接标记为 current schema 可能缺少该表。规格中应把全局灵绘资产库列为“代码暴露能力 + 初始建库需复核”的现状限制。
+
+### 文件访问、安全与协议
+
+- `electron/controller/fs.ts` 允许访问的根目录包括 `home`、`appData`、`userData`、`temp` 和业务根 `~/.koma`；读写、mkdir、readdir、stat、remove、copy、download 都先做路径检查。
+- `controller/fs/downloadFile` 支持 HTTP(S) 下载到本地，带默认 UA / Accept 头、最多 5 次重定向，并会对每次请求前调用 `validateUrl()` 做 SSRF 防护。
+- 下载逻辑会优先尝试 Electron fetch / net.fetch，遇到特定中文响应头兼容性问题时回退 Node `http/https`。
+- `electron/service/protocol.ts` 注册 `koma-local://` 只允许读取业务根、当前 storageRoot、`resourcesPath`、`appPath` 等白名单路径，支持 `Range` 请求、`Access-Control-Allow-Origin:*` 和图片/视频/音频 mime 映射。
+- `electron/service/security.ts` 设置全局 CSP：脚本、样式、连接、图片与媒体来源都被显式约束；开发环境额外放行 Vite HMR 需要的 `unsafe-eval`。
+- `electron/preload/bridge.ts` 进一步限制 renderer 可调用的主进程通道，文件系统、项目、灵绘、FFmpeg、插件、更新、市场等能力都必须经过白名单。
+
+### 系统数据管理与主题
+
+- `frontend/src/store/settings/core.ts` 把全局设置拆成两类：渠道类（`channelConfigs`、`mediaDefaults`）走 `settings.db`，其它类（`promptTemplates`、`customThemePresets`、UI 主题等）走 `settings.json`；Electron 路径下会自动加密/解密并在加载时合并两边数据。
+- `frontend/src/store/settings/channelConfig.ts` 不再提供 localStorage 回退，直接依赖 Electron + SQLite；支持按类别/能力查询渠道、设置默认渠道和默认媒体模型、按插件批量删除渠道。
+- `frontend/src/store/settings/mediaConfig.ts` 基于 `channelConfigs + mediaDefaults` 解析默认/当前生图、生视频、配音配置，说明当前系统的模型选择权由渠道/默认选择共同决定。
+- `frontend/src/store/storageConfig.ts` 负责存储根路径的选择、验证与迁移，默认指向用户 home 下的 `.koma`；迁移时显式跳过 Electron 的 `_userData` / Singleton 文件。
+- `frontend/src/config/themePresets.ts` 提供 4 套内置项目风格预设 + 自定义项；风格预设会生成 `ProjectStyleSnapshot`，影响项目的 TTI 风格前缀与 LLM prompt 后缀。
+- `frontend/src/theme/themes/*` 当前注册了 4 套应用主题：`dark-emerald`、`dark-business`、`light-business`、`high-contrast`；主题由 `ThemeProvider` 写入 CSS 变量并同步 AntD ConfigProvider，同时持久化选中的 themeId。
+- `frontend/src/components/settings/AppearanceThemeSettings.tsx` 提供主题切换 UI，预览 swatches 来自当前主题 token；切换时会同步保存到 settings 并回滚失败状态。
+
+### 项目级前端状态与自动保存
+
+- `frontend/src/store/projectStore.ts` 当前是项目域能力总出口，覆盖项目 CRUD、时间线、素材、分镜版本、剧集、分析、角色/场景/道具、缓存、临时文件和 Manju-DSL 导入导出。
+- `frontend/src/store/autoSaveService.ts` 以 projectId 为粒度做防抖自动保存，状态机有 `dirty / saving / saved / error`，关闭窗口或 `Ctrl/Cmd+S` 时会触发保存并尽量在退出前刷盘。
+- `frontend/src/store/taskRecoveryService.ts` 会扫描未完成媒体任务并通过 `mediaGenerationService.recoverTask()` 恢复，说明当前系统对“关窗口后任务继续跑”的语义是明确支持的。
+- `frontend/src/store/chatHistoryStore.ts` 将聊天会话元数据缓存在 Zustand，消息明细落 `settings.db` 的 `chat_sessions` / `chat_messages`，空会话不会提前落库。
+- `frontend/src/store/promptTemplates.ts` 管理 prompt 模板库和分类体系，支持全局约束、系统提示、剧本/分析/提取/推文、图片提示词推理、视频提示词推理、TTI/ITV 直拼模板。
+
+### 插件系统能力边界
+
+- 主进程 `pluginService` 负责插件包验证、安装、卸载、内置插件同步；安装时会把插件解压到 `plugins-staging`，最终落到 `plugins-runtime/{pluginId}`。
+- `electron/service/plugin/runtime.ts` 负责真正的后端加载和激活：校验 manifest shape、兼容性、签名、scope，再根据 category 加载 provider / MCP / agent 的后端入口。
+- `electron/service/plugin/types.ts` 说明当前插件分类是 `provider / global / tool / mcp / agent`，且插件 manifest 可携带 `providerMeta / globalMeta / mcpMeta / agentMeta`。
+- Provider 插件必须满足媒体契约版本 `media-request-v1`；MCP 工具名强制命名空间化为 `pluginId:toolName`；CapabilityRegistry 负责把 provider / MCP tool/resource 统一成可查询、可解析、可调用的能力目录。
+- `electron/service/plugin/bridge.ts` 提供主进程对 Provider / MCP / Agent 的统一调用入口；`electron/controller/plugin.ts` 再把这些能力暴露到 renderer IPC。
+- `frontend/src/services/plugin/*` 负责前端插件 bundle 的加载与沙箱执行：global/provider/tool 插件以 UMD/IIFE 进入宿主页面，frontend API 通过 scope 检查、沙箱 fetch 和受限文件访问来约束能力。
+- `frontend/src/store/pluginStore.ts` 保存已安装插件清单与运行态；`PluginManager` 提供安装、卸载、启用/停用和目录打开 UI。
+
 ## 2026-05-18 LibTV 全节点清单与迁移顺序
 
 - 使用 `rg -l "nodeTypes|wrapSelfVirtualizing|space-scene-720" template_/libtv -g '*.js'` 定位节点映射所在 chunk；关键映射在 `template_/libtv/15gvxu-nayl4w.js` 与 `template_/libtv/13h1xgiucfbcg.js`。

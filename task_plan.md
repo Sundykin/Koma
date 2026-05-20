@@ -1,5 +1,43 @@
 # Task Plan
 
+## Session: 2026-05-20 Koma Current Capability Requirements Spec
+
+### Goal
+- 从现有代码实现反推 Koma 当前已具备的底层到业务能力。
+- 聚焦：底层规划、持久化存储、文件存储、后台任务、插件系统、系统数据管理、主题系统。
+- 产出一份中文需求规格说明书，把代码实现转换为产品/系统逻辑描述，为后续从底层到顶层的重构提供基线。
+
+### Scope
+- Included:
+  - Electron 主进程、preload、IPC、后台任务与本地系统能力。
+  - 前端 store / service / storage / theme / plugin 相关模块。
+  - plugin-sdk、内置插件、插件注册与兼容检查脚本。
+  - 现有 docs 中与架构、存储、主题、插件相关的已沉淀材料。
+- Excluded:
+  - 不重新设计目标架构。
+  - 不修改运行时代码，除非发现文档生成所需的轻量补充。
+  - 不做普通浏览器 UI 验证；本任务以代码与文档静态分析为主。
+
+### Phases
+| Phase | Status | Description |
+|---|---|---|
+| 1. Session Setup | complete | 读取规划技能说明，检查既有计划/发现/进度文件，并追加本会话计划 |
+| 2. Architecture Inventory | complete | 盘点仓库结构、Electron 边界、前端 store/service、插件包与相关文档 |
+| 3. Capability Extraction | complete | 按七个主题从代码中提取已有能力、数据流、边界与限制 |
+| 4. Requirements Draft | complete | 写中文需求规格说明书，按功能需求、非功能需求、数据/接口边界组织 |
+| 5. Review Pass | complete | 交叉检查代码引用与文档逻辑，确保不把未实现能力写成已实现能力 |
+
+### Acceptance Criteria
+- 规格说明必须描述“当前系统已经实现/暴露的能力”，不擅自写未来愿景为现状。
+- 每个主题都要包含能力范围、关键对象、主要流程、约束/失败处理和可重构关注点。
+- 重要结论要能追溯到代码路径或既有文档路径。
+- 最终产物放入 `docs/`，使用中文 Markdown，便于后续继续拆分为 OpenSpec 或工程设计。
+
+### Error Log
+| Error | Attempt | Resolution |
+|---|---|---|
+| None yet | 0 | N/A |
+
 ## Session: 2026-05-17 Linghui Large Component/Hook Refactor Plan
 
 ### Goal

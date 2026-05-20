@@ -66,6 +66,7 @@ import AssetImageDrawModal, {
   type AssetImageDrawCandidate,
 } from './AssetImageDrawModal';
 import type { ModelCapability } from '../../providers/channel/types';
+import { CharacterVoiceSelect } from '../voiceLibrary/CharacterVoiceSelect';
 
 const logger = createLogger('CharacterDetailPanel');
 
@@ -387,6 +388,7 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
       age: character.age,
       gender: character.gender || 'unknown',
       prompt: initialPrompt,
+      voiceId: character.voiceId,
     });
   }, [character, form]);
 
@@ -445,6 +447,7 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
         ...editedCharacter,
         ...values,
         prompt: values.prompt,
+        voiceId: values.voiceId || undefined,
         media: storedCharacter.media ?? editedCharacter.media,
         episodeRefs: mergeEpisodeRefs(storedCharacter.episodeRefs, editedCharacter.episodeRefs),
       };
@@ -1108,6 +1111,14 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
                 autoSize={{ minRows: 10, maxRows: 18 }}
                 placeholder={t('asset.characterPromptPlaceholder')}
               />
+            </Form.Item>
+
+            <Form.Item
+              name="voiceId"
+              label="绑定音色"
+              tooltip="留空时分镜出配音会回退到项目默认音色；编辑后请点击右上角保存。"
+            >
+              <CharacterVoiceSelect />
             </Form.Item>
           </Form>
 

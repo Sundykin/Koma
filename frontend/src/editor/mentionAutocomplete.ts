@@ -41,7 +41,13 @@ function createMentionCompletions(
       })
       .map((item) => ({
         label: item.name,
-        type: item.type === 'char' ? 'variable' : item.type === 'prop' ? 'property' : 'class',
+        type: item.type === 'char'
+          ? 'variable'
+          : item.type === 'prop'
+            ? 'property'
+            : item.type === 'voice'
+              ? 'keyword'
+              : 'class',
         detail: getTypeLabel(item.type),
         info: item.description,
         apply: (view, completion, from, to) => {
@@ -52,7 +58,13 @@ function createMentionCompletions(
             selection: { anchor: from + mentionStr.length + 1 },
           });
         },
-        boost: item.type === 'char' ? 2 : item.type === 'scene' ? 1 : 0,
+        boost: item.type === 'char'
+          ? 2
+          : item.type === 'scene'
+            ? 1
+            : item.type === 'voice'
+              ? 0.5
+              : 0,
       }));
 
     if (options.length === 0) {
@@ -78,6 +90,8 @@ function getTypeLabel(type: MentionType): string {
       return '🎬 道具';
     case 'scene':
       return '场景';
+    case 'voice':
+      return '🎤 音色';
     case 'shot':
       return '分镜锚点';
     case 'grid':

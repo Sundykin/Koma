@@ -28,6 +28,9 @@ import { runWithTask } from '../../services/taskRunner';
 import { submitShotAnalysisTask } from '../../services/analysisTaskClient';
 import type { PresetAssets } from '../../services/ShotAnalysisService';
 import { generateShotPrompt, batchGenerateShotPrompts } from '../../services/ShotPromptService';
+import { loadVoiceLibrary } from '../../services/voiceLibrary/voiceLibraryService';
+import { prepareShotAudio } from '../../services/voiceLibrary/shotVoiceCompile';
+import type { VoiceLibrarySnapshot } from '../../types/voice-library';
 import { TaskManager } from '../../services/TaskManager';
 import { findActiveTask } from '../../services/tasksIPC';
 import { useActiveTask, useTaskTransitions, useTasks } from '../../hooks';
@@ -185,6 +188,10 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   const [characters, setCharacters] = useState<Character[]>([]);
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [props, setProps] = useState<Prop[]>([]);
+  // 全局音色库快照（builtin + custom），出配音前编译 @voice / @char-音色 时用。
+  // 启动加载一次，与音色库 UI 共享同源；用户在设置里改音色库不会自动重拉，
+  // 当前迭代认为足够（出配音时如果发现 mention 解析失败会显式提示）。
+  const [voiceLibrary, setVoiceLibrary] = useState<VoiceLibrarySnapshot>({ categories: [], profiles: [] });
   const [loading, setLoading] = useState(true);
   // 本地"提交中"短暂兜底集合：点击到主进程任务真正落库 (~50-100ms IPC roundtrip)
   // 之间，UI 立即显示 loading；任务进 DB 后由下面 useTasks 派生的集合接管。
@@ -563,6 +570,15 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       setLoading(false);
     }
   }, [projectId, episodeId, itvDurationSpec]);
+
+  // 启动时拉一次全局音色库快照（builtin + custom 合并）
+  useEffect(() => {
+    let cancelled = false;
+    loadVoiceLibrary()
+      .then((snap) => { if (!cancelled) setVoiceLibrary(snap); })
+      .catch((err) => logger.warn('加载音色库失败', err));
+    return () => { cancelled = true; };
+  }, []);
 
   const refreshShotsFromStore = useCallback(async () => {
     if (!projectId || !episodeId) {
@@ -1740,10 +1756,25 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     const shot = shots.find(s => s.id === shotId);
     if (!shot) return;
 
-    const text = (shot.dialogue || '').trim() || getShotScriptText(shot).trim();
-    if (!text) {
+    const rawText = (shot.dialogue || '').trim() || getShotScriptText(shot).trim();
+    if (!rawText) {
       message.warning('该分镜没有可配音的台词或字幕文本');
       return;
+    }
+
+    // 把 dialogue 里的 @voice_xxx / @char_xxx-音色 编译为 text + voiceId + bindings。
+    // 没有任何 voice mention 时 voiceId 回退到项目偏好 ttsVoiceId（与旧逻辑一致）。
+    // 多 voice 分段当前不切片，整段用 bindings[0] 的 voice 合成；剩余 bindings 持久化到 shot 留作展示。
+    const prepared = prepareShotAudio({
+      dialogue: rawText,
+      voiceLibrary,
+      characters,
+      projectFallbackVoiceId: ttsVoiceId,
+      defaultVoiceId: ttsVoiceId,
+    });
+    if (prepared.unresolvedMentions.length > 0) {
+      const tokens = prepared.unresolvedMentions.map((m) => m.token).join('、');
+      message.warning(`这些音色 mention 解析失败已剥离：${tokens}`);
     }
 
     try {
@@ -1762,11 +1793,11 @@ export const Storyboard: React.FC<StoryboardProps> = ({
           const a = await mediaGenerationService.generateAudio({
             projectId,
             ownerRef: { projectId, ownerType: 'shot', ownerId: shotId, episodeId, slot: 'audio' },
-            // voiceId 来自项目级偏好；空时让 Provider 用 channel 的 defaultVoice（如 cherry）
-            // speed 默认 1.2 倍速（业务约定，与 ProjectSettingsModal 默认值对齐）
+            // voiceId 取 @voice / @char-音色 mention 解析结果；无 mention 时回退到项目偏好。
+            // speed 默认 1.2 倍速（与 ProjectSettingsModal 默认值对齐）
             request: {
-              text,
-              voiceId: ttsVoiceId || '',
+              text: prepared.text,
+              voiceId: prepared.voiceId,
               options: { rate: typeof ttsSpeed === 'number' ? ttsSpeed : 1.2 },
             },
             ttsSelection,
@@ -1782,6 +1813,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         const existing = s.media?.audios || [];
         return {
           ...s,
+          audioBindings: prepared.audioBindings,
           media: {
             ...(s.media || {}),
             audios: [...existing, asset],
@@ -1793,7 +1825,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       const errorMessage = err instanceof Error ? err.message : String(err);
       message.error(errorMessage || '配音失败');
     }
-  }, [projectId, episodeId, shots, ttsSelection, ttsVoiceId, ttsSpeed, message]);
+  }, [projectId, episodeId, shots, characters, voiceLibrary, ttsSelection, ttsVoiceId, ttsSpeed, message]);
 
   /**
    * 批量配音：跳过已有配音的分镜（force=false）/ 强制重生成（force=true）。
@@ -1836,20 +1868,34 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         execute: async (taskCtx) => {
           let done = 0;
           const inner = candidates.map((shot) => async () => {
-            const text = (shot.dialogue || '').trim() || getShotScriptText(shot).trim();
+            const rawText = (shot.dialogue || '').trim() || getShotScriptText(shot).trim();
+            // 与单镜逻辑同源：先把 dialogue 编译为 text + voiceId + bindings，
+            // 用 bindings[0] 的 voice 整段合成；@Audio N 占位符已被 prepareShotAudio 剥离。
+            const prepared = prepareShotAudio({
+              dialogue: rawText,
+              voiceLibrary,
+              characters,
+              projectFallbackVoiceId: ttsVoiceId,
+              defaultVoiceId: ttsVoiceId,
+            });
             try {
               const asset = await mediaGenerationService.generateAudio({
                 projectId,
                 ownerRef: { projectId, ownerType: 'shot', ownerId: shot.id, episodeId, slot: 'audio' },
                 request: {
-                  text,
-                  voiceId: ttsVoiceId || '',
+                  text: prepared.text,
+                  voiceId: prepared.voiceId,
                   options: { rate: typeof ttsSpeed === 'number' ? ttsSpeed : 1.2 },
                 },
                 ttsSelection,
                 taskName: `分镜 #${shot.id.slice(-6)} 配音`,
               });
-              return { shotId: shot.id, asset, success: true as const };
+              return {
+                shotId: shot.id,
+                asset,
+                audioBindings: prepared.audioBindings,
+                success: true as const,
+              };
             } catch (err: unknown) {
               return {
                 shotId: shot.id,
@@ -1878,6 +1924,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         const existing = s.media?.audios || [];
         return {
           ...s,
+          audioBindings: hit.audioBindings,
           media: {
             ...(s.media || {}),
             audios: [...existing, hit.asset],
@@ -1898,7 +1945,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     } finally {
       setBatchProgress(undefined);
     }
-  }, [projectId, episodeId, shots, ttsSelection, ttsVoiceId, ttsSpeed, message]);
+  }, [projectId, episodeId, shots, characters, voiceLibrary, ttsSelection, ttsVoiceId, ttsSpeed, message]);
 
   const handleBatchGenerateAudios = useCallback(
     (targetShotIds?: string[]) => handleBatchAudios(false, targetShotIds),

@@ -90,15 +90,6 @@ function assetTypeToMentionType(type: 'character' | 'scene' | 'prop'): AssetMent
   return map[type];
 }
 
-function _mentionTypeToAssetType(type: AssetMentionType): 'character' | 'scene' | 'prop' {
-  const map: Record<AssetMentionType, 'character' | 'scene' | 'prop'> = {
-    char: 'character',
-    scene: 'scene',
-    prop: 'prop',
-  };
-  return map[type];
-}
-
 /**
  * 分镜资产同步 Hook
  */

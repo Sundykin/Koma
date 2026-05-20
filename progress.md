@@ -1,5 +1,38 @@
 # Progress Log
 
+## Session: 2026-05-20 Koma Current Capability Requirements Spec
+
+### Phase 1: Session Setup
+- **Status:** complete
+- Actions taken:
+  - 使用 `pi-planning-with-files` 技能组织本次多步骤代码考古与规格文档产出。
+  - 执行会话接续检查；当前继续使用根目录既有 `task_plan.md` / `findings.md` / `progress.md`。
+  - 在 `task_plan.md` 追加本会话目标、范围、阶段和验收标准。
+
+### Phase 2: Architecture Inventory
+- **Status:** complete
+- Actions taken:
+  - 盘点 Electron 主进程、preload、storage、tasks、plugin、theme、settings、project、linghui 等目录。
+  - 确认当前业务根、`settings.db`、`db/koma.db`、插件运行目录和灵绘工作区目录的职责分离。
+
+### Phase 3: Capability Extraction
+- **Status:** complete
+- Actions taken:
+  - 从代码中提取底层规划、持久化、文件存储、后台任务、插件系统、系统数据管理和主题系统能力。
+  - 记录了任务、插件、主题、settings 以及灵绘工作区的当前实现边界。
+
+### Phase 4: Requirements Draft
+- **Status:** complete
+- Actions taken:
+  - 生成中文需求规格说明书：`docs/当前系统能力需求规格说明书.md`。
+  - 文档按功能需求、实现依据和现状限制组织，避免把未实现能力写成现状。
+
+### Phase 5: Review Pass
+- **Status:** complete
+- Actions taken:
+  - 复核文档措辞与代码实现的一致性，特别是数据库分层、插件权限和主题数量。
+  - `git diff --check` 通过。
+
 ## Session: 2026-05-18 Linghui LibTV Node Parity
 
 ### Phase 5.16: GridSliceNode Local Compose Pass

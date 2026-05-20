@@ -12,6 +12,12 @@
  */
 import type { MediaAssetSource } from '../../types';
 import type { ShotReferenceBundle, ShotReferenceItem } from './types';
+import {
+  compileAudioMentions,
+  type AudioBinding,
+  type AudioMentionCompilationResult,
+} from '../promptCompilation/audioMentionCompiler';
+import type { VoiceResolveContext } from '../voiceLibrary/voiceResolver';
 
 /**
  * 把 prompt 内出现的 mention token 翻译为 `@Image N`，N 1-based 对应 bundle.items 位置。
@@ -35,6 +41,11 @@ import type { ShotReferenceBundle, ShotReferenceItem } from './types';
 export interface CompiledBundlePrompt {
   compiledPrompt: string;
   references: ReadonlyArray<MediaAssetSource>;
+  /**
+   * 音色绑定快照（仅当传入 voiceContext 时非空）。
+   * N 与 prompt 里的 @Audio N 一一对应，按出现顺序去重编号；下游 TTS 任务按它分段切 voice。
+   */
+  audioBindings: AudioBinding[];
   debug: {
     /** prompt 中未在 bundle 找到对应项的 token 原样列表 */
     unmappedTokens: string[];
@@ -42,6 +53,8 @@ export interface CompiledBundlePrompt {
     tokenToIndex: Array<{ token: string; index: number }>;
     /** prompt 显式引用了 references[N]（N >= bundle.items.length）—— 越界，被剥离 */
     overflowImageNumbers: number[];
+    /** voice / char-音色 mention 解析失败的清单 */
+    unresolvedAudioMentions: AudioMentionCompilationResult['unresolvedMentions'];
   };
 }
 
@@ -51,8 +64,13 @@ const IMAGE_NUMBER_RE = /(?:@Image|@图片)\s*(\d+)/g;
 export function compileShotPromptToBundle(params: {
   prompt: string;
   bundle: ShotReferenceBundle;
+  /**
+   * 可选：传入音色解析上下文（音色库快照 + 角色 voiceId 查询 + 项目兜底）。
+   * 不传则不做 voice / @char_-音色 编译，向后兼容老的纯图像调用方。
+   */
+  voiceContext?: VoiceResolveContext;
 }): CompiledBundlePrompt {
-  const { prompt, bundle } = params;
+  const { prompt, bundle, voiceContext } = params;
   const items = bundle.items;
   const tokenToIndex = new Map<string, number>();
   items.forEach((item, idx) => {
@@ -70,8 +88,15 @@ export function compileShotPromptToBundle(params: {
   const overflowImageNumbers: number[] = [];
   const tokenAuditTrail: Array<{ token: string; index: number }> = [];
 
+  // 第 0 遍：先编译音色 mention（@voice_xxx / @char_xxx-音色）为 @Audio N。
+  // 必须放在图像 mention 之前，否则 @char_xxx-音色 会被下面的 MENTION_RE 当成普通 char
+  // mention 误编译为 @Image N。
+  const audioResult: AudioMentionCompilationResult = voiceContext
+    ? compileAudioMentions({ prompt, ctx: voiceContext })
+    : { compiledPrompt: prompt, audioBindings: [], unresolvedMentions: [] };
+
   // 第一遍：替换语义 mention token 为 @Image N
-  let compiledPrompt = prompt.replace(MENTION_RE, (full: string, body: string, offset: number, sourceText: string) => {
+  let compiledPrompt = audioResult.compiledPrompt.replace(MENTION_RE, (full: string, body: string, offset: number, sourceText: string) => {
     const token = `@${body}`;
     const idx = tokenToIndex.get(token);
     if (idx == null) {
@@ -107,10 +132,12 @@ export function compileShotPromptToBundle(params: {
   return {
     compiledPrompt,
     references,
+    audioBindings: audioResult.audioBindings,
     debug: {
       unmappedTokens: dedupe(unmappedTokens),
       tokenToIndex: tokenAuditTrail,
       overflowImageNumbers: dedupe(overflowImageNumbers),
+      unresolvedAudioMentions: audioResult.unresolvedMentions,
     },
   };
 }

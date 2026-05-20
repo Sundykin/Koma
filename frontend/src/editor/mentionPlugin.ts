@@ -13,7 +13,7 @@ import {
   keymap,
 } from '@codemirror/view';
 import { RangeSetBuilder, EditorSelection } from '@codemirror/state';
-import type { MentionItem, MentionType } from './mentionTypes';
+import type { MentionItem, MentionProperty, MentionType } from './mentionTypes';
 import { parseMentions } from './mentionTypes';
 
 // Mention 数据解析器类型
@@ -24,19 +24,26 @@ export type MentionClickHandler = (mention: MentionItem) => void;
 
 /**
  * Mention Widget - 显示为可点击的标签
+ *
+ * 复合 mention（@char_xxx-音色）渲染为「@角色名 · 🎤音色」，类名上加 `mention-property-voice`
+ * 让 CSS 能区分着色；点击事件仍走原 mention 项的回调。
  */
 class MentionWidget extends WidgetType {
   constructor(
     readonly mention: MentionItem,
-    readonly onClick?: MentionClickHandler
+    readonly property?: MentionProperty,
+    readonly onClick?: MentionClickHandler,
   ) {
     super();
   }
 
   toDOM(): HTMLElement {
     const span = document.createElement('span');
-    span.className = `mention-widget mention-${this.mention.type}`;
-    span.textContent = `@${this.mention.name}`;
+    const propClass = this.property ? ` mention-property-${this.property}` : '';
+    span.className = `mention-widget mention-${this.mention.type}${propClass}`;
+    span.textContent = this.property === 'voice'
+      ? `@${this.mention.name} · 🎤音色`
+      : `@${this.mention.name}`;
 
     // 样式
     span.style.cssText = `
@@ -74,7 +81,8 @@ class MentionWidget extends WidgetType {
     return (
       other.mention.id === this.mention.id &&
       other.mention.type === this.mention.type &&
-      other.mention.name === this.mention.name
+      other.mention.name === this.mention.name &&
+      other.property === this.property
     );
   }
 
@@ -100,7 +108,7 @@ function buildDecorations(
     const item = resolver(parsed.type, parsed.id);
     if (item) {
       const widget = Decoration.replace({
-        widget: new MentionWidget(item, onClick),
+        widget: new MentionWidget(item, parsed.property, onClick),
         inclusive: false,
       });
       builder.add(parsed.from, parsed.to, widget);
@@ -177,6 +185,17 @@ export const mentionTheme = EditorView.baseTheme({
     border: '1px solid color-mix(in srgb, var(--token-accent-base) 55%, transparent)',
     boxShadow: '0 0 0 1px color-mix(in srgb, var(--token-accent-base) 12%, transparent)',
     fontWeight: '700',
+  },
+  // @voice_xxx：直接指向某个音色
+  '.mention-voice': {
+    backgroundColor: 'color-mix(in srgb, #b794f6 22%, transparent)',
+    color: '#7c3aed',
+    border: '1px solid color-mix(in srgb, #b794f6 60%, transparent)',
+  },
+  // @char_xxx-音色：复合 mention，在角色色基础上叠一条左侧的音色色边
+  '.mention-char.mention-property-voice': {
+    borderLeft: '3px solid #b794f6',
+    backgroundColor: 'color-mix(in srgb, #b794f6 14%, color-mix(in srgb, var(--token-status-info) 14%, transparent))',
   },
 });
 

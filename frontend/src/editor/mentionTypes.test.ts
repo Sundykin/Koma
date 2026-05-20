@@ -201,3 +201,81 @@ describe('MENTION_REGEX', () => {
     expect('@shot_foo').not.toMatch(new RegExp(MENTION_REGEX.source));
   });
 });
+
+// ───── voice mention 与复合属性 ─────
+
+describe('voice mention 类型', () => {
+  it('应解析 @voice_xxx', () => {
+    const result = parseMentions('独白由 @voice_cherry 朗读');
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({ type: 'voice', id: 'cherry', fullMatch: '@voice_cherry' });
+  });
+
+  it('应通过 parseMentionId 解析 @voice_xxx', () => {
+    expect(parseMentionId('@voice_aiden')).toEqual({ type: 'voice', id: 'aiden' });
+  });
+
+  it('应通过 createMentionString 生成 @voice_xxx', () => {
+    expect(createMentionString('voice', 'cherry')).toBe('@voice_cherry');
+  });
+
+  it('应被 MENTION_REGEX 匹配', () => {
+    expect('@voice_cherry').toMatch(new RegExp(MENTION_REGEX.source));
+  });
+});
+
+describe('@char_xxx-音色 复合 mention', () => {
+  it('parseMentions 应剥出 property=voice', () => {
+    const result = parseMentions('@char_hero1-音色');
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({ type: 'char', id: 'hero1', property: 'voice', fullMatch: '@char_hero1-音色' });
+  });
+
+  it('应同时支持 -voice 后缀', () => {
+    const result = parseMentions('@char_hero1-voice');
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({ type: 'char', id: 'hero1', property: 'voice' });
+  });
+
+  it('parseMentionId 应剥出 property', () => {
+    expect(parseMentionId('@char_abc-音色')).toEqual({ type: 'char', id: 'abc', property: 'voice' });
+  });
+
+  it('createMentionString 应注入 -音色 后缀（仅 char 类型）', () => {
+    expect(createMentionString('char', 'abc', 'voice')).toBe('@char_abc-音色');
+    // 非 char 类型即使传 property 也不应被注入
+    expect(createMentionString('scene', 'forest', 'voice')).toBe('@scene_forest');
+  });
+
+  it('普通 @char_xxx 不应被误判为复合', () => {
+    const result = parseMentions('@char_hero1 来到 @scene_forest');
+    expect(result[0].property).toBeUndefined();
+    expect(result[1].property).toBeUndefined();
+  });
+
+  it('混合复合与普通 mention 应并存', () => {
+    const result = parseMentions('@char_hero1 独白：@char_hero1-音色 念出 @voice_cherry');
+    expect(result).toHaveLength(3);
+    expect(result[0]).toMatchObject({ type: 'char', id: 'hero1', property: undefined });
+    expect(result[1]).toMatchObject({ type: 'char', id: 'hero1', property: 'voice' });
+    expect(result[2]).toMatchObject({ type: 'voice', id: 'cherry' });
+  });
+
+  it('记录的 fullMatch / from / to 应覆盖整个复合 mention', () => {
+    const text = '台词：@char_a1-音色 说';
+    const result = parseMentions(text);
+    expect(result[0].fullMatch).toBe('@char_a1-音色');
+    expect(text.slice(result[0].from, result[0].to)).toBe('@char_a1-音色');
+  });
+
+  it('-音色 后缀只对 char 生效，其它类型保留为 id 一部分', () => {
+    // @voice_xxx-音色 是错误用法，但保险起见 id 应整体保留
+    const result = parseMentions('@scene_forest-音色');
+    // 注意：当前正则允许 CJK 在 id 段，所以 @scene_forest-音色 会被匹配
+    // 但 property 只对 char 剥离，scene 仍保留 -音色 在 id
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe('scene');
+    expect(result[0].id).toBe('forest-音色');
+    expect(result[0].property).toBeUndefined();
+  });
+});

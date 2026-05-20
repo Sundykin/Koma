@@ -140,11 +140,26 @@ export interface Shot {
   characters: string[];  // 涉及的角色ID
   scenes?: string[];     // 涉及的场景ID（可在 UI 中编辑）
   dialogue?: string;     // 台词（用于 TTS）
+  /**
+   * 上次出配音时编译出的音色绑定快照（dialogue 里的 @voice_xxx / @char_xxx-音色 解析结果）。
+   * 仅作展示和缓存用，下次再出配音会重新编译覆盖。结构与 AudioMentionCompiler 输出对齐：
+   *   - 单 voice：bindings[0] 的 voice 整段合成，目前的 KomaTTS 一请求一 voice
+   *   - 多 voice：TODO 等支持「按段切 voice + 合并 audio」时再消费 bindings[1..]
+   */
+  audioBindings?: ShotAudioBinding[];
   emotion?: string;      // 情绪标签
   props?: string[];      // 涉及的道具ID
   confirmed?: boolean;   // 是否已确认（用于入轨）
   seed?: number;         // 生成种子（用于复现）
   currentVersion?: number; // 当前版本号（兼容旧数据）
+}
+
+export interface ShotAudioBinding {
+  index: number;
+  voiceProfileId: string;
+  providerVoiceId?: string;
+  voiceName: string;
+  sourceCharacterId?: string;
 }
 
 // 剧本分析结果接口
