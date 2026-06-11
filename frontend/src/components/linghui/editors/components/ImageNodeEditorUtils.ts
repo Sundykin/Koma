@@ -68,13 +68,13 @@ export function buildFocusRegionPatch(
 }
 
 export const LIBTV_MULTI_ANGLE_PRESETS: LibTVMultiAnglePreset[] = [
-  { key: 'custom', label: '自定义', values: null, prompt: '' },
-  { key: 'fisheye', label: '鱼眼视角', values: { rotation: 0, tilt: 30, scale: 100 }, isWideAngle: true, prompt: '极度特写镜头，广角镜头，边缘带有鱼眼畸变效果' },
-  { key: 'tilted', label: '倾斜视角', values: { rotation: 45, tilt: -30, scale: 50 }, prompt: 'dutch angle，tilted frame' },
-  { key: 'front-down', label: '正面俯拍', values: { rotation: 0, tilt: 60, scale: 50 }, prompt: '' },
-  { key: 'front-up', label: '正面仰拍', values: { rotation: 0, tilt: -30, scale: 50 }, prompt: '' },
-  { key: 'panoramic-down', label: '全景俯拍', values: { rotation: 45, tilt: 30, scale: 0 }, prompt: '' },
-  { key: 'back', label: '背面视角', values: { rotation: 180, tilt: 0, scale: 50 }, prompt: '' },
+  { key: 'custom', label: '自定义', values: { rotation: 0, tilt: 0, scale: 33 }, prompt: '' },
+  { key: 'fisheye', label: '鱼眼视角', values: { rotation: 0, tilt: 0, scale: 0 }, isWideAngle: true, prompt: '鱼眼广角镜头，画面带有强烈的桶形畸变与边缘弯曲，呈现广视野效果' },
+  { key: 'tilted', label: '倾斜视角', values: { rotation: 30, tilt: 25, scale: 33 }, prompt: '荷兰角倾斜构图，带有 25° 上仰与 30° 侧偏，营造戏剧张力' },
+  { key: 'front-down', label: '正面俯拍', values: { rotation: 0, tilt: 45, scale: 33 }, prompt: '正面俯视镜头，相机略高于主体俯拍 45°' },
+  { key: 'front-up', label: '正面仰拍', values: { rotation: 0, tilt: -35, scale: 33 }, prompt: '正面仰视镜头，相机略低于主体仰拍 35°' },
+  { key: 'panoramic-down', label: '全景俯拍', values: { rotation: 0, tilt: 75, scale: 17 }, prompt: '高空全景俯拍，相机几乎垂直向下覆盖全景' },
+  { key: 'back', label: '背面视角', values: { rotation: 180, tilt: 0, scale: 33 }, prompt: '主体背面视角，相机位于正后方平视' },
 ];
 
 export const LIBTV_RELIGHT_MAIN_DIRECTIONS: Array<{ value: LinghuiRelightDirection; label: string }> = [

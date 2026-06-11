@@ -1,7 +1,6 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { Canvas, useThree } from '@react-three/fiber';
-import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from 'lucide-react';
 import type { LinghuiMultiAngleMode } from '../../../../types/linghui';
 import { useTheme } from '../../../../theme/runtime';
 
@@ -16,296 +15,426 @@ interface MultiAngle3DViewportProps {
   onScaleChange: (scale: number) => void;
 }
 
-interface ThreePreviewColors {
+interface PreviewColors {
   accent: string;
-  base: string;
-  panel: string;
-  metal: string;
-  text: string;
+  shellColor: string;
+  gridColor: string;
+  cameraBody: string;
+  cameraLens: string;
+  rayColor: string;
+  subjectBackColor: string;
+  ambientColor: string;
+  fallbackTopColor: string;
+  fallbackMidColor: string;
+  fallbackBottomColor: string;
 }
 
-const TARGET_POINT = new THREE.Vector3(0, 1, 0);
-const STAGE_CAMERA_POSITION = new THREE.Vector3(7.4, 5.2, 7.8);
-const CAMERA_PREVIEW_FOV = 34;
-const CAMERA_FIXED_ANGLES = [
-  { rotation: 45, tilt: 0 },
-  { rotation: -45, tilt: 0 },
-  { rotation: 45, tilt: -30 },
-  { rotation: -45, tilt: -30 },
-  { rotation: 135, tilt: -30 },
-  { rotation: -135, tilt: -30 },
-  { rotation: 135, tilt: 60 },
-  { rotation: -135, tilt: 60 },
-  { rotation: 0, tilt: -30 },
-  { rotation: 180, tilt: 0 },
-];
+function normalizeUnsigned(value: number): number {
+  return ((value % 360) + 360) % 360;
+}
+
+function normalizeSigned(value: number): number {
+  const next = normalizeUnsigned(value);
+  return next > 180 ? next - 360 : next;
+}
 
 function clamp(value: number, min: number, max: number): number {
-  return Math.min(Math.max(value, min), max);
-}
-
-function snapCameraRotation(value: number): number {
-  return ((Math.round(value / 45) * 45) % 360 + 360) % 360;
-}
-
-function snapCameraTilt(value: number): number {
-  return clamp(Math.round(value / 30) * 30, -30, 60);
+  return Math.max(min, Math.min(max, value));
 }
 
 function scaleToZoom(scale: number): number {
-  return 0.92 + clamp(scale, 0, 100) / 100 * 0.58;
+  return clamp(Math.round((clamp(scale, 0, 100) / 100) * 6), 0, 6);
 }
 
-function scaleToCameraRadius(scale: number): number {
-  return 5.7 - clamp(scale, 0, 100) / 100 * 2.2;
+function makeFallbackTexture(colors: PreviewColors): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 320;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    const gradient = ctx.createLinearGradient(0, 0, 256, 320);
+    gradient.addColorStop(0, colors.fallbackTopColor);
+    gradient.addColorStop(0.5, colors.fallbackMidColor);
+    gradient.addColorStop(1, colors.fallbackBottomColor);
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 256, 320);
+    ctx.save();
+    ctx.globalAlpha = 0.22;
+    ctx.fillStyle = colors.ambientColor;
+    ctx.fillRect(28, 28, 200, 116);
+    ctx.globalAlpha = 0.38;
+    ctx.fillStyle = colors.subjectBackColor;
+    ctx.fillRect(48, 174, 160, 96);
+    ctx.restore();
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
 }
 
-function toWorldPosition(rotationDeg: number, tiltDeg: number, scale: number): THREE.Vector3 {
-  const radius = scaleToCameraRadius(scale);
-  const theta = THREE.MathUtils.degToRad(rotationDeg);
-  const phi = THREE.MathUtils.degToRad(90 - tiltDeg);
-  return new THREE.Vector3().setFromSpherical(new THREE.Spherical(radius, phi, theta)).add(TARGET_POINT);
-}
-
-function buildLookQuaternion(position: THREE.Vector3): THREE.Quaternion {
-  const helper = new THREE.Object3D();
-  helper.position.copy(position);
-  helper.lookAt(TARGET_POINT);
-  return helper.quaternion.clone();
-}
-
-function ImagePlane({ url, colors, scale }: { url?: string; colors: ThreePreviewColors; scale: number }) {
-  const texture = useMemo(() => {
-    if (!url) return null;
-    const loader = new THREE.TextureLoader();
-    loader.setCrossOrigin('anonymous');
-    const tex = loader.load(url);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    return tex;
-  }, [url]);
-  const width = 2.1 * scale;
-  const height = 2.1 * scale;
-  const geometry = useMemo(() => new THREE.BoxGeometry(width, height, 0.12), [height, width]);
-
-  return (
-    <mesh position={[0, 1, 0]}>
-      <primitive object={geometry} attach="geometry" />
-      {texture ? (
-        <meshStandardMaterial map={texture} side={THREE.DoubleSide} toneMapped={false} roughness={0.62} />
-      ) : (
-        <meshStandardMaterial color={colors.panel} side={THREE.DoubleSide} roughness={0.78} />
-      )}
-      <lineSegments>
-        <edgesGeometry args={[geometry]} />
-        <lineBasicMaterial color={colors.accent} transparent opacity={0.58} />
-      </lineSegments>
-    </mesh>
+function spherePoint(azimuthDeg: number, elevationDeg: number, radius: number): THREE.Vector3 {
+  const azimuth = (normalizeSigned(azimuthDeg) * Math.PI) / 180;
+  const elevation = (clamp(elevationDeg, -85, 85) * Math.PI) / 180;
+  return new THREE.Vector3(
+    Math.sin(azimuth) * Math.cos(elevation) * radius,
+    Math.sin(elevation) * radius,
+    Math.cos(azimuth) * Math.cos(elevation) * radius * 0.42,
   );
 }
 
-function ReferenceCube({
-  imageUrl,
-  rotation,
-  tilt,
-  scale,
-  mode,
-  colors,
-}: {
-  imageUrl?: string;
-  rotation: number;
-  tilt: number;
-  scale: number;
-  mode: LinghuiMultiAngleMode;
-  colors: ThreePreviewColors;
-}) {
-  const objectRotation: [number, number, number] = mode === 'object'
-    ? [THREE.MathUtils.degToRad(-tilt), THREE.MathUtils.degToRad(rotation), 0]
-    : [0, 0, 0];
+function buildSphereGrid(color: string): THREE.Group {
+  const group = new THREE.Group();
+  const material = new THREE.LineBasicMaterial({
+    color,
+    transparent: true,
+    opacity: 0.56,
+    depthWrite: false,
+  });
+  const radius = 1.48;
+  const segments = 96;
 
-  return (
-    <group rotation={objectRotation}>
-      <ImagePlane url={imageUrl} colors={colors} scale={scaleToZoom(scale)} />
-      <mesh position={[0, -0.08, 0]}>
-        <cylinderGeometry args={[1.15, 1.25, 0.08, 40]} />
-        <meshStandardMaterial color={colors.base} roughness={0.8} metalness={0.18} />
-      </mesh>
-    </group>
-  );
+  const addLoop = (points: THREE.Vector3[]) => {
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const line = new THREE.LineLoop(geometry, material);
+    line.renderOrder = 1;
+    group.add(line);
+  };
+
+  for (const lat of [-60, -35, -15, 0, 15, 35, 60]) {
+    const y = Math.sin((lat * Math.PI) / 180) * radius;
+    const ringRadius = Math.cos((lat * Math.PI) / 180) * radius;
+    const points: THREE.Vector3[] = [];
+    for (let i = 0; i < segments; i += 1) {
+      const t = (i / segments) * Math.PI * 2;
+      points.push(new THREE.Vector3(Math.cos(t) * ringRadius, y, Math.sin(t) * ringRadius * 0.42));
+    }
+    addLoop(points);
+  }
+
+  for (const lon of [0, 30, 60, 90, 120, 150]) {
+    const lonRad = (lon * Math.PI) / 180;
+    const points: THREE.Vector3[] = [];
+    for (let i = 0; i < segments; i += 1) {
+      const t = (i / segments) * Math.PI * 2;
+      const x = Math.sin(lonRad) * Math.cos(t) * radius;
+      const z = Math.cos(lonRad) * Math.cos(t) * radius * 0.42;
+      const y = Math.sin(t) * radius;
+      points.push(new THREE.Vector3(x, y, z));
+    }
+    addLoop(points);
+  }
+  return group;
 }
 
-function SphereGrid({
-  rotation,
-  tilt,
-  visible,
-  colors,
-  subtle = false,
-}: {
-  rotation: number;
-  tilt: number;
-  visible: boolean;
-  colors: ThreePreviewColors;
-  subtle?: boolean;
-}) {
-  if (!visible) return null;
-  return (
-    <group rotation={[THREE.MathUtils.degToRad(-tilt), THREE.MathUtils.degToRad(rotation), 0]}>
-      <mesh position={[0, 1, 0]}>
-        <sphereGeometry args={[2.65, 32, 18]} />
-        <meshBasicMaterial color={colors.accent} transparent opacity={subtle ? 0.07 : 0.13} wireframe />
-      </mesh>
-      <mesh position={[0, 1, 0]}>
-        <sphereGeometry args={[2.62, 32, 18]} />
-        <meshBasicMaterial color={colors.text} transparent opacity={subtle ? 0.03 : 0.05} side={THREE.BackSide} />
-      </mesh>
-    </group>
-  );
-}
-
-function ProjectionArea({ position, colors, isWideAngle }: { position: THREE.Vector3; colors: ThreePreviewColors; isWideAngle: boolean }) {
-  const quaternion = useMemo(() => buildLookQuaternion(position), [position]);
-  const forward = useMemo(() => TARGET_POINT.clone().sub(position).normalize(), [position]);
-  const previewDistance = Math.max(position.distanceTo(TARGET_POINT) - 0.4, 0.9);
-  const fov = isWideAngle ? CAMERA_PREVIEW_FOV * 1.35 : CAMERA_PREVIEW_FOV;
-  const frameHeight = 2 * Math.tan(THREE.MathUtils.degToRad(fov / 2)) * previewDistance;
-  const frameWidth = frameHeight;
-  const frameCenter = useMemo(() => position.clone().add(forward.clone().multiplyScalar(previewDistance)), [forward, position, previewDistance]);
-
-  return (
-    <group position={[frameCenter.x, frameCenter.y, frameCenter.z]} quaternion={quaternion}>
-      <mesh>
-        <planeGeometry args={[frameWidth, frameHeight]} />
-        <meshBasicMaterial color={colors.accent} transparent opacity={isWideAngle ? 0.16 : 0.09} side={THREE.DoubleSide} depthWrite={false} />
-      </mesh>
-      <lineSegments>
-        <edgesGeometry args={[new THREE.PlaneGeometry(frameWidth, frameHeight)]} />
-        <lineBasicMaterial color={colors.accent} transparent opacity={0.84} />
-      </lineSegments>
-    </group>
-  );
-}
-
-function CameraRig({
-  rotation,
-  tilt,
-  scale,
-  isWideAngle,
-  colors,
-  faint = false,
-}: {
-  rotation: number;
-  tilt: number;
-  scale: number;
-  isWideAngle: boolean;
-  colors: ThreePreviewColors;
-  faint?: boolean;
-}) {
-  const position = useMemo(() => toWorldPosition(rotation, tilt, scale), [rotation, scale, tilt]);
-  const quaternion = useMemo(() => buildLookQuaternion(position), [position]);
-  const opacity = faint ? 0.22 : 1;
-
-  return (
-    <group>
-      {!faint && <ProjectionArea position={position} colors={colors} isWideAngle={isWideAngle} />}
-      <group position={[position.x, position.y, position.z]} quaternion={quaternion} scale={faint ? 0.58 : 1}>
-        <mesh position={[0, 0, 0.12]}>
-          <boxGeometry args={[0.56, 0.34, 0.32]} />
-          <meshStandardMaterial color={colors.text} metalness={0.65} roughness={0.24} transparent opacity={opacity} />
-        </mesh>
-        <mesh position={[0, 0, -0.22]} rotation={[Math.PI / 2, 0, 0]}>
-          <cylinderGeometry args={[0.1, 0.14, 0.28, 18]} />
-          <meshStandardMaterial color={colors.base} metalness={0.56} roughness={0.34} transparent opacity={opacity} />
-        </mesh>
-        <mesh position={[0, 0, -0.38]} rotation={[Math.PI / 2, 0, 0]}>
-          <torusGeometry args={[0.11, 0.03, 10, 20]} />
-          <meshStandardMaterial color={colors.accent} emissive={colors.accent} emissiveIntensity={faint ? 0.08 : 0.34} transparent opacity={opacity} />
-        </mesh>
-      </group>
-    </group>
-  );
-}
-
-function StageCamera() {
-  const { camera } = useThree();
-  React.useEffect(() => {
-    camera.position.copy(STAGE_CAMERA_POSITION);
-    camera.lookAt(TARGET_POINT);
-    camera.updateProjectionMatrix();
-  }, [camera]);
-  return null;
-}
-
-function Scene(props: MultiAngle3DViewportProps & { colors: ThreePreviewColors }) {
-  const showCamera = props.mode === 'camera';
-  return (
-    <>
-      <StageCamera />
-      <ambientLight intensity={0.75} />
-      <directionalLight position={[6, 8, 4]} intensity={1.1} />
-      <directionalLight position={[-4, 5, -6]} intensity={0.45} />
-      <ReferenceCube
-        imageUrl={props.imageUrl}
-        rotation={props.rotation}
-        tilt={props.tilt}
-        scale={props.scale}
-        mode={props.mode}
-        colors={props.colors}
-      />
-      <SphereGrid
-        rotation={props.rotation}
-        tilt={props.tilt}
-        visible
-        colors={props.colors}
-        subtle={!showCamera}
-      />
-      {showCamera ? (
-        <>
-          <CameraRig
-            rotation={props.rotation}
-            tilt={props.tilt}
-            scale={props.scale}
-            isWideAngle={props.isWideAngle}
-            colors={props.colors}
-          />
-          {CAMERA_FIXED_ANGLES.map(angle => (
-            <CameraRig
-              key={`${angle.rotation}-${angle.tilt}`}
-              rotation={angle.rotation}
-              tilt={angle.tilt}
-              scale={50}
-              isWideAngle={false}
-              colors={props.colors}
-              faint
-            />
-          ))}
-        </>
-      ) : null}
-    </>
-  );
+interface SceneRefs {
+  renderer: THREE.WebGLRenderer;
+  scene: THREE.Scene;
+  camera: THREE.PerspectiveCamera;
+  subject: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshStandardMaterial>;
+  subjectBack: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
+  subjectGroup: THREE.Group;
+  shell: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>;
+  grid: THREE.Group;
+  cameraMarker: THREE.Group;
+  cameraRay: THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial>;
+  fallbackTexture: THREE.CanvasTexture;
 }
 
 export const LinghuiMultiAngle3DViewport: React.FC<MultiAngle3DViewportProps> = ({
-  mode,
+  imageUrl,
   rotation,
   tilt,
   scale,
   isWideAngle,
   onRotationTiltChange,
   onScaleChange,
-  ...sceneProps
 }) => {
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  const sceneRefs = useRef<SceneRefs | null>(null);
+  const textureRef = useRef<THREE.Texture | null>(null);
+  const frameRef = useRef<number>(0);
+  const propsRef = useRef({ rotation, tilt, scale, isWideAngle });
+  propsRef.current = { rotation, tilt, scale, isWideAngle };
   const [isDragging, setIsDragging] = useState(false);
   const dragRef = useRef<{ x: number; y: number; rotation: number; tilt: number } | null>(null);
   const { theme } = useTheme();
-  const colors = useMemo<ThreePreviewColors>(() => ({
+  const colors = useMemo<PreviewColors>(() => ({
     accent: theme.tokens.status.info,
-    base: theme.tokens.bg.app,
-    panel: theme.tokens.bg.hover,
-    metal: theme.tokens.text.tertiary,
-    text: theme.tokens.text.secondary,
+    shellColor: theme.tokens.bg.elevated,
+    gridColor: theme.tokens.text.tertiary,
+    cameraBody: theme.tokens.text.secondary,
+    cameraLens: theme.tokens.text.tertiary,
+    rayColor: theme.tokens.text.secondary,
+    subjectBackColor: theme.tokens.bg.app,
+    ambientColor: theme.tokens.accent.onAccent,
+    fallbackTopColor: theme.tokens.text.tertiary,
+    fallbackMidColor: theme.tokens.bg.elevated,
+    fallbackBottomColor: theme.tokens.bg.app,
   }), [theme]);
+  const colorsRef = useRef(colors);
+  colorsRef.current = colors;
+
+  const updateSubjectFit = useCallback((texture: THREE.Texture | null) => {
+    const refs = sceneRefs.current;
+    if (!refs) return;
+    const image = texture?.image as { width?: number; height?: number } | undefined;
+    const aspect = image?.width && image?.height ? image.width / image.height : 0.78;
+    const maxWidth = 0.9;
+    const maxHeight = 1.14;
+    const width = aspect >= maxWidth / maxHeight ? maxWidth : maxHeight * aspect;
+    const height = aspect >= maxWidth / maxHeight ? maxWidth / aspect : maxHeight;
+    refs.subject.scale.set(width, height, 1);
+    refs.subjectBack.scale.set(width + 0.06, height + 0.06, 1);
+  }, []);
+
+  const updateTransforms = useCallback(() => {
+    const refs = sceneRefs.current;
+    if (!refs) return;
+    const { rotation: rot, tilt: tlt, scale: scl } = propsRef.current;
+    const zoom = scaleToZoom(scl);
+    refs.subjectGroup.scale.setScalar(1.12 - zoom * 0.045);
+
+    const cameraPoint = spherePoint(rot, tlt, 1.42);
+    refs.cameraMarker.position.copy(cameraPoint);
+    refs.cameraMarker.lookAt(0, 0, 0.08);
+
+    refs.cameraRay.geometry.setFromPoints([new THREE.Vector3(0, 0, 0.12), cameraPoint]);
+  }, []);
+
+  const renderLoop = useCallback(() => {
+    const refs = sceneRefs.current;
+    if (!refs) return;
+    refs.renderer.render(refs.scene, refs.camera);
+    frameRef.current = window.requestAnimationFrame(renderLoop);
+  }, []);
+
+  // Setup scene once.
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    let disposed = false;
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.domElement.className = 'linghuiMultiAngle3DViewport__canvas';
+    host.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
+    camera.position.set(0, 0.1, 5.05);
+    camera.lookAt(0, 0, 0);
+
+    scene.add(new THREE.AmbientLight(0xffffff, 1.42));
+    const keyLight = new THREE.DirectionalLight(colorsRef.current.ambientColor, 1);
+    keyLight.position.set(2.8, 1.8, 3.2);
+    scene.add(keyLight);
+
+    const shell = new THREE.Mesh(
+      new THREE.SphereGeometry(1.5, 64, 32),
+      new THREE.MeshBasicMaterial({
+        color: colorsRef.current.shellColor,
+        transparent: true,
+        opacity: 0.34,
+        side: THREE.BackSide,
+        depthWrite: false,
+      }),
+    );
+    shell.renderOrder = 0;
+    scene.add(shell);
+
+    const grid = buildSphereGrid(colorsRef.current.gridColor);
+    scene.add(grid);
+
+    const subjectGroup = new THREE.Group();
+    scene.add(subjectGroup);
+
+    const fallbackTexture = makeFallbackTexture(colorsRef.current);
+
+    const subjectBack = new THREE.Mesh(
+      new THREE.PlaneGeometry(1, 1),
+      new THREE.MeshBasicMaterial({
+        color: colorsRef.current.subjectBackColor,
+        transparent: true,
+        opacity: 0.5,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      }),
+    );
+    subjectBack.position.set(0, 0, 0.085);
+    subjectBack.renderOrder = 2;
+    subjectGroup.add(subjectBack);
+
+    const subject = new THREE.Mesh(
+      new THREE.PlaneGeometry(1, 1),
+      new THREE.MeshStandardMaterial({
+        map: fallbackTexture,
+        roughness: 0.48,
+        metalness: 0.02,
+        side: THREE.DoubleSide,
+      }),
+    );
+    subject.position.set(0, 0, 0.11);
+    subject.renderOrder = 3;
+    subjectGroup.add(subject);
+
+    const cameraMarker = new THREE.Group();
+    const cameraBody = new THREE.Mesh(
+      new THREE.BoxGeometry(0.18, 0.13, 0.1),
+      new THREE.MeshBasicMaterial({ color: colorsRef.current.cameraBody, transparent: true, opacity: 0.94 }),
+    );
+    const cameraLens = new THREE.Mesh(
+      new THREE.BoxGeometry(0.07, 0.055, 0.12),
+      new THREE.MeshBasicMaterial({ color: colorsRef.current.cameraLens, transparent: true, opacity: 0.96 }),
+    );
+    cameraLens.position.set(0, 0, 0.08);
+    cameraMarker.add(cameraBody, cameraLens);
+    cameraMarker.renderOrder = 6;
+    scene.add(cameraMarker);
+
+    const cameraRay = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(0, 0, 1)]),
+      new THREE.LineBasicMaterial({
+        color: colorsRef.current.rayColor,
+        transparent: true,
+        opacity: 0.45,
+        depthWrite: false,
+      }),
+    );
+    cameraRay.renderOrder = 4;
+    scene.add(cameraRay);
+
+    sceneRefs.current = {
+      renderer,
+      scene,
+      camera,
+      subject,
+      subjectBack,
+      subjectGroup,
+      shell,
+      grid,
+      cameraMarker,
+      cameraRay,
+      fallbackTexture,
+    };
+
+    const resizeObserver = new ResizeObserver(() => {
+      const refs = sceneRefs.current;
+      if (!refs || disposed) return;
+      const width = Math.max(1, Math.round(host.clientWidth));
+      const height = Math.max(1, Math.round(host.clientHeight));
+      refs.renderer.setSize(width, height, false);
+      refs.camera.aspect = width / height;
+      refs.camera.fov = propsRef.current.isWideAngle ? 30 : 38;
+      refs.camera.position.set(0, 0.1, propsRef.current.isWideAngle ? 5.75 : 5.05);
+      refs.camera.lookAt(0, 0, 0);
+      refs.camera.updateProjectionMatrix();
+    });
+    resizeObserver.observe(host);
+
+    updateSubjectFit(fallbackTexture);
+    updateTransforms();
+    frameRef.current = window.requestAnimationFrame(renderLoop);
+
+    return () => {
+      disposed = true;
+      if (frameRef.current) window.cancelAnimationFrame(frameRef.current);
+      resizeObserver.disconnect();
+      textureRef.current?.dispose();
+      textureRef.current = null;
+      const refs = sceneRefs.current;
+      if (refs) {
+        refs.fallbackTexture.dispose();
+        refs.scene.traverse((object) => {
+          const mesh = object as THREE.Mesh;
+          mesh.geometry?.dispose?.();
+          const material = mesh.material as THREE.Material | THREE.Material[] | undefined;
+          if (Array.isArray(material)) {
+            material.forEach(entry => entry.dispose?.());
+          } else {
+            material?.dispose?.();
+          }
+        });
+        refs.renderer.dispose();
+        refs.renderer.domElement.remove();
+      }
+      sceneRefs.current = null;
+    };
+  }, [renderLoop, updateSubjectFit, updateTransforms]);
+
+  // Apply theme-derived color updates without rebuilding the scene.
+  useEffect(() => {
+    const refs = sceneRefs.current;
+    if (!refs) return;
+    refs.shell.material.color.set(colors.shellColor);
+    refs.grid.traverse(object => {
+      const line = object as THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial>;
+      if (line.material && (line.material as THREE.LineBasicMaterial).color) {
+        (line.material as THREE.LineBasicMaterial).color.set(colors.gridColor);
+      }
+    });
+    refs.cameraRay.material.color.set(colors.rayColor);
+    refs.cameraMarker.children.forEach((child, index) => {
+      const mesh = child as THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
+      if (mesh.material?.color) {
+        mesh.material.color.set(index === 0 ? colors.cameraBody : colors.cameraLens);
+      }
+    });
+  }, [colors]);
+
+  // Load texture when imageUrl changes.
+  useEffect(() => {
+    const refs = sceneRefs.current;
+    if (!refs) return;
+    if (!imageUrl) {
+      refs.subject.material.map = refs.fallbackTexture;
+      refs.subject.material.needsUpdate = true;
+      updateSubjectFit(refs.fallbackTexture);
+      return;
+    }
+    let cancelled = false;
+    const loader = new THREE.TextureLoader();
+    loader.setCrossOrigin('anonymous');
+    loader.loadAsync(imageUrl).then((texture) => {
+      if (cancelled || !sceneRefs.current) return;
+      textureRef.current?.dispose();
+      textureRef.current = texture;
+      texture.colorSpace = THREE.SRGBColorSpace;
+      const maxAnisotropy = sceneRefs.current.renderer.capabilities.getMaxAnisotropy?.() ?? 1;
+      texture.anisotropy = Math.min(maxAnisotropy, 8);
+      sceneRefs.current.subject.material.map = texture;
+      sceneRefs.current.subject.material.needsUpdate = true;
+      updateSubjectFit(texture);
+    }).catch(() => {
+      if (!sceneRefs.current) return;
+      sceneRefs.current.subject.material.map = sceneRefs.current.fallbackTexture;
+      sceneRefs.current.subject.material.needsUpdate = true;
+      updateSubjectFit(sceneRefs.current.fallbackTexture);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [imageUrl, updateSubjectFit]);
+
+  // Sync transforms whenever the angles change.
+  useEffect(() => {
+    updateTransforms();
+  }, [rotation, tilt, scale, isWideAngle, updateTransforms]);
+
+  // Sync camera FOV / position for wide-angle mode.
+  useEffect(() => {
+    const refs = sceneRefs.current;
+    if (!refs) return;
+    refs.camera.fov = isWideAngle ? 30 : 38;
+    refs.camera.position.set(0, 0.1, isWideAngle ? 5.75 : 5.05);
+    refs.camera.lookAt(0, 0, 0);
+    refs.camera.updateProjectionMatrix();
+  }, [isWideAngle]);
 
   const handlePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
     dragRef.current = { x: event.clientX, y: event.clientY, rotation, tilt };
     setIsDragging(true);
@@ -314,16 +443,15 @@ export const LinghuiMultiAngle3DViewport: React.FC<MultiAngle3DViewportProps> = 
   const handlePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current;
     if (!drag) return;
-    const dx = event.clientX - drag.x;
-    const dy = event.clientY - drag.y;
-    const nextRotation = mode === 'camera'
-      ? snapCameraRotation(drag.rotation + dx * 0.8)
-      : clamp(drag.rotation + dx * 0.55, -180, 180);
-    const nextTilt = mode === 'camera'
-      ? snapCameraTilt(drag.tilt - dy * 0.8)
-      : clamp(drag.tilt + dy * 0.55, -90, 90);
+    event.preventDefault();
+    event.stopPropagation();
+    const rect = event.currentTarget.getBoundingClientRect();
+    const dx = ((event.clientX - drag.x) / Math.max(1, rect.width)) * 100;
+    const dy = ((event.clientY - drag.y) / Math.max(1, rect.height)) * 100;
+    const nextRotation = normalizeUnsigned(drag.rotation + dx * 1.08);
+    const nextTilt = clamp(drag.tilt - dy * 0.9, -85, 85);
     onRotationTiltChange(nextRotation, nextTilt);
-  }, [mode, onRotationTiltChange]);
+  }, [onRotationTiltChange]);
 
   const endDrag = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (!dragRef.current) return;
@@ -332,123 +460,82 @@ export const LinghuiMultiAngle3DViewport: React.FC<MultiAngle3DViewportProps> = 
     try {
       event.currentTarget.releasePointerCapture(event.pointerId);
     } catch {
-      // Pointer capture can already be gone when React receives cancel/up.
+      // Pointer capture may already be released.
     }
   }, []);
 
   const handleWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
     event.preventDefault();
-    const step = mode === 'camera' ? 50 : 10;
-    onScaleChange(clamp(scale + (event.deltaY > 0 ? -step : step), 0, 100));
-  }, [mode, onScaleChange, scale]);
+    const step = 100 / 6;
+    const next = clamp(scale + (event.deltaY > 0 ? -step : step), 0, 100);
+    onScaleChange(next);
+  }, [onScaleChange, scale]);
 
-  const handleDirectionNudge = useCallback((direction: 'up' | 'down' | 'left' | 'right') => {
-    if (mode === 'camera') {
-      const nextRotation = direction === 'left'
-        ? snapCameraRotation(rotation - 45)
-        : direction === 'right'
-          ? snapCameraRotation(rotation + 45)
-          : snapCameraRotation(rotation);
-      const nextTilt = direction === 'up'
-        ? snapCameraTilt(tilt + 30)
-        : direction === 'down'
-          ? snapCameraTilt(tilt - 30)
-          : snapCameraTilt(tilt);
-      onRotationTiltChange(nextRotation, nextTilt);
-      return;
+  const nudge = useCallback((direction: 'up' | 'down' | 'left' | 'right') => {
+    if (direction === 'up') {
+      onRotationTiltChange(rotation, clamp(tilt + 15, -85, 85));
+    } else if (direction === 'down') {
+      onRotationTiltChange(rotation, clamp(tilt - 15, -85, 85));
+    } else if (direction === 'left') {
+      onRotationTiltChange(normalizeUnsigned(rotation - 15), tilt);
+    } else {
+      onRotationTiltChange(normalizeUnsigned(rotation + 15), tilt);
     }
+  }, [onRotationTiltChange, rotation, tilt]);
 
-    const nextRotation = direction === 'left'
-      ? clamp(rotation - 15, -180, 180)
-      : direction === 'right'
-        ? clamp(rotation + 15, -180, 180)
-        : rotation;
-    const nextTilt = direction === 'up'
-      ? clamp(tilt - 15, -90, 90)
-      : direction === 'down'
-        ? clamp(tilt + 15, -90, 90)
-        : tilt;
-    onRotationTiltChange(nextRotation, nextTilt);
-  }, [mode, onRotationTiltChange, rotation, tilt]);
-
-  const handleDirectionPointerDown = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
+  const stopButtonBubble = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
   }, []);
 
   return (
-    <div
-      className={`linghuiMultiAngle3DViewport mode-${mode} ${isDragging ? 'isDragging' : ''} ${isWideAngle ? 'isWideAngle' : ''}`}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={endDrag}
-      onPointerCancel={endDrag}
-      onWheel={handleWheel}
-      role="presentation"
-    >
-      <Canvas
-        camera={{
-          position: [STAGE_CAMERA_POSITION.x, STAGE_CAMERA_POSITION.y, STAGE_CAMERA_POSITION.z],
-          fov: isWideAngle ? 28 : 34,
-          near: 0.1,
-          far: 120,
-        }}
-        gl={{ antialias: true, alpha: false, preserveDrawingBuffer: true, powerPreference: 'high-performance' }}
-        dpr={[1, 2]}
+    <>
+      <div
+        ref={hostRef}
+        className={`linghuiMultiAngle3DViewport ${isDragging ? 'isDragging' : ''}`}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        onWheel={handleWheel}
+        role="presentation"
+      />
+      <button
+        className="tcPanoramicEditor__dir tcPanoramicEditor__dir--up"
+        type="button"
+        aria-label="向上调整俯仰"
+        onPointerDown={stopButtonBubble}
+        onClick={() => nudge('up')}
       >
-        <Scene
-          {...sceneProps}
-          mode={mode}
-          rotation={rotation}
-          tilt={tilt}
-          scale={scale}
-          isWideAngle={isWideAngle}
-          onRotationTiltChange={onRotationTiltChange}
-          onScaleChange={onScaleChange}
-          colors={colors}
-        />
-      </Canvas>
-      <div className="linghuiMultiAngleDirectionPad" aria-label="视角方向控制">
-        <button
-          type="button"
-          className="isUp"
-          aria-label="向上"
-          onPointerDown={handleDirectionPointerDown}
-          onClick={() => handleDirectionNudge('up')}
-        >
-          <ChevronUp size={16} />
-        </button>
-        <button
-          type="button"
-          className="isDown"
-          aria-label="向下"
-          onPointerDown={handleDirectionPointerDown}
-          onClick={() => handleDirectionNudge('down')}
-        >
-          <ChevronDown size={16} />
-        </button>
-        <button
-          type="button"
-          className="isLeft"
-          aria-label="向左"
-          onPointerDown={handleDirectionPointerDown}
-          onClick={() => handleDirectionNudge('left')}
-        >
-          <ChevronLeft size={16} />
-        </button>
-        <button
-          type="button"
-          className="isRight"
-          aria-label="向右"
-          onPointerDown={handleDirectionPointerDown}
-          onClick={() => handleDirectionNudge('right')}
-        >
-          <ChevronRight size={16} />
-        </button>
-      </div>
-      <div className="linghuiMultiAngle3DHint">
-        {mode === 'camera' ? 'Camera · drag to orbit' : 'Object · drag cube'}
-      </div>
-    </div>
+        <ChevronUp size={11} />
+      </button>
+      <button
+        className="tcPanoramicEditor__dir tcPanoramicEditor__dir--down"
+        type="button"
+        aria-label="向下调整俯仰"
+        onPointerDown={stopButtonBubble}
+        onClick={() => nudge('down')}
+      >
+        <ChevronDown size={11} />
+      </button>
+      <button
+        className="tcPanoramicEditor__dir tcPanoramicEditor__dir--left"
+        type="button"
+        aria-label="向左环绕"
+        onPointerDown={stopButtonBubble}
+        onClick={() => nudge('left')}
+      >
+        <ChevronLeft size={11} />
+      </button>
+      <button
+        className="tcPanoramicEditor__dir tcPanoramicEditor__dir--right"
+        type="button"
+        aria-label="向右环绕"
+        onPointerDown={stopButtonBubble}
+        onClick={() => nudge('right')}
+      >
+        <ChevronRight size={11} />
+      </button>
+    </>
   );
 };

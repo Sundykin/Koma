@@ -485,6 +485,17 @@ export interface LinghuiImageRelightConfig {
   sceneActive?: boolean;
   brightnessActive?: boolean;
   colorActive?: boolean;
+  /**
+   * 主光位的连续球面坐标（与 electron-egg ImageLightControlConfig.azimuthDeg/elevationDeg 对齐）。
+   * 缺省时回退到 `direction` 派生角度；用户在球面上拖拽时会写入此处持久化。
+   */
+  mainAzimuthDeg?: number;
+  mainElevationDeg?: number;
+  /** 轮廓光（fill light）的连续球面坐标，仅在 rimLight 开启时生效。 */
+  fillAzimuthDeg?: number;
+  fillElevationDeg?: number;
+  /** electron-egg 的预览视角模式：透视 / 正面，仅影响球面预览相机。 */
+  previewMode?: 'perspective' | 'front';
 }
 
 export interface LinghuiExecuteMultiAngleOptions {
@@ -1871,6 +1882,13 @@ export function normalizeLinghuiMultiAngleConfig(
   };
 }
 
+function optionalAngle(value: unknown, min: number, max: number): number | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return undefined;
+  return Math.max(min, Math.min(max, numeric));
+}
+
 export function normalizeLinghuiImageRelightConfig(
   value: Partial<LinghuiImageRelightConfig> | null | undefined,
 ): LinghuiImageRelightConfig {
@@ -1890,6 +1908,11 @@ export function normalizeLinghuiImageRelightConfig(
     sceneActive: value?.sceneActive === true,
     brightnessActive: value?.brightnessActive === true,
     colorActive: value?.colorActive === true,
+    mainAzimuthDeg: optionalAngle(value?.mainAzimuthDeg, -720, 720),
+    mainElevationDeg: optionalAngle(value?.mainElevationDeg, -85, 85),
+    fillAzimuthDeg: optionalAngle(value?.fillAzimuthDeg, -720, 720),
+    fillElevationDeg: optionalAngle(value?.fillElevationDeg, -85, 85),
+    previewMode: value?.previewMode === 'front' ? 'front' : value?.previewMode === 'perspective' ? 'perspective' : undefined,
   };
 }
 

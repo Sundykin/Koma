@@ -336,7 +336,7 @@ describe('ImageNodeEditor', () => {
 
     expect(await screen.findByRole('dialog', { name: '打光效果' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /伦勃朗光/ }));
-    fireEvent.click(screen.getByRole('button', { name: '生成' }));
+    fireEvent.click(screen.getByRole('button', { name: '创建打光节点' }));
 
     expect(onApplyImageToolPreset).toHaveBeenCalledWith(expect.objectContaining({
       label: '伦勃朗光',
@@ -362,7 +362,7 @@ describe('ImageNodeEditor', () => {
 
     expect(await screen.findByLabelText('打光光球预览')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /蓝色逆光/ }));
-    fireEvent.click(screen.getByRole('button', { name: '生成' }));
+    fireEvent.click(screen.getByRole('button', { name: '创建打光节点' }));
 
     expect(onApplyImageToolPreset).toHaveBeenCalledWith(expect.objectContaining({
       label: '蓝色逆光',
@@ -422,11 +422,11 @@ describe('ImageNodeEditor', () => {
     expect(nextNode.properties.multiAngle).toEqual(expect.objectContaining({
       presetKey: 'fisheye',
       rotation: 0,
-      tilt: 30,
-      scale: 100,
+      tilt: 0,
+      scale: 0,
       isWideAngle: true,
       promptEnabled: true,
-      prompt: '极度特写镜头，广角镜头，边缘带有鱼眼畸变效果',
+      prompt: '鱼眼广角镜头，画面带有强烈的桶形畸变与边缘弯曲，呈现广视野效果',
     }));
 
     view.rerender(
@@ -443,7 +443,7 @@ describe('ImageNodeEditor', () => {
         />
       </App>,
     );
-    fireEvent.click(screen.getByRole('button', { name: '生成' }));
+    fireEvent.click(screen.getByRole('button', { name: '创建多角度节点' }));
 
     expect(onExecuteMultiAngle).toHaveBeenCalledWith(expect.objectContaining({
       ttiSelection: 'image-main::model-1',
@@ -451,8 +451,8 @@ describe('ImageNodeEditor', () => {
       multiAngle: expect.objectContaining({
         presetKey: 'fisheye',
         rotation: 0,
-        tilt: 30,
-        scale: 100,
+        tilt: 0,
+        scale: 0,
         isWideAngle: true,
         promptEnabled: true,
       }),

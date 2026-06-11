@@ -25,6 +25,7 @@ import {
 } from '../state/linghuiScriptPromptPresets';
 import { useLinghuiActionLock } from '../hooks/useLinghuiActionLock';
 import { ScriptShotCards, ScriptShotTable } from './ScriptShotViews';
+import { toFileSystemDisplayUrl } from '../../../../services/fileSystemPort';
 
 interface ProviderOption {
   value: string;
@@ -250,11 +251,15 @@ export const ScriptNodeEditor: React.FC<ScriptNodeEditorProps> = ({
     }))
   ), [providers, updateProp]);
   const referenceCards = useMemo(() => (
-    promptReferences.map((reference, index) => ({
-      ...reference,
-      badge: String(index + 1),
-      preview: reference.previewSource || (typeof reference.source === 'string' ? reference.source : ''),
-    }))
+    promptReferences.map((reference, index) => {
+      const raw = reference.previewSource || (typeof reference.source === 'string' ? reference.source : '');
+      // 上游 source/previewSource 多为本地路径，必须经 toFileSystemDisplayUrl 转成 koma-local:// 才能加载
+      return {
+        ...reference,
+        badge: String(index + 1),
+        preview: raw ? toFileSystemDisplayUrl(raw) ?? raw : '',
+      };
+    })
   ), [promptReferences]);
 
   const scriptSettingsContent = (

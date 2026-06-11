@@ -23,6 +23,14 @@ import {
 } from '../../../../providers/itv/durationSpec';
 import { TooltipLabel } from './VideoAccessCard';
 import { VideoParameterPanel } from './VideoParameterPanel';
+import { toFileSystemDisplayUrl } from '../../../../services/fileSystemPort';
+
+// 上游素材的原始 source 多为本地文件路径（无协议头），需要走 toFileSystemDisplayUrl
+// 转成 koma-local:// 才能在 <img>/Electron 中渲染；否则浏览器无法解析裸路径。
+function resolveDisplayPreview(raw?: string): string {
+  if (!raw) return '';
+  return toFileSystemDisplayUrl(raw) ?? raw;
+}
 
 interface VideoToolSectionProps {
   activeTool: LinghuiVideoToolKey | null;
@@ -332,7 +340,9 @@ export function VideoGeneratePanel({
       kind: reference.kind,
       name: reference.name,
       badge: String(index + 1),
-      preview: reference.previewSource || (typeof reference.source === 'string' ? reference.source : ''),
+      preview: resolveDisplayPreview(
+        reference.previewSource || (typeof reference.source === 'string' ? reference.source : ''),
+      ),
     }));
     if (promptCards.length > 0) return promptCards;
     return [
@@ -341,21 +351,21 @@ export function VideoGeneratePanel({
         kind: 'image' as const,
         name: reference.label || `图片 ${index + 1}`,
         badge: String(index + 1),
-        preview: reference.source || '',
+        preview: resolveDisplayPreview(reference.source),
       })),
       ...referenceVideos.map((reference, index) => ({
         id: `video-${index}`,
         kind: 'video' as const,
         name: reference.label || `视频 ${index + 1}`,
         badge: String(index + 1),
-        preview: reference.posterSource || reference.source || '',
+        preview: resolveDisplayPreview(reference.posterSource || reference.source),
       })),
       ...referenceAudios.map((reference, index) => ({
         id: `audio-${index}`,
         kind: 'audio' as const,
         name: reference.label || `音频 ${index + 1}`,
         badge: String(index + 1),
-        preview: reference.source || '',
+        preview: resolveDisplayPreview(reference.source),
       })),
     ];
   }, [promptReferences, referenceAudios, referenceImages, referenceVideos]);
@@ -474,7 +484,6 @@ export function VideoGeneratePanel({
                 )}
                 <span className="linghuiVideoGeneratorRefBadge">{reference.badge}</span>
               </div>
-              <span className="linghuiVideoGeneratorRefName">{reference.name}</span>
             </div>
           ))}
         </div>

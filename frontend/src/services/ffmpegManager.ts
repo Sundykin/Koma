@@ -2,10 +2,18 @@
  * 前端 FFmpeg 管理器
  * 负责与 Electron FFmpeg 服务通信，管理帧缓存和波形缓存
  */
-import { isElectron } from './electronService';
+import { isElectron, electronService } from './electronService';
 import { createLogger } from '../store/logger';
 
 const logger = createLogger('FFmpegManager');
+
+function hashCode(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
+  }
+  return hash;
+}
 
 // 媒体信息类型
 export interface MediaInfo {
@@ -188,6 +196,41 @@ class FFmpegManager {
   }
 
   /**
+   * 将远程 URL 下载到本地缓存目录，供 FFmpeg 使用。
+   * 如果已经是本地路径则直接返回。
+   */
+  async #materializeInput(input: string): Promise<string | null> {
+    if (!/^https?:\/\//i.test(input)) {
+      return input;
+    }
+    if (!this.cacheDir) {
+      logger.warn('[materializeInput] cacheDir 未初始化，无法下载远程 URL');
+      return null;
+    }
+    const hash = Math.abs(hashCode(input)).toString(36);
+    const ext = (input.split('.').pop()?.split('?')[0] || 'mp4').substring(0, 8);
+    const downloadDir = `${this.cacheDir}/_materialized`;
+    const localPath = `${downloadDir}/${hash}.${ext}`;
+    const alreadyExists = await electronService.fs.exists(localPath);
+    if (alreadyExists) {
+      return localPath;
+    }
+    try {
+      await electronService.fs.mkdir(downloadDir);
+      logger.info('[materializeInput] 下载远程 URL 到本地', { input: input.substring(0, 80), localPath });
+      await electronService.fs.downloadFile(input, localPath);
+      return localPath;
+    } catch (err) {
+      logger.error('[materializeInput] 下载远程 URL 失败', {
+        input: input.substring(0, 80),
+        localPath,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return null;
+    }
+  }
+
+  /**
    * 获取媒体信息
    */
   async getMediaInfo(filePath: string): Promise<MediaInfo> {
@@ -305,12 +348,18 @@ class FFmpegManager {
       return null;
     }
 
+    const inputPath = await this.#materializeInput(filePath);
+    if (!inputPath) {
+      logger.warn('[getPosterFrame] 无法获取本地文件，跳过抽帧', { filePath: filePath.substring(0, 80) });
+      return null;
+    }
+
     const rootDir = await api.getCacheDir('video-posters');
     const outputDir = `${rootDir}/${resourceId}`;
     await api.ensureDir(outputDir);
 
     const frames = await api.extractFrames({
-      input: filePath,
+      input: inputPath,
       outputDir,
       fps: 1,
       startTime: 0,
@@ -431,16 +480,22 @@ class FFmpegManager {
       logger.warn('[getFrames] cacheDir 为空，init 是否成功？', { resourceId, filePath });
     }
 
+    const inputPath = await this.#materializeInput(filePath);
+    if (!inputPath) {
+      logger.warn('[getFrames] 无法获取本地文件，跳过抽帧', { filePath: filePath.substring(0, 80) });
+      return [];
+    }
+
     const resourceCacheDir = `${this.cacheDir}/${resourceId}/frames`;
     logger.info('[getFrames] extracting', {
       resourceId,
-      filePath,
+      filePath: inputPath,
       outputDir: resourceCacheDir,
       timeRange,
     });
 
     const frames = await this.extractFrames({
-      input: filePath,
+      input: inputPath,
       outputDir: resourceCacheDir,
       fps: 1,
       startTime: timeRange?.[0],
