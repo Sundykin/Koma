@@ -103,7 +103,8 @@
       "Bash(git status:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(npx vite:*)"
+      "Bash(npx vite:*)",
+      "Read(//Users/sunmeng/.koma/**)"
     ]
   }
 }
