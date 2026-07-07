@@ -212,16 +212,15 @@ describe('activationService legacy activation migration', () => {
       maskedKey: activationService.maskApiKey(FAKE_LEGACY_KEY),
       defaultChannelIds: {
         llm: KOMAAPI_ACTIVATION_CHANNEL_ID,
-        tti: KOMAAPI_ACTIVATION_CHANNEL_IDS.tti,
+        tti: KOMAAPI_ACTIVATION_CHANNEL_IDS.ttiGptImage2,
         itv: KOMAAPI_ACTIVATION_CHANNEL_IDS.itv,
       },
     });
 
     const createCalls = mocks.ipcInvoke.mock.calls.filter(([channel]) => channel === 'channel:create');
-    // 6 个 koma-activation 管理渠道：llm / tti（grok）/ tti（gpt-image-2）/ itv（grok）/ itvJimeng（即梦）/ tts
-    expect(createCalls).toHaveLength(6);
+    // 5 个 koma-activation 管理渠道：llm / tti（gpt-image-2）/ itv（openai-video）/ itvJimeng（即梦）/ tts
+    expect(createCalls).toHaveLength(5);
     expect(createCalls.map(([, args]) => args.providerConfig.apiKey)).toEqual([
-      FAKE_LEGACY_KEY,
       FAKE_LEGACY_KEY,
       FAKE_LEGACY_KEY,
       FAKE_LEGACY_KEY,
@@ -229,7 +228,6 @@ describe('activationService legacy activation migration', () => {
       FAKE_LEGACY_KEY,
     ]);
     expect(createCalls.map(([, args]) => args.name)).toEqual([
-      'Koma官方',
       'Koma官方',
       'Koma官方-gpt-image-2',
       'Koma官方',
@@ -242,10 +240,8 @@ describe('activationService legacy activation migration', () => {
       KOMA_ACTIVATION_MANAGED_BY,
       KOMA_ACTIVATION_MANAGED_BY,
       KOMA_ACTIVATION_MANAGED_BY,
-      KOMA_ACTIVATION_MANAGED_BY,
     ]);
     expect(createCalls.map(([, args]) => args.providerConfig.activationManaged)).toEqual([
-      true,
       true,
       true,
       true,
@@ -314,7 +310,7 @@ describe('activationService legacy activation migration', () => {
 
     expect(info?.defaultChannelIds).toEqual({
       llm: KOMAAPI_ACTIVATION_CHANNEL_ID,
-      tti: KOMAAPI_ACTIVATION_CHANNEL_IDS.tti,
+      tti: KOMAAPI_ACTIVATION_CHANNEL_IDS.ttiGptImage2,
       itv: KOMAAPI_ACTIVATION_CHANNEL_IDS.itv,
     });
     expect(info?.maskedKey).toBe(activationService.maskApiKey(FAKE_LEGACY_KEY));
@@ -330,7 +326,6 @@ describe('activationService ensureDefaultModelChannels', () => {
   it('默认渠道已存在时也会更新激活 marker', async () => {
     const categoryById: Record<string, ActivationTestCategory> = {
       [KOMAAPI_ACTIVATION_CHANNEL_IDS.llm]: 'llm',
-      [KOMAAPI_ACTIVATION_CHANNEL_IDS.tti]: 'tti',
       [KOMAAPI_ACTIVATION_CHANNEL_IDS.ttiGptImage2]: 'tti',
       [KOMAAPI_ACTIVATION_CHANNEL_IDS.itv]: 'itv',
       [KOMAAPI_ACTIVATION_CHANNEL_IDS.itvJimeng]: 'itv',
@@ -374,10 +369,9 @@ describe('activationService ensureDefaultModelChannels', () => {
 
     expect(result.success).toBe(true);
     const updateCalls = mocks.ipcInvoke.mock.calls.filter(([channel]) => channel === 'channel:update');
-    // 6 个管理渠道：llm / tti（grok）/ tti（gpt-image-2）/ itv（grok）/ itvJimeng（即梦）/ tts
-    expect(updateCalls).toHaveLength(6);
+    // 5 个管理渠道：llm / tti（gpt-image-2）/ itv（openai-video）/ itvJimeng（即梦）/ tts
+    expect(updateCalls).toHaveLength(5);
     expect(updateCalls.map(([, args]) => args.patch.name)).toEqual([
-      'Koma官方',
       'Koma官方',
       'Koma官方-gpt-image-2',
       'Koma官方',
@@ -390,10 +384,8 @@ describe('activationService ensureDefaultModelChannels', () => {
       KOMA_ACTIVATION_MANAGED_BY,
       KOMA_ACTIVATION_MANAGED_BY,
       KOMA_ACTIVATION_MANAGED_BY,
-      KOMA_ACTIVATION_MANAGED_BY,
     ]);
     expect(updateCalls.map(([, args]) => args.patch.providerConfig.activationManaged)).toEqual([
-      true,
       true,
       true,
       true,
@@ -402,7 +394,7 @@ describe('activationService ensureDefaultModelChannels', () => {
     ]);
   });
 
-  it('激活时创建/更新 TTI 渠道使用新的默认模型 grok-image-all', async () => {
+  it('激活时创建/更新 TTI 渠道使用新的默认模型 gpt-image-2', async () => {
     mocks.ipcInvoke.mockImplementation(async (channel: string, args?: any) => {
       if (channel === 'channel:get') {
         return { ok: true, data: null };
@@ -419,10 +411,42 @@ describe('activationService ensureDefaultModelChannels', () => {
     await activationService.ensureDefaultModelChannels(FAKE_LEGACY_KEY);
 
     const createCalls = mocks.ipcInvoke.mock.calls.filter(([channel]) => channel === 'channel:create');
-    const ttiCreateCall = createCalls.find(([, args]) => args.id === KOMAAPI_ACTIVATION_CHANNEL_IDS.tti);
+    const ttiCreateCall = createCalls.find(([, args]) => args.id === KOMAAPI_ACTIVATION_CHANNEL_IDS.ttiGptImage2);
 
     expect(ttiCreateCall).toBeDefined();
-    expect(ttiCreateCall?.[1].defaultModelId).toBe('grok-image-all');
-    expect(ttiCreateCall?.[1].models[0].id).toBe('grok-image-all');
+    expect(ttiCreateCall?.[1].providerType).toBe('openai-compatible-tti');
+    expect(ttiCreateCall?.[1].defaultModelId).toBe('gpt-image-2');
+    expect(ttiCreateCall?.[1].models[0].id).toBe('gpt-image-2');
+  });
+
+  it('激活时创建的默认 ITV 渠道使用 openai-video 类型与 grok-imagine-video-1.5-preview 模型', async () => {
+    mocks.ipcInvoke.mockImplementation(async (channel: string, args?: any) => {
+      if (channel === 'channel:get') {
+        return { ok: true, data: null };
+      }
+      if (channel === 'channel:create') {
+        return { ok: true, data: makeChannelDto(args) };
+      }
+      if (channel === 'channel:setDefault') {
+        return { ok: true, data: { updatedAt: Date.now() } };
+      }
+      throw new Error(`unexpected ipc channel: ${channel}`);
+    });
+
+    await activationService.ensureDefaultModelChannels(FAKE_LEGACY_KEY);
+
+    const createCalls = mocks.ipcInvoke.mock.calls.filter(([channel]) => channel === 'channel:create');
+    const itvCreateCall = createCalls.find(([, args]) => args.id === KOMAAPI_ACTIVATION_CHANNEL_IDS.itv);
+
+    expect(itvCreateCall).toBeDefined();
+    expect(itvCreateCall?.[1].providerType).toBe('openai-video');
+    expect(itvCreateCall?.[1].defaultModelId).toBe('grok-imagine-video-1.5-preview');
+    expect(itvCreateCall?.[1].models[0].id).toBe('grok-imagine-video-1.5-preview');
+    expect(itvCreateCall?.[1].models[0].capabilities).toEqual(['video.image-to-video']);
+
+    const setDefaultCalls = mocks.ipcInvoke.mock.calls.filter(([channel]) => channel === 'channel:setDefault');
+    expect(setDefaultCalls.some(([, args]) => args.channelId === KOMAAPI_ACTIVATION_CHANNEL_IDS.itv)).toBe(true);
+    expect(setDefaultCalls.some(([, args]) => args.channelId === KOMAAPI_ACTIVATION_CHANNEL_IDS.ttiGptImage2)).toBe(true);
+    expect(setDefaultCalls.some(([, args]) => args.channelId === KOMAAPI_ACTIVATION_CHANNEL_IDS.itvJimeng)).toBe(false);
   });
 });

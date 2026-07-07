@@ -1,12 +1,14 @@
 /**
  * OpenAI 标准异步视频生成 Provider
  *
- * 协议参考 OpenAI Sora 视频 API（与 Koma 官方Koma 即梦走的同一套契约）：
+ * 协议参考坤坤 grok 视频文档描述的 OpenAI 兼容视频接口：
  *   - 创建任务：POST {baseUrl}/v1/videos
- *       Body: { model, prompt, seconds, size?, image?, images?, metadata? }
+ *       Body: { model, prompt, seconds, size?, aspect_ratio?, resolution?,
+ *               input_reference?, images?, metadata? }
  *       响应：{ id, status, model, created_at, ... }
  *   - 查询任务：GET {baseUrl}/v1/videos/{id}
- *       响应：{ id, status, progress, metadata: { url, result_urls? } }
+ *       响应：{ id, status, progress, url?, video_url?, result_url? }
+ *       三个 url 字段通常同值，取带 /v1/files/video? 的那个为准
  *
  * 与 Koma 内置的即梦/Grok 渠道的区别：
  *   - 不锁 baseUrl（可填任何兼容此协议的网关，例如自建 new-api、官方 OpenAI、第三方代理）
@@ -15,14 +17,13 @@
  *
  * 能力（全部 4 种都接，让 fallback 不会绕过本 provider）：
  *   - video.text-to-video        prompt → 视频
- *   - video.image-to-video       prompt + 起始帧 → image: <url>
- *   - video.reference-to-video   prompt + 多张参考图 → images: [...]（OpenAI 兼容扩展）
- *   - video.start-end-to-video   首帧 + 末帧 → image: <start> + metadata.end_frame_url
+ *   - video.image-to-video       prompt + 起始帧 → input_reference: <url>
+ *   - video.reference-to-video   prompt + 多张参考图 → images: [...]（文档里的 OpenAI 兼容扩展字段）
+ *   - video.start-end-to-video   首帧 + 末帧 → input_reference: <start> + metadata.end_frame_url
  *
- * 兼容性说明：images 数组与 metadata.end_frame_url 不是 OpenAI 官方规范，但 new-api、
- * one-api 等主流兼容网关都接受这两种扩展。如果上游严格只认 OpenAI 原生字段，
- * reference-to-video / start-end-to-video 仍可能被上游拒；用户可以在设置里把模型
- * 的能力勾选限制为 text/image-to-video。
+ * 兼容性说明：images 数组是文档列出的合法字段，但 metadata.end_frame_url（末帧）不在文档范围内，
+ * 是否被上游接受取决于具体网关实现。如果上游严格只认文档字段，start-end-to-video 仍可能被
+ * 上游拒；用户可以在设置里把模型的能力勾选限制为 text/image-to-video。
  */
 
 import type {
@@ -56,16 +57,10 @@ interface OpenAIVideoCreateResponse {
 
 interface OpenAIVideoTaskResponse extends OpenAIVideoCreateResponse {
   progress?: number | string;
-  metadata?: {
-    url?: string;
-    result_urls?: string[];
-    [k: string]: unknown;
-  };
-  // 兼容字段：部分网关把 result_urls 直接挂在顶层
-  result_urls?: string[];
+  url?: string;
+  video_url?: string;
+  result_url?: string;
   fail_reason?: string;
-  // 兼容 sora 风格响应
-  result?: { type?: string; data?: Array<{ url?: string }> };
 }
 
 function joinUrl(base: string, path: string): string {
@@ -283,26 +278,30 @@ export class OpenAIVideoITVProvider implements ITVProvider {
     };
 
     const aspectRatio = String(options?.aspectRatio ?? '').trim();
-    if (aspectRatio && aspectRatio.includes('x')) {
-      body.size = aspectRatio;
-    }
     const resolution = String(options?.resolution ?? this.config.defaultResolution ?? '').trim();
-    if (resolution && resolution.includes('x')) {
-      body.size = resolution;
+
+    // 尺寸：aspectRatio / resolution 里只要是 "宽x高" 像素形式，就送顶层 size 字段。
+    const pixelSize = [aspectRatio, resolution].find(value => value.includes('x'));
+    if (pixelSize) {
+      body.size = pixelSize;
+    }
+    // 画幅比例："16:9" 这类冒号形式送顶层 aspect_ratio 字段（不是 metadata.ratio）。
+    if (aspectRatio && !aspectRatio.includes('x')) {
+      body.aspect_ratio = aspectRatio;
+    }
+    // 清晰度："720p"/"1080p"/"SD"/"HD" 等非像素形式送顶层 resolution 字段。
+    if (resolution && !resolution.includes('x')) {
+      body.resolution = resolution;
     }
 
     const metadata: Record<string, unknown> = {};
-    if (aspectRatio && !aspectRatio.includes('x')) {
-      // 把 "16:9" 风格的比例放 metadata 透传给兼容网关，主体仍走 size。
-      metadata.ratio = aspectRatio;
-    }
 
     if (request.capability === 'video.image-to-video') {
-      // OpenAI 标准：image 字段携带单张起始帧 URL；若 prompt 中使用 @Image N，
-      // 兼容网关还需要 images 数组承载完整占位符索引（主图必须是 images[0]）。
+      // 单张参考图走 input_reference；若 prompt 中使用 @Image N，
+      // 还需要 images 数组承载完整占位符索引（主图必须是 images[0]）。
       const primary = request.primaryImage?.value;
       if (primary) {
-        body.image = primary;
+        body.input_reference = primary;
       }
       const additional = (request.additionalReferences || [])
         .map(ref => ref?.value)
@@ -316,7 +315,7 @@ export class OpenAIVideoITVProvider implements ITVProvider {
         body.images = additional;
       }
     } else if (request.capability === 'video.reference-to-video') {
-      // OpenAI 兼容扩展：多张参考图走 images 数组。
+      // 多张参考图走 images 数组。
       const images = (request.referenceImages || [])
         .map(ref => ref?.value)
         .filter((value): value is string => Boolean(value));
@@ -324,9 +323,9 @@ export class OpenAIVideoITVProvider implements ITVProvider {
         body.images = images;
       }
     } else if (request.capability === 'video.start-end-to-video') {
-      // 首帧通过 image，末帧通过 metadata.end_frame_url 透传。
+      // 首帧通过 input_reference，末帧通过 metadata.end_frame_url 透传（非文档字段，上游按扩展处理）。
       if (request.startFrame?.value) {
-        body.image = request.startFrame.value;
+        body.input_reference = request.startFrame.value;
       }
       if (request.endFrame?.value) {
         metadata.end_frame_url = request.endFrame.value;
@@ -403,10 +402,12 @@ export class OpenAIVideoITVProvider implements ITVProvider {
         ? Math.max(0, Math.min(100, Math.round(Number(progressRaw) || 0)))
         : (state === 'succeeded' ? 100 : 0);
 
-    const resultUrl = data.metadata?.url
-      || (Array.isArray(data.metadata?.result_urls) && data.metadata?.result_urls?.[0])
-      || (Array.isArray(data.result_urls) && data.result_urls[0])
-      || data.result?.data?.[0]?.url;
+    // 完成响应会同时携带 video_url / url / result_url 三个字段，三者通常同值；
+    // 以带有 /v1/files/video? 的那个为准，避免上游把其中某个字段改成非下载地址。
+    const urlCandidates = [data.video_url, data.url, data.result_url]
+      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+    const resultUrl = urlCandidates.find(value => value.includes('/v1/files/video?'))
+      ?? urlCandidates[0];
 
     if (state === 'succeeded') {
       if (!resultUrl) {

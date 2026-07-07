@@ -55,9 +55,42 @@ describe('OpenAIVideoITVProvider', () => {
     expect(body.model).toBe('sora-2');
     expect(body.prompt).toBe('一只猫');
     expect(body.seconds).toBe('6');
+    expect(body.aspect_ratio).toBe('16:9');
+    expect(body.size).toBeUndefined();
   });
 
-  it('image-to-video 把 primaryImage URL 放进 image 字段', async () => {
+  it('分辨率是像素尺寸（含 x）时送顶层 size 字段', async () => {
+    fetchMock.mockResolvedValueOnce(makeJsonResponse({ id: 'task-size', status: 'queued' }));
+
+    const provider = new OpenAIVideoITVProvider(makeConfig());
+    await provider.start({
+      capability: 'video.text-to-video',
+      prompt: '一只猫',
+      options: { duration: 6, aspectRatio: '16:9', resolution: '1280x720' },
+    });
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1]?.body as string);
+    expect(body.size).toBe('1280x720');
+    expect(body.aspect_ratio).toBe('16:9');
+    expect(body.resolution).toBeUndefined();
+  });
+
+  it('分辨率是清晰度档位（720p/HD 等，不含 x）时送顶层 resolution 字段', async () => {
+    fetchMock.mockResolvedValueOnce(makeJsonResponse({ id: 'task-quality', status: 'queued' }));
+
+    const provider = new OpenAIVideoITVProvider(makeConfig());
+    await provider.start({
+      capability: 'video.text-to-video',
+      prompt: '一只猫',
+      options: { duration: 6, resolution: '720p' },
+    });
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1]?.body as string);
+    expect(body.resolution).toBe('720p');
+    expect(body.size).toBeUndefined();
+  });
+
+  it('image-to-video 把 primaryImage URL 放进 input_reference 字段', async () => {
     fetchMock.mockResolvedValueOnce(makeJsonResponse({ id: 'task-2', status: 'queued' }));
 
     const provider = new OpenAIVideoITVProvider(makeConfig());
@@ -70,7 +103,8 @@ describe('OpenAIVideoITVProvider', () => {
 
     await provider.start(request);
     const body = JSON.parse(fetchMock.mock.calls[0][1]?.body as string);
-    expect(body.image).toBe('https://cdn.example.com/cat.png');
+    expect(body.input_reference).toBe('https://cdn.example.com/cat.png');
+    expect(body.image).toBeUndefined();
     expect(body.seconds).toBe('5');
   });
 
@@ -90,7 +124,7 @@ describe('OpenAIVideoITVProvider', () => {
 
     await provider.start(request);
     const body = JSON.parse(fetchMock.mock.calls[0][1]?.body as string);
-    expect(body.image).toBe('https://cdn.example.com/shot.png');
+    expect(body.input_reference).toBe('https://cdn.example.com/shot.png');
     expect(body.images).toEqual([
       'https://cdn.example.com/shot.png',
       'https://cdn.example.com/ref.png',
@@ -117,10 +151,10 @@ describe('OpenAIVideoITVProvider', () => {
       'https://cdn.example.com/room.png',
       'https://cdn.example.com/char.png',
     ]);
-    expect(body.image).toBeUndefined();
+    expect(body.input_reference).toBeUndefined();
   });
 
-  it('start-end-to-video 把 endFrame 放进 metadata.end_frame_url', async () => {
+  it('start-end-to-video 把 startFrame 放进 input_reference，endFrame 放进 metadata.end_frame_url', async () => {
     fetchMock.mockResolvedValueOnce(makeJsonResponse({ id: 'task-se', status: 'queued' }));
 
     const provider = new OpenAIVideoITVProvider(makeConfig());
@@ -134,7 +168,7 @@ describe('OpenAIVideoITVProvider', () => {
 
     await provider.start(request);
     const body = JSON.parse(fetchMock.mock.calls[0][1]?.body as string);
-    expect(body.image).toBe('https://cdn.example.com/start.png');
+    expect(body.input_reference).toBe('https://cdn.example.com/start.png');
     expect(body.metadata).toEqual({ end_frame_url: 'https://cdn.example.com/end.png' });
   });
 
@@ -155,19 +189,36 @@ describe('OpenAIVideoITVProvider', () => {
     expect(body.seconds).toBe('8');
   });
 
-  it('GET /v1/videos/{id} 解析 OpenAI 标准成功响应', async () => {
+  it('GET /v1/videos/{id} 解析成功响应并取 video_url/url/result_url 中带 /v1/files/video? 的那个', async () => {
     fetchMock.mockResolvedValueOnce(makeJsonResponse({
       id: 'task-1',
       status: 'completed',
       progress: 100,
-      metadata: { url: 'https://cdn.example.com/result.mp4' },
+      url: 'https://api.example.com/v1/files/video?id=task-1',
+      video_url: 'https://api.example.com/v1/files/video?id=task-1',
+      result_url: 'https://api.example.com/v1/files/video?id=task-1',
     }));
 
     const provider = new OpenAIVideoITVProvider(makeConfig());
     const snapshot = await provider.getTaskSnapshot('task-1');
     expect(snapshot.state).toBe('succeeded');
     expect(snapshot.progress).toBe(100);
-    expect(snapshot.output?.source).toBe('https://cdn.example.com/result.mp4');
+    expect(snapshot.output?.source).toBe('https://api.example.com/v1/files/video?id=task-1');
+  });
+
+  it('三个 url 字段不一致时，优先取带 /v1/files/video? 的那个', async () => {
+    fetchMock.mockResolvedValueOnce(makeJsonResponse({
+      id: 'task-1b',
+      status: 'completed',
+      progress: 100,
+      url: 'https://cdn.example.com/other-mirror.mp4',
+      video_url: 'https://api.example.com/v1/files/video?id=task-1b',
+      result_url: 'https://cdn.example.com/another-mirror.mp4',
+    }));
+
+    const provider = new OpenAIVideoITVProvider(makeConfig());
+    const snapshot = await provider.getTaskSnapshot('task-1b');
+    expect(snapshot.output?.source).toBe('https://api.example.com/v1/files/video?id=task-1b');
   });
 
   it('GET 解析失败状态返回 error', async () => {

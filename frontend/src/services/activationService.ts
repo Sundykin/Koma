@@ -99,7 +99,7 @@ export const activationService = {
 
         let defaultChannelIds: ActivationInfo['defaultChannelIds'] = {
           llm: KOMAAPI_ACTIVATION_CHANNEL_ID,
-          tti: KOMAAPI_ACTIVATION_CHANNEL_IDS.tti,
+          tti: KOMAAPI_ACTIVATION_CHANNEL_IDS.ttiGptImage2,
           itv: KOMAAPI_ACTIVATION_CHANNEL_IDS.itv
         };
 
@@ -396,7 +396,7 @@ export const activationService = {
         success: true,
         channelIds: {
           llm: KOMAAPI_ACTIVATION_CHANNEL_ID,
-          tti: KOMAAPI_ACTIVATION_CHANNEL_IDS.tti,
+          tti: KOMAAPI_ACTIVATION_CHANNEL_IDS.ttiGptImage2,
           itv: KOMAAPI_ACTIVATION_CHANNEL_IDS.itv
         }
       };
@@ -421,39 +421,11 @@ export const activationService = {
         enabled: true,
         source: 'builtin' as const,
       },
-      {
-        id: KOMAAPI_ACTIVATION_CHANNEL_IDS.tti,
-        category: 'tti' as const,
-        providerType: 'grok2api-imagine-tti',
-        name: 'Koma官方',
-        providerConfig: withKomaActivationChannelMarker({
-          baseUrl: 'https://komaapi.com',
-          apiKey,
-          promptProtocol: 'grok-image-index',
-          defaultSize: '720x1280',
-          defaultSteps: 20,
-        }),
-        defaultModelId: 'grok-image-all',
-        models: [
-          {
-            id: 'grok-image-all',
-            label: 'grok-image-all',
-            providerModelName: 'grok-image-all',
-            capabilities: [
-              'image.text-to-image' as ModelCapability,
-              'image.image-to-image' as ModelCapability,
-            ],
-          },
-        ],
-        enabled: true,
-        source: 'builtin' as const,
-      },
-      // gpt-image-2（OpenAI 标准协议）：与 grok 文生图并列的第二个 Koma 官方 TTI 渠道。
+      // gpt-image-2（OpenAI 标准协议）：Koma 官方默认 TTI 渠道。
       // baseUrl 走 komaapi.com 网关，apiKey 复用激活 Key（providerConfig.apiKey 走
-      // 主进程 x-koma-channel-id 注入路径，与 grok 渠道一致）。
+      // 主进程 x-koma-channel-id 注入路径）。
       // OpenAICompatibleTTIProvider 识别到 gpt-image-* 系模型 + 有参考图时会自动
       // 切到 /v1/images/edits multipart（图生图），无参考图时走 /v1/images/generations。
-      // 不抢占 tti 默认渠道；保持 grok 为默认，用户可在设置里切换。
       {
         id: KOMAAPI_ACTIVATION_CHANNEL_IDS.ttiGptImage2,
         category: 'tti' as const,
@@ -480,10 +452,13 @@ export const activationService = {
         enabled: true,
         source: 'builtin' as const,
       },
+      // OpenAI 兼容视频接口（POST /v1/videos）：Koma 官方默认 ITV 渠道。
+      // grok-imagine-video-1.5-preview 图生视频，必须提供参考图，
+      // seconds 支持 1-15 秒，清晰度走 resolution 字段（480p/720p）。
       {
         id: KOMAAPI_ACTIVATION_CHANNEL_IDS.itv,
         category: 'itv' as const,
-        providerType: 'grok2api-imagine-itv',
+        providerType: 'openai-video',
         name: 'Koma官方',
         providerConfig: withKomaActivationChannelMarker({
           baseUrl: 'https://komaapi.com',
@@ -492,24 +467,28 @@ export const activationService = {
           defaultDuration: 10,
           defaultResolution: '720p',
         }),
-        defaultModelId: 'grok-imagine-video',
+        defaultModelId: 'grok-imagine-video-1.5-preview',
         models: [
           {
-            id: 'grok-imagine-video',
-            label: 'grok-imagine-video',
-            providerModelName: 'grok-imagine-video',
+            id: 'grok-imagine-video-1.5-preview',
+            label: 'Grok Imagine Video 1.5 Preview',
+            providerModelName: 'grok-imagine-video-1.5-preview',
+            // 必须提供参考图，只暴露图生视频能力。
             capabilities: [
-              'video.text-to-video' as ModelCapability,
               'video.image-to-video' as ModelCapability,
-              'video.reference-to-video' as ModelCapability,
             ],
+            defaults: {
+              durationMin: 1,
+              durationMax: 15,
+              durationStep: 1,
+            },
           },
         ],
         enabled: true,
         source: 'builtin' as const,
       },
-      // 即梦视频（Koma 即梦 seedance）：用独立的 SuiheITVProvider runtime，不复用 grok2api。
-      // 上游路径都是 OpenAI 兼容的 /v1/videos/generations，但 grok2api 内部
+      // 即梦视频（Koma 即梦 seedance）：用独立的 SuiheITVProvider runtime，不复用 openai-video。
+      // 上游路径都是 OpenAI 兼容的 /v1/videos/generations，但 komaapi.com 网关
       // 会强制注入 grok-image-index 协议、特殊 ratio 处理等，与Koma 即梦参数不兼容。
       // 参数参考 new-api/relay/channel/task/suihe/constants.go：
       //   - 上游当前阶段强制锁定 480p（suiheLockedResolution）
@@ -525,7 +504,7 @@ export const activationService = {
         providerConfig: withKomaActivationChannelMarker({
           baseUrl: 'https://komaapi.com',
           apiKey,
-          // 与 Koma 官方-Grok 渠道对齐：默认开启 Koma 协议，把 @char/@scene/@prop
+          // 与 Koma 官方（openai-video）渠道对齐：默认开启 Koma 协议，把 @char/@scene/@prop
           // 编译为 @Image N。SuiheITVProvider 构造函数会兜底默认这个值，但显式
           // 写到 providerConfig 让 UI 里能看到"Koma 协议"被选中而不是"不启用"。
           promptProtocol: 'grok-image-index',
@@ -538,8 +517,8 @@ export const activationService = {
             id: 'seedance-2.0-r',
             label: 'Seedance 2.0',
             providerModelName: 'seedance-2.0-r',
-            // Koma 即梦 seedance 上游同时支持 reference-to-video（多参考），
-            // 默认放出来与 grok 视频对齐，用户无需手动改 capability。
+            // Koma 即梦 seedance 上游同时支持 text/image/reference-to-video（多参考），
+            // 全部默认放出来，用户无需手动改 capability。
             capabilities: [
               'video.text-to-video' as ModelCapability,
               'video.image-to-video' as ModelCapability,
@@ -558,7 +537,7 @@ export const activationService = {
           },
         ],
         enabled: true,
-        // 不抢占 itv 默认渠道；保持 grok 为默认，用户可在设置里切换。
+        // 不抢占 itv 默认渠道；保持 openai-video 为默认，用户可在设置里切换。
         source: 'builtin' as const,
       },
       // Koma 官方 TTS（qwen-tts，OpenAI 兼容 /v1/audio/speech）。内置音色 cherry / 芊悦。
@@ -601,11 +580,8 @@ export const activationService = {
         }
 
         // 设置为该类型的默认；同一 category 下后注册的渠道不抢占默认。
-        // 即梦渠道、gpt-image-2 渠道都作为 grok 的并行选项，仅在用户手动切换时生效。
-        if (
-          cfg.id === KOMAAPI_ACTIVATION_CHANNEL_IDS.itvJimeng
-          || cfg.id === KOMAAPI_ACTIVATION_CHANNEL_IDS.ttiGptImage2
-        ) {
+        // 即梦渠道作为 openai-video 的并行选项，仅在用户手动切换时生效。
+        if (cfg.id === KOMAAPI_ACTIVATION_CHANNEL_IDS.itvJimeng) {
           continue;
         }
         await channelConfigService.setMediaDefault(cfg.category, {
@@ -617,7 +593,7 @@ export const activationService = {
         success: true,
         channelIds: {
           llm: KOMAAPI_ACTIVATION_CHANNEL_IDS.llm,
-          tti: KOMAAPI_ACTIVATION_CHANNEL_IDS.tti,
+          tti: KOMAAPI_ACTIVATION_CHANNEL_IDS.ttiGptImage2,
           itv: KOMAAPI_ACTIVATION_CHANNEL_IDS.itv
         }
       };
