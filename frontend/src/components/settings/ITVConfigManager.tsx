@@ -152,7 +152,6 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
     handlePluginConfigSaved,
   } = useMediaConfigManager<ITVModelConfig>('itv', loadBuiltins, onConfigChange);
 
-  const showChannelConfigCreateEntry = import.meta.env.DEV;
   const watchedProviderType = Form.useWatch('providerType', form) as string | undefined;
   const isEditingActivationChannel = isKomaActivationManagedChannel(editingChannel);
   const currentProviderType = isEditingActivationChannel ? editingChannel?.providerType : watchedProviderType;
@@ -470,11 +469,9 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
             {pluginChannels.length > 0 && <span>，{t('settings.pluginChannels', { count: pluginChannels.length })}</span>}
           </span>
         </div>
-        {showChannelConfigCreateEntry && (
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
-            {t('settings.addConfig')}
-          </Button>
-        )}
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
+          {t('settings.addConfig')}
+        </Button>
       </div>
 
       {loading ? (
@@ -487,11 +484,9 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
           description={t('settings.noITVConfigs')}
           className="settings-empty-state"
         >
-          {showChannelConfigCreateEntry && (
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
-              {t('settings.addBuiltinService')}
-            </Button>
-          )}
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
+            {t('settings.addBuiltinService')}
+          </Button>
         </Empty>
       ) : (
         <Row gutter={[12, 12]}>

@@ -118,7 +118,6 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
     loadConfigs,
   } = useMediaConfigManager<LLMModelConfig>('llm', loadBuiltins, onConfigChange);
 
-  const showChannelConfigCreateEntry = import.meta.env.DEV;
   const watchedProviderType = Form.useWatch('providerType', form) as string | undefined;
   const isEditingActivationChannel = isKomaActivationManagedChannel(editingChannel);
   const currentProviderType = isEditingActivationChannel ? editingChannel?.providerType : watchedProviderType;
@@ -368,11 +367,9 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
             已配置 <strong>{configs.length}</strong> 个渠道
           </span>
         </div>
-        {showChannelConfigCreateEntry && (
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
-            添加渠道
-          </Button>
-        )}
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
+          添加渠道
+        </Button>
       </div>
 
       {loading ? (
@@ -385,11 +382,9 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
           description="还没有配置任何 LLM 渠道"
           className="settings-empty-state"
         >
-          {showChannelConfigCreateEntry && (
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
-              添加第一个渠道
-            </Button>
-          )}
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
+            添加第一个渠道
+          </Button>
         </Empty>
       ) : (
         <Row gutter={[12, 12]}>
