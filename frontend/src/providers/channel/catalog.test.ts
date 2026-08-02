@@ -24,10 +24,22 @@ describe('channel catalog (itv)', () => {
     expect(channel?.models.length).toBe(0);
   });
 
-  it('exposes the two Koma 官方 ITV providers + openai-video（runway / kling / pika / sora2 / seedance / vidu / comfyui-animatediff / custom 已下线）', () => {
+  it('exposes the Koma 官方 ITV providers + openai-video + suihe-itv（runway / kling / pika / sora2 / seedance / vidu / comfyui-animatediff / custom 已下线）', () => {
     const itvChannels = listBuiltInChannelDefinitions('itv');
     const ids = itvChannels.map((c) => c.id).sort();
-    expect(ids).toEqual(['grok2api-imagine-itv', 'koma-suihe-itv', 'openai-video']);
+    expect(ids).toEqual(['grok2api-imagine-itv', 'koma-suihe-itv', 'openai-video', 'suihe-itv']);
+  });
+
+  it('declares provider template metadata for suihe-itv channel', () => {
+    const channel = getBuiltInChannelDefinition('suihe-itv');
+    expect(channel).toBeTruthy();
+    expect(channel?.category).toBe('itv');
+    expect(channel?.id).toBe('suihe-itv');
+    expect(channel?.models.length).toBe(0);
+    // 穗禾直连有官方默认上游，baseUrl 预填 https://www.suihemedia.cloud
+    //（文档的 api. 域证书/路由均未就绪，www 才是实际 API 网关；主进程对 *.suihemedia.cloud 设有证书校验例外）
+    expect((channel?.configSchema as { properties?: Record<string, { default?: unknown }> } | undefined)
+      ?.properties?.baseUrl?.default).toBe('https://www.suihemedia.cloud');
   });
 
   it('declares provider template metadata for openai-video channel', () => {

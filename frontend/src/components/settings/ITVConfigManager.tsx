@@ -85,6 +85,7 @@ function getProviderColor(provider: string) {
     case 'comfyui-animatediff': return 'orange';
     case 'grok2api-imagine-itv': return 'green';
     case 'openai-video': return 'gold';
+    case 'suihe-itv': return 'blue';
     default: return 'default';
   }
 }

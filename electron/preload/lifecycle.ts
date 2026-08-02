@@ -1,6 +1,7 @@
 import {
   app as electronApp,
   Menu,
+  session,
   type Event as ElectronEvent,
   type Input,
   type MenuItemConstructorOptions,
@@ -13,6 +14,29 @@ import { closeServices, diagnosticsService } from '../service';
 const isMac = process.platform === 'darwin';
 const APP_DISPLAY_NAME = 'Koma Studio';
 const APP_DESCRIPTION = 'AI 视频创作与分镜制作工具。';
+
+/**
+ * 证书信任例外（按域名精确放行，其余域名仍走 Chromium 默认校验）。
+ *
+ * 穗禾官方文档要求使用 api.suihemedia.cloud，但该域名的证书 SAN 只签给了
+ * file.suihemedia.cloud（两域同 IP 同一后端），Chromium 网络栈报
+ * ERR_CERT_COMMON_NAME_INVALID，导致 electronNet.fetch（IPC 代理）与渲染端
+ * 请求全部失败。在穗禾修复证书前，仅对 *.suihemedia.cloud 跳过证书校验。
+ *
+ * setCertificateVerifyProc 结果码：0 = 接受；-3 = 回退默认校验结果。
+ */
+const CERT_VERIFY_BYPASS_SUFFIX = '.suihemedia.cloud';
+
+function isCertBypassHost(hostname: string): boolean {
+  const host = String(hostname || '').toLowerCase();
+  return host === 'suihemedia.cloud' || host.endsWith(CERT_VERIFY_BYPASS_SUFFIX);
+}
+
+function configureCertificateTrustOverrides(): void {
+  session.defaultSession.setCertificateVerifyProc((request, callback) => {
+    callback(isCertBypassHost(request.hostname) ? 0 : -3);
+  });
+}
 
 function configureAboutPanel(): void {
   if (!isMac) return;
@@ -103,6 +127,7 @@ export class Lifecycle {
 
   electronAppReady(): void {
     logger.info('[lifecycle] electron-app-ready');
+    configureCertificateTrustOverrides();
     configureAboutPanel();
     configureApplicationMenu();
 

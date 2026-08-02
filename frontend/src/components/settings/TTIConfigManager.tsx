@@ -74,6 +74,8 @@ function getProviderColor(provider: string) {
     case 'openai-compatible-tti': return 'lime';
     case 'grok2api-imagine-tti': return 'purple';
     case 'gemini-native-tti': return 'blue';
+    case 'doubao-seedream-tti': return 'cyan';
+    case 'suihe-tti': return 'geekblue';
     case 'nano-banana': return 'gold';
     case 'gemini-3-pro': return 'volcano';
     default: return 'default';

@@ -2,9 +2,11 @@
  * ITV Provider 模块导出
  * 重构版：注册到 ProviderRegistry
  *
- * 当前内置渠道收敛为 2 个，都默认指向 https://komaapi.com：
- *   - grok2api-imagine-itv  → Koma官方 Grok（图生视频）
- *   - koma-suihe-itv        → Koma 官方 - 即梦（Koma 即梦 Seedance）
+ * 当前内置渠道：
+ *   - grok2api-imagine-itv  → Koma官方 Grok（图生视频，默认 https://komaapi.com）
+ *   - koma-suihe-itv        → Koma 官方 - 即梦（Koma 即梦 Seedance，komaapi 网关）
+ *   - openai-video          → OpenAI 兼容异步视频接口（自建 new-api / 官方 / 代理）
+ *   - suihe-itv             → 穗禾直连视频（api.suihemedia.cloud，multipart + /v1/tasks 轮询）
  *
  * 之前注册过的 runway / kling / pika / sora2 / seedance / vidu /
  * comfyui-animatediff / custom 已下线；用户旧渠道仍存于 SQLite，
@@ -14,12 +16,14 @@ export * from './types';
 export { Grok2ApiImagineITVProvider } from './Grok2ApiImagineITVProvider';
 export { SuiheITVProvider } from './SuiheITVProvider';
 export { OpenAIVideoITVProvider } from './OpenAIVideoITVProvider';
+export { SuiheDirectITVProvider } from './SuiheDirectITVProvider';
 
 import type { ITVConfig } from '../../types';
 import type { ITVProvider } from './types';
 import { Grok2ApiImagineITVProvider } from './Grok2ApiImagineITVProvider';
 import { SuiheITVProvider } from './SuiheITVProvider';
 import { OpenAIVideoITVProvider } from './OpenAIVideoITVProvider';
+import { SuiheDirectITVProvider } from './SuiheDirectITVProvider';
 import type { ProviderDefinition } from '../registry.types';
 import { DEFAULT_POLLING_CONFIG, MEDIA_PROVIDER_CONTRACT_VERSION } from '../registry.types';
 import { itvRegistry } from '../registry';
@@ -75,6 +79,23 @@ function registerBuiltinProviders() {
       // 用户明确选了 OpenAI 兼容渠道时，失败就报错，不静默回退到 Grok / 即梦等其他 provider。
       // 若想要回退，可改成 'lock-to-provider-type' 在其他 openai-video 渠道之间换；
       // 但跨 providerType 的回退（'cross-provider'）会把上游协议直接换掉，体验最差。
+      fallbackPolicy: 'lock-to-selection',
+    },
+    {
+      type: 'suihe-itv',
+      kind: 'itv',
+      name: '穗禾 Suihe 视频',
+      description: '穗禾开放 API 直连视频生成（multipart 直传首尾帧/全能参考素材，POST /v1/videos/generations + /v1/tasks 轮询）',
+      factory: (config) => new SuiheDirectITVProvider(config as ITVConfig),
+      contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
+      capabilities: ['itv'],
+      polling: {
+        interval: 5000,
+        maxDuration: 600000,
+        initialDelay: 3000,
+      },
+      presetBaseUrl: 'https://www.suihemedia.cloud',
+      auth: { apiKey: 'required', baseUrl: 'optional' },
       fallbackPolicy: 'lock-to-selection',
     },
   ];

@@ -1,4 +1,5 @@
 import { net as electronNet } from 'electron';
+import https from 'node:https';
 import { BaseController } from './base';
 import { validateUrl } from '../service/url-validator';
 import { getDecryptedApiKey } from '../service/settings/ChannelConfigService';
@@ -176,6 +177,118 @@ function getMultipartFetchTransport(): {
   return {
     transport: 'global-fetch',
     request: fetch.bind(globalThis),
+  };
+}
+
+/**
+ * 证书校验例外主机（穗禾）：api.suihemedia.cloud 的证书 SAN 未覆盖该域名
+ *（实际 API 网关在 www.suihemedia.cloud，同证书族），Chromium 网络栈
+ *（electronNet.fetch）报 ERR_CERT_COMMON_NAME_INVALID，
+ * session.setCertificateVerifyProc 对 net.fetch 不总是生效（Electron 39 实测无效），
+ * 因此这些主机的请求改走 node:https + rejectUnauthorized:false 的专用传输。
+ * 仅精确匹配 suihemedia.cloud 域，其余流量不受影响。
+ */
+function isInsecureTlsBypassHost(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return host === 'suihemedia.cloud' || host.endsWith('.suihemedia.cloud');
+  } catch {
+    return false;
+  }
+}
+
+const insecureHttpsAgent = new https.Agent({ rejectUnauthorized: false });
+
+/** FormData → multipart 字节（node:https 不能直接发 FormData） */
+async function serializeFormData(form: FormData): Promise<{ body: Buffer; contentType: string }> {
+  const boundary = `----koma-insecure-${Date.now().toString(16)}${Math.random().toString(16).slice(2)}`;
+  const parts: Buffer[] = [];
+  for (const [name, value] of form.entries() as Iterable<[string, string | File]>) {
+    if (typeof value === 'string') {
+      parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`));
+    } else {
+      const buf = Buffer.from(await value.arrayBuffer());
+      parts.push(Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="${name}"; filename="${value.name || 'blob'}"\r\n`
+        + `Content-Type: ${value.type || 'application/octet-stream'}\r\n\r\n`,
+      ));
+      parts.push(buf);
+      parts.push(Buffer.from('\r\n'));
+    }
+  }
+  parts.push(Buffer.from(`--${boundary}--\r\n`));
+  return {
+    body: Buffer.concat(parts),
+    contentType: `multipart/form-data; boundary=${boundary}`,
+  };
+}
+
+/**
+ * node:https 实现的 fetch 兼容传输（跳过证书校验，仅用于 isInsecureTlsBypassHost）。
+ * 不跟随重定向（API 调用无重定向场景）；返回全局 Response，与 readBodyChunked 兼容。
+ */
+function insecureNodeFetch(url: string, init: {
+  method?: string;
+  headers?: Record<string, string>;
+  body?: any;
+}): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const doRequest = (body: Buffer | string | undefined, extraHeaders: Record<string, string>) => {
+      const headers: Record<string, string> = { ...(init.headers || {}), ...extraHeaders };
+      if (body !== undefined && !Object.keys(headers).some(k => k.toLowerCase() === 'content-length')) {
+        headers['Content-Length'] = String(Buffer.isBuffer(body) ? body.length : Buffer.byteLength(body));
+      }
+      const req = https.request({
+        protocol: u.protocol,
+        hostname: u.hostname,
+        port: u.port || 443,
+        path: `${u.pathname}${u.search}`,
+        method: init.method || 'GET',
+        headers,
+        agent: insecureHttpsAgent,
+      }, (res) => {
+        const responseHeaders = new Headers();
+        for (const [key, value] of Object.entries(res.headers)) {
+          if (Array.isArray(value)) responseHeaders.set(key, value.join(', '));
+          else if (typeof value === 'string') responseHeaders.set(key, value);
+        }
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            res.on('data', (chunk: Buffer) => controller.enqueue(new Uint8Array(chunk)));
+            res.on('end', () => controller.close());
+            res.on('error', (err) => controller.error(err));
+          },
+        });
+        const status = res.statusCode ?? 0;
+        resolve(new Response(stream as any, {
+          status,
+          statusText: res.statusMessage || '',
+          headers: responseHeaders,
+        }));
+      });
+      req.on('error', reject);
+      if (body !== undefined) req.write(body);
+      req.end();
+    };
+
+    if (init.body instanceof FormData) {
+      serializeFormData(init.body)
+        .then(({ body, contentType }) => doRequest(body, { 'Content-Type': contentType }))
+        .catch(reject);
+    } else {
+      doRequest(init.body, {});
+    }
+  });
+}
+
+function getInsecureTlsTransport(): {
+  transport: 'node-https-insecure';
+  request: typeof fetch;
+} {
+  return {
+    transport: 'node-https-insecure',
+    request: insecureNodeFetch as unknown as typeof fetch,
   };
 }
 
@@ -449,9 +562,11 @@ class NetController extends BaseController {
     // 使用注入后的 URL 继续后续发送流程（query-key 模式会带上 ?key=xxx）
     const requestUrl = injectedUrl;
 
-    const initialTransport = args.multipart
-      ? getMultipartFetchTransport().transport
-      : getFetchTransport().transport;
+    const initialTransport = isInsecureTlsBypassHost(requestUrl)
+      ? 'node-https-insecure'
+      : args.multipart
+        ? getMultipartFetchTransport().transport
+        : getFetchTransport().transport;
     const logCtx = {
       traceId,
       source: traceSource,
@@ -480,9 +595,17 @@ class NetController extends BaseController {
 
       try {
         let reqBody: any = args.body;
-        let transport: 'electron-net' | 'global-fetch';
+        let transport: 'electron-net' | 'global-fetch' | 'node-https-insecure';
         let request: typeof fetch;
-        if (args.multipart) {
+        if (isInsecureTlsBypassHost(requestUrl)) {
+          // 证书例外主机：multipart 与 JSON 都走 node:https 专用传输
+          if (args.multipart) {
+            stripContentType(headers);
+            stripContentLength(headers);
+            reqBody = buildMultipartFormData(args.multipart);
+          }
+          ({ transport, request } = getInsecureTlsTransport());
+        } else if (args.multipart) {
           stripContentType(headers);
           stripContentLength(headers);
           reqBody = buildMultipartFormData(args.multipart);
