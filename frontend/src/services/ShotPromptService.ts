@@ -1181,8 +1181,10 @@ function getShotDialogueText(shot: Pick<Shot, 'dialogue'>): string {
 }
 
 /**
- * 剧情模式的 scriptContent：按字幕行结构还原标记，让 LLM 明确区分旁白与人物台词
- *（与剧本工作台里的 [旁白]/[台词·角色名] 标记行同构，模型在拆解模板里已学过这个格式）。
+ * 剧情模式的 scriptContent：按字幕行结构还原标记，让 LLM 明确区分画面描述、旁白与人物台词。
+ *   - 分镜描述行（description）：主视觉内容，原样输出不加标记（生图/生视频的主输入）
+ *   - 旁白行（narration）→ [画外音]（VOICEOVER，人物嘴闭合）
+ *   - 台词行（dialogue）→ [台词·角色名]（DIALOGUE，口型同步）
  * 解说模式保持纯文本拼接（整列都是解说字幕）。
  */
 function formatShotScriptForPrompt(
@@ -1195,11 +1197,14 @@ function formatShotScriptForPrompt(
     return lines.map(line => line.text).join('\n');
   }
   return lines.map(line => {
+    if (line.role === 'description') {
+      return line.text.trim();
+    }
     if (line.role === 'dialogue') {
       const speaker = line.characterId ? characterNameById?.get(line.characterId) : undefined;
       return speaker ? `[台词·${speaker}] ${line.text.trim()}` : `[台词] ${line.text.trim()}`;
     }
-    return `[旁白] ${line.text.trim()}`;
+    return `[画外音] ${line.text.trim()}`;
   }).join('\n');
 }
 

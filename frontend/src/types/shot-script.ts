@@ -57,6 +57,11 @@ export function isNarrationLine(line: ShotScriptLine | undefined): boolean {
   return !line?.role || line.role === 'narration';
 }
 
+/** 该行是否为分镜描述（剧情模式的画面/动作文本，不入配音、不入剪辑字幕） */
+export function isDescriptionLine(line: ShotScriptLine | undefined): boolean {
+  return line?.role === 'description';
+}
+
 /**
  * 分镜的配音文本与音色规划。
  * 剧情模式下按行类型拆分：台词按 characterId 走角色音色，旁白走项目级音色；
@@ -71,7 +76,9 @@ export interface ShotVoiceSegment {
 }
 
 export function buildShotVoiceSegments(shot: { scriptLines?: ShotScriptLine[] }): ShotVoiceSegment[] {
-  const lines = (shot.scriptLines ?? []).filter(line => line.text?.trim());
+  // 只收旁白 / 台词行；分镜描述行（description）是画面文本，不入配音
+  const lines = (shot.scriptLines ?? []).filter(line =>
+    line.text?.trim() && (isDialogueLine(line) || isNarrationLine(line)));
   const segments: ShotVoiceSegment[] = [];
   for (const line of lines) {
     const role: ShotScriptLineRole = isDialogueLine(line) ? 'dialogue' : 'narration';

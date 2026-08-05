@@ -102,6 +102,7 @@ export {
   createDialogueScriptLine,
   isDialogueLine,
   isNarrationLine,
+  isDescriptionLine,
   buildShotVoiceSegments,
 } from './types/shot-script';
 export type { ShotVoiceSegment } from './types/shot-script';

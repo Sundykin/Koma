@@ -5,7 +5,6 @@
  */
 import type { Shot } from '../types';
 import { createScriptLine } from '../types';
-import { parseDramaScript } from './dramaScript';
 import { resolvePromptTemplate } from '../store/promptTemplates';
 import { TaskManager, Task } from './TaskManager';
 import { createTaskCancellationSignal } from './taskCancellationSignal';
@@ -281,24 +280,28 @@ export class ShotAnalysisService {
         return undefined;
       };
 
-      // 剧情模式：字幕行是带标记的结构化剧本行（[旁白]/[台词·角色]/[场景]），
-      // 解析成 role + characterId；解说模式行是纯字幕文本，全部为旁白行。
+      // 剧情模式：分镜描述行（description，画面/动作/场景，提示词主输入）在前，
+      // 声音行（narration 旁白 / dialogue 台词带说话人 characterId）在后；
+      // 解说模式行是纯字幕文本，全部为旁白行。
       const isDrama = this.ctx.projectMode === 'drama';
-      const buildScriptLines = (texts: string[]): Shot['scriptLines'] => {
+      const buildScriptLines = (s: any): Shot['scriptLines'] => {
         if (!isDrama) {
+          const texts = (s.__resolvedLines as string[] | undefined) || [];
           return texts.map(text => createScriptLine(text, 'narration'));
         }
-        return texts.flatMap(text => {
-          const line = parseDramaScript(text)[0];
-          if (!line || !line.text) return [];
-          // 场景标记行只用于断镜参考，不作为字幕行落库
-          if (line.type === 'scene') return [];
-          if (line.type === 'dialogue') {
-            const speaker = line.speaker ? fuzzyMatchAsset(line.speaker, characters) : undefined;
-            return [createScriptLine(line.text, 'dialogue', speaker ? getCharId(speaker) : undefined)];
+        const out: Shot['scriptLines'] = [];
+        for (const text of (s.__dramaDescriptionLines as string[] | undefined) || []) {
+          out.push(createScriptLine(text, 'description'));
+        }
+        for (const v of (s.__dramaVoiceLines as Array<{ role: 'narration' | 'dialogue'; text: string; speaker?: string }> | undefined) || []) {
+          if (v.role === 'dialogue') {
+            const speaker = v.speaker ? fuzzyMatchAsset(v.speaker, characters) : undefined;
+            out.push(createScriptLine(v.text, 'dialogue', speaker ? getCharId(speaker) : undefined));
+          } else {
+            out.push(createScriptLine(v.text, 'narration'));
           }
-          return [createScriptLine(line.text, 'narration')];
-        });
+        }
+        return out;
       };
 
       // 分镜拆解时 description 为 undefined，后续手动生成
@@ -306,7 +309,7 @@ export class ShotAnalysisService {
       // 之前一律走 normalizeShotDuration（grok 枚举）会把 seedance 渠道的有效值 5 强制吸到 6
       const shots: Shot[] = parsedShotPayloads.map((s, index) => ({
         id: `shot_${Date.now()}_${index}`,
-        scriptLines: buildScriptLines((s.__resolvedLines as string[] | undefined) || []),
+        scriptLines: buildScriptLines(s),
         shotType: s.shotType || 'medium',
         cameraMovement: s.cameraMovement || 'static',
         duration: clampDurationToSpec(s.duration, this.ctx.itvDurationSpec),
@@ -335,21 +338,25 @@ export class ShotAnalysisService {
         episodeId,
       })).filter(shot => shot.scriptLines.length > 0); // Phase 2 方案 A：彻底丢弃空分镜
 
-      const coverage = buildShotCoverageReport(script, shots);
-      logger.info('分镜覆盖率检查', {
-        traceId,
-        shotsCount: shots.length,
-        totalUnits: coverage.totalUnits,
-        coveredUnits: coverage.coveredUnits,
-        coverageRatio: Number(coverage.coverageRatio.toFixed(3)),
-        missingSamples: coverage.missingSamples,
-      });
-      if (coverage.totalUnits > 0 && coverage.coverageRatio < 0.85) {
-        logger.warn('分镜可能漏掉剧本内容：覆盖率低于阈值，但仍保存结果供用户检查', {
+      // 覆盖率校验仅适用于解说模式的"行号切分"（文本不改写，可逐行核对）；
+      // 剧情模式是创作式拆解（description 是新文本），跳过逐行覆盖率检查
+      if (!isDrama) {
+        const coverage = buildShotCoverageReport(script, shots);
+        logger.info('分镜覆盖率检查', {
           traceId,
+          shotsCount: shots.length,
+          totalUnits: coverage.totalUnits,
+          coveredUnits: coverage.coveredUnits,
           coverageRatio: Number(coverage.coverageRatio.toFixed(3)),
           missingSamples: coverage.missingSamples,
         });
+        if (coverage.totalUnits > 0 && coverage.coverageRatio < 0.85) {
+          logger.warn('分镜可能漏掉剧本内容：覆盖率低于阈值，但仍保存结果供用户检查', {
+            traceId,
+            coverageRatio: Number(coverage.coverageRatio.toFixed(3)),
+            missingSamples: coverage.missingSamples,
+          });
+        }
       }
 
       checkCancel();
@@ -377,6 +384,108 @@ export class ShotAnalysisService {
     }
   }
 
+  /**
+   * 剧情模式分镜拆解：不做行号切分，由 LLM 创作真正的分镜。
+   * 每镜产出 description（分镜描述文本：场景/人物/动作/画面）+ voiceLines（旁白/台词带说话人）。
+   */
+  private async generateDramaShotPayloadsForChunk(
+    traceId: string,
+    chunk: ScriptAnalysisChunk,
+    options: { durationConstraint: string; durationDefault: string; chunkLabel: string },
+  ): Promise<any[]> {
+    const { characters, scenes, props } = this.ctx;
+    const scriptForPrompt = chunk.total > 1
+      ? [
+        `【当前拆解范围${options.chunkLabel}】`,
+        '只拆解下面这一段剧本；不要补写其他分段内容。本段内必须完整覆盖到末尾。',
+        chunk.text,
+      ].join('\n')
+      : chunk.text;
+
+    const resolvedPrompt = await resolvePromptTemplate('shot_breakdown_drama', {
+      script: scriptForPrompt,
+      characters: characters.length > 0
+        ? characters.map(c => c.prompt ? `${c.name}（${c.prompt}）` : c.name).join('\n')
+        : '无',
+      scenes: scenes.length > 0
+        ? scenes.map(s => s.prompt ? `${s.name}（${s.prompt}）` : s.name).join('\n')
+        : '无',
+      props: props.length > 0
+        ? props.map(p => p.prompt ? `${p.name}（${p.prompt}）` : p.name).join('\n')
+        : '无',
+      durationConstraint: options.durationConstraint,
+      durationDefault: options.durationDefault,
+    });
+    const styledPrompt = this.appendStyleRequirement(resolvedPrompt.prompt);
+
+    const systemPrompt = [
+      '你是一个专业的影视分镜师。把结构化剧本拆解成真正的分镜：',
+      '每镜创作分镜描述文本（场景/人物/动作/画面，客观可见，作为生图生视频主输入），',
+      '并把剧本中的旁白与台词（带说话人）归属到对应镜头。台词与关键旁白必须全部归属，不得遗漏。',
+      '只输出 JSON，不要任何解释。',
+    ].join('\n');
+
+    const chunkTraceId = chunk.total > 1 ? `${traceId}-chunk-${chunk.index + 1}` : traceId;
+    logger.info('剧情模式分镜拆解 - 调用 LLM', {
+      traceId: chunkTraceId,
+      chunkIndex: chunk.index + 1,
+      chunkTotal: chunk.total,
+      scriptLength: chunk.text.length,
+      userPromptHead: styledPrompt.slice(0, 200),
+    });
+
+    const result = await this.ctx.llmProvider.chat(
+      [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: styledPrompt },
+      ],
+      {
+        traceId: chunkTraceId,
+        source: 'shot-analysis',
+        operation: chunk.total > 1 ? 'breakdown-drama-chunk' : 'breakdown-drama',
+        taskKind: 'structured',
+        taskProfileId: 'shot-breakdown',
+        stream: true,
+        timeoutMs: SHOT_ANALYSIS_LLM_TIMEOUT_MS,
+        responseFormat: 'json_object',
+      },
+    );
+
+    if (result.trim().length === 0) {
+      throw new Error('LLM 返回内容为空，请检查所选 LLM 渠道的模型名 / 接口路径 / 配额是否可用');
+    }
+
+    const parseResult = parseLLMJSONWithMeta<{ shots: any[] }>(result);
+    const parsed = parseResult.data;
+    const rawShots = Array.isArray(parsed.shots) ? parsed.shots : [];
+    logger.info('剧情模式分镜 JSON 解析成功', {
+      traceId: chunkTraceId,
+      shotsCount: rawShots.length,
+      parseMethod: parseResult.method,
+    });
+
+    return rawShots.map((s) => {
+      // description：分镜描述文本（允许多行），每行一个 description 行块
+      const descriptionLines = String(s.description || '')
+        .split(/\r?\n/)
+        .map((line: string) => line.trim())
+        .filter(Boolean);
+      // voiceLines：声音行（旁白/台词），说话人名留到物化阶段映射 characterId
+      const voiceLines = (Array.isArray(s.voiceLines) ? s.voiceLines : [])
+        .map((v: any) => ({
+          role: v?.role === 'dialogue' ? 'dialogue' as const : 'narration' as const,
+          text: String(v?.text || '').trim(),
+          speaker: typeof v?.speaker === 'string' ? v.speaker.trim() : undefined,
+        }))
+        .filter((v: { text: string }) => v.text.length > 0);
+      return {
+        ...s,
+        __dramaDescriptionLines: descriptionLines,
+        __dramaVoiceLines: voiceLines,
+      };
+    }).filter((s: any) => s.__dramaDescriptionLines.length > 0 || s.__dramaVoiceLines.length > 0);
+  }
+
   private async generateShotPayloadsForChunk(
     traceId: string,
     chunk: ScriptAnalysisChunk,
@@ -384,10 +493,21 @@ export class ShotAnalysisService {
     const durationSpec = this.ctx.itvDurationSpec;
     const durationConstraint = formatSpecPromptHint(durationSpec);
     const durationDefault = String(durationSpec.default);
-    const projectNarrativeMode = formatProjectNarrativeMode(this.ctx.projectMode);
-    const dialogueModeDirective = buildShotBreakdownDialogueModeDirective(this.ctx.projectMode);
     const { characters, scenes, props } = this.ctx;
     const chunkLabel = chunk.total > 1 ? `（第 ${chunk.index + 1}/${chunk.total} 段）` : '';
+    const isDrama = this.ctx.projectMode === 'drama';
+
+    // 剧情模式：不切片文字，让 LLM 创作真正的分镜描述（description）+ 归属声音行（voiceLines）
+    if (isDrama) {
+      return this.generateDramaShotPayloadsForChunk(traceId, chunk, {
+        durationConstraint,
+        durationDefault,
+        chunkLabel,
+      });
+    }
+
+    const projectNarrativeMode = formatProjectNarrativeMode(this.ctx.projectMode);
+    const dialogueModeDirective = buildShotBreakdownDialogueModeDirective(this.ctx.projectMode);
 
     // Phase 2 方案 A：把 chunk 文本预先拆成"字幕行 + 行号"形式喂给 LLM；
     // LLM 只输出 scriptLineIndices（局部 1-based），下游用这些索引从 chunkLines 切片，

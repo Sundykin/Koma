@@ -110,9 +110,13 @@ function shotsToTracks(shots: Shot[]): Track[] {
       });
     }
 
-    // 字幕轨道用左侧字幕列文本（旁白+台词），而不是 shot.dialogue ——
-    // 解说模式下字幕列（推文/解说文案）才是成片字幕；dialogue 已不再是字幕来源。
-    const subtitleText = getShotScriptText(shot).trim();
+    // 字幕轨道只取声音行（旁白 + 台词）：剧情模式的分镜描述行（description）是画面文本，
+    // 不是成片字幕；解说模式整列都是旁白字幕，全部进入。shot.dialogue 已不再是字幕来源。
+    const subtitleText = (shot.scriptLines ?? [])
+      .filter(line => line.role !== 'description')
+      .map(line => line.text)
+      .join('\n')
+      .trim();
     if (subtitleText) {
       textTrack.clips.push({
         id: `text-${shot.id}`,

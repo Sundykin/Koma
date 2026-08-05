@@ -9,7 +9,7 @@
  * 由 Storyboard 提供，跨分镜拖动 onDragEnd 由父级捕获。
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Plus, Trash2, GripVertical, MessageSquareQuote, Megaphone } from 'lucide-react';
+import { Plus, Trash2, GripVertical, MessageSquareQuote, Megaphone, Clapperboard } from 'lucide-react';
 import {
   SortableContext,
   useSortable,
@@ -49,7 +49,7 @@ interface SortableLineProps {
   onTextCommit: (lineId: string, text: string) => void;
   onDelete: (lineId: string) => void;
   onInsertAbove: (lineId: string) => void;
-  onRoleChange: (lineId: string, role: 'narration' | 'dialogue') => void;
+  onRoleChange: (lineId: string, role: 'narration' | 'dialogue' | 'description') => void;
   onCharacterChange: (lineId: string, characterId?: string) => void;
 }
 
@@ -129,30 +129,42 @@ function SortableLine({ shotId, line, characters, showRoleBadge, onDraftChange, 
         <GripVertical className="w-3 h-3" />
       </button>
 
-      {/* 类型徽标：旁白 / 台词（剧情模式才显示；点击切换类型） */}
-      {showRoleBadge && (
-        isDialogue ? (
+      {/* 类型徽标：画面 / 旁白 / 台词（剧情模式才显示；点击循环切换类型） */}
+      {showRoleBadge && (() => {
+        const isDescription = line.role === 'description';
+        const nextRole = isDescription ? 'narration' : isDialogue ? 'description' : 'dialogue';
+        const config = isDescription
+          ? {
+              label: '画面',
+              title: '分镜描述（画面/动作/场景，生图生视频的主输入）— 点击切换为旁白',
+              icon: <Clapperboard className="w-2.5 h-2.5" />,
+              cls: 'text-status-info bg-status-info/10 border-status-info/30 hover:bg-status-info/20',
+            }
+          : isDialogue
+            ? {
+                label: '台词',
+                title: '台词（角色开口，进配音与字幕）— 点击切换为分镜描述',
+                icon: <MessageSquareQuote className="w-2.5 h-2.5" />,
+                cls: 'text-status-warning bg-status-warning/10 border-status-warning/30 hover:bg-status-warning/20',
+              }
+            : {
+                label: '旁白',
+                title: '旁白（画外音，进配音与字幕）— 点击切换为台词',
+                icon: <Megaphone className="w-2.5 h-2.5" />,
+                cls: 'text-text-tertiary bg-bg-elevated/60 border-border-subtle hover:bg-bg-hover',
+              };
+        return (
           <button
             type="button"
-            title="台词 — 点击切换为旁白"
-            onClick={() => onRoleChange(line.id, 'narration')}
-            className="flex-shrink-0 flex items-center gap-0.5 px-1 py-px rounded text-[10px] font-medium text-status-warning bg-status-warning/10 border border-status-warning/30 hover:bg-status-warning/20"
+            title={config.title}
+            onClick={() => onRoleChange(line.id, nextRole)}
+            className={`flex-shrink-0 flex items-center gap-0.5 px-1 py-px rounded text-[10px] font-medium border ${config.cls}`}
           >
-            <MessageSquareQuote className="w-2.5 h-2.5" />
-            台词
+            {config.icon}
+            {config.label}
           </button>
-        ) : (
-          <button
-            type="button"
-            title="旁白 — 点击切换为台词"
-            onClick={() => onRoleChange(line.id, 'dialogue')}
-            className="flex-shrink-0 flex items-center gap-0.5 px-1 py-px rounded text-[10px] font-medium text-text-tertiary bg-bg-elevated/60 border border-border-subtle hover:bg-bg-hover"
-          >
-            <Megaphone className="w-2.5 h-2.5" />
-            旁白
-          </button>
-        )
-      )}
+        );
+      })()}
 
       {/* 说话人：仅台词行显示；剧情模式且传入了角色列表时可选 */}
       {showRoleBadge && isDialogue && (
@@ -191,7 +203,7 @@ function SortableLine({ shotId, line, characters, showRoleBadge, onDraftChange, 
             e.currentTarget.blur();
           }
         }}
-        placeholder={isDialogue ? '台词...' : '字幕行...'}
+        placeholder={isDialogue ? '台词...' : line.role === 'description' ? '分镜描述（画面/动作/场景）...' : '字幕行...'}
         className="flex-1 bg-transparent border-none outline-none text-xs text-text-primary placeholder-text-muted py-0.5"
       />
 
@@ -277,10 +289,10 @@ export const ShotScriptLines: React.FC<ShotScriptLinesProps> = ({ shotId, lines,
     onLinesChange(shotId, [...materializeLinesWithDrafts(), createScriptLine('')]);
   }, [shotId, onLinesChange, materializeLinesWithDrafts]);
 
-  const handleRoleChange = useCallback((lineId: string, role: 'narration' | 'dialogue') => {
+  const handleRoleChange = useCallback((lineId: string, role: 'narration' | 'dialogue' | 'description') => {
     onLinesChange(shotId, materializeLinesWithDrafts().map(l => (
       l.id === lineId
-        ? { ...l, role, ...(role === 'narration' ? { characterId: undefined } : {}) }
+        ? { ...l, role, ...(role !== 'dialogue' ? { characterId: undefined } : {}) }
         : l
     )));
   }, [shotId, onLinesChange, materializeLinesWithDrafts]);

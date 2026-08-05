@@ -107,13 +107,14 @@ export type ShotVideoMode = 'multi-ref' | 'first-frame';
  * 两种叙事模式产出不同的行结构：
  *   - 解说模式（narration）：推文文案化后切成"一行一句字幕"，role 恒为 'narration'，
  *     characterId 为空 —— 这一列就是成片字幕，配音用项目级旁白音色。
- *   - 剧情模式（drama）：完整小说先解析成结构化剧本，拆分镜时按归属切片成行，
- *     每行标注 role（旁白 narration / 台词 dialogue）；台词行带 characterId（说话人），
- *     供配音按角色选音色、UI 按 role 区分样式。
+ *   - 剧情模式（drama）：完整小说先解析成结构化剧本，拆分镜时按影视分镜思维**创作**：
+ *     每镜的 scriptLines = 分镜描述行（role='description'：场景/人物/动作/画面，客观可见，
+ *     是图片/视频提示词的主输入）+ 声音行（role='narration' 旁白 / role='dialogue' 台词，
+ *     台词带 characterId 说话人，供配音按角色选音色、进剪辑字幕轨道）。
  *
  * scriptLines 是分镜内"剧本"的唯一来源，下游 image / video prompt 推理用 join('\n') 还原文本。
  */
-export type ShotScriptLineRole = 'narration' | 'dialogue';
+export type ShotScriptLineRole = 'narration' | 'dialogue' | 'description';
 
 export interface ShotScriptLine {
   id: string;

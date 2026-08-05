@@ -116,40 +116,55 @@ describe('resolveShotLineVoiceId', () => {
   });
 });
 
-describe('drama breakdown: marked lines → ShotScriptLine (role + characterId)', () => {
-  // 与 ShotAnalysisService.buildScriptLines 相同的映射逻辑，验证剧情拆解后的行结构
-  it('maps marked drama lines to role + speaker characterId', async () => {
-    const { parseDramaScript } = await import('./dramaScript');
+describe('drama breakdown: description + voiceLines → ShotScriptLine', () => {
+  // 与 ShotAnalysisService 物化逻辑同构：剧情模式分镜 = 分镜描述行 + 声音行
+  it('materializes description lines then voice lines with speaker characterId', async () => {
     const { createScriptLine } = await import('../types/shot-script');
     const characters = [{ id: 'char_1', name: '宁卓' }, { id: 'char_2', name: '老者' }];
-    const getCharId = (c: typeof characters[0]) => c.id;
-    const fuzzyMatch = (name: string) => characters.find(c => c.name === name || name.includes(c.name) || c.name.includes(name));
+    const fuzzyMatch = (name: string) =>
+      characters.find(c => c.name === name || name.includes(c.name) || c.name.includes(name));
 
-    const buildScriptLines = (texts: string[]) => texts.flatMap(text => {
-      const line = parseDramaScript(text)[0];
-      if (!line || !line.text || line.type === 'scene') return [];
-      if (line.type === 'dialogue') {
-        const speaker = line.speaker ? fuzzyMatch(line.speaker) : undefined;
-        return [createScriptLine(line.text, 'dialogue', speaker ? getCharId(speaker) : undefined)];
+    const payload = {
+      __dramaDescriptionLines: ['废弃戏台，雨夜。宁卓独立台中央，手握剑柄。'],
+      __dramaVoiceLines: [
+        { role: 'narration' as const, text: '雨水顺着戏台边缘往下淌' },
+        { role: 'dialogue' as const, text: '你们来了', speaker: '宁卓' },
+        { role: 'dialogue' as const, text: '该收场了', speaker: '老者' },
+        { role: 'dialogue' as const, text: '谁在那里', speaker: '陌生人' },
+      ],
+    };
+
+    const out: Array<{ text: string; role?: string; characterId?: string }> = [];
+    for (const text of payload.__dramaDescriptionLines) {
+      out.push(createScriptLine(text, 'description'));
+    }
+    for (const v of payload.__dramaVoiceLines) {
+      if (v.role === 'dialogue') {
+        const speaker = v.speaker ? fuzzyMatch(v.speaker) : undefined;
+        out.push(createScriptLine(v.text, 'dialogue', speaker?.id));
+      } else {
+        out.push(createScriptLine(v.text, 'narration'));
       }
-      return [createScriptLine(line.text, 'narration')];
+    }
+
+    expect(out).toHaveLength(5);
+    expect(out[0]).toMatchObject({ text: '废弃戏台，雨夜。宁卓独立台中央，手握剑柄。', role: 'description' });
+    expect(out[1]).toMatchObject({ role: 'narration' });
+    expect(out[2]).toMatchObject({ role: 'dialogue', characterId: 'char_1' });
+    expect(out[3]).toMatchObject({ role: 'dialogue', characterId: 'char_2' });
+    expect(out[4]).toMatchObject({ role: 'dialogue', characterId: undefined });
+  });
+
+  it('description lines never enter voice segments', async () => {
+    const { buildShotVoiceSegments } = await import('../types/shot-script');
+    const segments = buildShotVoiceSegments({
+      scriptLines: [
+        { id: '1', text: '分镜描述文本', role: 'description' as const },
+        { id: '2', text: '旁白内容', role: 'narration' as const },
+        { id: '3', text: '台词内容', role: 'dialogue' as const, characterId: 'char_1' },
+      ],
     });
-
-    const lines = buildScriptLines([
-      '[场景] 深夜 · 戏台',
-      '[旁白] 雨停了',
-      '[台词·宁卓] 你们来了',
-      '[台词·老者] 该收场了',
-      '[台词·陌生人] 谁在那里',
-    ]);
-
-    expect(lines).toHaveLength(4);
-    expect(lines[0]).toMatchObject({ text: '雨停了', role: 'narration' });
-    expect(lines[1]).toMatchObject({ text: '你们来了', role: 'dialogue', characterId: 'char_1' });
-    expect(lines[2]).toMatchObject({ text: '该收场了', role: 'dialogue', characterId: 'char_2' });
-    // 说话人匹配不到资产 → characterId undefined（配音回退项目级音色）
-    expect(lines[3]).toMatchObject({ text: '谁在那里', role: 'dialogue', characterId: undefined });
-    // 场景标记行不落库
-    expect(lines.some(l => l.text.includes('戏台'))).toBe(false);
+    expect(segments).toHaveLength(2);
+    expect(segments.map(s => s.text)).toEqual(['旁白内容', '台词内容']);
   });
 });
