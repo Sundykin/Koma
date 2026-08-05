@@ -14,11 +14,8 @@ import { saveEpisodeShots } from '../store/projectStore';
 import { createLogger } from '../store/logger';
 import { extractErrorMessage } from '../utils/errorHandler';
 import { appendStyleRequirement, type StyleSnapshotLike } from '../utils/promptNormalize';
-import {
-  DEFAULT_VIDEO_DURATION_SECONDS,
-  normalizeVideoDurationSeconds,
-  type AllowedVideoDurationSeconds,
-} from '../utils/videoDuration';
+
+
 import { clampDurationToSpec, formatSpecPromptHint } from '../providers/itv/durationSpec';
 import {
   buildShotBreakdownDialogueModeDirective,
