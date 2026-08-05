@@ -3,8 +3,7 @@
  * 使用 LLM 分析剧本，提取角色、场景、道具
  * 分镜生成由 ShotAnalysisService 单独处理
  */
-import type { Character, Scene, Prop, Shot, ScriptAnalysisResult } from '../types';
-import { scriptLinesFromText } from '../types';
+import type { Character, Scene, Prop, ScriptAnalysisResult } from '../types';
 import { resolvePromptTemplate } from '../store/promptTemplates';
 import type { ResolvedPromptTemplate } from '../store/promptTemplates';
 import { logLLMCall } from '../store/aiCallLogger';
@@ -26,11 +25,7 @@ import {
   formatScriptAnalysisChunkError,
   type ScriptAnalysisChunkFailure,
 } from './scriptAnalysisErrorSummary';
-import { normalizeVideoDurationSeconds } from '../utils/videoDuration';
-import { formatSpecPromptHint } from '../providers/itv/durationSpec';
 import {
-  buildShotBreakdownDialogueModeDirective,
-  formatProjectNarrativeMode,
 } from './narrativeMode';
 
 const logger = createLogger('ScriptAnalysisService');
@@ -180,30 +175,6 @@ const PROPS_SCHEMA = {
   required: ['props'],
 };
 
-const SHOTS_SCHEMA = {
-  type: 'object',
-  properties: {
-    shots: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          scriptContent: { type: 'string', description: '对应的剧本原文片段' },
-          shotType: { type: 'string', enum: ['close-up', 'medium', 'wide', 'extreme-wide'] },
-          cameraMovement: { type: 'string', enum: ['static', 'pan', 'zoom-in', 'tracking'] },
-          duration: { type: 'number', description: '建议时长秒数' },
-          description: { type: 'string', description: '画面描述，用于生成图片的prompt，中文' },
-          characters: { type: 'array', items: { type: 'string' }, description: '出场角色名称列表' },
-          dialogue: { type: 'string', description: '台词' },
-          emotion: { type: 'string', description: '情绪标签' },
-          props: { type: 'array', items: { type: 'string' }, description: '出现的道具名称' },
-        },
-        required: ['scriptContent', 'shotType', 'duration', 'description'],
-      },
-    },
-  },
-  required: ['shots'],
-};
 
 export class ScriptAnalysisService {
   private ctx: import('./CreationContext').CreationContext;
@@ -605,65 +576,6 @@ export class ScriptAnalysisService {
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.reportProgress('props', 'failed', errorMessage, { stageProgress: 1 });
-      return { success: false, error: errorMessage };
-    }
-  }
-
-  // 生成分镜
-  async generateShots(
-    script: string,
-    characters: Character[],
-    scenes: Scene[],
-    props: Prop[]
-  ): Promise<StageResult<Shot[]>> {
-    const effectiveScript = this.getScript(script);
-    const modeHint = this.episodeContext
-      ? `（剧集模式：${this.episodeContext.episodeName || this.episodeContext.episodeId}）`
-      : '';
-    this.reportProgress('shots', 'running', `正在生成分镜...${modeHint}`);
-
-    try {
-      const resolvedPrompt = await resolvePromptTemplate('shot_breakdown', {
-        script: wrapUserContent(effectiveScript),
-        characters: characters.map(c => c.name).join(', '),
-        scenes: scenes.map(s => s.name).join(', '),
-        props: props.map(p => p.name).join(', '),
-        durationConstraint: formatSpecPromptHint(this.ctx.itvDurationSpec),
-        durationDefault: String(this.ctx.itvDurationSpec.default),
-        projectNarrativeMode: formatProjectNarrativeMode(this.ctx.projectMode),
-        dialogueModeDirective: buildShotBreakdownDialogueModeDirective(this.ctx.projectMode),
-      });
-
-      const styledPrompt = this.appendStyleRequirement(resolvedPrompt.prompt);
-      const result = await this.callLLM(styledPrompt, SHOTS_SCHEMA, {
-        templateId: resolvedPrompt.template.id,
-        promptSource: resolvedPrompt.source,
-      });
-      const parsed = this.parseJSON<{ shots: any[] }>(result);
-
-      // 将角色名映射到 ID
-      const charNameToId = new Map(characters.map(c => [c.name, c.id]));
-      const propNameToId = new Map(props.map(p => [p.name, p.id]));
-
-      const shots: Shot[] = parsed.shots.map((s, index) => ({
-        id: `shot_${Date.now()}_${index}`,
-        scriptLines: scriptLinesFromText(s.scriptContent || ''),
-        shotType: s.shotType || 'medium',
-        cameraMovement: s.cameraMovement || 'static',
-        duration: normalizeVideoDurationSeconds(s.duration),
-        characters: (s.characters || []).map((name: string) => charNameToId.get(name) || name),
-        dialogue: s.dialogue || '',
-        emotion: s.emotion || '',
-        props: (s.props || []).map((name: string) => propNameToId.get(name) || name),
-        confirmed: false,
-        episodeId: this.episodeContext?.episodeId,
-      }));
-
-      this.reportProgress('shots', 'completed', `生成 ${shots.length} 个分镜`);
-      return { success: true, data: shots, episodeId: this.episodeContext?.episodeId };
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      this.reportProgress('shots', 'failed', errorMessage);
       return { success: false, error: errorMessage };
     }
   }
