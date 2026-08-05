@@ -91,6 +91,7 @@ export type {
   ScriptAnalysisResult,
   ShotVersion,
   ShotMeta,
+  ShotAudioBinding,
 } from './types/scene-character';
 export {
   makeScriptLineId,

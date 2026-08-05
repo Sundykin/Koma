@@ -18,7 +18,7 @@ import {
   LoadingOutlined,
   RobotOutlined,
 } from '@ant-design/icons';
-import type { Shot, ShotImageMode, ShotScriptLine, Character, Scene, Prop, AppSettings, StoredMediaAsset, ProjectStyleSnapshot, ShotMeta } from '../../types';
+import type { Shot, ShotImageMode, ShotScriptLine, Character, Scene, Prop, AppSettings, StoredMediaAsset, ProjectStyleSnapshot, ShotMeta, ShotAudioBinding } from '../../types';
 import { loadEpisodeShots, saveEpisodeShots, loadCharacters, loadScenes, loadProps, loadEpisodeAnalysis, listShots } from '../../store/projectStore';
 import { generateShotImage, batchGenerateShotImages } from '../../services/ShotGenerationService';
 import { mediaGenerationService } from '../../services/MediaGenerationService';
@@ -30,7 +30,7 @@ import type { PresetAssets } from '../../services/ShotAnalysisService';
 import { generateShotPrompt, batchGenerateShotPrompts } from '../../services/ShotPromptService';
 import { loadVoiceLibrary } from '../../services/voiceLibrary/voiceLibraryService';
 import { prepareShotAudio } from '../../services/voiceLibrary/shotVoiceCompile';
-import { resolveShotLineVoiceId } from '../../services/voiceLibrary/shotLineVoice';
+import { resolveShotLineVoice } from '../../services/voiceLibrary/shotLineVoice';
 import type { VoiceLibrarySnapshot } from '../../types/voice-library';
 import { TaskManager } from '../../services/TaskManager';
 import { findActiveTask } from '../../services/tasksIPC';
@@ -1769,6 +1769,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     }
 
     const rate = typeof ttsSpeed === 'number' ? ttsSpeed : 1.2;
+    let audioBindings: ShotAudioBinding[] | undefined;
 
     try {
       const { result: asset } = await runWithTask({
@@ -1783,15 +1784,19 @@ export const Storyboard: React.FC<StoryboardProps> = ({
           let a;
           if (voiceSegments.length > 0) {
             taskCtx.progress(15, `分段合成配音（${voiceSegments.length} 段）...`);
-            const resolvedSegments = voiceSegments.map(seg => ({
-              text: seg.text,
-              voiceId: resolveShotLineVoiceId({
-                role: seg.role,
-                characterId: seg.characterId,
-                characters,
-                projectNarrationVoiceId: ttsVoiceId,
-              }),
+            // 经音色库做 legacy 归一 + providerVoiceId 解析，并收集绑定信息供 UI 展示
+            const resolutions = voiceSegments.map(seg => resolveShotLineVoice({
+              role: seg.role,
+              characterId: seg.characterId,
+              characters,
+              projectNarrationVoiceId: ttsVoiceId,
+              voiceLibrary,
             }));
+            const resolvedSegments = voiceSegments.map((seg, i) => ({
+              text: seg.text,
+              voiceId: resolutions[i].voiceId,
+            }));
+            audioBindings = resolutions.flatMap((r, i) => (r.binding ? [{ index: i, ...r.binding }] : []));
             a = await mediaGenerationService.generateShotAudioWithSegments({
               projectId,
               ownerRef: { projectId, ownerType: 'shot', ownerId: shotId, episodeId, slot: 'audio' },
@@ -1827,6 +1832,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         const existing = s.media?.audios || [];
         return {
           ...s,
+          ...(audioBindings ? { audioBindings } : {}),
           media: {
             ...(s.media || {}),
             audios: [...existing, asset],
@@ -1886,18 +1892,22 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             const legacyText = (shot.dialogue || '').trim() || getShotScriptText(shot).trim();
             try {
               let asset;
+              let audioBindings: ShotAudioBinding[] | undefined;
               if (voiceSegments.length > 0) {
+                const resolutions = voiceSegments.map(seg => resolveShotLineVoice({
+                  role: seg.role,
+                  characterId: seg.characterId,
+                  characters,
+                  projectNarrationVoiceId: ttsVoiceId,
+                  voiceLibrary,
+                }));
+                audioBindings = resolutions.flatMap((r, i) => (r.binding ? [{ index: i, ...r.binding }] : []));
                 asset = await mediaGenerationService.generateShotAudioWithSegments({
                   projectId,
                   ownerRef: { projectId, ownerType: 'shot', ownerId: shot.id, episodeId, slot: 'audio' },
-                  segments: voiceSegments.map(seg => ({
+                  segments: voiceSegments.map((seg, i) => ({
                     text: seg.text,
-                    voiceId: resolveShotLineVoiceId({
-                      role: seg.role,
-                      characterId: seg.characterId,
-                      characters,
-                      projectNarrationVoiceId: ttsVoiceId,
-                    }),
+                    voiceId: resolutions[i].voiceId,
                   })),
                   options: { rate },
                   ttsSelection,
@@ -1919,7 +1929,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
                   taskName: `分镜 #${shot.id.slice(-6)} 配音`,
                 });
               }
-              return { shotId: shot.id, asset, success: true as const };
+              return { shotId: shot.id, asset, audioBindings, success: true as const };
             } catch (err: unknown) {
               return {
                 shotId: shot.id,
@@ -1948,6 +1958,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         const existing = s.media?.audios || [];
         return {
           ...s,
+          ...(hit.audioBindings ? { audioBindings: hit.audioBindings } : {}),
           media: {
             ...(s.media || {}),
             audios: [...existing, hit.asset],
