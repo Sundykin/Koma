@@ -145,7 +145,11 @@ function parseScriptLines(raw: string | null | undefined, fallbackText?: string 
           const id = typeof rec.id === 'string' ? rec.id : '';
           const text = typeof rec.text === 'string' ? rec.text : '';
           if (!text) continue;
-          const role: ShotScriptLine['role'] = rec.role === 'dialogue' ? 'dialogue' : 'narration';
+          const role: ShotScriptLine['role'] = rec.role === 'dialogue'
+            ? 'dialogue'
+            : rec.role === 'description'
+              ? 'description'
+              : 'narration';
           const characterId = typeof rec.characterId === 'string' && rec.characterId ? rec.characterId : undefined;
           out.push({
             id: id || `line-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
