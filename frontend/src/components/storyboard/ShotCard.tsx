@@ -47,7 +47,6 @@ import { buildImageAddMenu } from '../asset/imageAddMenu';
 import { VideoCardGrid } from '../asset/VideoCardGrid';
 import { StagePlayer } from '../video/StagePlayer';
 import { electronService, fsRemove } from '../../services/electronService';
-import { ffmpegManager } from '../../services/ffmpegManager';
 import { persistMediaAsset } from '../../services/mediaPersistenceService';
 import { ensureRemoteUrlForImageAsset } from '../../services/mediaRemoteUrlService';
 import { getProjectPath } from '../../store/projectStore';
@@ -56,6 +55,7 @@ import { AssetSelector } from './components/AssetSelector';
 import { createStoredMediaAsset } from '../../utils/mediaAssets';
 import { type VideoDurationSpec } from '../../providers/itv/durationSpec';
 import { ShotDurationControl } from './ShotDurationControl';
+import { useShotGridSplit } from './hooks/useShotGridSplit';
 import './ShotCard.scss';
 import { cssVars } from '../../theme/runtime';
 
@@ -206,10 +206,6 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
   const isDarkTheme = theme.meta.mode === 'dark';
   const { t } = useTranslation();
   const [videoModalOpen, setVideoModalOpen] = useState(false);
-  const [isSplittingGridImage, setIsSplittingGridImage] = useState(false);
-  const [gridSplitModalOpen, setGridSplitModalOpen] = useState(false);
-  const [gridSplitTargetIndex, setGridSplitTargetIndex] = useState<number | null>(null);
-  const [gridSplitImageSize, setGridSplitImageSize] = useState<{ w: number; h: number } | null>(null);
   // 配音预览：HTMLAudioElement 持有播放状态，UI 用 isPlayingAudio 同步按钮 icon
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
@@ -353,56 +349,26 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
     return audios[idx] || audios[audios.length - 1];
   }, [shot.media?.audios, shot.media?.currentAudioIndex]);
 
-  const gridSplitAsset = useMemo(() => {
-    if (gridSplitTargetIndex == null) return null;
-    return images[gridSplitTargetIndex] || null;
-  }, [images, gridSplitTargetIndex]);
-
-  // grid-4 → 2×2（4 子图）；其它 grid 变体（grid / grid-9）→ 3×3（9 子图）。
-  // 这一份 gridSize 同步驱动预览 modal 的分割线 / 网格 / 缩放计算 / 拆分调用，
-  // 保证 UI 选了四宫格时拆分一定按 2×2 走，不会再硬切成 9 张。
-  const gridSize: 2 | 3 = shot.imageMode === 'grid-4' ? 2 : 3;
-  const gridCellCount = gridSize * gridSize;
-
-  const gridSplitAspectStyle = useMemo(() => {
-    const w = gridSplitImageSize?.w || gridSplitAsset?.width || 0;
-    const h = gridSplitImageSize?.h || gridSplitAsset?.height || 0;
-    if (w > 0 && h > 0) return `${w} / ${h}`;
-    return '16 / 9';
-  }, [gridSplitAsset, gridSplitImageSize]);
-
-  const gridSplitPreviewMeta = useMemo(() => {
-    const w = gridSplitImageSize?.w || gridSplitAsset?.width || 0;
-    const h = gridSplitImageSize?.h || gridSplitAsset?.height || 0;
-    if (!w || !h) return null;
-
-    const aspect = h > w ? '9:16' : '16:9';
-    const defaultCell = aspect === '16:9'
-      ? { w: 1280, h: 720 }
-      : { w: 720, h: 1280 };
-    const minW = defaultCell.w * gridSize;
-    const minH = defaultCell.h * gridSize;
-    const scaleFactor = Math.max(minW / w, minH / h, 1);
-    const scaledW = Math.round(w * scaleFactor);
-    const scaledH = Math.round(h * scaleFactor);
-    const finalW = Math.ceil(scaledW / gridSize) * gridSize;
-    const finalH = Math.ceil(scaledH / gridSize) * gridSize;
-    const padRight = finalW - scaledW;
-    const padBottom = finalH - scaledH;
-    const cellW = Math.floor(finalW / gridSize);
-    const cellH = Math.floor(finalH / gridSize);
-
-    return {
-      aspect,
-      scaleFactor,
-      finalW,
-      finalH,
-      padRight,
-      padBottom,
-      cellW,
-      cellH,
-    };
-  }, [gridSplitAsset, gridSplitImageSize, gridSize]);
+  // 宫格切分逻辑已拆到 hooks/useShotGridSplit
+  const {
+    isSplittingGridImage,
+    gridSplitModalOpen,
+    gridSplitAsset,
+    gridSize,
+    gridCellCount,
+    gridSplitAspectStyle,
+    gridSplitPreviewMeta,
+    setGridSplitImageSize,
+    handleOpenGridSplitPreview,
+    handleCloseGridSplitPreview,
+    handleConfirmGridSplit,
+  } = useShotGridSplit({
+    projectId,
+    shot,
+    images,
+    onImagesChange,
+    message,
+  });
 
   // 图片操作
   const handleImageSelect = (idx: number) => onImagesChange(shot.id, images, idx);
@@ -441,137 +407,6 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
       message.error(err.message || t('error.deleteFailed'));
     }
   };
-
-  const handleOpenGridSplitPreview = useCallback((idx: number) => {
-    setGridSplitTargetIndex(idx);
-    setGridSplitImageSize(null);
-    setGridSplitModalOpen(true);
-  }, []);
-
-  const handleCloseGridSplitPreview = useCallback(() => {
-    if (isSplittingGridImage) return;
-    setGridSplitModalOpen(false);
-    setGridSplitTargetIndex(null);
-    setGridSplitImageSize(null);
-  }, [isSplittingGridImage]);
-
-  const handleConfirmGridSplit = useCallback(async () => {
-    if (!electronService.isElectron()) {
-      message.error('仅支持 Electron 环境');
-      return;
-    }
-    if (!isGridImageMode(shot.imageMode)) {
-      message.info('当前分镜不是网格模式');
-      return;
-    }
-    if (gridSplitTargetIndex == null) {
-      message.info('未选择要拆分的图片');
-      return;
-    }
-    const targetAsset = images[gridSplitTargetIndex];
-    if (!targetAsset) {
-      message.info('没有可拆分的图片');
-      return;
-    }
-    if (isSplittingGridImage) return;
-
-    setIsSplittingGridImage(true);
-    try {
-      const available = await ffmpegManager.isAvailable();
-      if (!available) {
-        throw new Error('FFmpeg 不可用');
-      }
-
-      const w = gridSplitImageSize?.w || targetAsset.width || 0;
-      const h = gridSplitImageSize?.h || targetAsset.height || 0;
-      const aspectRatio: '16:9' | '9:16' = (w > 0 && h > 0 && h > w) ? '9:16' : '16:9';
-
-      let inputAsset: StoredMediaAsset = targetAsset;
-      let baseImages: StoredMediaAsset[] = images;
-
-      const isUsableLocalPath = Boolean(
-        inputAsset.localPath &&
-        !isRemoteMediaUri(inputAsset.localPath)
-      );
-
-      // If the selected image is remote-only, download it into the project so ffmpeg can access it.
-      if (!isUsableLocalPath) {
-        const projectPath = await getProjectPath(projectId);
-        const sourceHint = getMediaAssetEditingSource(inputAsset) || inputAsset.remoteUrl || '';
-        const ext = (() => {
-          const clean = sourceHint.split('?')[0].split('#')[0];
-          const dot = clean.lastIndexOf('.');
-          const raw = dot >= 0 ? clean.slice(dot + 1).toLowerCase() : '';
-          if (raw === 'jpeg') return 'jpg';
-          if (raw === 'png' || raw === 'jpg' || raw === 'webp') return raw;
-          return 'png';
-        })();
-        const destPath = `${projectPath}/assets/shots/${shot.id}/images/grid_source_${Date.now()}.${ext}`;
-
-        const persisted = await persistMediaAsset({
-          projectId,
-          kind: 'image',
-          source: inputAsset,
-          destPath,
-        });
-
-        inputAsset = persisted;
-        baseImages = images.map((a, i) => (i === gridSplitTargetIndex ? persisted : a));
-      }
-
-      const inputPath = inputAsset.localPath;
-      if (!inputPath || isRemoteMediaUri(inputPath)) {
-        throw new Error('缺少可用的本地图片路径');
-      }
-
-      const projectPath = await getProjectPath(projectId);
-      const outputDir = `${projectPath}/assets/shots/${shot.id}/grid-splits/${Date.now()}`;
-      const outputs = await ffmpegManager.splitGridImage({
-        input: inputPath,
-        outputDir,
-        aspectRatio,
-        format: 'png',
-        sharpenAmount: 0.9,
-        gridSize,
-      });
-
-      if (!Array.isArray(outputs) || outputs.length !== gridCellCount) {
-        throw new Error(`网格拆分失败：期望 ${gridCellCount} 张，实际 ${outputs?.length ?? 0} 张`);
-      }
-
-      const newAssets = outputs.map((p, i) => createStoredMediaAsset('image', {
-        localPath: p,
-        metadata: {
-          gridCell: i + 1,
-          gridSource: inputPath,
-        },
-      }));
-
-      const nextImages = [...baseImages, ...newAssets];
-      onImagesChange(shot.id, nextImages, baseImages.length);
-      const gridLabel = gridSize === 2 ? '四宫格' : '九宫格';
-      message.success(`${gridLabel}已拆分为 ${gridCellCount} 张图片`);
-      setGridSplitModalOpen(false);
-      setGridSplitTargetIndex(null);
-      setGridSplitImageSize(null);
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      const gridLabel = gridSize === 2 ? '四宫格' : '九宫格';
-      message.error(errorMessage || `${gridLabel}拆分失败`);
-    } finally {
-      setIsSplittingGridImage(false);
-    }
-  }, [
-    gridSplitImageSize,
-    gridSplitTargetIndex,
-    images,
-    isSplittingGridImage,
-    message,
-    onImagesChange,
-    projectId,
-    shot.id,
-    shot.imageMode,
-  ]);
 
   // 参考图操作
   const handleRefImageSelect = (idx: number) => onReferenceImagesChange?.(shot.id, referenceImages, idx);
