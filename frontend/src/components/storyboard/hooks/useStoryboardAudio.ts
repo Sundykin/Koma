@@ -97,7 +97,8 @@ async function synthesizeShotAudio(params: {
     ttsSelection,
     taskName,
   });
-  return { asset };
+  // 旧路径也回写音色绑定（UI"识别到 N 个音色"依赖 audioBindings）
+  return { asset, audioBindings: prepared.audioBindings };
 }
 
 export function useStoryboardAudio(deps: StoryboardAudioDeps) {
