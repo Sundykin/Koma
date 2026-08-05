@@ -8,7 +8,7 @@
  *  - 假人列表（procedural mesh）
  *  - 命令式句柄 onCanvasReady：交给父组件做截图导出
  */
-import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import type {

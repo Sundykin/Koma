@@ -1,5 +1,4 @@
 import type {
-  LinghuiNodeCatalogItem,
   LinghuiNodeData,
   LinghuiNodeType,
   LinghuiSlotDataType,

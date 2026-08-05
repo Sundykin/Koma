@@ -571,7 +571,7 @@ const TTSPreferenceTab: React.FC<TTSPreferenceTabProps> = ({ voiceId, speed, onV
     if (previewingId === id) { stopPreview(); return; }
     const url = await getKomaTTSVoiceSampleUrl(sampleFile);
     if (!url) {
-      // eslint-disable-next-line no-console
+       
       console.warn('[TTSPreview] 无法解析音色样本路径', { sampleFile, id });
       return;
     }
@@ -585,7 +585,7 @@ const TTSPreferenceTab: React.FC<TTSPreferenceTabProps> = ({ voiceId, speed, onV
         el.play()
           .then(() => setPreviewingId(id))
           .catch((err) => {
-            // eslint-disable-next-line no-console
+             
             console.warn('[TTSPreview] play() 失败', err);
             setPreviewingId(null);
           })
@@ -605,7 +605,7 @@ const TTSPreferenceTab: React.FC<TTSPreferenceTabProps> = ({ voiceId, speed, onV
     el.play()
       .then(() => setPreviewingId(targetId))
       .catch((err) => {
-        // eslint-disable-next-line no-console
+         
         console.warn('[TTSPreview] canplay 后 play() 失败', err);
         setPreviewingId(null);
       })

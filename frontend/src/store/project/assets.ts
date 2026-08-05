@@ -2,7 +2,7 @@
  * 素材管理（通过 IPC 调后端 SQLite）
  */
 import { v4 as uuidv4 } from 'uuid';
-import { electronService, batchApi } from '../../services/electronService';
+import { electronService } from '../../services/electronService';
 import type { Asset } from '../../types';
 import { getProjectPath } from './core';
 

@@ -78,7 +78,6 @@ export const ImageCardGrid: React.FC<ImageCardGridProps> = ({
     if (!compact) return;
     const target = Math.floor((selectedIndex || 0) / COMPACT_PAGE_SIZE);
     if (target !== currentPage) setCurrentPage(target);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedIndex, compact]);
   // 新版本生成后（images 数量增加）→ 跳到末页让用户立刻看到新生成的
   const prevImagesLenRef = useRef(images.length);

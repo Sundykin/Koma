@@ -3,7 +3,6 @@ import { Input } from 'antd';
 import type {
   LinghuiExecutionLogEntry,
   LinghuiGraphStats,
-  LinghuiNodeRunState,
   LinghuiWorkspaceDocument,
 } from '../../../../types/linghui';
 

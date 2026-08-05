@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { App as AntApp } from 'antd';
 import type {
   LinghuiExecutionLogEntry,
@@ -9,7 +9,6 @@ import type {
   LinghuiWorkspaceMeta,
 } from '../../../../types/linghui';
 import type { LinghuiCanvasHandle } from '../../canvas/components/LinghuiCanvas';
-import type { LinghuiAssetFilter } from '../../library/components/LinghuiLibraryDrawer';
 import { collectLinghuiDependentNodeIds } from '../../execution/state/linghuiExecution';
 import { createLogger } from '../../../../store/logger';
 import { resetLinghuiCanvasStore, useLinghuiCanvasStore } from '../../canvas/state/linghuiCanvasStore';

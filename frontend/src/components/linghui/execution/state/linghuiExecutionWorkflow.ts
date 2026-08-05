@@ -4,14 +4,12 @@ import type {
   LinghuiExecutionQueueState,
   LinghuiNodeResult,
   LinghuiNodeRunState,
-  LinghuiRFEdgeSnapshot,
   LinghuiRFNodeSnapshot,
 } from '../../../../types/linghui';
 import { DEFAULT_POLLING_CONFIG } from '../../../../providers/polling';
 import { executeNode } from './linghuiExecutionNodeExecutors';
 import {
   buildTopologicalLayers,
-  collectLinghuiDependentNodeIds,
   collectRequiredNodeIds,
   getDirectUpstreamNodeIds,
 } from './linghuiExecutionGraph';

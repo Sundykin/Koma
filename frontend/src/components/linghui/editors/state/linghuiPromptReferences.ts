@@ -9,7 +9,6 @@ import { buildLinghuiVisualSourceKey } from '../../utils/linghuiMediaAssetSource
 import {
   buildResultReferences,
   buildFallbackReference,
-  resolvePromptReferenceSourceValue,
 } from './linghuiPromptReferenceHelpers';
 import { collectOrderedUpstreamReferenceNodeIds, getOrderedIncomingReferenceEdges } from './linghuiPromptReferenceEdges';
 

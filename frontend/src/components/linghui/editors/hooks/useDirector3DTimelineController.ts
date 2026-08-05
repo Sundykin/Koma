@@ -5,7 +5,6 @@ import type {
   LinghuiDirector3DEasing,
   LinghuiDirector3DExportResolution,
   LinghuiDirector3DKeyframe,
-  LinghuiDirector3DNodeProperties,
   LinghuiDirector3DRenderMode,
   LinghuiDirector3DScene,
   LinghuiDirector3DTimeline,

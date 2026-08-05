@@ -136,7 +136,7 @@ function ImageNodeInner({ id, data, selected }: NodeProps) {
         aspectRatio: `${result.width}:${result.height}`,
       }]);
     } catch (err) {
-      // eslint-disable-next-line no-console
+       
       console.warn('[Panorama] 抽取视角失败', err);
     }
   }, [editorApi, id, isPanoramaNode, nodeData.label, panoramaProjectionMode, primaryDisplayItem?.preview]);

@@ -6,7 +6,7 @@ import {
   resolveConfiguredChannelModel,
   serializeMediaSelection,
 } from '../../providers/channel/resolver';
-import type { MediaCategory, ModelCapability } from '../../providers/channel/types';
+import type { ModelCapability } from '../../providers/channel/types';
 
 export type ProjectMediaCategoryKey = 'llm' | 'tti' | 'itv' | 'tts';
 

@@ -1,7 +1,7 @@
 import { useImperativeHandle } from 'react';
 import type { Dispatch, ForwardedRef, MutableRefObject, RefObject, SetStateAction } from 'react';
 import type { Node, ReactFlowInstance } from '@xyflow/react';
-import type { LinghuiExecutionContext, LinghuiNodeData, LinghuiNodeType } from '../../../../types/linghui';
+import type { LinghuiExecutionContext } from '../../../../types/linghui';
 import type {
   LinghuiWorkflowTemplateRecord,
   LinghuiWorkspaceAssetRecord,

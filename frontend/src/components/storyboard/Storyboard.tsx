@@ -17,10 +17,8 @@ import {
   LoadingOutlined,
   RobotOutlined,
 } from '@ant-design/icons';
-import type { Shot, ShotImageMode, ShotScriptLine, Character, Scene, Prop, AppSettings, StoredMediaAsset, ProjectStyleSnapshot, ShotMeta } from '../../types';
+import type { Shot, Character, Scene, Prop, AppSettings, ProjectStyleSnapshot, ShotMeta } from '../../types';
 import { useStoryboardMediaGeneration } from './hooks/useStoryboardMediaGeneration';
-import { mediaGenerationService } from '../../services/MediaGenerationService';
-import { runWithTask } from '../../services/taskRunner';
 import { submitShotAnalysisTask } from '../../services/analysisTaskClient';
 import type { PresetAssets } from '../../services/ShotAnalysisService';
 import { useStoryboardPrompts } from './hooks/useStoryboardPrompts';
@@ -29,7 +27,6 @@ import { useStoryboardAudio } from './hooks/useStoryboardAudio';
 import { useStoryboardShotMutations } from './hooks/useStoryboardShotMutations';
 import { useStoryboardPersistence } from './hooks/useStoryboardPersistence';
 import type { VoiceLibrarySnapshot } from '../../types/voice-library';
-import { TaskManager } from '../../services/TaskManager';
 import { useActiveTask, useTaskTransitions, useTasks } from '../../hooks';
 import { ScriptEditor } from '../../editor';
 import type { MentionItem } from '../../editor';
@@ -56,7 +53,6 @@ import {
   getDurationSpecForModel,
   getDurationSpecForProviderType,
   specToInputBounds,
-  type VideoDurationSpec,
 } from '../../providers/itv/durationSpec';
 import { getModelMaxReferenceImages } from '../../providers/itv/modelCatalog';
 import './Storyboard.scss';
@@ -604,7 +600,6 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     handleMergeDown,
     handleMoveUp,
     handleMoveDown,
-    createNewShot,
     handleAddShot,
     handleInsertAbove,
     handleInsertBelow,

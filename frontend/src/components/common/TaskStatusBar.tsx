@@ -15,7 +15,6 @@ import { deleteMediaTask, clearCompletedMediaTasks } from '../../services/mediaT
 import { useTaskPanelStore } from '../../store/taskPanelStore';
 import { useTasks } from '../../hooks';
 import { cancelTaskRecord } from '../../services/tasksIPC';
-import type { TaskRecord } from '../../services/tasksIPC';
 
 const { Text } = Typography;
 
@@ -389,8 +388,6 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
     return ((task.raw as any)?.result?.stageMessage as string | undefined) || '';
   };
 
-  const mainTaskStagePresentation = mainTask ? getScriptStagePresentation(mainTask) : null;
-
   const renderTaskItem = (task: StatusBarTask, featured = false) => {
     const stageMessage = getStageMessage(task);
     const stagePresentation = getScriptStagePresentation(task);
@@ -583,7 +580,7 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
                   });
                   // 留个日志便于调试（不弹 toast 避免噪音）
                   if (removedManager + removedAsync > 0) {
-                    // eslint-disable-next-line no-console
+                     
                     console.info(`[TaskStatusBar] 清空已完成任务：${removedManager + removedAsync} 条`);
                   }
                 }}

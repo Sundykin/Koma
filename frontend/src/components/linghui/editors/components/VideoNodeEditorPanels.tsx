@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { App, Button, Dropdown, InputNumber, Popover } from 'antd';
+import { Button, Dropdown, InputNumber, Popover } from 'antd';
 import type { MenuProps } from 'antd';
 import { ArrowUp, Download, FileAudio, Film, Image as ImageIcon, Settings2 } from 'lucide-react';
 import {

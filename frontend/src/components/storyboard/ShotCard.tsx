@@ -29,7 +29,6 @@ import {
   PauseCircleOutlined,
   CloseOutlined,
   PlusOutlined,
-  AppstoreOutlined,
   AudioOutlined,
   DownOutlined,
 } from '@ant-design/icons';

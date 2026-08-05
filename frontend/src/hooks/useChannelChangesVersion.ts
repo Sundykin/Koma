@@ -53,7 +53,6 @@ export function useChannelChangesVersion(): number {
         unsubscribeFromIpc = null;
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return version;

@@ -38,7 +38,6 @@ export function useTasks(filter: TasksFilter): ReadonlyArray<TaskRecord> {
   return useMemo(() => {
     if (!all.length) return EMPTY;
     return all.filter(t => matchesFilter(t, filter));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- filterKey is the stable signature for filter
   }, [all, filterKey]);
 }
 
@@ -103,7 +102,6 @@ export function useTaskTransitions(
 
   const filterKey = useMemo(
     () => stableFilterKey(filter) + '|' + (filter.from?.join(',') ?? '') + '|' + (filter.to?.join(',') ?? '') + '|' + (filter.includeInitial ? '1' : '0'),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [stableFilterKey(filter), filter.from, filter.to, filter.includeInitial]
   );
 
@@ -118,7 +116,6 @@ export function useTaskTransitions(
       callbackRef.current(event);
     });
     return unsub;
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- filterKey is the stable signature
   }, [filterKey]);
 }
 

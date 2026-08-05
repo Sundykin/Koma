@@ -42,7 +42,6 @@ import {
 } from '../state/linghuiImageCollections';
 import {
   getPreviewSource,
-  mergePromptSnippet,
   resolveImageNodeMode,
 } from './ImageNodeEditorUtils';
 import {

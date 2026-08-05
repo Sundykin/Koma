@@ -236,7 +236,7 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
   const [selectedKeyframeId, setSelectedKeyframeId] = useState<string | null>(null);
   const [draggingAsset, setDraggingAsset] = useState<Asset | null>(null);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
-  const [aspectRatio, setAspectRatio] = useState<AspectRatio>(projectAspectRatio || '16:9');
+  const [aspectRatio] = useState<AspectRatio>(projectAspectRatio || '16:9');
   const [isLoadingTimeline, setIsLoadingTimeline] = useState(true);
   const [hasBlockingTimelineError, setHasBlockingTimelineError] = useState(false);
   const timelineCreatedAtRef = useRef<number>(Date.now());

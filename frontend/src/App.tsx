@@ -22,7 +22,7 @@ import {
   setCurrentProject,
   USER_INTERRUPTED_REASON,
 } from './store/projectOpenService';
-import { loadCharacters, loadScenes, loadProps, loadShots, loadEpisode, loadEpisodeShots, saveEpisode, createEpisode } from './store/projectStore';
+import { loadCharacters, loadScenes, loadProps, loadShots, loadEpisodeShots, saveEpisode, createEpisode } from './store/projectStore';
 import { Spin, App as AntApp, Button, Input, Typography } from 'antd';
 import { KeyOutlined } from '@ant-design/icons';
 import {
@@ -37,7 +37,6 @@ import { createLogger } from './store/logger';
 import { loadSettings } from './store/globalStore';
 import { activationService, ActivationInfo } from './services/activationService';
 import { electronService } from './services/electronService';
-import { resolveEpisodeEditorEntry, type EpisodeEditorEntryOptions } from './workflow/episodeEditorEntry';
 import { listEditorStepIds } from './workflow/editorStepRegistry';
 import { resolveConfiguredChannelModel, serializeMediaSelection } from './providers/channel/resolver';
 import {
@@ -471,26 +470,6 @@ const AppContent: React.FC = () => {
     }
   };
 
-  const handleEnterEpisode = useCallback(async (episode: Episode, options: EpisodeEditorEntryOptions = {}) => {
-    const latestEpisode = activeProject
-      ? await loadEpisode(activeProject.id, episode.id).catch(err => {
-        logger.error('加载最新剧集失败', err);
-        return null;
-      })
-      : null;
-    const targetEpisode = latestEpisode || episode;
-
-    setActiveEpisode(targetEpisode);
-    setView('editor');
-    const entry = resolveEpisodeEditorEntry(targetEpisode.stepProgress, {
-      ...options,
-      scriptText: targetEpisode.scriptText || '',
-    });
-    setStepProgress(entry.stepProgress);
-    setEditorStep(entry.initialStep);
-    setScriptText(targetEpisode.scriptText || '');
-    setAnalysisData(null);
-  }, [activeProject]);
 
   const markStepCompleted = useCallback((step: EditorStep) => {
     setStepProgress(prev => {

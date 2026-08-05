@@ -23,7 +23,6 @@ import {
 import { defaultDirector3DBackground, defaultDirector3DCamera } from './director3dDefaults';
 export { defaultDirector3DBackground, defaultDirector3DCamera } from './director3dDefaults';
 import { DIRECTOR3D_CAMERA_PRESETS } from './director3dCameraPresets';
-import { DIRECTOR3D_SCENE_TEMPLATES } from './director3dSceneTemplates';
 export {
   DIRECTOR3D_ORBIT_9_DEGREES,
   DIRECTOR3D_SCENE_TEMPLATES,
@@ -39,7 +38,6 @@ export {
 } from './director3dCameraPresets';
 export type { Director3DCameraPreset, Director3DCameraPresetCategory } from './director3dCameraPresets';
 import {
-  CREATURE_SPECIES_LIBRARY,
   createDirector3DActor,
 } from './director3dAssetLibrary';
 export {

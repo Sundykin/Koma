@@ -1,4 +1,4 @@
-import { Prec, EditorSelection, RangeSetBuilder } from '@codemirror/state';
+import { EditorSelection, RangeSetBuilder } from '@codemirror/state';
 import {
   autocompletion,
   Completion,

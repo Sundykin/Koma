@@ -10,7 +10,7 @@
  *
  * 文本中的引用编码：`@ref_${ref.id}` —— 与 linghui 同格式但作用域独立。
  */
-import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
+import React, { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 import { EditorState, Compartment, Prec } from '@codemirror/state';
 import {
   autocompletion,
@@ -350,7 +350,6 @@ export const ChatPromptEditor = forwardRef<ChatPromptEditorRef, ChatPromptEditor
       view.destroy();
       viewRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 外部 value 变化（如"重新编辑"灌入）时同步进编辑器

@@ -10,8 +10,8 @@
  * 3. (已修复并删除) useStoryboardHandlers 中的 handler 无条件覆盖资产
  * 4. episodeAnalysis 的 refs 为空 → 资产面板不显示
  */
-import { describe, it, expect, vi } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { describe, it, expect } from 'vitest';
+import { renderHook } from '@testing-library/react';
 import { useShotAssetSync } from '../../../hooks/useShotAssetSync';
 import type { Shot, Character, Scene, Prop, EpisodeAnalysis } from '../../../types';
 

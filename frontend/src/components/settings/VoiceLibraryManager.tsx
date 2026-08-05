@@ -20,8 +20,7 @@ import {
   deleteVoiceProfile, groupProfilesByCategory, loadVoiceLibrary,
   renameVoiceCategory, resolveVoiceSampleUrl, updateVoiceProfile,
 } from '../../services/voiceLibrary/voiceLibraryService';
-import {
-  isBuiltinVoiceCategoryId, type VoiceCategory, type VoiceLibrarySnapshot,
+import { type VoiceCategory, type VoiceLibrarySnapshot,
   type VoiceProfile,
 } from '../../types/voice-library';
 import styles from './VoiceLibraryManager.module.scss';

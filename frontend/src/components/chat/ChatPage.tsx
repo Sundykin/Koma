@@ -85,7 +85,6 @@ export const ChatPage: React.FC = () => {
     streamingContent,
     streamingReasoning,
     isReady,
-    sessionId,
     sendStream,
     clear,
     stop,

@@ -60,7 +60,6 @@ export const VideoCardGrid: React.FC<VideoCardGridProps> = ({
     if (!compact) return;
     const target = Math.floor((selectedIndex || 0) / COMPACT_PAGE_SIZE);
     if (target !== currentPage) setCurrentPage(target);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedIndex, compact]);
   const prevVideosLenRef = useRef(videos.length);
   useEffect(() => {
@@ -287,16 +286,18 @@ export const VideoCardGrid: React.FC<VideoCardGridProps> = ({
       </div>
 
       {onGenerate && (
-        <Button
-          type="text"
-          size="small"
-          icon={isGenerating ? <LoadingOutlined /> : <VideoCameraOutlined />}
-          onClick={onGenerate}
-          disabled={isGenerating || disabled}
-          className="generateBtn"
-        >
-          {isGenerating ? '生成中' : 'AI生成视频'}
-        </Button>
+        <Tooltip title={disabled && generateDisabledReason ? generateDisabledReason : undefined}>
+          <Button
+            type="text"
+            size="small"
+            icon={isGenerating ? <LoadingOutlined /> : <VideoCameraOutlined />}
+            onClick={onGenerate}
+            disabled={isGenerating || disabled}
+            className="generateBtn"
+          >
+            {isGenerating ? '生成中' : 'AI生成视频'}
+          </Button>
+        </Tooltip>
       )}
 
       <Modal

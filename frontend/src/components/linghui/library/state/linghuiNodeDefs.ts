@@ -2,8 +2,6 @@ import type {
   LinghuiNodeCatalogItem,
   LinghuiNodeData,
   LinghuiNodeType,
-  LinghuiSlotDataType,
-  LinghuiSlotDef,
 } from '../../../../types/linghui';
 import { createDefaultDirector3DScene } from '../../director3d/director3dScene';
 import {
@@ -183,7 +181,7 @@ export const NODE_META: Record<LinghuiNodeType, LinghuiNodeMeta> = {
 };
 
 
-import { NODE_SLOT_LAYOUTS, SLOT_TYPE_LABELS, isLinghuiSlotDataTypeCompatible, resolveLinghuiCompatibleInputSlot, validateLinghuiConnection, isLinghuiConnectionValid } from './linghuiConnectionValidation';
+import { NODE_SLOT_LAYOUTS } from './linghuiConnectionValidation';
 export { NODE_SLOT_LAYOUTS, SLOT_TYPE_LABELS, isLinghuiSlotDataTypeCompatible, resolveLinghuiCompatibleInputSlot, validateLinghuiConnection, isLinghuiConnectionValid } from './linghuiConnectionValidation';
 export type { LinghuiConnectionValidationResult } from './linghuiConnectionValidation';
 export const NODE_PROPERTY_DEFAULTS: Record<LinghuiNodeType, Record<string, unknown>> = {

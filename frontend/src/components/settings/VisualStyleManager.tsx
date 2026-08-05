@@ -248,7 +248,7 @@ export const VisualStyleManager: React.FC<VisualStyleManagerProps> = ({ onStyleC
       setStyleImageHasOverride(prev => ({ ...prev, [preset.id]: isOverride }));
     } catch (err: any) {
       // 主进程未实现等场景下静默回退（电池模式 / 早期版本）
-      // eslint-disable-next-line no-console
+       
       console.warn('[VisualStyleManager] refreshStyleImage failed', preset.id, err?.message);
       setStyleImages(prev => ({ ...prev, [preset.id]: null }));
       setStyleImageHasOverride(prev => ({ ...prev, [preset.id]: false }));

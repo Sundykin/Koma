@@ -1,20 +1,10 @@
 import type {
-  LinghuiMediaItem,
-  LinghuiNodeData,
   LinghuiNodeRunState,
   LinghuiRFNodeSnapshot,
-  LinghuiStoryboardFrame,
 } from '../../../../types/linghui';
-import {
-  getLinghuiResultItems,
-  getLinghuiResultPrimaryMedia,
-  getLinghuiResultShots,
-  getLinghuiResultText,
-  isLinghuiImageCollectionResult,
-} from '../../../../types/linghui';
-import { isBlobUri, isDataUri, isRemoteMediaUri } from '../../../../types';
+
+
 import { getFileSystemPort } from '../../../../services/fileSystemPort';
-import { fromKomaLocalUrl } from '../../../../utils/urlUtils';
 
 export interface LinghuiResultExportTarget {
   node: LinghuiRFNodeSnapshot;
@@ -98,4 +88,4 @@ export async function exportLinghuiNodeResults(params: {
     skippedNodeIds,
   };
 }
-import { sanitizeSegment, formatExportTimestamp, joinPath, exportMediaFile, exportNodeTarget, resolveNodeLabel, resolveNodeTextValue, resolvePrimaryMedia, dedupeMediaItems, getDefaultExtension, inferExtension, getFileExtensionFromPath } from './linghuiResultExportUtils';
+import { sanitizeSegment, formatExportTimestamp, joinPath, exportNodeTarget } from './linghuiResultExportUtils';

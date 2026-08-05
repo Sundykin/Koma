@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MediaType, type TimelineData } from '../../../types/editor';
+import { MediaType } from '../../../types/editor';
 import { CURRENT_TIMELINE_VERSION, migrateTimelineData, prepareTimelineForSave } from './migration';
 
 function makeClip(id: string, start: number, duration: number, extra?: Record<string, unknown>) {

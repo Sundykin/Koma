@@ -23,7 +23,6 @@ import {
   UserOutlined,
   EnvironmentOutlined,
   AppstoreOutlined,
-  VideoCameraOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
   LoadingOutlined,
