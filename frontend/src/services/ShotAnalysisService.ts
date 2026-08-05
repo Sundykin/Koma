@@ -27,7 +27,6 @@ import {
 
 const logger = createLogger('ShotAnalysis');
 const SHOT_ANALYSIS_LLM_TIMEOUT_MS = 300_000;
-const DEFAULT_SHOT_DURATION_SECONDS: AllowedVideoDurationSeconds = DEFAULT_VIDEO_DURATION_SECONDS;
 const SHOT_ANALYSIS_CHUNK_THRESHOLD_CHARS = 3500;
 const SHOT_ANALYSIS_CHUNK_TARGET_CHARS = 2400;
 
@@ -35,10 +34,6 @@ interface ScriptAnalysisChunk {
   index: number;
   total: number;
   text: string;
-}
-
-export function normalizeShotDuration(duration: unknown): AllowedVideoDurationSeconds {
-  return normalizeVideoDurationSeconds(duration, DEFAULT_SHOT_DURATION_SECONDS);
 }
 
 function normalizeForCoverage(text: string): string {
