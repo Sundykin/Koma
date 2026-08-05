@@ -56,7 +56,7 @@ import { generateId } from '../../utils/generateId';
 //
 // 三条轨道时间轴对齐 currentTime（按 shot.duration 累加），保证视频 / 音频 / 字幕同步起点。
 // 音频 clip 时长优先用 asset.durationMs（实际 TTS 输出长度），缺失时回退 shot.duration。
-function shotsToTracks(shots: Shot[]): Track[] {
+export function shotsToTracks(shots: Shot[]): Track[] {
   const videoTrack: Track = { id: 'video-main', type: 'video', clips: [], order: 0, isMainTrack: true };
   const audioTrack: Track = { id: 'audio-main', type: 'audio', clips: [], order: -1 };
   const textTrack: Track = { id: 'text-main', type: 'text', clips: [], order: 1 };
