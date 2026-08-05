@@ -127,7 +127,7 @@ export const activationService = {
 
       // 格式不匹配
       return null;
-    } catch (err) {
+    } catch {
       // 不记录 err 对象或 apiKey
       console.error('Failed to get activation info');
       return null;
@@ -147,7 +147,7 @@ export const activationService = {
       } else {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(info));
       }
-    } catch (err) {
+    } catch {
       console.error('Failed to save activation info');
     }
   },
@@ -210,7 +210,7 @@ export const activationService = {
 
       // 其它错误不视为无效，但验证不通过
       return { success: false, status: response.status, error: 'verify_failed' };
-    } catch (err) {
+    } catch {
       console.error('Network error during API key verification');
       return { success: false, error: 'network_error' };
     }
@@ -242,7 +242,7 @@ export const activationService = {
       }
 
       return { success: false, status: response.status, error: 'verify_failed' };
-    } catch (err) {
+    } catch {
       console.error('Network error during stored activation verification');
       return { success: false, error: 'network_error' };
     }
@@ -294,7 +294,7 @@ export const activationService = {
       }
 
       return { success: false, error: 'usage_failed' };
-    } catch (err) {
+    } catch {
       console.error('Network error during token usage check');
       return { success: false, error: 'network_error' };
     }
@@ -344,7 +344,7 @@ export const activationService = {
         };
       }
       return { success: false, error: 'usage_failed' };
-    } catch (err) {
+    } catch {
       console.error('Network error during stored token usage check');
       return { success: false, error: 'network_error' };
     }
@@ -597,7 +597,7 @@ export const activationService = {
           itv: KOMAAPI_ACTIVATION_CHANNEL_IDS.itv
         }
       };
-    } catch (err) {
+    } catch {
       console.error('Failed to ensure default model channels');
       return { success: false, error: 'default_channels_failed' };
     }

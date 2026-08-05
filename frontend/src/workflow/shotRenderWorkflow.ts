@@ -29,7 +29,6 @@ import {
   sanitizeVideoPromptResult,
 } from '../services/ShotPromptService';
 import { normalizeProjectNarrativeMode } from '../services/narrativeMode';
-import { runWithTask } from '../services/taskRunner';
 import {
   collectShotVideoPlan,
   resolveShotVideoCapabilitySupport,
@@ -104,7 +103,7 @@ export async function shotRenderWorkflow(
   params: ShotRenderParams,
   onProgress: (progress: number, step?: string) => void
 ): Promise<ShotRenderResult> {
-  const { projectId, episodeId, shot, settings, mediaSelections, project } = params;
+  const { projectId, episodeId, shot, settings, mediaSelections } = params;
   const normalizedShot = normalizeShotMediaState(shot);
   // videoPrompt 是 LLM 推理出的视频版"优化提示词"，合并 / 拆分 / 编辑剧情后会过期。
   // 这里和 shotImageWorkflow 对齐：缓存为空时回落到 scriptLines（"剧情"原文），避免出现

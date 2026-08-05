@@ -13,7 +13,7 @@ import { TaskManager, Task } from './TaskManager';
 import { createTaskCancellationSignal } from './taskCancellationSignal';
 import { parseLLMJSON } from '../utils/llmJsonParser';
 import { runWithConcurrency } from '../utils/concurrency';
-import { cleanText, splitVisualClauses, CHARACTER_STORY_TOKENS, sanitizeCharacterAppearance } from '../utils/textUtils';
+import { cleanText, sanitizeCharacterAppearance } from '../utils/textUtils';
 import { INJECTION_GUARD, wrapUserContent, appendStyleRequirement, type StyleSnapshotLike } from '../utils/promptNormalize';
 import {
   buildScriptAnalysisOverallProgress,

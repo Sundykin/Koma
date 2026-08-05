@@ -155,10 +155,6 @@ function extractUrlsFromText(text: string, baseUrl: string): string[] {
   return urls;
 }
 
-function extractFirstUrlFromText(text: string, baseUrl: string): string | null {
-  return extractUrlsFromText(text, baseUrl)[0] ?? null;
-}
-
 function findMediaUrlsDeep(value: unknown, baseUrl: string): string[] {
   const visited = new Set<any>();
   const seen = new Set<string>();
@@ -201,10 +197,6 @@ function findMediaUrlsDeep(value: unknown, baseUrl: string): string[] {
   }
 
   return urls;
-}
-
-function findMediaUrlDeep(value: unknown, baseUrl: string): string | null {
-  return findMediaUrlsDeep(value, baseUrl)[0] ?? null;
 }
 
 function dropOverflowImageTags(prompt: string, maxImages: number): string {

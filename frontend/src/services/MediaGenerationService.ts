@@ -17,7 +17,7 @@ import {
 } from '../types';
 import { createLogger } from '../store/logger';
 import { loadSettings } from '../store/globalStore';
-import { resolveProviderAssetInput, resolveProviderAssetInputs } from './mediaAssetResolver';
+import { resolveProviderAssetInput } from './mediaAssetResolver';
 import { runWithConcurrency } from '../utils/concurrency';
 import { persistMediaAsset } from './mediaPersistenceService';
 import { bindOwnerRefMedia } from './mediaTaskBindingService';
@@ -689,9 +689,6 @@ export class MediaGenerationService {
       return finalAssets;
     }
 
-    const asyncDestPath = typeof destPath === 'function'
-      ? await destPath(0, { path: '' })
-      : destPath;
     if ((request.count ?? 1) > 1) {
       logger.warn('TTI async batch request fell back to single finalized asset handling', {
         ownerRef,

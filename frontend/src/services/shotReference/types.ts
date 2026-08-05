@@ -13,7 +13,7 @@
  * - 拆分子图（`shot.media.images` 中带 `metadata.gridCell` 的项）属于历史路径，
  *   bundle builder 显式过滤不读取它们。
  */
-import type { MediaAssetSource, StoredMediaAsset } from '../../types';
+import type { MediaAssetSource } from '../../types';
 
 /**
  * 引用项的语义类别。用于 priority 排序、配额裁剪、提示词模板分支判断。

@@ -10,7 +10,6 @@ import type {
   LLMModelConfig,
   TTIModelConfig,
   TTSModelConfig,
-  ResolvedTTSConfig,
   VideoGenerationCapability,
 } from '../types';
 import type { ChannelConfig, MediaCategory, ModelCapability } from './channel/types';

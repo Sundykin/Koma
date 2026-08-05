@@ -17,7 +17,6 @@ import type {
   ShotReferenceBundle,
   ShotReferenceBundleOptions,
   ShotReferenceItem,
-  ShotReferenceKind,
 } from './types';
 import { DEFAULT_MAX_REFS } from './types';
 

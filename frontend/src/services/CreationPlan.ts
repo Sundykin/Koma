@@ -4,7 +4,6 @@
  * 借鉴 Claude Code 的 plan.md 模式，在创作流程开始前生成全局意图，
  * 确保整个创作链路（分析 → 分镜 → 提示词 → 生图）保持风格和叙事一致性。
  */
-import type { LLMProvider } from '../providers/llm/types';
 import type { CreationContext } from './CreationContext';
 import { parseLLMJSON } from '../utils/llmJsonParser';
 

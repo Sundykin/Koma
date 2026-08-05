@@ -665,7 +665,7 @@ export async function generateCharacterPreviewVideo(
       if (itvConfig && typeof itvConfig.defaultDuration === 'number' && Number.isFinite(itvConfig.defaultDuration) && itvConfig.defaultDuration > 0) {
         previewDuration = itvConfig.defaultDuration;
       }
-    } catch (e) {
+    } catch {
       logger.warn('获取 ITV 配置失败，使用默认时长 10s');
     }
     previewDuration = normalizeVideoDurationSeconds(previewDuration);
@@ -949,14 +949,3 @@ async function getResolvedTTIStylePrefix(
   return getThemeStylePrefixAsync(theme, stylePrompt);
 }
 
-function buildCharacterPreviewPrompt(character: Character, stylePrefix: string): string {
-  const visualPrompt = character.prompt || character.name;
-  return [
-    stylePrefix,
-    visualPrompt,
-    'character showcase',
-    'subtle breathing',
-    'natural eye movement',
-    'steady camera',
-  ].filter(Boolean).join(', ');
-}

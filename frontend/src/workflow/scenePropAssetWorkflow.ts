@@ -12,9 +12,7 @@ import {
 import { getProjectITVProvider } from '../providers';
 import { serializeMediaSelection } from '../providers/channel/resolver';
 import {
-  saveScenes,
   saveProps,
-  loadScenes,
   loadProps,
 } from '../store/projectStore';
 import { getThemeStylePrefix, getThemeStylePrefixAsync } from '../config/themePresets';
@@ -523,7 +521,7 @@ export async function generatePropPreviewVideo(
       if (itvConfig && typeof itvConfig.defaultDuration === 'number' && Number.isFinite(itvConfig.defaultDuration) && itvConfig.defaultDuration > 0) {
         previewDuration = itvConfig.defaultDuration;
       }
-    } catch (e) {
+    } catch {
       logger.warn('获取 ITV 配置失败，使用默认时长 10s');
     }
     previewDuration = normalizeVideoDurationSeconds(previewDuration);
@@ -642,35 +640,10 @@ export async function extractAndBindProp(
  * 构建场景提示词（硬编码默认模板）
  * 注意：实际生成时优先使用 promptTemplates 中的 tti_scene_preview 模板
  */
-function buildScenePrompt(scene: Scene, stylePrefix: string): string {
-  return buildScenePromptInternal(scene, stylePrefix);
-}
-
 /**
  * 构建道具提示词（硬编码默认模板）
  * 注意：实际生成时优先使用 promptTemplates 中的 tti_prop_reference 模板
  */
-function buildPropPrompt(prop: Prop, stylePrefix: string): string {
-  return buildPropPromptInternal(prop, stylePrefix);
-}
-
-async function updateSceneAsset(
-  projectId: string,
-  sceneId: string,
-  updates: Partial<Scene>
-): Promise<void> {
-  const scenes = await loadScenes(projectId);
-  const index = scenes.findIndex(s => s.id === sceneId);
-  if (index !== -1) {
-    const existing = scenes[index];
-    const mergedMedia = updates.media
-      ? { ...(existing.media || {}), ...(updates.media || {}) }
-      : existing.media;
-    scenes[index] = { ...existing, ...updates, media: mergedMedia };
-    await saveScenes(projectId, scenes);
-  }
-}
-
 async function updatePropAsset(
   projectId: string,
   propId: string,
@@ -686,10 +659,6 @@ async function updatePropAsset(
     props[index] = { ...existing, ...updates, media: mergedMedia };
     await saveProps(projectId, props);
   }
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 function getMediaAssetSelectionKey(asset?: StoredMediaAsset): string | undefined {
@@ -733,15 +702,3 @@ async function getResolvedTTIStylePrefix(
   return getThemeStylePrefixAsync(theme, stylePrompt);
 }
 
-function applyStylePrefix(prompt: string, stylePrefix?: string): string {
-  const basePrompt = prompt.trim();
-  const prefix = (stylePrefix || '').trim();
-  if (!prefix) {
-    return basePrompt;
-  }
-  if (basePrompt.startsWith(prefix)) {
-    return basePrompt;
-  }
-  const normalizedPrefix = prefix.endsWith(',') ? prefix : `${prefix},`;
-  return `${normalizedPrefix} ${basePrompt}`;
-}
