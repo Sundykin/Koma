@@ -254,9 +254,10 @@ export class ShotPromptService {
     }
 
     const characterNames = shotCharacters.map(character => character.name);
+    const characterNameById = new Map(shotCharacters.map(c => [c.id, c.name]));
     const dialogueModeDirective = buildVideoDialogueModeDirective(this.ctx.projectMode);
-    const visualScriptContent = buildShotVideoScriptContent(shot, characterNames, this.ctx.projectMode);
-    const explicitDialogueText = getShotDialogueText(shot);
+    const visualScriptContent = buildShotVideoScriptContent(shot, characterNames, this.ctx.projectMode, characterNameById);
+    const explicitDialogueText = resolveShotDialogueText(shot, characterNameById);
 
     // 图片路径：与视频提示词共享同一份剧情 + 台词事实，保证生图锚点和后续视频动作/对白对应。
     const templateKey: PromptTemplateType = 'shot_image_prompt_generation';
@@ -356,9 +357,10 @@ export class ShotPromptService {
     // 视频推理模板（multi / firstframe）当前都不消费 {{stylePrefix}}——风格前缀仅由 TTI
     // 终稿模板使用。这里若仍传 stylePrefix 会触发 PromptTemplate 的"未声明变量"告警。
     const characterNames = shotCharacters.map(character => character.name);
+    const characterNameById = new Map(shotCharacters.map(c => [c.id, c.name]));
     const dialogueModeDirective = buildVideoDialogueModeDirective(this.ctx.projectMode);
-    const videoScriptContent = buildShotVideoScriptContent(shot, characterNames, this.ctx.projectMode);
-    const explicitDialogueText = getShotDialogueText(shot);
+    const videoScriptContent = buildShotVideoScriptContent(shot, characterNames, this.ctx.projectMode, characterNameById);
+    const explicitDialogueText = resolveShotDialogueText(shot, characterNameById);
     const templateVariables: Record<string, string> = {
       scriptContent: videoScriptContent,
       characters: formatCharacterMappingBaseline(shotCharacters, videoMode, referenceBundle),
@@ -536,10 +538,11 @@ export class ShotPromptService {
       .map(p => `${createMentionString('prop', p.id)} ${p.name}`)
       .join('\n');
     const shotCharacterNames = shotCharacters.map(character => character.name);
+    const shotCharacterNameById = new Map(shotCharacters.map(c => [c.id, c.name]));
 
     const templateVariables: Record<string, string> = {
-      scriptContent: buildShotVideoScriptContent(shot, shotCharacterNames, this.ctx.projectMode),
-      dialogueText: formatDialogueTextForPrompt(getShotDialogueText(shot), shotCharacterNames, this.ctx.projectMode) || '无',
+      scriptContent: buildShotVideoScriptContent(shot, shotCharacterNames, this.ctx.projectMode, shotCharacterNameById),
+      dialogueText: formatDialogueTextForPrompt(resolveShotDialogueText(shot, shotCharacterNameById), shotCharacterNames, this.ctx.projectMode) || '无',
       dialogueModeDirective: buildVideoDialogueModeDirective(this.ctx.projectMode),
       ...projectHeader,
       characters: shotCharacters.map(c => `${c.name}（${c.prompt || ''}）`).join('; ') || '无',
@@ -1177,6 +1180,27 @@ function getShotDialogueText(shot: Pick<Shot, 'dialogue'>): string {
   return String(shot.dialogue ?? '').trim();
 }
 
+/**
+ * 结构化台词提取：剧情模式下台词在 scriptLines 里（role='dialogue' + characterId），
+ * 逐行格式化为「角色名：台词」；旁白行不算台词。
+ * 没有结构化台词行时回退到旧的 shot.dialogue 字段（解说模式台词仍走这里）。
+ */
+function resolveShotDialogueText(
+  shot: Pick<Shot, 'scriptLines' | 'dialogue'>,
+  characterNameById?: Map<string, string>,
+): string {
+  const dialogueLines = (shot.scriptLines ?? [])
+    .filter(line => line.role === 'dialogue' && line.text?.trim())
+    .map(line => {
+      const speaker = line.characterId ? characterNameById?.get(line.characterId) : undefined;
+      return speaker ? `${speaker}：${line.text.trim()}` : line.text.trim();
+    });
+  if (dialogueLines.length > 0) {
+    return dialogueLines.join('\n');
+  }
+  return getShotDialogueText(shot);
+}
+
 function firstNonEmptyLine(text: string): string {
   return text
     .split(/\r?\n/)
@@ -1188,9 +1212,10 @@ function buildShotVideoScriptContent(
   shot: Pick<Shot, 'scriptLines' | 'dialogue'>,
   characterNames: string[] = [],
   projectMode: ProjectNarrativeMode = 'drama',
+  characterNameById?: Map<string, string>,
 ): string {
   const script = (getShotScriptText(shot) || '').trim();
-  const dialogue = formatDialogueTextForPrompt(getShotDialogueText(shot), characterNames, projectMode);
+  const dialogue = formatDialogueTextForPrompt(resolveShotDialogueText(shot, characterNameById), characterNames, projectMode);
   if (!dialogue) return script;
   if (script.includes(dialogue)) return script;
   return [script, `【分镜台词字段】\n${dialogue}`].filter(Boolean).join('\n\n');
