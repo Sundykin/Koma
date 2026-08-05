@@ -10,7 +10,6 @@ import {
   Tooltip,
   Button,
   Popconfirm,
-  Input,
   Modal,
   Progress,
   Segmented,
@@ -60,7 +59,6 @@ import { ShotDurationControl } from './ShotDurationControl';
 import './ShotCard.scss';
 import { cssVars } from '../../theme/runtime';
 
-const { TextArea } = Input;
 
 function toCssUrl(value?: string): string {
   if (!value) return 'none';

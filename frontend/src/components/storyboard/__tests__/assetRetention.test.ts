@@ -143,57 +143,6 @@ function filterAssetsByEpisodeAnalysis(
 // === 模拟旧数据修复逻辑 ===
 // 提取自 Storyboard.tsx (dd7bf47 修复)
 
-function repairLegacyShotAssets(
-  shots: Shot[],
-  characters: Character[],
-  scenes: Scene[],
-  props: Prop[]
-): { shots: Shot[]; needsSave: boolean } {
-  const allCharIds = new Set(characters.map(c => c.id));
-  const allSceneIds = new Set(scenes.map(s => s.id));
-  const allPropIds = new Set(props.map(p => p.id));
-  characters.forEach(c => { if ((c as any).sora2CharacterId) allCharIds.add((c as any).sora2CharacterId); });
-  props.forEach(p => { if ((p as any).sora2PropId) allPropIds.add((p as any).sora2PropId); });
-
-  const fuzzyMatch = <T extends { name: string }>(name: string, assets: T[]): T | undefined => {
-    if (!name) return undefined;
-    const trimmed = name.trim();
-    return assets.find(a => a.name === trimmed)
-      || assets.find(a => trimmed.includes(a.name))
-      || assets.find(a => a.name.includes(trimmed));
-  };
-
-  let needsSave = false;
-  const repairedShots = shots.map(shot => {
-    let changed = false;
-    const fixedChars = (shot.characters || []).map(ref => {
-      if (allCharIds.has(ref)) return ref;
-      const match = fuzzyMatch(ref, characters);
-      if (match) { changed = true; return (match as any).sora2CharacterId || match.id; }
-      changed = true; return undefined;
-    }).filter((id): id is string => id !== undefined);
-
-    const fixedScenes = (shot.scenes || []).map(ref => {
-      if (allSceneIds.has(ref)) return ref;
-      const match = fuzzyMatch(ref, scenes);
-      if (match) { changed = true; return match.id; }
-      changed = true; return undefined;
-    }).filter((id): id is string => id !== undefined);
-
-    const fixedProps = (shot.props || []).map(ref => {
-      if (allPropIds.has(ref)) return ref;
-      const match = fuzzyMatch(ref, props);
-      if (match) { changed = true; return (match as any).sora2PropId || match.id; }
-      changed = true; return undefined;
-    }).filter((id): id is string => id !== undefined);
-
-    if (!changed) return shot;
-    needsSave = true;
-    return { ...shot, characters: fixedChars, scenes: fixedScenes, props: fixedProps };
-  });
-
-  return { shots: repairedShots, needsSave };
-}
 
 
 // ============================================================

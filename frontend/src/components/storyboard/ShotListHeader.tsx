@@ -78,38 +78,10 @@ export const ShotListHeader: React.FC<ShotListHeaderProps> = ({
   const { t } = useTranslation();
   const cellClass = "px-2 py-1.5 text-xs font-medium text-text-secondary border-r border-border-subtle flex items-center";
 
-  const imagePromptMenuItems: MenuProps['items'] = [
-    { key: 'gen', label: t('storyboard.generateEmpty'), onClick: onBatchPrompts },
-    { key: 'regen', label: t('storyboard.regenerateAll'), onClick: onBatchRePrompts },
-  ];
 
-  const imageMenuItems: MenuProps['items'] = [
-    { key: 'gen', label: t('storyboard.generateEmpty'), onClick: onBatchImages },
-    { key: 'regen', label: t('storyboard.regenerateAll'), onClick: onBatchReImages },
-  ];
 
-  const videoPromptMenuItems: MenuProps['items'] = [
-    { key: 'gen', label: t('storyboard.generateEmpty'), onClick: onBatchVideoPrompts },
-    { key: 'regen', label: t('storyboard.regenerateAll'), onClick: onBatchReVideoPrompts },
-  ];
 
-  const videoModeMenuItems: MenuProps['items'] = [
-    {
-      key: 'multi-ref',
-      label: '全部切到 · 多参模式',
-      onClick: () => onBulkVideoModeChange?.('multi-ref'),
-    },
-    {
-      key: 'first-frame',
-      label: '全部切到 · 首帧模式',
-      onClick: () => onBulkVideoModeChange?.('first-frame'),
-    },
-  ];
 
-  const videoMenuItems: MenuProps['items'] = [
-    { key: 'gen', label: t('storyboard.generateEmpty'), onClick: onBatchVideos },
-    { key: 'regen', label: t('storyboard.regenerateAll'), onClick: onBatchReVideos },
-  ];
 
   const hasSelected = selectedCount > 0;
   const targetLabel = hasSelected ? `(${selectedCount})` : '';
