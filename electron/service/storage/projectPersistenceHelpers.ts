@@ -133,7 +133,7 @@ export interface TimelineClipAnimationRow {
  * - 兜底：JSON 解析失败 / 数组为空时，按 description 文本按 \n 拆分作为字幕行
  *   （应对历史数据 / dev 环境数据），每行生成新 id
  */
-function parseScriptLines(raw: string | null | undefined, fallbackText?: string | null): ShotScriptLine[] {
+export function parseScriptLines(raw: string | null | undefined, fallbackText?: string | null): ShotScriptLine[] {
   if (raw && raw !== '[]') {
     try {
       const parsed = JSON.parse(raw);
