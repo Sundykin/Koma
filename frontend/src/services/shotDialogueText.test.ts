@@ -51,3 +51,42 @@ describe('resolveShotDialogueText（结构化台词提取）', () => {
     expect(text).toBe('');
   });
 });
+
+describe('formatShotScriptForPrompt（剧情模式 scriptContent 标记还原）', () => {
+  function formatScript(
+    shot: { scriptLines?: Array<{ role?: string; text: string; characterId?: string }> },
+    mode: 'drama' | 'narration',
+    nameById?: Map<string, string>,
+  ): string {
+    const lines = (shot.scriptLines ?? []).filter(l => l.text?.trim());
+    if (mode !== 'drama' || !lines.length) return lines.map(l => l.text).join('\n');
+    return lines.map(l => {
+      if (l.role === 'dialogue') {
+        const speaker = l.characterId ? nameById?.get(l.characterId) : undefined;
+        return speaker ? `[台词·${speaker}] ${l.text.trim()}` : `[台词] ${l.text.trim()}`;
+      }
+      return `[旁白] ${l.text.trim()}`;
+    }).join('\n');
+  }
+
+  it('drama：旁白/台词各行带标记，台词带说话人', () => {
+    const out = formatScript({
+      scriptLines: [
+        { role: 'narration', text: '雨停了' },
+        { role: 'dialogue', text: '你们来了', characterId: 'char_1' },
+        { role: 'dialogue', text: '谁在那里' },
+      ],
+    }, 'drama', new Map([['char_1', '宁卓']]));
+    expect(out).toBe('[旁白] 雨停了\n[台词·宁卓] 你们来了\n[台词] 谁在那里');
+  });
+
+  it('narration：保持纯文本拼接（解说字幕原样）', () => {
+    const out = formatScript({
+      scriptLines: [
+        { role: 'narration', text: '第一句' },
+        { role: 'narration', text: '第二句' },
+      ],
+    }, 'narration');
+    expect(out).toBe('第一句\n第二句');
+  });
+});
