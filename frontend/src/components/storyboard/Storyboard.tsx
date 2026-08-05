@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { v4 as uuidv4 } from 'uuid';
 import {
   Button,
   Space,
@@ -28,6 +27,7 @@ import type { PresetAssets } from '../../services/ShotAnalysisService';
 import { useStoryboardPrompts } from './hooks/useStoryboardPrompts';
 import { loadVoiceLibrary } from '../../services/voiceLibrary/voiceLibraryService';
 import { useStoryboardAudio } from './hooks/useStoryboardAudio';
+import { useStoryboardShotMutations } from './hooks/useStoryboardShotMutations';
 import type { VoiceLibrarySnapshot } from '../../types/voice-library';
 import { TaskManager } from '../../services/TaskManager';
 import { useActiveTask, useTaskTransitions, useTasks } from '../../hooks';
@@ -42,10 +42,8 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
-  type DragEndEvent,
 } from '@dnd-kit/core';
 import { ShotAssetPresetModal } from './ShotAssetPresetModal';
-import { useShotAssetSync } from '../../hooks/useShotAssetSync';
 import { createLogger } from '../../store/logger';
 import { loadSettings } from '../../store/globalStore';
 import {
@@ -64,7 +62,6 @@ import { getModelMaxReferenceImages } from '../../providers/itv/modelCatalog';
 import './Storyboard.scss';
 import './ShotListEditor.scss';
 import { getMediaAssetDisplaySource, scriptLinesFromText, getShotScriptText } from '../../types';
-import { findVersionNumberForVideoAsset } from '../../utils/shotVersionSelection';
 
 const logger = createLogger('Storyboard');
 
@@ -86,15 +83,6 @@ const CAMERA_OPTIONS = [
   { label: '手持晃动', value: 'handheld' },
 ];
 
-type EditableShotImageMode = Exclude<ShotImageMode, 'grid'>;
-
-function normalizeShotImageMode(mode?: ShotImageMode): EditableShotImageMode {
-  return mode === 'grid' ? 'grid-9' : (mode || 'normal');
-}
-
-function isMultiPanelImageMode(mode?: ShotImageMode): boolean {
-  return mode === 'grid' || mode === 'grid-9' || mode === 'grid-4' || mode === 'storyboard';
-}
 
 function getShotImageCount(shot: Shot): number {
   return shot.media?.images?.length || 0;
@@ -104,38 +92,6 @@ function getShotVideoCount(shot: Shot): number {
   return shot.media?.videos?.length || 0;
 }
 
-// 合并两个分镜（duration 按当前 ITV 渠道 spec 吸附；不再硬编码到 grok 枚举）
-//
-// scriptLines 是剧情的唯一来源；imagePrompt / videoPrompt 是上一轮 LLM 从单个分镜
-// 各自的 scriptLines 推出来的派生缓存。合并后两个分镜的剧情拼成了新整体，旧派生
-// 已经过时——以前的实现直接做 `[target.imagePrompt, source.imagePrompt].filter(Boolean).join(...)`
-// 看起来"合并"了，实际上：
-//   - 若只有一个分镜跑过 AI 推理，其余为空，filter(Boolean) 后只剩那一段，结果就是用户报告的
-//     "推理只剩'我静居闺中、日日盼着佳期'，前面的纳采问名/聘礼盈箱全丢"。
-//   - videoPrompt 当时压根没被合并，永远只保留 target 那条。
-// 现在直接把两个派生字段清空，触发 shotImage/shotRender workflow 用新整段 scriptLines
-// 作为兜底输入（见下方 workflow 改动）。用户也可以手动点 "AI 推理 prompt" 重新生成更精炼的版本。
-function mergeShots(target: Shot, source: Shot, durationSpec: VideoDurationSpec): Shot {
-  const mergedMedia = {
-    references: [...(target.media?.references || []), ...(source.media?.references || [])],
-    images: [...(target.media?.images || []), ...(source.media?.images || [])],
-    videos: [...(target.media?.videos || []), ...(source.media?.videos || [])],
-    selectedReferenceIndex: target.media?.selectedReferenceIndex ?? 0,
-    currentImageIndex: target.media?.currentImageIndex ?? 0,
-    currentVideoIndex: target.media?.currentVideoIndex ?? 0,
-  };
-  return {
-    ...target,
-    scriptLines: [...(target.scriptLines || []), ...(source.scriptLines || [])],
-    imagePrompt: undefined,
-    videoPrompt: undefined,
-    duration: clampDurationToSpec(target.duration + source.duration, durationSpec),
-    characters: [...new Set([...target.characters, ...source.characters])],
-    dialogue: [target.dialogue, source.dialogue].filter(Boolean).join('\n'),
-    props: [...new Set([...(target.props || []), ...(source.props || [])])],
-    media: mergedMedia,
-  };
-}
 
 // ============ 主组件 ============
 interface StoryboardProps {
@@ -763,305 +719,50 @@ export const Storyboard: React.FC<StoryboardProps> = ({
 
 
 
-  // 单分镜内字幕行变更（编辑 / 添加 / 删除 / 同分镜内排序 / 任意位置插入）
-  const handleScriptLinesChange = useCallback((shotId: string, lines: ShotScriptLine[]) => {
-    const updatedShots = shots.map(s =>
-      s.id === shotId ? { ...s, scriptLines: lines } : s
-    );
-    saveAllShots(updatedShots);
-  }, [shots, saveAllShots]);
-
   // dnd-kit 传感器：用 PointerSensor + 5px 激活距离，避免误触发
   const dndSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
   );
 
-  /**
-   * 字幕行块拖拽落点处理（同分镜 + 跨分镜）。
-   * 拖拽源 / 落点 id 编码为 `${shotId}::${lineId}`；解析归属后做相应数组操作：
-   * - 同分镜：本镜 scriptLines 内重新排序
-   * - 跨分镜：从源镜 scriptLines 删除该行，插入到目标镜对应位置
-   */
-  const handleScriptLineDragEnd = useCallback((event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over) return;
-    const activeKey = String(active.id);
-    const overKey = String(over.id);
-    if (activeKey === overKey) return;
-    const [srcShotId, srcLineId] = activeKey.split('::');
-    const [dstShotId, dstLineId] = overKey.split('::');
-    if (!srcShotId || !srcLineId || !dstShotId || !dstLineId) return;
-
-    if (srcShotId === dstShotId) {
-      // 同分镜：移动 srcLineId 到 dstLineId 位置
-      const next = shots.map(shot => {
-        if (shot.id !== srcShotId) return shot;
-        const fromIdx = (shot.scriptLines || []).findIndex(l => l.id === srcLineId);
-        const toIdx = (shot.scriptLines || []).findIndex(l => l.id === dstLineId);
-        if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return shot;
-        const list = [...(shot.scriptLines || [])];
-        const [moved] = list.splice(fromIdx, 1);
-        list.splice(toIdx, 0, moved);
-        return { ...shot, scriptLines: list };
-      });
-      saveAllShots(next);
-      return;
-    }
-
-    // 跨分镜：从源镜删除，插到目标镜的目标位置
-    const src = shots.find(s => s.id === srcShotId);
-    const dst = shots.find(s => s.id === dstShotId);
-    if (!src || !dst) return;
-    const movedLine = (src.scriptLines || []).find(l => l.id === srcLineId);
-    if (!movedLine) return;
-    const newSrcLines = (src.scriptLines || []).filter(l => l.id !== srcLineId);
-    const dstInsertIdx = (dst.scriptLines || []).findIndex(l => l.id === dstLineId);
-    const dstLines = [...(dst.scriptLines || [])];
-    if (dstInsertIdx < 0) {
-      dstLines.push(movedLine);
-    } else {
-      dstLines.splice(dstInsertIdx, 0, movedLine);
-    }
-    const next = shots.map(shot => {
-      if (shot.id === srcShotId) return { ...shot, scriptLines: newSrcLines };
-      if (shot.id === dstShotId) return { ...shot, scriptLines: dstLines };
-      return shot;
-    });
-    saveAllShots(next);
-  }, [shots, saveAllShots]);
-
-  // 分镜时长变更
-  const handleDurationChange = useCallback((shotId: string, duration: number) => {
-    const safeDuration = clampDurationToSpec(duration, itvDurationSpec);
-    const updatedShots = shots.map(s =>
-      s.id === shotId ? { ...s, duration: safeDuration } : s
-    );
-    saveAllShots(updatedShots);
-  }, [shots, saveAllShots, itvDurationSpec]);
-
-  // 资产同步 Hook
-  const assets = useMemo(() => ({ characters, scenes, props }), [characters, scenes, props]);
-  const { syncFromPrompt, handleAssetChange } = useShotAssetSync(assets);
-
-  // 提示词变更时的资产同步策略：
-  // 1. 批量生成期间跳过同步（generatingImagePrompts 守卫）
-  // 2. 仅当提示词包含 @mentions 时才更新资产绑定（hasMentions 守卫）
-  // 3. ScriptEditor 外部 value 同步时不触发 onChange（isSyncingExternalRef）
-  const handleImagePromptChange = useCallback((shotId: string, imagePrompt: string) => {
-    // 批量生成期间，ScriptEditor 的 value 同步会触发 onChange，
-    // 但此时 shots 闭包可能是旧状态，直接跳过避免覆盖批量生成的正确数据
-    if (generatingImagePrompts.has(shotId)) return;
-
-    const currentShots = shotsRef.current;
-    const shot = currentShots.find(s => s.id === shotId);
-    if (!shot) return;
-
-    // 解析提示词中的 @mentions，同步到资产选择
-    const syncState = syncFromPrompt(imagePrompt);
-
-    // 仅当提示词中确实包含 @mentions 时才更新资产绑定，避免空解析结果覆盖已有数据
-    const hasMentions = syncState.mentionedAssets.length > 0;
-
-    const updatedShots = currentShots.map(s =>
-      s.id === shotId ? {
-        ...s,
-        imagePrompt,
-        ...(hasMentions ? {
-          characters: syncState.selectedCharacters,
-          scenes: syncState.selectedScenes,
-          props: syncState.selectedProps,
-        } : {}),
-      } : s
-    );
-    saveAllShots(updatedShots);
-  }, [saveAllShots, syncFromPrompt, generatingImagePrompts]);
-
-  // 视频提示词变更时的资产同步策略（同 handleImagePromptChange）：
-  // 1. 批量生成期间跳过同步（generatingVideoPrompts 守卫）
-  // 2. 仅当提示词包含 @mentions 时才更新资产绑定（hasMentions 守卫）
-  // 3. ScriptEditor 外部 value 同步时不触发 onChange（isSyncingExternalRef）
-  const handleVideoPromptChange = useCallback((shotId: string, videoPrompt: string) => {
-    // 批量生成期间跳过，同 handleImagePromptChange
-    if (generatingVideoPrompts.has(shotId)) return;
-
-    const currentShots = shotsRef.current;
-    const shot = currentShots.find(s => s.id === shotId);
-    if (!shot) return;
-
-    // 解析提示词中的 @mentions，同步到资产选择
-    const syncState = syncFromPrompt(videoPrompt);
-
-    // 仅当提示词中确实包含 @mentions 时才更新资产绑定，避免空解析结果覆盖已有数据
-    const hasMentions = syncState.mentionedAssets.length > 0;
-
-    const updatedShots = currentShots.map(s =>
-      s.id === shotId ? {
-        ...s,
-        videoPrompt,
-        ...(hasMentions ? {
-          characters: syncState.selectedCharacters,
-          scenes: syncState.selectedScenes,
-          props: syncState.selectedProps,
-        } : {}),
-      } : s
-    );
-    saveAllShots(updatedShots);
-  }, [saveAllShots, syncFromPrompt, generatingVideoPrompts]);
-
-  // 角色变更 - 同时更新提示词中的 @mentions
-  const handleCharactersChange = useCallback((shotId: string, characterIds: string[]) => {
-    const shot = shots.find(s => s.id === shotId);
-    if (!shot) return;
-
-    // 更新图像提示词中的角色 mentions
-    const newImagePrompt = handleAssetChange('character', characterIds, shot.imagePrompt || '', assets);
-    // 更新视频提示词中的角色 mentions
-    const newVideoPrompt = handleAssetChange('character', characterIds, shot.videoPrompt || '', assets);
-
-    const updatedShots = shots.map(s =>
-      s.id === shotId ? {
-        ...s,
-        characters: characterIds,
-        imagePrompt: newImagePrompt,
-        videoPrompt: newVideoPrompt,
-      } : s
-    );
-    saveAllShots(updatedShots);
-  }, [shots, saveAllShots, handleAssetChange, assets]);
-
-  // 场景变更 - 同时更新提示词中的 @mentions
-  const handleScenesChange = useCallback((shotId: string, sceneIds: string[]) => {
-    const shot = shots.find(s => s.id === shotId);
-    if (!shot) return;
-
-    const newImagePrompt = handleAssetChange('scene', sceneIds, shot.imagePrompt || '', assets);
-    const newVideoPrompt = handleAssetChange('scene', sceneIds, shot.videoPrompt || '', assets);
-
-    const updatedShots = shots.map(s =>
-      s.id === shotId ? {
-        ...s,
-        scenes: sceneIds,
-        imagePrompt: newImagePrompt,
-        videoPrompt: newVideoPrompt,
-      } : s
-    );
-    saveAllShots(updatedShots);
-  }, [shots, saveAllShots, handleAssetChange, assets]);
-
-  // 参考图变更
-  const handleReferenceImagesChange = useCallback((shotId: string, referenceImages: StoredMediaAsset[], selectedReferenceIndex: number) => {
-    const updatedShots = shots.map(s =>
-      s.id === shotId ? {
-        ...s,
-        media: {
-          ...(s.media || {}),
-          references: referenceImages,
-          selectedReferenceIndex,
-        },
-      } : s
-    );
-    saveAllShots(updatedShots);
-  }, [shots, saveAllShots]);
-
-  // 道具变更 - 同时更新提示词中的 @mentions
-  const handlePropsChange = useCallback((shotId: string, propIds: string[]) => {
-    const shot = shots.find(s => s.id === shotId);
-    if (!shot) return;
-
-    const newImagePrompt = handleAssetChange('prop', propIds, shot.imagePrompt || '', assets);
-    const newVideoPrompt = handleAssetChange('prop', propIds, shot.videoPrompt || '', assets);
-
-    const updatedShots = shots.map(s =>
-      s.id === shotId ? {
-        ...s,
-        props: propIds,
-        imagePrompt: newImagePrompt,
-        videoPrompt: newVideoPrompt,
-      } : s
-    );
-    saveAllShots(updatedShots);
-  }, [shots, saveAllShots, handleAssetChange, assets]);
-
-  // 多图片变更
-  const handleImagesChange = useCallback((shotId: string, images: StoredMediaAsset[], currentImageIndex: number) => {
-    const updatedShots = shots.map(s =>
-      s.id === shotId ? {
-        ...s,
-        media: {
-          ...(s.media || {}),
-          images,
-          currentImageIndex,
-        },
-      } : s
-    );
-    saveAllShots(updatedShots);
-  }, [shots, saveAllShots]);
-
-  // 多视频变更
-  const handleVideosChange = useCallback((shotId: string, videos: StoredMediaAsset[], currentVideoIndex: number) => {
-    const selectedVersion = findVersionNumberForVideoAsset(
-      shotMetas.find(meta => meta.id === shotId),
-      videos[currentVideoIndex],
-    );
-    const updatedShots = shots.map(s =>
-      s.id === shotId ? {
-        ...s,
-        currentVersion: selectedVersion ?? s.currentVersion,
-        media: {
-          ...(s.media || {}),
-          videos,
-          currentVideoIndex,
-        },
-      } : s
-    );
-    saveAllShots(updatedShots);
-  }, [shots, saveAllShots, shotMetas]);
-
-  // 向上合并
-  const handleMergeUp = useCallback(async (shotId: string) => {
-    const index = shots.findIndex(s => s.id === shotId);
-    if (index <= 0) return;
-    const target = shots[index - 1];
-    const source = shots[index];
-    const merged = mergeShots(target, source, itvDurationSpec);
-    const updatedShots = shots.filter((_, i) => i !== index).map((s, i) =>
-      i === index - 1 ? merged : s
-    );
-    await saveAllShots(updatedShots);
-    message.success('分镜已向上合并');
-  }, [shots, saveAllShots, itvDurationSpec]);
-
-  // 向下合并
-  const handleMergeDown = useCallback(async (shotId: string) => {
-    const index = shots.findIndex(s => s.id === shotId);
-    if (index < 0 || index >= shots.length - 1) return;
-    const target = shots[index];
-    const source = shots[index + 1];
-    const merged = mergeShots(target, source, itvDurationSpec);
-    const updatedShots = shots.filter((_, i) => i !== index + 1).map((s, i) =>
-      i === index ? merged : s
-    );
-    await saveAllShots(updatedShots);
-    message.success('分镜已向下合并');
-  }, [shots, saveAllShots, itvDurationSpec]);
-
-  // 上移
-  const handleMoveUp = useCallback(async (shotId: string) => {
-    const index = shots.findIndex(s => s.id === shotId);
-    if (index <= 0) return;
-    const updatedShots = [...shots];
-    [updatedShots[index - 1], updatedShots[index]] = [updatedShots[index], updatedShots[index - 1]];
-    await saveAllShots(updatedShots);
-  }, [shots, saveAllShots]);
-
-  // 下移
-  const handleMoveDown = useCallback(async (shotId: string) => {
-    const index = shots.findIndex(s => s.id === shotId);
-    if (index < 0 || index >= shots.length - 1) return;
-    const updatedShots = [...shots];
-    [updatedShots[index], updatedShots[index + 1]] = [updatedShots[index + 1], updatedShots[index]];
-    await saveAllShots(updatedShots);
-  }, [shots, saveAllShots]);
+  // 分镜字段变更逻辑已拆到 hooks/useStoryboardShotMutations
+  const {
+    handleScriptLinesChange,
+    handleScriptLineDragEnd,
+    handleDurationChange,
+    handleImagePromptChange,
+    handleVideoPromptChange,
+    handleCharactersChange,
+    handleScenesChange,
+    handlePropsChange,
+    handleReferenceImagesChange,
+    handleImagesChange,
+    handleVideosChange,
+    handleMergeUp,
+    handleMergeDown,
+    handleMoveUp,
+    handleMoveDown,
+    createNewShot,
+    handleAddShot,
+    handleInsertAbove,
+    handleInsertBelow,
+    handleShotImageModeChange,
+    handleBulkImageModeChange,
+    handleStoryboardInheritPreviousChange,
+    handleShotVideoModeChange,
+    handleBulkVideoModeChange,
+  } = useStoryboardShotMutations({
+    shots,
+    shotsRef,
+    shotMetas,
+    characters,
+    scenes,
+    props,
+    saveAllShots,
+    itvDurationSpec,
+    generatingImagePrompts,
+    generatingVideoPrompts,
+    message,
+  });
 
   // 生成图片提示词（首次生成）
   // 提示词生成/优化逻辑已拆到 hooks/useStoryboardPrompts（单镜 + 批量参数化）
@@ -1091,129 +792,6 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   });
 
 
-  // 创建新分镜
-  const createNewShot = useCallback((): Shot => ({
-    id: uuidv4(),
-    scriptLines: [],
-    shotType: 'medium',
-    cameraMovement: 'static',
-    duration: 10,
-    imagePrompt: '',
-    imageMode: 'normal',
-    characters: [],
-    dialogue: '',
-    emotion: '',
-  }), []);
-
-  // 在末尾添加分镜
-  const handleAddShot = useCallback(async () => {
-    const newShot = createNewShot();
-    const updatedShots = [...shots, newShot];
-    await saveAllShots(updatedShots);
-  }, [shots, saveAllShots, createNewShot]);
-
-  const handleShotImageModeChange = useCallback((shotId: string, mode: EditableShotImageMode) => {
-    const updatedShots = shots.map(s => {
-      if (s.id !== shotId) return s;
-      // 模式切换时，图片提示词模板（normal / grid-9 / grid-4 / storyboard）和 TTI 终稿模板都不一样，
-      // 视频提示词的 shotsSection 也按模式渲染不同骨架。继续使用旧的 prompt + 旧的 image
-      // 会导致 UI 显示前一模式的旧图、新生成走错模板。所以模式切换时必须：
-      //  - 清空 images / currentImageIndex（强制让用户重新生成）
-      //  - 清空 imagePrompt / videoPrompt（强制重新 AI 推理新模板的提示词）
-      // 老 'grid' 视作等同 'grid-9'，imageMode 一旦切到不同变体就触发清空。
-      const oldMode = normalizeShotImageMode(s.imageMode);
-      const modeChanged = oldMode !== mode;
-
-      // 任一多面板变体（grid / storyboard）+ first-frame 都是非法组合（整张多面板参考 vs
-      // 单图微动延展），切到多面板时自动改回 multi-ref。
-      const correctedVideoMode = (isMultiPanelImageMode(mode) && s.videoMode === 'first-frame')
-        ? 'multi-ref' as const
-        : s.videoMode;
-
-      if (!modeChanged) {
-        return { ...s, imageMode: mode, videoMode: correctedVideoMode };
-      }
-
-      return {
-        ...s,
-        imageMode: mode,
-        videoMode: correctedVideoMode,
-        // 清掉前一模式遗留的提示词产物，强制走新模板重推
-        imagePrompt: '',
-        videoPrompt: '',
-        // 清掉前一模式遗留的图片，避免 UI 继续显示老模式的图
-        media: {
-          ...(s.media || {}),
-          images: [],
-          currentImageIndex: 0,
-          gridImage: undefined,
-        },
-      };
-    });
-    saveAllShots(updatedShots);
-  }, [shots, saveAllShots]);
-
-  const handleStoryboardInheritPreviousChange = useCallback((shotId: string, enabled: boolean) => {
-    const updatedShots = shots.map(s =>
-      s.id === shotId ? { ...s, inheritPreviousStoryboard: enabled } : s
-    );
-    saveAllShots(updatedShots);
-  }, [shots, saveAllShots]);
-
-  const handleShotVideoModeChange = useCallback((shotId: string, mode: 'multi-ref' | 'first-frame') => {
-    const updatedShots = shots.map(s =>
-      s.id === shotId ? { ...s, videoMode: mode } : s
-    );
-    saveAllShots(updatedShots);
-  }, [shots, saveAllShots]);
-
-  /** 批量切换：把当前剧集所有分镜的 videoMode 改为同一值 */
-  const handleBulkVideoModeChange = useCallback((mode: 'multi-ref' | 'first-frame') => {
-    if (!shots.length) return;
-    const updatedShots = shots.map(s => ({ ...s, videoMode: mode }));
-    saveAllShots(updatedShots);
-  }, [shots, saveAllShots]);
-
-  /**
-   * 批量切换：把当前剧集所有分镜的 imageMode 改为同一值（普通 / 四宫格 / 九宫格 / 故事板）。
-   *
-   * 行为必须与单镜 handleShotImageModeChange 完全一致 —— 模式切换会换模板，旧的
-   * imagePrompt / videoPrompt / images 都得清掉重推，否则 UI 还在显示旧模式的图、
-   * 新生成又走错模板。同时多面板 + first-frame 是非法组合，要顺手把 videoMode 修回
-   * multi-ref。这里逐镜应用单镜的同套规则。
-   */
-  const handleBulkImageModeChange = useCallback((mode: EditableShotImageMode) => {
-    if (!shots.length) return;
-    const updatedShots = shots.map(s => {
-      const oldMode = normalizeShotImageMode(s.imageMode);
-      const modeChanged = oldMode !== mode;
-
-      const correctedVideoMode = (isMultiPanelImageMode(mode) && s.videoMode === 'first-frame')
-        ? 'multi-ref' as const
-        : s.videoMode;
-
-      if (!modeChanged) {
-        return { ...s, imageMode: mode, videoMode: correctedVideoMode };
-      }
-
-      return {
-        ...s,
-        imageMode: mode,
-        videoMode: correctedVideoMode,
-        imagePrompt: '',
-        videoPrompt: '',
-        media: {
-          ...(s.media || {}),
-          images: [],
-          currentImageIndex: 0,
-          gridImage: undefined,
-        },
-      };
-    });
-    saveAllShots(updatedShots);
-  }, [shots, saveAllShots]);
-
-  // 配音逻辑已拆到 hooks/useStoryboardAudio（剧情分段音色 + 解说单音色）
   const {
     handleGenerateShotAudio,
     handleBatchGenerateAudios,
@@ -1232,23 +810,6 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     message,
   });
 
-
-  const handleInsertAbove = useCallback(async (shotId: string) => {
-    const index = shots.findIndex(s => s.id === shotId);
-    if (index < 0) return;
-    const newShot = createNewShot();
-    const updatedShots = [...shots.slice(0, index), newShot, ...shots.slice(index)];
-    await saveAllShots(updatedShots);
-  }, [shots, saveAllShots, createNewShot]);
-
-  // 在指定位置下方插入
-  const handleInsertBelow = useCallback(async (shotId: string) => {
-    const index = shots.findIndex(s => s.id === shotId);
-    if (index < 0) return;
-    const newShot = createNewShot();
-    const updatedShots = [...shots.slice(0, index + 1), newShot, ...shots.slice(index + 1)];
-    await saveAllShots(updatedShots);
-  }, [shots, saveAllShots, createNewShot]);
 
   // 打开预选资产弹窗
   const _handleOpenPresetModal = useCallback(() => {
