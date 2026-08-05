@@ -267,6 +267,43 @@ export class ComfyUIITVProvider implements ITVProvider {
     return toLoadImageValue(uploaded);
   }
 
+  /**
+   * 上传音色参考音频到 ComfyUI input 目录，返回 LoadAudio 可用的取值。
+   * 优先 /upload/audio（字段 audio）；老版本 ComfyUI 没有该端点时回退 /upload/image。
+   */
+  private async uploadReferenceAudio(ref: ProviderAssetInput, index: number): Promise<string> {
+    const { bytes, mimeType } = await fetchReferenceBytes(ref);
+    if (!bytes || bytes.length === 0) {
+      throw new Error('音色参考音频为空，无法上传到 ComfyUI');
+    }
+    const filename = `koma-voice-${Date.now()}-${index + 1}.${extFromMime(mimeType)}`;
+
+    const attempt = async (path: string, field: string): Promise<string | null> => {
+      const form = new FormData();
+      form.append(field, new Blob([bytes], { type: mimeType }), filename);
+      form.append('overwrite', 'true');
+      const response = await safeFetch(joinUrl(this.getBaseUrl(), path), {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: form as any,
+      });
+      if (!response.ok) return null;
+      try {
+        const uploaded = JSON.parse(await response.text()) as ComfyUploadedImage;
+        return uploaded?.name ? toLoadImageValue(uploaded) : null;
+      } catch {
+        return null;
+      }
+    };
+
+    const uploaded = await attempt('/upload/audio', 'audio')
+      ?? await attempt(COMFY_UPLOAD_IMAGE_PATH, 'image');
+    if (!uploaded) {
+      throw new Error(`ComfyUI 音色参考音频上传失败（/upload/audio 与 /upload/image 均不可用）`);
+    }
+    return uploaded;
+  }
+
   private collectReferences(request: ITVRequest): ProviderAssetInput[] {
     if (request.capability === 'video.image-to-video') {
       return [request.primaryImage, ...(request.additionalReferences || [])]
@@ -305,9 +342,19 @@ export class ComfyUIITVProvider implements ITVProvider {
       uploadedImages.push(await this.uploadReferenceImage(references[i], i));
     }
 
+    // 音色参考（音画同出）：渲染工作流经 metadata.komaVoiceReferences 传入，
+    // 上传后接 MiniMaxH3ReferenceToVideo 的 ref_audios（上限 3）
+    const voiceRefs = (request.metadata?.komaVoiceReferences as ProviderAssetInput[] | undefined) ?? [];
+    const maxAudioReferences = toNumber(defaults.maxAudioReferences) ?? 3;
+    const uploadedAudios: string[] = [];
+    for (let i = 0; i < Math.min(voiceRefs.length, maxAudioReferences); i += 1) {
+      uploadedAudios.push(await this.uploadReferenceAudio(voiceRefs[i], i));
+    }
+
     const workflow = applyComfyWorkflowParams(template, bindings, {
       prompt: String(request.prompt || '').trim(),
       referenceImages: uploadedImages,
+      audioReferences: uploadedAudios,
       durationSec: this.clampDuration(options?.duration ?? this.config.defaultDuration, COMFY_DEFAULT_DURATION_SEC),
       aspectRatio: options?.aspectRatio,
       resolution: options?.resolution ?? this.config.defaultResolution,
@@ -315,6 +362,7 @@ export class ComfyUIITVProvider implements ITVProvider {
       steps: toNumber(defaults.steps),
       fps: options?.fps ?? toNumber(defaults.fps),
       maxReferenceImages,
+      maxAudioReferences,
     });
 
     logger.info('ComfyUI start request', {

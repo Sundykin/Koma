@@ -943,29 +943,22 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     id: 'shot_breakdown_drama',
     category: 'analysis',
     name: '分镜拆解（剧情模式 · 分镜创作）',
-    description: '把结构化剧本（[旁白]/[台词·角色]/[场景] 标记行）拆解为真正的分镜：每镜创作分镜描述文本（画面/动作/场景），并归属旁白与台词（带说话人）。',
-    template: `你是一位专业的影视分镜师。下面给你一段结构化剧本（已标注【旁白】/【台词·角色名】/【场景】）。
-你的任务不是切分文字，而是**创作分镜**：把剧本拆成一个个镜头，为每个镜头写出真正的分镜描述文本。
+    description: '把小说/剧本拆解为真正的分镜脚本：每镜一段完整的分镜脚本（画面+动作+台词自然行文），不强制旁白/台词标注。',
+    template: `你是一位专业的影视分镜师。下面给你一段小说/剧本（可能带 [旁白]/[台词·角色名]/[场景] 标注，也可能是纯小说文本）。
+你的任务不是切分文字，而是**创作分镜**：把剧情拆成一个个镜头，为每个镜头写出一段完整的**分镜脚本**。
 
-【两种产出，严格区分，绝不混写】
-1. **description（分镜描述文本）**：这个镜头**拍什么**——场景空间、人物姿态与动作、道具状态、构图与光线。
-   - 只写镜头能拍到的客观画面；不写心理活动、不写评价总结、不照搬旁白/台词原文。
-   - 这是后续 AI 生图/生视频的主输入，必须具体、可拍、可视。
-2. **voiceLines（声音行）**：这个镜头里**听到的内容**，只从剧本的旁白与台词中归属，分两类：
-   - 旁白：{ "role": "narration", "text": "旁白内容" } —— 画外音，人物不开口
-   - 台词：{ "role": "dialogue", "speaker": "角色名", "text": "台词内容" } —— 角色当场开口，speaker 必填（用【台词·角色名】里的名字）
-   - voiceLines 文本要忠于剧本原文（可合并同一说话人的相邻行，不得改写语义、不得把旁白改成台词或反之）。
-
-【剧本标记说明】
-- [旁白] 开头 = 叙述/描写 → 提炼成 description 的画面事实；其中适合当画外音的句子同时归入 voiceLines 的 narration。
-- [台词·角色名] 开头 = 人物开口 → 归入 voiceLines 的 dialogue；说话时的动作/神态写进 description。
-- [场景] 开头 = 场景标注 → 用于 description 的空间锚点与断镜参考，不直接进入 voiceLines。
+【分镜脚本 script 的写法】
+- 就是正规分镜脚本的样子：先写画面（场景空间、人物姿态与动作、道具、构图与光线），再写这个镜头里的声音/台词，自然行文，**不要加 [旁白]/[台词] 之类的标注**。
+- 台词直接写成角色说话的句子（如：宁卓抬眼："你们来了。"），声音描写直接写（如：雨声渐弱，远处传来脚步）。
+- 只写镜头能拍到/听到的客观内容；不写心理活动、不写评价总结。
+- 这段脚本是后续 AI 生图/生视频（音画同出模型）的主输入，必须具体、可拍、可演。
+- 旁白/画外音**不是必须的**：有才有，没有就不写。
 
 【切镜原则】
 1. 按剧情顺序拆镜；出现新空间 / 新动作 / 新说话人 / 情绪转折 / 时间推进时倾向开新镜头。
 2. 每镜 duration {{durationConstraint}}；无法判断时填 {{durationDefault}}；台词多的镜头给足时长（每句台词约 1.5–3 秒）。
-3. 每镜 description 1–4 句；voiceLines 可以为空（无旁白无台词的动作镜），但全剧不能大面积为空。
-4. 剧本中的台词与关键旁白必须全部归属到某个分镜，不得遗漏（可按镜头语义就近归属）。
+3. 每镜 script 一小段（2–6 句）。
+4. 剧本中的台词与关键情节必须全部覆盖到某个分镜，不得遗漏、不得概括性合并。
 
 【情绪词列表】
 高兴、愤怒、悲伤、恐惧、反感、低落、惊讶、自然、急切、平静、激动、呵斥、关心、严肃
@@ -974,9 +967,9 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 已知场景：{{scenes}}
 已知道具：{{props}}
 
-【重要】characters、scenes、props 字段必须使用上方"已知角色/场景/道具"列表中的原始名称，不要自行编造或修改名称；voiceLines 的 speaker 同样用已知角色名。某分镜涉及的元素不在列表中则不填入对应字段。
+【重要】characters、scenes、props 字段必须使用上方"已知角色/场景/道具"列表中的原始名称，不要自行编造或修改名称；某分镜涉及的元素不在列表中则不填入对应字段。
 
-【结构化剧本】
+【剧本原文】
 {{script}}
 
 【输出 JSON】
@@ -984,11 +977,7 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 {
   "shots": [
     {
-      "description": "废弃戏台，雨夜。宁卓独立台中央，背影绷直，手握剑柄微颤；残破帷幕被风掀起，冷蓝月光从豁口斜切进来。",
-      "voiceLines": [
-        { "role": "narration", "text": "雨水顺着残破的戏台边缘往下淌" },
-        { "role": "dialogue", "speaker": "宁卓", "text": "你们来了" }
-      ],
+      "script": "废弃戏台，雨夜。宁卓独立台中央，背影绷直，手握剑柄微颤。帷幕被风掀起，冷蓝月光从豁口斜切进来。宁卓抬眼，声音很平："你们来了。"",
       "shotType": "medium",
       "cameraMovement": "static",
       "duration": 6,
@@ -1002,9 +991,8 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 \`\`\`
 
 字段说明：
-- description：分镜描述文本（画面/动作/场景），客观可见，是生图生视频的主输入
-- voiceLines：声音行数组；role=narration 为旁白，role=dialogue 为台词且必须带 speaker
-- dialogue 字段已废弃，一律省略；所有台词都进 voiceLines
+- script：分镜脚本（画面 + 动作 + 台词/声音的自然行文），是本镜唯一文本来源
+- dialogue 字段已废弃，一律省略；台词就写在 script 里
 `,
     variables: [
       variable('script'),

@@ -370,3 +370,58 @@ describe('ComfyUIITVProvider', () => {
     expect((safeFetch as any).mock.calls[1][0]).toBe(`${BASE}/interrupt`);
   });
 });
+
+describe('voice references (音色参考)', () => {
+  beforeEach(() => {
+    (safeFetch as any).mockReset();
+  });
+
+  it('uploads audio references and wires them to ref_audios.ref_audio_N with LoadAudio nodes', async () => {
+    mockUpload('ref.png');                          // 参考图
+    (safeFetch as any).mockResolvedValueOnce({      // 音色音频（/upload/audio）
+      ok: true, status: 200,
+      text: async () => JSON.stringify({ name: 'voice.wav', subfolder: '', type: 'input' }),
+    });
+    mockPromptAccepted();
+    const comfy = new ComfyUIITVProvider(createConfig());
+
+    await comfy.start({
+      capability: 'video.reference-to-video',
+      prompt: '宁卓的台词使用 <音频 1> 的音色',
+      referenceImages: [{ transport: 'data-url', value: DATA_URL_IMG, mimeType: 'image/png' }],
+      metadata: {
+        komaVoiceReferences: [
+          { characterId: 'char_1', characterName: '宁卓', transport: 'data-url', value: 'data:audio/wav;base64,UklGRiQAAABXQVZF', mimeType: 'audio/wav' },
+        ],
+      },
+    } as any);
+
+    // 上传顺序：参考图(/upload/image) → 音频(/upload/audio) → 提交(/prompt)
+    expect((safeFetch as any).mock.calls[1][0]).toContain('/upload/audio');
+    const workflow = JSON.parse((safeFetch as any).mock.calls[2][1].body).prompt;
+    expect(workflow['136'].inputs['ref_audios.ref_audio_0']).toEqual(['koma_audio_0', 0]);
+    expect(workflow['koma_audio_0'].class_type).toBe('LoadAudio');
+    expect(workflow['koma_audio_0'].inputs.audio).toBe('voice.wav');
+  });
+
+  it('falls back to /upload/image when /upload/audio is unavailable', async () => {
+    (safeFetch as any).mockResolvedValueOnce({ ok: false, status: 404, text: async () => 'not found' }); // /upload/audio 404
+    mockUpload('voice.wav');  // /upload/image fallback
+    mockPromptAccepted();
+    const comfy = new ComfyUIITVProvider(createConfig());
+
+    await comfy.start({
+      capability: 'video.text-to-video',
+      prompt: 'x',
+      metadata: {
+        komaVoiceReferences: [
+          { transport: 'data-url', value: 'data:audio/wav;base64,UklGRiQAAABXQVZF', mimeType: 'audio/wav' },
+        ],
+      },
+    } as any);
+
+    expect((safeFetch as any).mock.calls[1][0]).toContain('/upload/image');
+    const workflow = JSON.parse((safeFetch as any).mock.calls[2][1].body).prompt;
+    expect(workflow['136'].inputs['ref_audios.ref_audio_0']).toEqual(['koma_audio_0', 0]);
+  });
+});

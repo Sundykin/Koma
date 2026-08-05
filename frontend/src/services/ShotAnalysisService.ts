@@ -9,6 +9,7 @@ import { resolvePromptTemplate } from '../store/promptTemplates';
 import { TaskManager, Task } from './TaskManager';
 import { createTaskCancellationSignal } from './taskCancellationSignal';
 import { parseLLMJSONWithMeta } from '../utils/llmJsonParser';
+import { parseShotScriptParagraph } from './dramaScript';
 import { saveEpisodeShots } from '../store/projectStore';
 import { createLogger } from '../store/logger';
 import { extractErrorMessage } from '../utils/errorHandler';
@@ -280,28 +281,22 @@ export class ShotAnalysisService {
         return undefined;
       };
 
-      // 剧情模式：分镜描述行（description，画面/动作/场景，提示词主输入）在前，
-      // 声音行（narration 旁白 / dialogue 台词带说话人 characterId）在后；
-      // 解说模式行是纯字幕文本，全部为旁白行。
+      // 剧情模式：scriptLines = 分镜脚本的行结构（无标记行=分镜描述；带 [旁白]/[台词·角色]
+      // 标记的行按对应类型解析，说话人名映射 characterId）；解说模式行是纯字幕文本，全部为旁白行。
       const isDrama = this.ctx.projectMode === 'drama';
       const buildScriptLines = (s: any): Shot['scriptLines'] => {
         if (!isDrama) {
           const texts = (s.__resolvedLines as string[] | undefined) || [];
           return texts.map(text => createScriptLine(text, 'narration'));
         }
-        const out: Shot['scriptLines'] = [];
-        for (const text of (s.__dramaDescriptionLines as string[] | undefined) || []) {
-          out.push(createScriptLine(text, 'description'));
-        }
-        for (const v of (s.__dramaVoiceLines as Array<{ role: 'narration' | 'dialogue'; text: string; speaker?: string }> | undefined) || []) {
-          if (v.role === 'dialogue') {
-            const speaker = v.speaker ? fuzzyMatchAsset(v.speaker, characters) : undefined;
-            out.push(createScriptLine(v.text, 'dialogue', speaker ? getCharId(speaker) : undefined));
-          } else {
-            out.push(createScriptLine(v.text, 'narration'));
+        const parsedLines = (s.__dramaScriptLines as Array<{ role: 'description' | 'narration' | 'dialogue'; text: string; speaker?: string }> | undefined) || [];
+        return parsedLines.map(line => {
+          if (line.role === 'dialogue') {
+            const speaker = line.speaker ? fuzzyMatchAsset(line.speaker, characters) : undefined;
+            return createScriptLine(line.text, 'dialogue', speaker ? getCharId(speaker) : undefined);
           }
-        }
-        return out;
+          return createScriptLine(line.text, line.role);
+        });
       };
 
       // 分镜拆解时 description 为 undefined，后续手动生成
@@ -419,10 +414,9 @@ export class ShotAnalysisService {
     const styledPrompt = this.appendStyleRequirement(resolvedPrompt.prompt);
 
     const systemPrompt = [
-      '你是一个专业的影视分镜师。把结构化剧本拆解成真正的分镜：',
-      '每镜创作分镜描述文本（场景/人物/动作/画面，客观可见，作为生图生视频主输入），',
-      '并把剧本中的旁白与台词（带说话人）归属到对应镜头。台词与关键旁白必须全部归属，不得遗漏。',
-      '只输出 JSON，不要任何解释。',
+      '你是一个专业的影视分镜师。把剧本拆解成真正的分镜：每镜写一段完整的分镜脚本',
+      '（画面/动作/场景 + 台词与声音的自然行文，像正规分镜脚本，不加 [旁白]/[台词] 标注）。',
+      '台词与关键情节必须全部覆盖，不得遗漏。只输出 JSON，不要任何解释。',
     ].join('\n');
 
     const chunkTraceId = chunk.total > 1 ? `${traceId}-chunk-${chunk.index + 1}` : traceId;
@@ -465,25 +459,14 @@ export class ShotAnalysisService {
     });
 
     return rawShots.map((s) => {
-      // description：分镜描述文本（允许多行），每行一个 description 行块
-      const descriptionLines = String(s.description || '')
-        .split(/\r?\n/)
-        .map((line: string) => line.trim())
-        .filter(Boolean);
-      // voiceLines：声音行（旁白/台词），说话人名留到物化阶段映射 characterId
-      const voiceLines = (Array.isArray(s.voiceLines) ? s.voiceLines : [])
-        .map((v: any) => ({
-          role: v?.role === 'dialogue' ? 'dialogue' as const : 'narration' as const,
-          text: String(v?.text || '').trim(),
-          speaker: typeof v?.speaker === 'string' ? v.speaker.trim() : undefined,
-        }))
-        .filter((v: { text: string }) => v.text.length > 0);
+      // 分镜脚本文本（完整一段，可能多行）；按行拆成块，无标记行=分镜描述，
+      // 用户/模型手写的 [旁白]/[台词·角色] 标记行仍按对应类型解析（向前兼容）
+      const scriptLines = parseShotScriptParagraph(String(s.script || ''));
       return {
         ...s,
-        __dramaDescriptionLines: descriptionLines,
-        __dramaVoiceLines: voiceLines,
+        __dramaScriptLines: scriptLines,
       };
-    }).filter((s: any) => s.__dramaDescriptionLines.length > 0 || s.__dramaVoiceLines.length > 0);
+    }).filter((s: any) => s.__dramaScriptLines.length > 0);
   }
 
   private async generateShotPayloadsForChunk(

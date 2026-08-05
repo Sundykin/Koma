@@ -109,6 +109,8 @@ export interface ComfyWorkflowParams {
   prompt: string;
   /** 已上传到 ComfyUI 的参考图取值（LoadImage.inputs.image） */
   referenceImages?: string[];
+  /** 已上传到 ComfyUI 的音频参考取值（LoadAudio.inputs.audio）——音色参考，接 ref_audios */
+  audioReferences?: string[];
   durationSec?: number;
   aspectRatio?: string;
   resolution?: string;
@@ -117,6 +119,8 @@ export interface ComfyWorkflowParams {
   fps?: number;
   /** 参考图数量上限（MiniMax H3 的 autogrow 上限为 9） */
   maxReferenceImages?: number;
+  /** 音频参考数量上限（MiniMax H3 ref_audios 上限 3） */
+  maxAudioReferences?: number;
 }
 
 function findByClass(workflow: ComfyWorkflow, classNames: string[]): string | undefined {
@@ -303,6 +307,24 @@ export function applyComfyWorkflowParams(
     if (host) delete host.inputs[slot.inputKey];
   }
   pruneOrphanNodes(next, unusedSlots.map(slot => slot.nodeId));
+
+  // 音频参考（音色参考）：ref_audios 同为 autogrow（prefix ref_audio_，max 3），
+  // 模板通常不预连音频节点 —— 统一按需新建 LoadAudio 节点并接线。
+  // 提示词占位符 <音频 N> / @Audio N 从 1 开始，对应 ref_audios.ref_audio_(N-1)。
+  const audioReferences = (params.audioReferences ?? [])
+    .filter(Boolean)
+    .slice(0, params.maxAudioReferences ?? 3);
+  audioReferences.forEach((audio, index) => {
+    if (!host) return;
+    let nodeId = `koma_audio_${index}`;
+    while (next[nodeId]) nodeId = `${nodeId}_x`;
+    next[nodeId] = {
+      class_type: 'LoadAudio',
+      inputs: { audio },
+      _meta: { title: `加载音频（Koma 音色参考 ${index + 1}）` },
+    };
+    host.inputs[`ref_audios.ref_audio_${index}`] = [nodeId, 0];
+  });
 
   if (bindings.resolutionNodeId && next[bindings.resolutionNodeId]) {
     const aspectRatio = normalizeAspectRatioOption(params.aspectRatio);

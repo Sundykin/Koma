@@ -35,6 +35,7 @@ import {
   resolveShotVideoCapabilitySupport,
 } from './shotVideoPlan';
 import { compileShotVideoGenerationRequest } from './videoGenerationRequests';
+import { buildShotVoiceReferencePlan } from './shotVoiceReferences';
 import { resolveConfiguredChannelModel } from '../providers/channel/resolver';
 import { getModelMaxReferenceImages } from '../providers/itv/modelCatalog';
 import type { StyleSnapshotLike } from '../utils/promptNormalize';
@@ -272,6 +273,44 @@ export async function shotRenderWorkflow(
       capability: effectiveVideoCapability,
       providerType,
     });
+
+    // 音色参考（音画同出模型）：绑定音色的角色把示例音频挂进请求，
+    // 并在提示词末尾追加协议对应的占位行（<音频 N> / @Audio N，每类参考从 1 开始编号）
+    const itvChannelPromptProtocol = (selectedItvContext?.channelConfig?.providerConfig as Record<string, unknown> | undefined)
+      ?.promptProtocol as string | undefined;
+    const fallbackProtocol = providerType === 'comfyui-itv' ? 'minimax-image-tag' : undefined;
+    const voicePlan = await buildShotVoiceReferencePlan({
+      shotCharacters: normalizedShot.characters || [],
+      characters,
+      promptProtocol: itvChannelPromptProtocol ?? fallbackProtocol,
+    }).catch((err) => {
+      logger.warn('音色参考构建失败，跳过', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return { references: [], promptSuffix: '' };
+    });
+    if (voicePlan.references.length > 0) {
+      const mergedPrompt = `${compiledVideoRequest.prompt}\n${voicePlan.promptSuffix}`;
+      compiledVideoRequest.prompt = mergedPrompt;
+      compiledVideoRequest.request = {
+        ...compiledVideoRequest.request,
+        prompt: mergedPrompt,
+        metadata: {
+          ...(compiledVideoRequest.request.metadata ?? {}),
+          komaVoiceReferences: voicePlan.references.map(ref => ({
+            characterId: ref.characterId,
+            characterName: ref.characterName,
+            transport: ref.asset.transport,
+            value: ref.asset.value,
+            mimeType: ref.asset.mimeType,
+          })),
+        },
+      };
+      logger.info('已附加音色参考', {
+        shotId: normalizedShot.id,
+        voiceReferences: voicePlan.references.map(r => r.characterName),
+      });
+    }
     const providerSideReferenceCount = isImageToVideoRequest(compiledVideoRequest.request)
       ? (compiledVideoRequest.request.additionalReferences || []).length
       : isReferenceToVideoRequest(compiledVideoRequest.request)

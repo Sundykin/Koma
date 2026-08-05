@@ -61,7 +61,8 @@ import {
 import { getModelMaxReferenceImages } from '../../providers/itv/modelCatalog';
 import './Storyboard.scss';
 import './ShotListEditor.scss';
-import { getMediaAssetDisplaySource, scriptLinesFromText, getShotScriptText } from '../../types';
+import { getMediaAssetDisplaySource, scriptLinesFromText, getShotScriptText, createScriptLine } from '../../types';
+import { parseShotScriptParagraph, serializeShotScriptParagraph } from '../../services/dramaScript';
 
 const logger = createLogger('Storyboard');
 
@@ -898,8 +899,26 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     }
   }, [projectId, episodeId, episodeName, script, llmSelection, characters, props, message, styleSnapshot]);
 
-  const handleSaveEdit = useCallback(async () => {
-    const editScriptText = getShotScriptText(editFormData as Shot);
+  /** 剧情模式编辑弹窗：说话人名字 → characterId（精确 → 包含 → 被包含） */
+  const speakerNameById = useMemo(
+    () => new Map(characters.map(c => [c.id, c.name])),
+    [characters],
+  );
+  const resolveSpeakerCharacterId = useCallback((speaker?: string): string | undefined => {
+    if (!speaker || !characters.length) return undefined;
+    const trimmed = speaker.trim();
+    const exact = characters.find(c => c.name === trimmed);
+    if (exact) return exact.id;
+    const contains = characters.find(c => trimmed.includes(c.name));
+    if (contains) return contains.id;
+    return characters.find(c => c.name.includes(trimmed))?.id;
+  }, [characters]);
+
+  const handleSaveEdit = useCallback(async () => {    const isDrama = narrativeMode === 'drama';
+    // 剧情模式：编辑文本是整段分镜剧本（含 [旁白]/[台词·角色] 标记），按结构解析保留行类型
+    const editScriptText = isDrama
+      ? serializeShotScriptParagraph((editFormData as Shot).scriptLines ?? [], speakerNameById)
+      : getShotScriptText(editFormData as Shot);
     if (!editScriptText.trim()) {
       message.warning('请输入剧本内容');
       return;
@@ -911,7 +930,10 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     const updatedShot: Shot = {
       ...editingShot!,
       ...editFormData,
-      scriptLines: scriptLinesFromText(editScriptText),
+      // 剧情模式 editFormData.scriptLines 已带角色结构，直接用；解说模式按纯文本逐行重建
+      scriptLines: isDrama
+        ? (editFormData.scriptLines ?? [])
+        : scriptLinesFromText(editScriptText),
       duration: clampDurationToSpec(editFormData.duration ?? editingShot?.duration, itvDurationSpec),
     } as Shot;
     const isNew = !shots.find(s => s.id === editingShot!.id);
@@ -1099,9 +1121,25 @@ export const Storyboard: React.FC<StoryboardProps> = ({
           <Form.Item label="剧本内容" required>
             <TextArea
               rows={3}
-              placeholder="对应剧本中的内容（每行一句字幕，回车换行）"
-              value={getShotScriptText(editFormData as Shot)}
-              onChange={(e) => setEditFormData(prev => ({ ...prev, scriptLines: scriptLinesFromText(e.target.value) }))}
+              placeholder={narrativeMode === 'drama'
+                ? '分镜剧本：画面/动作/场景直接写；[旁白] 画外音；[台词·角色名] 人物台词'
+                : '对应剧本中的内容（每行一句字幕，回车换行）'}
+              value={narrativeMode === 'drama'
+                ? serializeShotScriptParagraph((editFormData as Shot).scriptLines ?? [], speakerNameById)
+                : getShotScriptText(editFormData as Shot)}
+              onChange={(e) => {
+                const value = e.target.value;
+                setEditFormData(prev => ({
+                  ...prev,
+                  scriptLines: narrativeMode === 'drama'
+                    ? parseShotScriptParagraph(value).map(line => createScriptLine(
+                        line.text,
+                        line.role,
+                        line.role === 'dialogue' ? resolveSpeakerCharacterId(line.speaker) : undefined,
+                      ))
+                    : scriptLinesFromText(value),
+                }));
+              }}
             />
           </Form.Item>
 
