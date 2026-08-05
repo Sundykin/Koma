@@ -116,3 +116,27 @@ describe('resolveITVPrefersLocalAssets', () => {
     expect(resolveITVPrefersLocalAssets(new SuiheDirectITVProvider(cfg))).toBe(true);
   });
 });
+
+describe('per-kind 1-based numbering across all protocols（每类参考都从 1 开始）', () => {
+  const cases: Array<[string | undefined, 'image' | 'video' | 'audio', number, string]> = [
+    ['grok-image-index', 'image', 1, '@Image 1'],
+    ['grok-image-index', 'video', 1, '@Video 1'],
+    ['grok-image-index', 'audio', 1, '@Audio 1'],
+    ['minimax-image-tag', 'image', 1, '<图片 1>'],
+    ['minimax-image-tag', 'video', 1, '<视频 1>'],
+    ['minimax-image-tag', 'audio', 1, '<音频 1>'],
+    ['koma-jimeng', 'image', 1, '@image_file_1'],
+    ['koma-jimeng', 'video', 1, '@video_file_1'],
+    ['koma-jimeng', 'audio', 1, '@audio_file_1'],
+  ];
+  it.each(cases)('protocol %s kind %s index %i → %s', (protocol, kind, index, expected) => {
+    expect(formatReferencePlaceholder(protocol, kind, index)).toBe(expected);
+  });
+
+  it('kinds number independently from 1', () => {
+    // 同一请求里 3 类参考各自的序号都从 1 起
+    expect(formatReferencePlaceholder('minimax-image-tag', 'image', 1)).toBe('<图片 1>');
+    expect(formatReferencePlaceholder('minimax-image-tag', 'audio', 1)).toBe('<音频 1>');
+    expect(formatReferencePlaceholder('minimax-image-tag', 'video', 1)).toBe('<视频 1>');
+  });
+});

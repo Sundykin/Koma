@@ -216,3 +216,30 @@ describe('SuiheDirectITVProvider', () => {
     });
   });
 });
+
+describe('voice references (音色参考)', () => {
+  beforeEach(() => {
+    (safeFetch as any).mockReset();
+  });
+
+  it('uploads metadata.komaVoiceReferences to audio_file_N fields', async () => {
+    mockAcceptResponse();
+    const provider = new SuiheDirectITVProvider(createConfig());
+
+    await provider.start({
+      capability: 'video.text-to-video',
+      prompt: '宁卓的台词使用 <音频 1> 的音色',
+      metadata: {
+        komaVoiceReferences: [
+          { transport: 'data-url', value: 'data:audio/wav;base64,UklGRiQAAABXQVZF', mimeType: 'audio/wav' },
+          { transport: 'data-url', value: 'data:audio/wav;base64,UklGRiQAAABXQVZF', mimeType: 'audio/wav' },
+        ],
+      },
+    } as any);
+
+    const form = lastForm();
+    expect(form.get('audio_file')).toBeTruthy();
+    expect(form.get('audio_file_2')).toBeTruthy();
+    expect(form.get('audio_file_3')).toBeNull();
+  });
+});

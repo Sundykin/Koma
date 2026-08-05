@@ -233,6 +233,26 @@ export class SuiheDirectITVProvider implements ITVProvider {
       }
     }
 
+    // 音色参考（音画同出）：渲染工作流经 metadata.komaVoiceReferences 传入，
+    // 直传到穗禾全能参考的 audio_file / audio_file_2 / audio_file_3（上限 3）
+    const voiceRefs = (request.metadata?.komaVoiceReferences as ProviderAssetInput[] | undefined) ?? [];
+    let uploadedVoiceRefs = 0;
+    for (const ref of voiceRefs.slice(0, 3)) {
+      if (!ref?.value) continue;
+      const field = uploadedVoiceRefs === 0 ? 'audio_file' : `audio_file_${uploadedVoiceRefs + 1}`;
+      try {
+        const { bytes, mimeType } = await fetchReferenceBytes(ref);
+        if (!bytes || bytes.length === 0) continue;
+        form.append(field, new Blob([bytes], { type: mimeType }), `voice-ref-${uploadedVoiceRefs + 1}.${extFromMime(mimeType)}`);
+        uploadedVoiceRefs += 1;
+      } catch (error) {
+        logger.warn('音色参考音频读取失败，跳过', {
+          field,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
     logger.info('Suihe video start request', {
       provider: this.config.provider,
       capability: request.capability,
@@ -242,6 +262,7 @@ export class SuiheDirectITVProvider implements ITVProvider {
       videoResolution,
       uploadedFrames,
       uploadedOmniImages,
+      uploadedVoiceRefs,
       promptPreview: String(request.prompt || '').slice(0, 80),
     });
 
