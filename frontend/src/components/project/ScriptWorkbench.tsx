@@ -11,6 +11,7 @@ import { saveEpisode, loadEpisodeAnalysis, saveEpisodeAnalysis } from '../../sto
 import { generateRandomScript, polishScript } from '../../workflow/scriptGenerator';
 import { submitScriptAnalysisTask } from '../../services/analysisTaskClient';
 import { generateTweetScript } from '../../services/TweetCopyService';
+import { generateDramaScript } from '../../services/DramaScriptService';
 import { createCreationContext } from '../../services/CreationContext';
 import { TaskManager } from '../../services/TaskManager';
 import { useActiveTask } from '../../hooks';
@@ -286,7 +287,7 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
     }
   };
 
-  // 推文文案：流式直接覆盖当前剧本编辑器（不弹窗）
+  // 剧本结构化：剧情模式 → 小说解析为结构化剧本；解说模式 → 改写为推文文案。流式覆盖当前编辑器（不弹窗）
   const handleTweetCopy = async () => {
     if (!episode) {
       message.warning('请先选择剧集');
@@ -296,6 +297,7 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
       message.warning('请先输入剧本内容');
       return;
     }
+    const isDrama = (project.mode ?? 'narration') === 'drama';
     setIsTweetGenerating(true);
     setStreamingMode('tweet');
     setStreamingPreview('');
@@ -303,7 +305,8 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
       const ctx = await createCreationContext(project.id, episode.id, {
         styleSnapshot: project.styleSnapshot,
       });
-      const result = await generateTweetScript(
+      const generator = isDrama ? generateDramaScript : generateTweetScript;
+      const result = await generator(
         ctx,
         localScript,
         () => {},
@@ -313,11 +316,11 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
       );
       setStreamingPreview(result);
       setLocalScript(result);
-      // 推文化完成 → 同时置 scriptReady = true 解锁解析与下一步
+      // 结构化完成 → 同时置 scriptReady = true 解锁解析与下一步
       await saveScript(result, { scriptReady: true });
-      message.success('推文文案已生成并写入剧本，可以进入解析步骤');
+      message.success(isDrama ? '结构化剧本已生成并写入，可以进入解析步骤' : '推文文案已生成并写入剧本，可以进入解析步骤');
     } catch (err: unknown) {
-      logger.error('推文文案生成失败', err);
+      logger.error(isDrama ? '剧情剧本解析失败' : '推文文案生成失败', err);
       message.error(classifyAIError(err).userMessage);
     } finally {
       setIsTweetGenerating(false);
@@ -408,6 +411,7 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
       {/* 工具栏 */}
       <InlineProjectToolbar
         episode={episode}
+        narrativeMode={project.mode ?? 'narration'}
         hasScript={!!localScript.trim()}
         isSaving={isSaving}
         isGenerating={isGenerating}
@@ -434,7 +438,9 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
                       ? 'AI 正在生成剧本'
                       : streamingMode === 'polish'
                         ? 'AI 正在润色剧本'
-                        : 'AI 正在改写为推文文案'}
+                        : (project.mode ?? 'narration') === 'drama'
+                          ? 'AI 正在解析为结构化剧本'
+                          : 'AI 正在改写为推文文案'}
                   </span>
                 </div>
                 <p className="mt-1 text-xs text-text-tertiary">
@@ -442,7 +448,9 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
                     ? '内容会实时显示，完成后自动写入编辑器。'
                     : streamingMode === 'polish'
                       ? '润色结果会实时预览，完成后再覆盖当前剧本。'
-                      : '推文文案会实时预览，完成后会覆盖当前剧本编辑器内容并自动保存。'}
+                      : (project.mode ?? 'narration') === 'drama'
+                        ? '结构化剧本（旁白 + 带说话人的台词）会实时预览，完成后覆盖剧本编辑器并自动保存。'
+                        : '推文文案会实时预览，完成后会覆盖当前剧本编辑器内容并自动保存。'}
                 </p>
               </div>
               <span className="shrink-0 text-xs text-text-tertiary">{streamingPreview.length} 字符</span>

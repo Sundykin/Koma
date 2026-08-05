@@ -98,7 +98,12 @@ export {
   scriptLinesToText,
   getShotScriptText,
   createScriptLine,
+  createDialogueScriptLine,
+  isDialogueLine,
+  isNarrationLine,
+  buildShotVoiceSegments,
 } from './types/shot-script';
+export type { ShotVoiceSegment } from './types/shot-script';
 
 export type {
   AsyncTaskType,

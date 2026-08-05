@@ -52,7 +52,7 @@ import { generateId } from '../../utils/generateId';
 // 时间线为空时由 SimpleEditor 调用，把每个 shot 的"当前选中版本"自动落到 3 条轨道：
 //   video-main：getShotCurrentVideoSource → 没有则降级 image
 //   audio-main：getShotCurrentAudioAsset / Source（配音 wav / mp3）
-//   text-main：shot.dialogue
+//   text-main：getShotScriptText(shot)（左侧字幕列：旁白 + 台词）
 //
 // 三条轨道时间轴对齐 currentTime（按 shot.duration 累加），保证视频 / 音频 / 字幕同步起点。
 // 音频 clip 时长优先用 asset.durationMs（实际 TTS 输出长度），缺失时回退 shot.duration。
@@ -110,7 +110,10 @@ function shotsToTracks(shots: Shot[]): Track[] {
       });
     }
 
-    if (shot.dialogue) {
+    // 字幕轨道用左侧字幕列文本（旁白+台词），而不是 shot.dialogue ——
+    // 解说模式下字幕列（推文/解说文案）才是成片字幕；dialogue 已不再是字幕来源。
+    const subtitleText = getShotScriptText(shot).trim();
+    if (subtitleText) {
       textTrack.clips.push({
         id: `text-${shot.id}`,
         assetId: `text-asset-${shot.id}`,
@@ -118,9 +121,9 @@ function shotsToTracks(shots: Shot[]): Track[] {
         start: currentTime,
         duration: shotDuration,
         offset: 0,
-        name: shot.dialogue.slice(0, 10),
+        name: subtitleText.slice(0, 10),
         type: MediaType.TEXT,
-        src: shot.dialogue,
+        src: subtitleText,
         x: 0, y: 0, scale: 1, rotation: 0, opacity: 1,
       });
     }

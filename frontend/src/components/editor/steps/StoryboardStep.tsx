@@ -13,6 +13,7 @@ export const StoryboardStep: React.FC<{ ctx: EditorStepContext }> = ({ ctx }) =>
             ?? (ctx.activeEpisode ? `第${ctx.activeEpisode.number}集` : undefined)
         }
         script={ctx.scriptText}
+        narrativeMode={ctx.activeProject.mode ?? 'narration'}
         aspectRatio={ctx.activeProject.aspectRatio || '16:9'}
         llmSelection={ctx.llmSelection}
         ttiSelection={ctx.ttiSelection}

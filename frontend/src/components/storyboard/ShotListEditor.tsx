@@ -17,6 +17,8 @@ const { Text } = Typography;
 
 export interface ShotListEditorProps {
   projectId: string;
+  /** 叙事模式：剧情模式（drama）在分镜字幕列显示旁白/台词标记与说话人 */
+  narrativeMode?: 'drama' | 'narration';
   shots: Shot[];
   characters: Character[];
   scenes: Scene[];
@@ -83,6 +85,7 @@ export interface ShotListEditorProps {
 
 export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   projectId,
+  narrativeMode,
   shots,
   characters,
   scenes,
@@ -246,6 +249,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
           shot={shot}
           index={index}
           totalCount={latestShots.length}
+          narrativeMode={narrativeMode}
           characters={characters}
           scenes={scenes}
           props={props}

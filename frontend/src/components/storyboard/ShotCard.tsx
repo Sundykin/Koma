@@ -90,6 +90,8 @@ export interface ShotCardProps {
   shot: Shot;
   index: number;
   totalCount: number;
+  /** 叙事模式：剧情模式（drama）在字幕列显示旁白/台词标记与说话人；解说模式（narration）保持纯字幕 */
+  narrativeMode?: 'drama' | 'narration';
   characters: Character[];
   scenes: Scene[];
   props: Prop[];
@@ -155,6 +157,7 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
   shot,
   index,
   totalCount,
+  narrativeMode,
   characters,
   scenes,
   props,
@@ -771,6 +774,8 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
               shotId={shot.id}
               lines={shot.scriptLines || []}
               onLinesChange={onScriptLinesChange}
+              characters={narrativeMode === 'drama' ? characters : undefined}
+              showRoleBadge={narrativeMode === 'drama'}
             />
           </div>
         </div>

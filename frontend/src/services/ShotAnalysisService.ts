@@ -5,6 +5,7 @@
  */
 import type { Shot } from '../types';
 import { createScriptLine } from '../types';
+import { parseDramaScript } from './dramaScript';
 import { resolvePromptTemplate } from '../store/promptTemplates';
 import { TaskManager, Task } from './TaskManager';
 import { createTaskCancellationSignal } from './taskCancellationSignal';
@@ -280,12 +281,32 @@ export class ShotAnalysisService {
         return undefined;
       };
 
+      // 剧情模式：字幕行是带标记的结构化剧本行（[旁白]/[台词·角色]/[场景]），
+      // 解析成 role + characterId；解说模式行是纯字幕文本，全部为旁白行。
+      const isDrama = this.ctx.projectMode === 'drama';
+      const buildScriptLines = (texts: string[]): Shot['scriptLines'] => {
+        if (!isDrama) {
+          return texts.map(text => createScriptLine(text, 'narration'));
+        }
+        return texts.flatMap(text => {
+          const line = parseDramaScript(text)[0];
+          if (!line || !line.text) return [];
+          // 场景标记行只用于断镜参考，不作为字幕行落库
+          if (line.type === 'scene') return [];
+          if (line.type === 'dialogue') {
+            const speaker = line.speaker ? fuzzyMatchAsset(line.speaker, characters) : undefined;
+            return [createScriptLine(line.text, 'dialogue', speaker ? getCharId(speaker) : undefined)];
+          }
+          return [createScriptLine(line.text, 'narration')];
+        });
+      };
+
       // 分镜拆解时 description 为 undefined，后续手动生成
       // 时长按当前项目选择的 ITV 渠道 spec 吸附（grok 渠道 → 6/10/12/16/20；seedance → 4-15 范围），
       // 之前一律走 normalizeShotDuration（grok 枚举）会把 seedance 渠道的有效值 5 强制吸到 6
       const shots: Shot[] = parsedShotPayloads.map((s, index) => ({
         id: `shot_${Date.now()}_${index}`,
-        scriptLines: ((s.__resolvedLines as string[] | undefined) || []).map(text => createScriptLine(text)),
+        scriptLines: buildScriptLines((s.__resolvedLines as string[] | undefined) || []),
         shotType: s.shotType || 'medium',
         cameraMovement: s.cameraMovement || 'static',
         duration: clampDurationToSpec(s.duration, this.ctx.itvDurationSpec),

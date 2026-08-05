@@ -55,6 +55,8 @@ import {
   withVideoTrace,
 } from '../utils/videoGenerationTrace';
 import { getProjectPath } from '../store/projectStore';
+import { ffmpegManager } from './ffmpegManager';
+import { electronService } from './electronService';
 
 const logger = createLogger('MediaGeneration');
 
@@ -1078,6 +1080,96 @@ export class MediaGenerationService {
         },
       },
     });
+  }
+
+  /**
+   * 剧情模式分镜配音：旁白 + 台词（各带角色音色）多段合成后拼接成一条音频。
+   *
+   * 每段独立走 TTS（可指定不同 voiceId），再按顺序拼接为一个文件持久化到 ownerRef。
+   * 仅 1 段时直接退化为 generateAudio（等价单音色整段）。
+   */
+  async generateShotAudioWithSegments(params: {
+    projectId: string;
+    ownerRef: MediaOwnerRef;
+    segments: Array<{ text: string; voiceId: string }>;
+    options?: { rate?: number };
+    ttsSelection?: string;
+    taskName?: string;
+  }): Promise<StoredMediaAsset> {
+    const { projectId, ownerRef, segments, options, ttsSelection, taskName } = params;
+    const usable = segments.filter(seg => seg.text?.trim());
+    if (usable.length === 0) {
+      throw new Error('没有可配音的文本段');
+    }
+    const rate = options?.rate ?? 1.2;
+
+    // 单段：等价于整段单音色配音，避免不必要的拼接
+    if (usable.length === 1) {
+      return this.generateAudio({
+        projectId,
+        ownerRef,
+        request: { text: usable[0].text, voiceId: usable[0].voiceId, options: { rate } },
+        ttsSelection,
+        taskName: taskName || '分镜配音',
+      });
+    }
+
+    const partAssets: StoredMediaAsset[] = [];
+    for (let i = 0; i < usable.length; i += 1) {
+      const seg = usable[i];
+      const asset = await this.generateAudio({
+        projectId,
+        // 分段不绑 owner（避免覆盖同一槽位），最后只把拼接结果绑到 ownerRef
+        ownerRef: { projectId, ownerType: 'shot', ownerId: `${ownerRef.ownerId}-voice-part-${i}`, episodeId: ownerRef.episodeId, slot: 'audio' },
+        request: { text: seg.text, voiceId: seg.voiceId, options: { rate } },
+        ttsSelection,
+        taskName: `${taskName || '分镜配音'} · 第${i + 1}段`,
+      });
+      partAssets.push(asset);
+    }
+
+    // 拼接各段为一条音频；失败则回退用第一段（保证有可用配音而不至于整段失败）
+    const sources = partAssets
+      .map(a => a.localPath || a.remoteUrl)
+      .filter((s): s is string => Boolean(s));
+
+    const projectPath = await getProjectPath(projectId);
+    const shotDir = `${projectPath}/shots/${ownerRef.ownerId}`;
+    const concatOutputPath = `${shotDir}/voice-${Date.now()}.mp3`;
+
+    let finalAsset = partAssets[0];
+    let concatenated = false;
+    if (sources.length > 1) {
+      await electronService.fs.mkdir(shotDir);
+      try {
+        await ffmpegManager.concatMediaClips({
+          clips: sources.map((source, idx) => ({ kind: 'audio' as const, source, label: `第${idx + 1}段` })),
+          outputPath: concatOutputPath,
+          // 纯音频拼接，视频参数用最小占位（ffmpeg 仅音频轨道时不会用到画面）
+          width: 2,
+          height: 2,
+          fps: 24,
+        });
+        concatenated = true;
+      } catch (err) {
+        logger.warn('多段配音拼接失败，回退使用第一段', {
+          ownerRef,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    if (concatenated) {
+      finalAsset = await persistMediaAsset({
+        projectId,
+        kind: 'audio',
+        source: concatOutputPath,
+        ownerRef,
+        metadata: { voiceSegments: usable.length },
+      });
+      await bindOwnerRefMedia(projectId, ownerRef, finalAsset);
+    }
+    return finalAsset;
   }
 
   async recoverTask(params: {

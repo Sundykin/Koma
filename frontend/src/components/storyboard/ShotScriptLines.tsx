@@ -9,7 +9,7 @@
  * 由 Storyboard 提供，跨分镜拖动 onDragEnd 由父级捕获。
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Plus, Trash2, GripVertical } from 'lucide-react';
+import { Plus, Trash2, GripVertical, MessageSquareQuote, Megaphone } from 'lucide-react';
 import {
   SortableContext,
   useSortable,
@@ -19,24 +19,41 @@ import { CSS } from '@dnd-kit/utilities';
 import type { ShotScriptLine } from '../../types';
 import { createScriptLine } from '../../types';
 
+/** 剧情模式下，台词行需要按说话人显示角色名 */
+export interface ScriptLineCharacterOption {
+  id: string;
+  name: string;
+}
+
 interface ShotScriptLinesProps {
   shotId: string;
   lines: ShotScriptLine[];
-  /** 每次 lines 变更（编辑 / 删除 / 同分镜内排序 / 任意位置插入）回调 */
+  /** 每次 lines 变更（编辑 / 删除 / 同分镜内排序 / 任意位置插入 / 切换类型）回调 */
   onLinesChange: (shotId: string, lines: ShotScriptLine[]) => void;
+  /** 角色列表（台词行显示说话人 + 指定说话人）。传入才显示角色相关 UI */
+  characters?: ScriptLineCharacterOption[];
+  /**
+   * 是否显示类型/角色标记。解说模式全列都是旁白字幕，无需标记；
+   * 剧情模式要区分旁白与带说话人的台词。
+   */
+  showRoleBadge?: boolean;
 }
 
-/** 单行块（行内编辑 + 拖拽手柄 + 删除按钮 + 行前 ⊕ 插入） */
+/** 单行块（行内编辑 + 类型切换 + 说话人选择 + 拖拽手柄 + 删除按钮 + 行前 ⊕ 插入） */
 interface SortableLineProps {
   shotId: string;
   line: ShotScriptLine;
+  characters?: ScriptLineCharacterOption[];
+  showRoleBadge?: boolean;
   onDraftChange: (lineId: string, text: string) => void;
   onTextCommit: (lineId: string, text: string) => void;
   onDelete: (lineId: string) => void;
   onInsertAbove: (lineId: string) => void;
+  onRoleChange: (lineId: string, role: 'narration' | 'dialogue') => void;
+  onCharacterChange: (lineId: string, characterId?: string) => void;
 }
 
-function SortableLine({ shotId, line, onDraftChange, onTextCommit, onDelete, onInsertAbove }: SortableLineProps) {
+function SortableLine({ shotId, line, characters, showRoleBadge, onDraftChange, onTextCommit, onDelete, onInsertAbove, onRoleChange, onCharacterChange }: SortableLineProps) {
   // dnd-kit sortable id 必须全局唯一；用 shotId:lineId 编码使跨分镜拖动时父级能解析归属
   const sortableId = `${shotId}::${line.id}`;
   const {
@@ -83,6 +100,8 @@ function SortableLine({ shotId, line, onDraftChange, onTextCommit, onDelete, onI
     opacity: isDragging ? 0.4 : 1,
   };
 
+  const isDialogue = line.role === 'dialogue';
+
   return (
     <div
       ref={setNodeRef}
@@ -110,6 +129,50 @@ function SortableLine({ shotId, line, onDraftChange, onTextCommit, onDelete, onI
         <GripVertical className="w-3 h-3" />
       </button>
 
+      {/* 类型徽标：旁白 / 台词（剧情模式才显示；点击切换类型） */}
+      {showRoleBadge && (
+        isDialogue ? (
+          <button
+            type="button"
+            title="台词 — 点击切换为旁白"
+            onClick={() => onRoleChange(line.id, 'narration')}
+            className="flex-shrink-0 flex items-center gap-0.5 px-1 py-px rounded text-[10px] font-medium text-status-warning bg-status-warning/10 border border-status-warning/30 hover:bg-status-warning/20"
+          >
+            <MessageSquareQuote className="w-2.5 h-2.5" />
+            台词
+          </button>
+        ) : (
+          <button
+            type="button"
+            title="旁白 — 点击切换为台词"
+            onClick={() => onRoleChange(line.id, 'dialogue')}
+            className="flex-shrink-0 flex items-center gap-0.5 px-1 py-px rounded text-[10px] font-medium text-text-tertiary bg-bg-elevated/60 border border-border-subtle hover:bg-bg-hover"
+          >
+            <Megaphone className="w-2.5 h-2.5" />
+            旁白
+          </button>
+        )
+      )}
+
+      {/* 说话人：仅台词行显示；剧情模式且传入了角色列表时可选 */}
+      {showRoleBadge && isDialogue && (
+        characters && characters.length > 0 ? (
+          <select
+            value={line.characterId ?? ''}
+            onChange={(e) => onCharacterChange(line.id, e.target.value || undefined)}
+            title="说话人（配音按角色选音色）"
+            className="flex-shrink-0 max-w-[70px] bg-transparent border border-border-subtle rounded text-[10px] text-text-secondary px-0.5 py-px outline-none cursor-pointer"
+          >
+            <option value="">谁在说</option>
+            {characters.map(c => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+        ) : (
+          <span className="flex-shrink-0 text-[10px] text-text-tertiary">（未指定说话人）</span>
+        )
+      )}
+
       {/* 行文本 */}
       <input
         type="text"
@@ -128,7 +191,7 @@ function SortableLine({ shotId, line, onDraftChange, onTextCommit, onDelete, onI
             e.currentTarget.blur();
           }
         }}
-        placeholder="字幕行..."
+        placeholder={isDialogue ? '台词...' : '字幕行...'}
         className="flex-1 bg-transparent border-none outline-none text-xs text-text-primary placeholder-text-muted py-0.5"
       />
 
@@ -145,7 +208,7 @@ function SortableLine({ shotId, line, onDraftChange, onTextCommit, onDelete, onI
   );
 }
 
-export const ShotScriptLines: React.FC<ShotScriptLinesProps> = ({ shotId, lines, onLinesChange }) => {
+export const ShotScriptLines: React.FC<ShotScriptLinesProps> = ({ shotId, lines, onLinesChange, characters, showRoleBadge = false }) => {
   const sortableIds = lines.map(line => `${shotId}::${line.id}`);
   const draftsRef = useRef(new Map<string, string>());
   const latestLinesRef = useRef(lines);
@@ -214,6 +277,20 @@ export const ShotScriptLines: React.FC<ShotScriptLinesProps> = ({ shotId, lines,
     onLinesChange(shotId, [...materializeLinesWithDrafts(), createScriptLine('')]);
   }, [shotId, onLinesChange, materializeLinesWithDrafts]);
 
+  const handleRoleChange = useCallback((lineId: string, role: 'narration' | 'dialogue') => {
+    onLinesChange(shotId, materializeLinesWithDrafts().map(l => (
+      l.id === lineId
+        ? { ...l, role, ...(role === 'narration' ? { characterId: undefined } : {}) }
+        : l
+    )));
+  }, [shotId, onLinesChange, materializeLinesWithDrafts]);
+
+  const handleCharacterChange = useCallback((lineId: string, characterId?: string) => {
+    onLinesChange(shotId, materializeLinesWithDrafts().map(l => (
+      l.id === lineId ? { ...l, characterId } : l
+    )));
+  }, [shotId, onLinesChange, materializeLinesWithDrafts]);
+
   return (
     <div className="flex flex-col gap-0 h-full">
       <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
@@ -226,10 +303,14 @@ export const ShotScriptLines: React.FC<ShotScriptLinesProps> = ({ shotId, lines,
                 key={line.id}
                 shotId={shotId}
                 line={line}
+                characters={characters}
+                showRoleBadge={showRoleBadge}
                 onDraftChange={handleDraftChange}
                 onTextCommit={handleTextCommit}
                 onDelete={handleDelete}
                 onInsertAbove={handleInsertAbove}
+                onRoleChange={handleRoleChange}
+                onCharacterChange={handleCharacterChange}
               />
             ))
           )}

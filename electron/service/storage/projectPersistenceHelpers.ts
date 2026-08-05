@@ -141,10 +141,18 @@ function parseScriptLines(raw: string | null | undefined, fallbackText?: string 
         const out: ShotScriptLine[] = [];
         for (const item of parsed) {
           if (!item || typeof item !== 'object') continue;
-          const id = typeof (item as Record<string, unknown>).id === 'string' ? (item as Record<string, string>).id : '';
-          const text = typeof (item as Record<string, unknown>).text === 'string' ? (item as Record<string, string>).text : '';
+          const rec = item as Record<string, unknown>;
+          const id = typeof rec.id === 'string' ? rec.id : '';
+          const text = typeof rec.text === 'string' ? rec.text : '';
           if (!text) continue;
-          out.push({ id: id || `line-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, text });
+          const role: ShotScriptLine['role'] = rec.role === 'dialogue' ? 'dialogue' : 'narration';
+          const characterId = typeof rec.characterId === 'string' && rec.characterId ? rec.characterId : undefined;
+          out.push({
+            id: id || `line-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            text,
+            role,
+            characterId,
+          });
         }
         if (out.length > 0) return out;
       }
@@ -157,6 +165,7 @@ function parseScriptLines(raw: string | null | undefined, fallbackText?: string 
   return text.split(/\r?\n/).map(line => line.trim()).filter(Boolean).map(line => ({
     id: `line-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     text: line,
+    role: 'narration' as const,
   }));
 }
 

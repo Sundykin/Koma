@@ -30,6 +30,7 @@ import type { PresetAssets } from '../../services/ShotAnalysisService';
 import { generateShotPrompt, batchGenerateShotPrompts } from '../../services/ShotPromptService';
 import { loadVoiceLibrary } from '../../services/voiceLibrary/voiceLibraryService';
 import { prepareShotAudio } from '../../services/voiceLibrary/shotVoiceCompile';
+import { resolveShotLineVoiceId } from '../../services/voiceLibrary/shotLineVoice';
 import type { VoiceLibrarySnapshot } from '../../types/voice-library';
 import { TaskManager } from '../../services/TaskManager';
 import { findActiveTask } from '../../services/tasksIPC';
@@ -66,7 +67,7 @@ import {
 import { getModelMaxReferenceImages } from '../../providers/itv/modelCatalog';
 import './Storyboard.scss';
 import './ShotListEditor.scss';
-import { getMediaAssetDisplaySource, scriptLinesFromText, getShotScriptText } from '../../types';
+import { getMediaAssetDisplaySource, scriptLinesFromText, getShotScriptText, buildShotVoiceSegments } from '../../types';
 import { findVersionNumberForVideoAsset } from '../../utils/shotVersionSelection';
 
 const logger = createLogger('Storyboard');
@@ -146,6 +147,8 @@ interface StoryboardProps {
   episodeId?: string;
   episodeName?: string;
   script?: string;
+  /** 叙事模式：剧情模式（drama）在分镜字幕列显示旁白/台词标记与说话人；解说模式（narration）保持纯字幕 */
+  narrativeMode?: 'drama' | 'narration';
   aspectRatio?: '16:9' | '9:16';
   llmSelection?: string;
   ttiSelection?: string;
@@ -166,6 +169,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   episodeId,
   episodeName,
   script,
+  narrativeMode,
   aspectRatio,
   llmSelection,
   ttiSelection,
@@ -1744,7 +1748,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   /**
    * 单镜配音：调用 MediaGenerationService.generateAudio
    *
-   * 文本来源优先级：shot.dialogue → 否则 join scriptLines（与 prompt 推理同源）。
+   * 剧情模式按字幕行的旁白/台词分段选音色合成；解说模式沿用 dialogue→scriptLines 单音色。
    * Voice 来源：当前 ttsSelection 渠道的 defaultVoice（在 channel.providerConfig 里），
    * 走 MediaGenerationService 内部 resolveProviderAndContext，不需要这里手动指定。
    */
@@ -1756,30 +1760,17 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     const shot = shots.find(s => s.id === shotId);
     if (!shot) return;
 
-    const rawText = (shot.dialogue || '').trim() || getShotScriptText(shot).trim();
-    if (!rawText) {
+    // 剧情模式：旁白 + 台词各按角色音色分段合成后拼接；解说模式：整段单音色（兼容旧路径）
+    const voiceSegments = buildShotVoiceSegments(shot);
+    const legacyText = (shot.dialogue || '').trim() || getShotScriptText(shot).trim();
+    if (!voiceSegments.length && !legacyText) {
       message.warning('该分镜没有可配音的台词或字幕文本');
       return;
     }
 
-    // 把 dialogue 里的 @voice_xxx / @char_xxx-音色 编译为 text + voiceId + bindings。
-    // 没有任何 voice mention 时 voiceId 回退到项目偏好 ttsVoiceId（与旧逻辑一致）。
-    // 多 voice 分段当前不切片，整段用 bindings[0] 的 voice 合成；剩余 bindings 持久化到 shot 留作展示。
-    const prepared = prepareShotAudio({
-      dialogue: rawText,
-      voiceLibrary,
-      characters,
-      projectFallbackVoiceId: ttsVoiceId,
-      defaultVoiceId: ttsVoiceId,
-    });
-    if (prepared.unresolvedMentions.length > 0) {
-      const tokens = prepared.unresolvedMentions.map((m) => m.token).join('、');
-      message.warning(`这些音色 mention 解析失败已剥离：${tokens}`);
-    }
+    const rate = typeof ttsSpeed === 'number' ? ttsSpeed : 1.2;
 
     try {
-      // 包到 runWithTask：让任务面板能看到这条配音任务（pending → running → completed）。
-      // taskName 透到任务记录的 targetName，UI 直接展示中文。
       const { result: asset } = await runWithTask({
         projectId,
         category: 'asset',
@@ -1789,20 +1780,43 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         targetName: `分镜 #${shotId.slice(-6)} 配音`,
         type: 'audio-generation',
         execute: async (taskCtx) => {
-          taskCtx.progress(15, '调用 TTS...');
-          const a = await mediaGenerationService.generateAudio({
-            projectId,
-            ownerRef: { projectId, ownerType: 'shot', ownerId: shotId, episodeId, slot: 'audio' },
-            // voiceId 取 @voice / @char-音色 mention 解析结果；无 mention 时回退到项目偏好。
-            // speed 默认 1.2 倍速（与 ProjectSettingsModal 默认值对齐）
-            request: {
-              text: prepared.text,
-              voiceId: prepared.voiceId,
-              options: { rate: typeof ttsSpeed === 'number' ? ttsSpeed : 1.2 },
-            },
-            ttsSelection,
-            taskName: `分镜 #${shotId.slice(-6)} 配音`,
-          });
+          let a;
+          if (voiceSegments.length > 0) {
+            taskCtx.progress(15, `分段合成配音（${voiceSegments.length} 段）...`);
+            const resolvedSegments = voiceSegments.map(seg => ({
+              text: seg.text,
+              voiceId: resolveShotLineVoiceId({
+                role: seg.role,
+                characterId: seg.characterId,
+                characters,
+                projectNarrationVoiceId: ttsVoiceId,
+              }),
+            }));
+            a = await mediaGenerationService.generateShotAudioWithSegments({
+              projectId,
+              ownerRef: { projectId, ownerType: 'shot', ownerId: shotId, episodeId, slot: 'audio' },
+              segments: resolvedSegments,
+              options: { rate },
+              ttsSelection,
+              taskName: `分镜 #${shotId.slice(-6)} 配音`,
+            });
+          } else {
+            taskCtx.progress(15, '调用 TTS...');
+            const prepared = prepareShotAudio({
+              dialogue: legacyText,
+              voiceLibrary,
+              characters,
+              projectFallbackVoiceId: ttsVoiceId,
+              defaultVoiceId: ttsVoiceId,
+            });
+            a = await mediaGenerationService.generateAudio({
+              projectId,
+              ownerRef: { projectId, ownerType: 'shot', ownerId: shotId, episodeId, slot: 'audio' },
+              request: { text: prepared.text, voiceId: prepared.voiceId, options: { rate } },
+              ttsSelection,
+              taskName: `分镜 #${shotId.slice(-6)} 配音`,
+            });
+          }
           taskCtx.progress(100, '完成');
           return a;
         },
@@ -1813,7 +1827,6 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         const existing = s.media?.audios || [];
         return {
           ...s,
-          audioBindings: prepared.audioBindings,
           media: {
             ...(s.media || {}),
             audios: [...existing, asset],
@@ -1825,7 +1838,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       const errorMessage = err instanceof Error ? err.message : String(err);
       message.error(errorMessage || '配音失败');
     }
-  }, [projectId, episodeId, shots, characters, voiceLibrary, ttsSelection, ttsVoiceId, ttsSpeed, message]);
+  }, [projectId, episodeId, shots, characters, ttsSelection, ttsVoiceId, ttsSpeed, message]);
 
   /**
    * 批量配音：跳过已有配音的分镜（force=false）/ 强制重生成（force=true）。
@@ -1868,34 +1881,45 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         execute: async (taskCtx) => {
           let done = 0;
           const inner = candidates.map((shot) => async () => {
-            const rawText = (shot.dialogue || '').trim() || getShotScriptText(shot).trim();
-            // 与单镜逻辑同源：先把 dialogue 编译为 text + voiceId + bindings，
-            // 用 bindings[0] 的 voice 整段合成；@Audio N 占位符已被 prepareShotAudio 剥离。
-            const prepared = prepareShotAudio({
-              dialogue: rawText,
-              voiceLibrary,
-              characters,
-              projectFallbackVoiceId: ttsVoiceId,
-              defaultVoiceId: ttsVoiceId,
-            });
+            const rate = typeof ttsSpeed === 'number' ? ttsSpeed : 1.2;
+            const voiceSegments = buildShotVoiceSegments(shot);
+            const legacyText = (shot.dialogue || '').trim() || getShotScriptText(shot).trim();
             try {
-              const asset = await mediaGenerationService.generateAudio({
-                projectId,
-                ownerRef: { projectId, ownerType: 'shot', ownerId: shot.id, episodeId, slot: 'audio' },
-                request: {
-                  text: prepared.text,
-                  voiceId: prepared.voiceId,
-                  options: { rate: typeof ttsSpeed === 'number' ? ttsSpeed : 1.2 },
-                },
-                ttsSelection,
-                taskName: `分镜 #${shot.id.slice(-6)} 配音`,
-              });
-              return {
-                shotId: shot.id,
-                asset,
-                audioBindings: prepared.audioBindings,
-                success: true as const,
-              };
+              let asset;
+              if (voiceSegments.length > 0) {
+                asset = await mediaGenerationService.generateShotAudioWithSegments({
+                  projectId,
+                  ownerRef: { projectId, ownerType: 'shot', ownerId: shot.id, episodeId, slot: 'audio' },
+                  segments: voiceSegments.map(seg => ({
+                    text: seg.text,
+                    voiceId: resolveShotLineVoiceId({
+                      role: seg.role,
+                      characterId: seg.characterId,
+                      characters,
+                      projectNarrationVoiceId: ttsVoiceId,
+                    }),
+                  })),
+                  options: { rate },
+                  ttsSelection,
+                  taskName: `分镜 #${shot.id.slice(-6)} 配音`,
+                });
+              } else {
+                const prepared = prepareShotAudio({
+                  dialogue: legacyText,
+                  voiceLibrary,
+                  characters,
+                  projectFallbackVoiceId: ttsVoiceId,
+                  defaultVoiceId: ttsVoiceId,
+                });
+                asset = await mediaGenerationService.generateAudio({
+                  projectId,
+                  ownerRef: { projectId, ownerType: 'shot', ownerId: shot.id, episodeId, slot: 'audio' },
+                  request: { text: prepared.text, voiceId: prepared.voiceId, options: { rate } },
+                  ttsSelection,
+                  taskName: `分镜 #${shot.id.slice(-6)} 配音`,
+                });
+              }
+              return { shotId: shot.id, asset, success: true as const };
             } catch (err: unknown) {
               return {
                 shotId: shot.id,
@@ -1924,7 +1948,6 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         const existing = s.media?.audios || [];
         return {
           ...s,
-          audioBindings: hit.audioBindings,
           media: {
             ...(s.media || {}),
             audios: [...existing, hit.asset],
@@ -2443,6 +2466,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
           >
           <ShotListEditor
             projectId={projectId}
+            narrativeMode={narrativeMode}
             shots={shots}
             characters={characters}
             scenes={scenes}
