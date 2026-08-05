@@ -52,6 +52,11 @@ async function synthesizeShotAudio(params: {
   } = params;
   const rate = typeof params.ttsSpeed === 'number' ? params.ttsSpeed : 1.2;
   const voiceSegments = buildShotVoiceSegments(shot);
+
+  // 剧情模式的分镜脚本是 description 行（画面/动作文本），不属于可配音内容；
+  // 没有任何旁白/台词行时直接失败，而不是把整段分镜脚本拿去 TTS 朗读。
+  // 解说模式（行无 description 标记）才允许回退到整段字幕文本。
+  const hasDescriptionLines = (shot.scriptLines ?? []).some(l => l.role === 'description');
   const legacyText = (shot.dialogue || '').trim() || getShotScriptText(shot).trim();
 
   if (voiceSegments.length > 0) {
@@ -72,6 +77,10 @@ async function synthesizeShotAudio(params: {
       taskName,
     });
     return { asset, audioBindings };
+  }
+
+  if (hasDescriptionLines) {
+    throw new Error('剧情模式的分镜脚本是画面/动作文本，没有可配音的旁白或台词行；如需配音请在分镜脚本中用 [旁白]/[台词·角色] 标出声音行');
   }
 
   const prepared = prepareShotAudio({
@@ -168,7 +177,12 @@ export function useStoryboardAudio(deps: StoryboardAudioDeps) {
       ? shots.filter(s => targetShotIds.includes(s.id))
       : shots;
     const candidates = baseShots.filter((s) => {
-      const text = (s.dialogue || '').trim() || getShotScriptText(s).trim();
+      // 剧情模式（含 description 行）：只配音显式标注的旁白/台词行；
+      // 解说模式：dialogue → 整段字幕文本
+      const hasDescriptionLines = (s.scriptLines ?? []).some(l => l.role === 'description');
+      const text = hasDescriptionLines
+        ? (buildShotVoiceSegments(s).length > 0 ? 'voice' : '')
+        : (s.dialogue || '').trim() || getShotScriptText(s).trim();
       if (!text) return false;
       const hasAudio = (s.media?.audios?.length || 0) > 0;
       return force ? hasAudio || !hasAudio : !hasAudio;
