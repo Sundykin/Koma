@@ -26,8 +26,9 @@ import { loadVoiceLibrary } from '../../services/voiceLibrary/voiceLibraryServic
 import { useStoryboardAudio } from './hooks/useStoryboardAudio';
 import { useStoryboardShotMutations } from './hooks/useStoryboardShotMutations';
 import { useStoryboardPersistence } from './hooks/useStoryboardPersistence';
+import { useStoryboardTaskSubscriptions } from './hooks/useStoryboardTaskSubscriptions';
 import type { VoiceLibrarySnapshot } from '../../types/voice-library';
-import { useActiveTask, useTaskTransitions, useTasks } from '../../hooks';
+import { useTasks } from '../../hooks';
 import { ScriptEditor } from '../../editor';
 import type { MentionItem } from '../../editor';
 import { useTheme } from '../../theme/runtime';
@@ -502,79 +503,17 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   }, [shots]);
 
   // 当前剧集的 shot-analysis 任务投影 — 切走再回来 loading 自动复原
-  const activeAnalysisTask = useActiveTask({
-    scope: `project:${projectId}`,
-    type: 'shot-analysis',
-    targetKind: 'episode',
-    targetId: episodeId,
+  // 任务订阅已拆到 hooks/useStoryboardTaskSubscriptions
+  const { isAnalyzing } = useStoryboardTaskSubscriptions({
+    projectId,
+    episodeId,
+    isSubmittingAnalysis,
+    setIsSubmittingAnalysis,
+    loadData,
+    refreshShotsFromStore,
+    message,
   });
-  const isAnalyzing = isSubmittingAnalysis || !!activeAnalysisTask;
-  // 任务被 useActiveTask 接管后清掉提交中标志（避免成功路径不归零）
-  useEffect(() => {
-    if (activeAnalysisTask) setIsSubmittingAnalysis(false);
-  }, [activeAnalysisTask?.id]);
 
-  // 监听分析任务终态转换（edge-triggered 副作用）
-  useTaskTransitions(
-    {
-      scope: `project:${projectId}`,
-      type: 'shot-analysis',
-      targetKind: 'episode',
-      targetId: episodeId,
-      to: ['completed', 'failed'],
-    },
-    (event) => {
-      const payload = (event.record.payload || {}) as { result?: { shotsCount?: number } };
-      if (event.currStatus === 'completed') {
-        message.success(`AI 分镜生成完成，共 ${payload.result?.shotsCount || 0} 个分镜`);
-        loadData();
-      } else if (event.currStatus === 'failed') {
-        logger.error('AI 分镜生成失败', event.record.error);
-        message.error('AI 分镜生成失败，请检查 LLM 配置后重试');
-      }
-    }
-  );
-
-  // 监听单 shot 提示词 / 媒体任务完成 → 从 DB 重新拉这个剧集的 shots
-  // 解决：用户在 await generateShotPrompt 期间切换页面，组件 unmount 后
-  // setShots 落空，回到分镜页时本地 shots 仍是旧数据；DB 已被 service.updateShot
-  // 写入新 prompt 但 UI 看不到。改成订阅任务终态转换 → 主动重载，确保
-  // 切换/不切换、单条/批量、单端/多窗口都一致。
-  const PROMPT_OR_MEDIA_SHOT_TYPES = useMemo(() => new Set([
-    'prompt-generation:image', 'prompt-generation:video',
-    'prompt-optimization:image', 'prompt-optimization:video',
-    'tti', 'itv',
-  ]), []);
-  // 批量任务用 episode-level task（type='shot-generation' / 'prompt-generation:*'），
-  // 终态时也要刷新一次本地 shots —— 之前只对 shot-level 任务刷，导致切走再回来期间
-  // 批量完成的产物未在重新挂载后通过 transition 路径再校验一次。
-  const BATCH_SHOT_PARENT_TYPES = useMemo(() => new Set([
-    'shot-generation',
-    'prompt-generation:image', 'prompt-generation:video',
-    'prompt-optimization:image', 'prompt-optimization:video',
-  ]), []);
-  useTaskTransitions(
-    {
-      scope: `project:${projectId}`,
-      to: ['completed', 'failed'],
-    },
-    (event) => {
-      const t = event.record;
-      if (PROMPT_OR_MEDIA_SHOT_TYPES.has(t.type) && t.targetKind === 'shot' && t.targetId) {
-        void refreshShotsFromStore();
-        return;
-      }
-      // episode-level 批量任务终态：本剧集 batch 完成或失败都要刷新 — 期间组件
-      // 可能 unmount 过，setShots 进度回调落空，DB 才是真相。
-      if (
-        BATCH_SHOT_PARENT_TYPES.has(t.type)
-        && t.targetKind === 'episode'
-        && t.targetId === episodeId
-      ) {
-        void refreshShotsFromStore();
-      }
-    }
-  );
 
   // ============ 回调函数 ============
 
