@@ -42,21 +42,40 @@ describe('videoRequestCompiler', () => {
     })).toThrow('缺少首尾帧输入');
   });
 
-  it('buildVideoCapabilityRequest: normalizes duration options to fallback grok values', () => {
+  it('buildVideoCapabilityRequest: passes through valid durations without a spec (grok 白名单吸附已废弃)', () => {
+    // 调用方已按所选 ITV 渠道 spec 吸附时长；无 spec 时这里不再往 grok 白名单 [6,10,12,16,20]
+    // 吸附（会把 seedance / ComfyUI 的合法值 5、7 等吸错），只做正向整数直通。
     const imageRequest = buildVideoCapabilityRequest({
       capability: 'video.image-to-video',
       prompt: 'demo',
       primaryImage: 'https://cdn.example.com/shot.png',
       options: { duration: 4, aspectRatio: '16:9' },
     });
-    expect(imageRequest.options?.duration).toBe(6);
+    expect(imageRequest.options?.duration).toBe(4);
 
     const textRequest = buildVideoCapabilityRequest({
       capability: 'video.text-to-video',
       prompt: 'demo',
       options: { duration: 18, aspectRatio: '9:16' },
     });
-    expect(textRequest.options?.duration).toBe(20);
+    expect(textRequest.options?.duration).toBe(18);
+  });
+
+  it('buildVideoCapabilityRequest: falls back to default duration only for invalid values', () => {
+    // duration 键缺失时保持缺失（由上层决定）；给了非法值（0/负数/非数字）才回退到默认 10s
+    const missing = buildVideoCapabilityRequest({
+      capability: 'video.text-to-video',
+      prompt: 'demo',
+      options: {},
+    });
+    expect(missing.options?.duration).toBeUndefined();
+
+    const invalid = buildVideoCapabilityRequest({
+      capability: 'video.text-to-video',
+      prompt: 'demo',
+      options: { duration: 0 },
+    });
+    expect(invalid.options?.duration).toBe(10);
   });
 
   it('buildVideoCapabilityRequest: normalizes duration by channel duration spec when provided', () => {
