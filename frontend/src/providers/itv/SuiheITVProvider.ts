@@ -196,6 +196,44 @@ export class SuiheITVProvider implements ITVProvider {
     }
   }
 
+  /**
+   * 音色参考音频 → 公网 URL 列表：remote-url 直传；data-url 解字节后上传图床
+   * （与图片同一 komaapi 上传通道，wav/mp3 均可）。单条失败跳过不影响整体。
+   */
+  private async resolveVoiceReferenceUrls(
+    refs: Array<{ transport?: string; value?: string; mimeType?: string }>,
+  ): Promise<string[]> {
+    const urls: string[] = [];
+    for (const ref of refs.slice(0, 3)) {
+      const value = ref?.value;
+      if (!value) continue;
+      if (ref.transport === 'remote-url' || /^https?:\/\//i.test(value)) {
+        urls.push(value);
+        continue;
+      }
+      if (!value.startsWith('data:')) continue;
+      try {
+        const { uploadBytesToImageHostingWithRetry } = await import('../../services/imageHostingService');
+        const { parseDataUrl } = await import('../../utils/encoding');
+        const { mimeType, bytes } = parseDataUrl(value);
+        const ext = (mimeType || ref.mimeType || 'audio/wav').includes('mpeg') ? 'mp3' : 'wav';
+        const result = await uploadBytesToImageHostingWithRetry(bytes, {
+          filename: `koma-voice-ref-${Date.now()}.${ext}`,
+        });
+        if (result?.success && result.url) {
+          urls.push(result.url);
+        } else {
+          logger.warn('音色参考音频上传图床失败，跳过', { error: result?.error });
+        }
+      } catch (error) {
+        logger.warn('音色参考音频上传图床异常，跳过', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    return urls;
+  }
+
   async start(request: ITVRequest): Promise<ProviderStartResult<ITVResult>> {
     if (!this.validate()) throw new Error('Koma 即梦 API Key 或模型未配置');
     assertSupportedVideoCapabilities(request, 'Koma 即梦', [
@@ -274,13 +312,29 @@ export class SuiheITVProvider implements ITVProvider {
       metadata.end_frame_url = request.endFrame.value;
     }
 
+    // 音色参考（音画同出）：渲染工作流经 metadata.komaVoiceReferences 传入，
+    // 本地音频先上传图床拿公网 URL，并入 metadata.audio_urls 让网关分发到 audio_file_N。
+    // @audio_file_N 占位符与 audio_urls 顺序一一对应（每类参考从 1 开始编号）。
+    const voiceAudioUrls = await this.resolveVoiceReferenceUrls(
+      (request.metadata?.komaVoiceReferences as Array<{ transport?: string; value?: string; mimeType?: string }> | undefined) ?? [],
+    );
+    if (voiceAudioUrls.length > 0) {
+      functionMode = 'omni_reference';
+    }
+
     if (hasKomaClassified) {
       // Koma 即梦分类协议：URL 按 kind 拆 metadata，避免和 images[] 双写。
       if (komaAssets?.image_urls?.length) metadata.image_urls = komaAssets.image_urls;
       if (komaAssets?.video_urls?.length) metadata.video_urls = komaAssets.video_urls;
-      if (komaAssets?.audio_urls?.length) metadata.audio_urls = komaAssets.audio_urls;
     } else if (imageUrls.length > 0) {
       body.images = imageUrls;
+    }
+    // audio_urls 统一按"分类资产 + 音色参考"合并写出（音色参考已由上方上传图床解析为公网 URL）
+    const mergedAudioUrls = [...(komaAssets?.audio_urls ?? []), ...voiceAudioUrls];
+    if (mergedAudioUrls.length > 0) {
+      metadata.audio_urls = mergedAudioUrls;
+      // @audio_file_N 只有 omni_reference 模式的字段名才对得上
+      metadata.function_mode = 'omni_reference';
     }
     body.metadata = metadata;
 
