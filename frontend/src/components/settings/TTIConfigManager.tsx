@@ -143,7 +143,7 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
   const watchedProviderType = Form.useWatch('providerType', form) as string | undefined;
   const isEditingActivationChannel = isKomaActivationManagedChannel(editingChannel);
   const currentProviderType = isEditingActivationChannel ? editingChannel?.providerType : watchedProviderType;
-  const currentDefinition = currentProviderType ? definitionMap.get(currentProviderType) : undefined;
+  const _currentDefinition = currentProviderType ? definitionMap.get(currentProviderType) : undefined;
   const editingHasStoredApiKey = Boolean(editingChannel && (editingChannel.providerConfig as Record<string, unknown> | undefined)?.hasApiKey);
   const watchedModels = Form.useWatch('models', form) as Array<Partial<ChannelModelDefinition>> | undefined;
   const modelOptions = useMemo(() => (

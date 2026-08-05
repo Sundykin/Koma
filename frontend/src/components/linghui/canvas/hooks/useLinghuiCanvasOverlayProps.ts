@@ -217,7 +217,7 @@ export function useLinghuiCanvasOverlayProps({
 }: UseLinghuiCanvasOverlayPropsParams): LinghuiCanvasOverlaysProps {
   const {
     contextMenuNode,
-    contextMenuNodeRun,
+    contextMenuNodeRun: _contextMenuNodeRun,
     contextMenuResultCopyState,
     contextMenuMediaActionState,
   } = useLinghuiCanvasContextMenuMediaState({

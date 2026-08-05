@@ -112,7 +112,7 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
   } = useMediaConfigManager<TTSModelConfig>('tts', loadBuiltins, onConfigChange);
 
   const currentProviderType = Form.useWatch('providerType', form) as string | undefined;
-  const currentDefinition = currentProviderType ? definitionMap.get(currentProviderType) : undefined;
+  const _currentDefinition = currentProviderType ? definitionMap.get(currentProviderType) : undefined;
   const editingHasStoredApiKey = Boolean(editingChannel && (editingChannel.providerConfig as Record<string, unknown> | undefined)?.hasApiKey);
   const watchedModels = Form.useWatch('models', form) as Array<Partial<ChannelModelDefinition>> | undefined;
   const modelOptions = useMemo(() => (

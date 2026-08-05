@@ -43,7 +43,7 @@ export interface ShotAssetSyncActions {
 function getAssetMentionId(
   type: 'character' | 'scene' | 'prop',
   assetId: string,
-  assets: { characters: Character[]; scenes: Scene[]; props: Prop[] }
+  _assets: { characters: Character[]; scenes: Scene[]; props: Prop[] }
 ): string {
   return assetId;
 }

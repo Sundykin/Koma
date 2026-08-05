@@ -214,7 +214,7 @@ export const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasP
   const setInteracting = useLinghuiCanvasStore((s: any) => s.setInteracting);
 
   // LibTV canvas:cancel-connect
-  const { cancelPendingConnection, confirmDeleteNodes, selectSingleEdge, handleEdgeClick, handleEdgeContextMenu } = useLinghuiCanvasInteractionHelpers({
+  const { cancelPendingConnection, confirmDeleteNodes, selectSingleEdge: _selectSingleEdge, handleEdgeClick, handleEdgeContextMenu } = useLinghuiCanvasInteractionHelpers({
     setNodes, setEdges, setEditorSelection, setActiveNodeTool, setPendingGroupFrame,
     closeContextMenu, closeQuickCreate, openContextMenuAt,
     deleteNodesByIds, deleteEdgesByIds, nodeRuns, pendingConnectionCreateRef,

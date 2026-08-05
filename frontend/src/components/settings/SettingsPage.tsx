@@ -400,7 +400,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
             {t('settings.navigation', { defaultValue: 'Navigation' })}
           </div>
           <nav>
-            {groups.map((group, gi) => (
+            {groups.map((group, _gi) => (
               <div key={group.group} className="settings-anchor-cluster">
                 <div className="settings-anchor-group">
                   {group.group}

@@ -31,7 +31,7 @@ export function useLinghuiCanvasSelectionInteractions({
   setPendingGroupFrame,
   setEditorSelection,
   openContextMenuAt,
-  openQuickCreateAt,
+  openQuickCreateAt: _openQuickCreateAt,
   closeContextMenu,
 }: UseLinghuiCanvasSelectionInteractionsParams) {
   const selectionDragRef = useRef<{ previousIds: Set<string> } | null>(null);

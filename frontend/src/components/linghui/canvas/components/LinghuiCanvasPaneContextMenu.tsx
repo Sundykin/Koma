@@ -19,7 +19,7 @@ export const LinghuiCanvasPaneContextMenu: React.FC<LinghuiCanvasPaneContextMenu
   canRedo,
   onUploadImages,
   onUploadVideos,
-  onUploadAudios,
+  onUploadAudios: _onUploadAudios,
   onOpenAddNodePanel,
   onUndo,
   onRedo,

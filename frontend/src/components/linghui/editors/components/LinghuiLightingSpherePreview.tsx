@@ -257,7 +257,7 @@ function distancePercent(a: { x: number; y: number }, b: { x: number; y: number 
 export const LinghuiLightingSpherePreview: React.FC<LinghuiLightingSpherePreviewProps> = (props) => {
   const {
     imageUrl,
-    rimLight,
+    rimLight: _rimLight,
     previewMode,
     onAnglesChange,
     onPreviewModeChange,

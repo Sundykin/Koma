@@ -31,7 +31,7 @@ export function useLinghuiCanvasInteractionHelpers({
   closeQuickCreate,
   openContextMenuAt,
   deleteNodesByIds,
-  deleteEdgesByIds,
+  deleteEdgesByIds: _deleteEdgesByIds,
   nodeRuns,
   pendingConnectionCreateRef,
   setInteracting,

@@ -87,8 +87,8 @@ const PIVOT = new THREE.Vector3(0, 0.8, 0);
 /**
  * 递归 dispose 整棵 scene 的临时 geometry / material 资源 —— 避免逐帧导出内存泄漏。
  */
-const WORLD_UP = new THREE.Vector3(0, 1, 0);
-const UNUSED_WIRE_MATERIAL = new THREE.LineBasicMaterial({ color: 0x000000 });
+const _WORLD_UP = new THREE.Vector3(0, 1, 0);
+const _UNUSED_WIRE_MATERIAL = new THREE.LineBasicMaterial({ color: 0x000000 });
 
 interface OrbitCameraState {
   yaw: number;
@@ -359,7 +359,7 @@ export const Director3DViewport = forwardRef<Director3DViewportHandle, Director3
       captureFnRef.current = fn;
     }, []);
 
-    const lineColor = renderMode === 'lineart'
+    const _lineColor = renderMode === 'lineart'
       ? resolveDirector3DColor('var(--token-border-base)', 'gray')
       : resolveDirector3DColor('var(--token-border-strong)', 'slategray');
 

@@ -31,7 +31,7 @@ function LinghuiEdgeInner({
   targetY,
   sourcePosition,
   targetPosition,
-  style,
+  style: _style,
   markerEnd,
 }: EdgeProps) {
   const sourceRunState = useNodeRunState(source);

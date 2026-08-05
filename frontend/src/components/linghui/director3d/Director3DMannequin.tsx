@@ -124,7 +124,7 @@ export const Director3DMannequin: React.FC<Director3DMannequinProps> = ({
   const feetY = 0;
   const hipY = feetY + legTotalLength;
   const torsoCenterY = hipY + PROPORTIONS.torsoHeight * 0.5;
-  const shoulderY = hipY + PROPORTIONS.torsoHeight - 0.05;
+  const _shoulderY = hipY + PROPORTIONS.torsoHeight - 0.05;
   const sx = (sign: number) => (PROPORTIONS.shoulderWidth * 0.5 + PROPORTIONS.armRadius * 0.5) * sign;
   const hx = (sign: number) => (PROPORTIONS.hipWidth * 0.5 + PROPORTIONS.legRadius * 0.5) * sign;
 

@@ -54,7 +54,7 @@ function distanceToScale(distance: LinghuiMultiAngleConfig['distance']): number 
 export const LinghuiMultiAngleModal: React.FC<LinghuiMultiAngleModalProps> = ({
   open,
   sourceImage,
-  sourceLabel,
+  sourceLabel: _sourceLabel,
   config,
   providerOptions,
   ttiSelection,

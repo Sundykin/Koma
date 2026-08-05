@@ -77,14 +77,12 @@ export const PluginMarketSettings: React.FC = () => {
               const uninstalling = uninstallingSet.has(id);
               const blocked = !!item.incompatibleReason;
 
-              let primaryLabel = '安装';
               let primary = (
                 <Button type="primary" loading={installing} disabled={blocked} onClick={() => void handleInstallOrUpdate(id, '安装')}>
                   安装
                 </Button>
               );
               if (item.installed && item.hasUpdate && !blocked) {
-                primaryLabel = '升级';
                 primary = (
                   <Button type="primary" loading={installing} onClick={() => void handleInstallOrUpdate(id, '升级')}>
                     升级到 {item.entry.latestVersion}

@@ -28,7 +28,6 @@ let snapshotDirty = true;
 
 let hydratePromise: Promise<void> | null = null;
 let unsubscribeBroadcast: (() => void) | null = null;
-let ownWebContentsId: number | null = null;
 
 function notify(): void {
   snapshotDirty = true;
@@ -112,9 +111,7 @@ async function hydrateOnce(): Promise<void> {
       // 典型坑：runWithTask → TaskManager.createTask 通过 tasks:upsert 写入主进程，
       // 主进程广播带 sourceWebContentsId=本 renderer，被自写抑制后 useTasks 永远
       // 看不到这个任务（任务面板里"图像/视频提示词推理"消失就是这个原因）。
-      const idPromise = getOwnWebContentsId().then(id => {
-        ownWebContentsId = id;
-      });
+      const idPromise = getOwnWebContentsId();
 
       // hydrate 期间订阅与 list 并发：subscribe 必须先挂上以免漏事件，但
       // list 拿到的快照可能比期间到达的广播旧。
@@ -225,5 +222,4 @@ export function __resetTasksStoreForTesting(): void {
     unsubscribeBroadcast = null;
   }
   hydratePromise = null;
-  ownWebContentsId = null;
 }
