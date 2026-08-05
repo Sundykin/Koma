@@ -13,6 +13,7 @@ import type {
   WaveformOptions,
   ComposeVideoOptions,
   ConcatMediaClipOptions,
+  ConcatAudioClipsOptions,
   TrimVideoOptions,
   UpscaleVideoOptions,
 } from '../service/ffmpeg';
@@ -96,6 +97,14 @@ class FFmpegController {
   async concatMediaClips(args: ConcatMediaClipOptions, _event: IpcMainInvokeEvent) {
     await ensureServicesReady();
     return services.ffmpeg.concatMediaClips(args);
+  }
+
+  /**
+   * 顺序拼接多个音频片段（多段配音合成）。
+   */
+  async concatAudioClips(args: ConcatAudioClipsOptions, _event: IpcMainInvokeEvent) {
+    await ensureServicesReady();
+    return services.ffmpeg.concatAudioClips(args);
   }
 
   /**

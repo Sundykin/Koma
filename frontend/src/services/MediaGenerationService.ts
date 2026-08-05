@@ -1142,14 +1142,8 @@ export class MediaGenerationService {
     if (sources.length > 1) {
       await electronService.fs.mkdir(shotDir);
       try {
-        await ffmpegManager.concatMediaClips({
-          clips: sources.map((source, idx) => ({ kind: 'audio' as const, source, label: `第${idx + 1}段` })),
-          outputPath: concatOutputPath,
-          // 纯音频拼接，视频参数用最小占位（ffmpeg 仅音频轨道时不会用到画面）
-          width: 2,
-          height: 2,
-          fps: 24,
-        });
+        // 专用纯音频顺序拼接（concatMediaClips 不支持纯音频输入）
+        await ffmpegManager.concatAudioClips(sources, concatOutputPath);
         concatenated = true;
       } catch (err) {
         logger.warn('多段配音拼接失败，回退使用第一段', {

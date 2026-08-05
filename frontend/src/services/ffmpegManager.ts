@@ -623,6 +623,25 @@ class FFmpegManager {
   }
 
   /**
+   * 顺序拼接多个音频片段为一个 mp3（多段配音合成）。
+   * 与 concatMediaClips 互补：那条不支持纯音频输入（视频轨拼接 + 音轨混叠）。
+   */
+  async concatAudioClips(sources: string[], outputPath: string): Promise<string> {
+    await this.init();
+    const api = getFFmpegAPI();
+    if (!api) {
+      throw new Error('FFmpeg 不可用');
+    }
+
+    const available = await this.isAvailable();
+    if (!available) {
+      throw new Error('FFmpeg 不可用');
+    }
+
+    return await api.concatAudioClips({ sources, outputPath });
+  }
+
+  /**
    * 裁剪单个视频片段，输出新的本地 mp4。
    */
   async trimVideo(options: TrimVideoOptions): Promise<string> {

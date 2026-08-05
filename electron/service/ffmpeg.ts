@@ -122,6 +122,12 @@ export interface ConcatMediaClipOptions {
   imageDurationSec?: number;
 }
 
+/** 纯音频顺序拼接（多段配音合成等场景），与 concatMediaClips（视频轨 + 混音轨）互补 */
+export interface ConcatAudioClipsOptions {
+  sources: string[];
+  outputPath: string;
+}
+
 export interface TrimVideoOptions {
   input: string;
   output: string;
@@ -137,7 +143,7 @@ export interface UpscaleVideoOptions {
 }
 
 // 任务类型
-type TaskType = 'getInfo' | 'extractFrames' | 'splitGridImage' | 'upscaleImage' | 'cropImage' | 'waveform' | 'splitAudio' | 'export' | 'composeVideo' | 'concatMediaClips' | 'trimVideo' | 'upscaleVideo';
+type TaskType = 'getInfo' | 'extractFrames' | 'splitGridImage' | 'upscaleImage' | 'cropImage' | 'waveform' | 'splitAudio' | 'export' | 'composeVideo' | 'concatMediaClips' | 'concatAudioClips' | 'trimVideo' | 'upscaleVideo';
 
 // 任务定义
 interface Task {
@@ -361,6 +367,14 @@ export class FFmpegService {
   }
 
   /**
+   * 顺序拼接多个音频片段为一个 mp3（多段配音合成）。
+   * 用 filter concat 重采样到 44.1kHz 再统一编码，兼容 wav / mp3 / m4a 混排输入。
+   */
+  async concatAudioClips(options: ConcatAudioClipsOptions, onProgress?: ProgressCallback): Promise<string> {
+    return this.queueTask<string>('concatAudioClips', options, onProgress);
+  }
+
+  /**
    * 裁剪单个视频片段。
    */
   async trimVideo(options: TrimVideoOptions): Promise<string> {
@@ -431,6 +445,9 @@ export class FFmpegService {
           break;
         case 'concatMediaClips':
           result = await this.doConcatMediaClips(task.args, task.onProgress);
+          break;
+        case 'concatAudioClips':
+          result = await this.doConcatAudioClips(task.args, task.onProgress);
           break;
         case 'trimVideo':
           result = await this.doTrimVideo(task.args);
@@ -1244,6 +1261,50 @@ export class FFmpegService {
     } finally {
       fs.promises.rm(workDir, { recursive: true, force: true }).catch(() => undefined);
     }
+  }
+
+  /**
+   * 顺序拼接音频：filter_complex concat 重编码，兼容任意音频格式混排。
+   * 与 doConcatMediaClips 的区别：那条是视频轨拼接 + 音轨混叠（amix），
+   * 不支持纯音频输入；这条是音频顺序首尾相接，给多段配音合成用。
+   */
+  private async doConcatAudioClips(options: ConcatAudioClipsOptions, onProgress?: ProgressCallback): Promise<string> {
+    if (!this.ffmpegPath) {
+      throw new Error('FFmpeg not available');
+    }
+    const sources = (options.sources ?? []).map(s => String(s ?? '').trim()).filter(Boolean);
+    if (sources.length < 2) {
+      throw new Error('At least two audio sources are required');
+    }
+    const outputPath = String(options.outputPath ?? '').trim();
+    if (!outputPath) {
+      throw new Error('Missing concat output path');
+    }
+    await fs.promises.mkdir(path.dirname(outputPath), { recursive: true });
+
+    const args: string[] = [];
+    for (const source of sources) {
+      args.push('-i', source);
+    }
+    const filterParts: string[] = [];
+    const inputs: string[] = [];
+    for (let i = 0; i < sources.length; i += 1) {
+      filterParts.push(`[${i}:a]aresample=44100[a${i}]`);
+      inputs.push(`[a${i}]`);
+      onProgress?.(Math.round(((i + 1) / sources.length) * 50));
+    }
+    filterParts.push(`${inputs.join('')}concat=n=${sources.length}:v=0:a=1[aout]`);
+    args.push(
+      '-filter_complex', filterParts.join(';'),
+      '-map', '[aout]',
+      '-c:a', 'libmp3lame',
+      '-q:a', '4',
+      '-y',
+      outputPath,
+    );
+    await this.runFFmpeg(args);
+    onProgress?.(100);
+    return outputPath;
   }
 
   /**
