@@ -117,6 +117,17 @@ export interface ITVProvider {
     endFrame?: ReadonlyArray<ProviderAssetTransport>;
   };
 
+  /**
+   * 素材同时有本地文件和远程 URL 时，是否优先取本地文件。
+   *
+   * true 适用于「自己读字节再上传」的 provider（ComfyUI /upload/image、穗禾 multipart 直传）：
+   * 本地已落盘的文件永远可用，而生成结果的远程 URL 往往是带签名的临时地址
+   * （如火山 TOS 的 X-Tos-Expires=86400），过期后再去下载会 403。
+   *
+   * false / 未声明时保持历史行为（远程 URL 优先），适用于把 URL 直接交给上游拉取的 provider。
+   */
+  prefersLocalAssets?: boolean;
+
   // 验证配置
   validate(): boolean;
   testConnection(): Promise<boolean>;

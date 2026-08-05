@@ -7,6 +7,7 @@
  *   - koma-suihe-itv        → Koma 官方 - 即梦（Koma 即梦 Seedance，komaapi 网关）
  *   - openai-video          → OpenAI 兼容异步视频接口（自建 new-api / 官方 / 代理）
  *   - suihe-itv             → 穗禾直连视频（api.suihemedia.cloud，multipart + /v1/tasks 轮询）
+ *   - comfyui-itv           → ComfyUI 直连（/prompt + /history 轮询，内置 MiniMax H3 参考生视频工作流）
  *
  * 之前注册过的 runway / kling / pika / sora2 / seedance / vidu /
  * comfyui-animatediff / custom 已下线；用户旧渠道仍存于 SQLite，
@@ -17,6 +18,7 @@ export { Grok2ApiImagineITVProvider } from './Grok2ApiImagineITVProvider';
 export { SuiheITVProvider } from './SuiheITVProvider';
 export { OpenAIVideoITVProvider } from './OpenAIVideoITVProvider';
 export { SuiheDirectITVProvider } from './SuiheDirectITVProvider';
+export { ComfyUIITVProvider } from './ComfyUIITVProvider';
 
 import type { ITVConfig } from '../../types';
 import type { ITVProvider } from './types';
@@ -24,6 +26,7 @@ import { Grok2ApiImagineITVProvider } from './Grok2ApiImagineITVProvider';
 import { SuiheITVProvider } from './SuiheITVProvider';
 import { OpenAIVideoITVProvider } from './OpenAIVideoITVProvider';
 import { SuiheDirectITVProvider } from './SuiheDirectITVProvider';
+import { ComfyUIITVProvider } from './ComfyUIITVProvider';
 import type { ProviderDefinition } from '../registry.types';
 import { DEFAULT_POLLING_CONFIG, MEDIA_PROVIDER_CONTRACT_VERSION } from '../registry.types';
 import { itvRegistry } from '../registry';
@@ -96,6 +99,26 @@ function registerBuiltinProviders() {
       },
       presetBaseUrl: 'https://www.suihemedia.cloud',
       auth: { apiKey: 'required', baseUrl: 'optional' },
+      fallbackPolicy: 'lock-to-selection',
+    },
+    {
+      type: 'comfyui-itv',
+      kind: 'itv',
+      name: 'ComfyUI',
+      description: '直连 ComfyUI 服务端（POST /prompt + GET /history 轮询）。内置 MiniMax H3 参考生视频工作流'
+        + '（多参考图 + 提示词 → 带音轨视频），参考图以原文件直传 /upload/image；'
+        + '可在模型 defaults.workflowJson 里换成自定义 API 格式工作流。',
+      factory: (config) => new ComfyUIITVProvider(config as ITVConfig),
+      contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
+      capabilities: ['itv'],
+      // ComfyUI 本地推理耗时远高于云端 API，放宽到 60 分钟
+      polling: {
+        interval: 5000,
+        maxDuration: 3600000,
+        initialDelay: 5000,
+      },
+      // ComfyUI 原生无鉴权：apiKey 可选，服务地址必填
+      auth: { apiKey: 'optional', baseUrl: 'required' },
       fallbackPolicy: 'lock-to-selection',
     },
   ];

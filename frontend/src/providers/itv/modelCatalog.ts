@@ -220,6 +220,8 @@ const PROVIDER_DEFAULT_MAX_REFS: Record<string, number> = {
   // ITV 内置（komaapi 网关）
   'grok2api-imagine-itv': 7,
   'koma-suihe-itv': 4,
+  // ComfyUI MiniMax H3：ref_images 为 autogrow，上限 9 张
+  'comfyui-itv': 9,
   // ITV 老遗留（仍可能在 SQLite 里）
   'runway': 1,
   'kling': 2,

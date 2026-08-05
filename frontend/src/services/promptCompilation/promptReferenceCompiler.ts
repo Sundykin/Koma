@@ -1,5 +1,6 @@
 import type { MediaAssetSource, ProviderAssetInput } from '../../types';
 import type { PromptCompilationReferenceItem, PromptCompilationReferenceKind } from './types';
+import { formatReferencePlaceholder } from './imageIndexProtocol';
 
 /**
  * 每种媒体类型的引用上限：image 不限；video / audio 各 3 个，超出的引用回退到 name。
@@ -96,6 +97,7 @@ interface OrderedVisualReference {
  *   - image-index 策略：按 kind 分组 @Image N / @Video N / @Audio N（video / audio 上限 3，超出回退到 name）
  *   - koma-jimeng-file 策略：按 kind 分组 @image_file_N / @video_file_N / @audio_file_N，
  *     与 Koma 即梦上游 multipart 字段（image_file_N / video_file_N / audio_file_N）一一对应。
+ *   - minimax-image-tag 策略：按 kind 分组 <图片 N> / <视频 N> / <音频 N>，MiniMax H3 原生识别的中文标签
  *   - readable-name 策略：替换为 item.name
  *
  * 智能裁剪：只把 prompt 里实际 @ 到的 reference 推进编号桶 + compiledReferences；
@@ -110,7 +112,7 @@ export function compilePromptReferences(params: {
   prompt: string;
   references: PromptCompilationReferenceItem[];
   extraReferences?: Array<MediaAssetSource | ProviderAssetInput>;
-  replacementStrategy: 'image-index' | 'readable-name' | 'koma-jimeng-file';
+  replacementStrategy: 'image-index' | 'readable-name' | 'koma-jimeng-file' | 'minimax-image-tag';
   primaryReferenceId?: string;
   ensurePrimaryReference?: boolean;
 }): CompilePromptReferencesResult {
@@ -213,6 +215,13 @@ export function compilePromptReferences(params: {
         const index = indexByKind[kind].get(sourceKey);
         if (index != null) {
           return { ...parsed, replacement: `@${KOMA_JIMENG_KIND_LABEL[kind]}_${index}` };
+        }
+      }
+
+      if (replacementStrategy === 'minimax-image-tag') {
+        const index = indexByKind[kind].get(sourceKey);
+        if (index != null) {
+          return { ...parsed, replacement: formatReferencePlaceholder('minimax-image-tag', kind, index) };
         }
       }
 

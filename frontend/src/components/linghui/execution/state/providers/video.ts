@@ -12,6 +12,7 @@ import {
   compileWorkflowVideoDomainRequest,
   getPromptProtocol,
   mapVideoRequestToProviderRequest,
+  resolveITVPrefersLocalAssets,
   resolveITVTransportSupport,
   resolveVideoProtocolCompilationLimit,
 } from '../../../../../services/promptCompilation/videoRequestCompiler';
@@ -176,7 +177,7 @@ async function executeVideoProviderAttempt(
       request: compiledDomainRequest.request,
       transportSupport,
       maxAdditionalReferences,
-      preferLocalAssetInput: provider.config?.provider === 'seedance',
+      preferLocalAssetInput: resolveITVPrefersLocalAssets(provider),
       fallbackToSourceOnRequiredUploadFailure: false,
       messages: {
         missingPrimaryImage: '缺少主图输入',

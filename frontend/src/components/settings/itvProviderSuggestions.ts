@@ -101,6 +101,12 @@ const ITV_PROVIDER_FIELD_DEFAULTS: Record<string, Record<string, unknown>> = {
   'grok2api-imagine-itv': {
     promptProtocol: 'grok-image-index',
   },
+  // ComfyUI MiniMax H3：默认开启 MiniMax 协议（<图片 N>），与 Provider 构造函数兜底一致
+  'comfyui-itv': {
+    promptProtocol: 'minimax-image-tag',
+    defaultDuration: 6,
+    defaultResolution: '720p',
+  },
 };
 
 function cloneDefaults(value: unknown): Record<string, unknown> | undefined {

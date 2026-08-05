@@ -24,10 +24,21 @@ describe('channel catalog (itv)', () => {
     expect(channel?.models.length).toBe(0);
   });
 
-  it('exposes the Koma 官方 ITV providers + openai-video + suihe-itv（runway / kling / pika / sora2 / seedance / vidu / comfyui-animatediff / custom 已下线）', () => {
+  it('exposes the Koma 官方 ITV providers + openai-video + suihe-itv + comfyui-itv（runway / kling / pika / sora2 / seedance / vidu / comfyui-animatediff / custom 已下线）', () => {
     const itvChannels = listBuiltInChannelDefinitions('itv');
     const ids = itvChannels.map((c) => c.id).sort();
-    expect(ids).toEqual(['grok2api-imagine-itv', 'koma-suihe-itv', 'openai-video', 'suihe-itv']);
+    expect(ids).toEqual(['comfyui-itv', 'grok2api-imagine-itv', 'koma-suihe-itv', 'openai-video', 'suihe-itv']);
+  });
+
+  it('declares provider template metadata for comfyui-itv channel', () => {
+    const channel = getBuiltInChannelDefinition('comfyui-itv');
+    expect(channel).toBeTruthy();
+    expect(channel?.category).toBe('itv');
+    expect(channel?.models.length).toBe(0);
+    // ComfyUI 原生无鉴权：服务地址必填、apiKey 不必填
+    const required = (channel?.configSchema as { required?: string[] } | undefined)?.required;
+    expect(required).toContain('baseUrl');
+    expect(required).not.toContain('apiKey');
   });
 
   it('declares provider template metadata for suihe-itv channel', () => {

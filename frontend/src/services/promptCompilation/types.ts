@@ -3,11 +3,13 @@ import type { AssetMentionType, MentionType, ParsedMention } from '../../editor/
 
 /**
  * 提示词编译协议：
- *   - 'grok-image-index'：通用 OpenAI 兼容协议，占位符按 kind 编号成 @Image N / @Video N / @Audio N
- *   - 'koma-jimeng'    ：Koma 即梦渠道专用，占位符为 @image_file_N / @video_file_N / @audio_file_N，
- *                       对应上游 multipart 的 image_file_N / video_file_N / audio_file_N 字段。
+ *   - 'grok-image-index' ：通用 OpenAI 兼容协议，占位符按 kind 编号成 @Image N / @Video N / @Audio N
+ *   - 'koma-jimeng'      ：Koma 即梦渠道专用，占位符为 @image_file_N / @video_file_N / @audio_file_N，
+ *                         对应上游 multipart 的 image_file_N / video_file_N / audio_file_N 字段。
+ *   - 'minimax-image-tag'：ComfyUI MiniMax H3 专用，占位符为 <图片 N> / <视频 N> / <音频 N>，
+ *                         与模型原生识别的中文标签一致（编号对应 ref_images.ref_image_(N-1) 槽位）。
  */
-export type PromptCompilationProtocol = 'grok-image-index' | 'koma-jimeng';
+export type PromptCompilationProtocol = 'grok-image-index' | 'koma-jimeng' | 'minimax-image-tag';
 
 export interface PromptCompilationAsset {
   type: AssetMentionType;

@@ -93,6 +93,8 @@ vi.mock('../../../../services/promptCompilation/videoRequestCompiler', () => ({
   getPromptProtocol: (...args: unknown[]) => getPromptProtocolMock(...args),
   mapVideoRequestToProviderRequest: (...args: unknown[]) => mapVideoRequestToProviderRequestMock(...args),
   resolveITVTransportSupport: (...args: unknown[]) => resolveITVTransportSupportMock(...args),
+  resolveITVPrefersLocalAssets: (provider: { prefersLocalAssets?: boolean } | undefined) =>
+    Boolean(provider?.prefersLocalAssets),
   resolveVideoProtocolCompilationLimit: (...args: unknown[]) => resolveVideoProtocolCompilationLimitMock(...args),
 }));
 

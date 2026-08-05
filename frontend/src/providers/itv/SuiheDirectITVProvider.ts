@@ -96,6 +96,12 @@ export class SuiheDirectITVProvider implements ITVProvider {
   type = 'suihe-itv' as const;
   config: ITVConfig;
 
+  /**
+   * 素材由本 Provider 自己读字节再 multipart 直传，所以有本地副本时一律用本地：
+   * 生成结果的远程 URL 多是带签名的临时地址（如火山 TOS X-Tos-Expires=86400），过期后会 403。
+   */
+  prefersLocalAssets = true;
+
   // multipart 直传：remote-url 由前端下载字节、data-url 直接解字节，两种传输都支持
   assetTransports = {
     primaryImage: ['remote-url', 'data-url'] as const,

@@ -1,7 +1,16 @@
+/**
+ * 「按序号引用参考图」协议的提示词编译。
+ *
+ * 同一套编号逻辑服务多个协议，占位符格式由 protocol 决定（见 imageIndexProtocol.ts）：
+ *   grok-image-index  → @Image N
+ *   minimax-image-tag → <图片 N>
+ * 不传 protocol 时按 grok-image-index 处理，保持历史行为。
+ */
 import type { MediaAssetSource, ProviderAssetInput } from '../../types';
 import { isAssetMentionType, parseMentions } from '../../editor/mentionTypes';
 import type { AssetMentionType, ParsedMention } from '../../editor/mentionTypes';
 import type { PromptCompilationDebug, PromptCompilationInput } from './types';
+import { formatReferencePlaceholder, type ImageIndexProtocol } from './imageIndexProtocol';
 
 function buildMatchIds(type: AssetMentionType, assetId: string, altIds?: string[]): Set<string> {
   const ids = new Set<string>();
@@ -75,6 +84,8 @@ export function compileGrokTTI(params: {
    * They will be appended after selected assets.
    */
   extraReferences?: Array<MediaAssetSource | ProviderAssetInput>;
+  /** 占位符协议，默认 grok-image-index（@Image N） */
+  protocol?: ImageIndexProtocol;
 }): {
   compiledPrompt: string;
   compiledReferences: Array<MediaAssetSource | ProviderAssetInput>;
@@ -117,7 +128,12 @@ export function compileGrokTTI(params: {
     }
     const idx = usableAssets.findIndex(a => a === hit.asset);
     if (idx >= 0) {
-      replacements.push({ from: mention.from, to: mention.to, replacement: `@Image ${idx + 1}` }); // @Image 1..N
+      // 第 1..N 张参考图
+      replacements.push({
+        from: mention.from,
+        to: mention.to,
+        replacement: formatReferencePlaceholder(params.protocol, 'image', idx + 1),
+      });
     }
   }
 
@@ -133,14 +149,14 @@ export function compileGrokTTI(params: {
   ];
 
   const debug: PromptCompilationDebug = {
-    protocol: 'grok-image-index',
+    protocol: params.protocol ?? 'grok-image-index',
     originalPrompt: params.prompt,
     compiledPrompt,
     mentions,
     assetToImageIndex: usableAssets.map((a, i) => ({
       type: a.type,
       assetId: a.assetId,
-      image: `@Image ${i + 1}`,
+      image: formatReferencePlaceholder(params.protocol, 'image', i + 1),
     })),
     unmappedMentions,
   };
@@ -161,6 +177,8 @@ export function compileGrokITV(params: {
    * They will be appended after selected assets.
    */
   extraReferences?: Array<MediaAssetSource | ProviderAssetInput>;
+  /** 占位符协议，默认 grok-image-index（@Image N） */
+  protocol?: ImageIndexProtocol;
 }): {
   compiledPrompt: string;
   compiledAdditionalReferences: Array<MediaAssetSource | ProviderAssetInput>;
@@ -202,8 +220,12 @@ export function compileGrokITV(params: {
     }
     const idx = usableAssets.findIndex(a => a === hit.asset);
     if (idx >= 0) {
-      // @Image 1 reserved for primary image; assets start from @Image 2
-      replacements.push({ from: mention.from, to: mention.to, replacement: `@Image ${idx + 2}` });
+      // 第 1 张留给 primaryImage，选中素材从第 2 张开始
+      replacements.push({
+        from: mention.from,
+        to: mention.to,
+        replacement: formatReferencePlaceholder(params.protocol, 'image', idx + 2),
+      });
     }
   }
 
@@ -223,16 +245,16 @@ export function compileGrokITV(params: {
   ];
 
   const debug: PromptCompilationDebug = {
-    protocol: 'grok-image-index',
+    protocol: params.protocol ?? 'grok-image-index',
     originalPrompt: params.prompt,
     compiledPrompt,
     mentions,
     assetToImageIndex: [
-      { type: 'scene', assetId: '(primary-image)', image: '@Image 1' },
+      { type: 'scene', assetId: '(primary-image)', image: formatReferencePlaceholder(params.protocol, 'image', 1) },
       ...usableAssets.map((a, i) => ({
         type: a.type,
         assetId: a.assetId,
-        image: `@Image ${i + 2}`,
+        image: formatReferencePlaceholder(params.protocol, 'image', i + 2),
       })),
     ],
     unmappedMentions,

@@ -86,6 +86,7 @@ function getProviderColor(provider: string) {
     case 'grok2api-imagine-itv': return 'green';
     case 'openai-video': return 'gold';
     case 'suihe-itv': return 'blue';
+    case 'comfyui-itv': return 'orange';
     default: return 'default';
   }
 }
@@ -159,6 +160,13 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
   const previousProviderTypeRef = useRef<string | undefined>(undefined);
   const editingHasStoredApiKey = Boolean(editingChannel && (editingChannel.providerConfig as Record<string, unknown> | undefined)?.hasApiKey);
   const currentDefinition = currentProviderType ? definitionMap.get(currentProviderType) : undefined;
+  /**
+   * API Key 是否必填由渠道定义（ProviderDefinition.auth → configSchema.required）推导，
+   * 不再按 providerType 硬编码 —— ComfyUI 这类原生无鉴权的自建服务只需要服务地址。
+   */
+  const apiKeyRequired = (
+    (currentDefinition?.configSchema as { required?: string[] } | undefined)?.required ?? ['apiKey']
+  ).includes('apiKey');
   const watchedModels = Form.useWatch('models', form) as Array<Partial<ChannelModelDefinition>> | undefined;
   const modelOptions = useMemo(() => (
     (watchedModels || [])
@@ -733,7 +741,8 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
                 tooltip="启用后会把 @角色名 / @场景名 / @道具名 编译为 @Image N，并按渠道上限对齐参考图数量。"
               >
                 <Select allowClear placeholder="不启用（默认）">
-                  <Select.Option value="grok-image-index">Koma 协议</Select.Option>
+                  <Select.Option value="grok-image-index">Koma 协议（@Image N）</Select.Option>
+                  <Select.Option value="minimax-image-tag">MiniMax H3 协议（&lt;图片 N&gt;）</Select.Option>
                 </Select>
               </Form.Item>
 
@@ -742,9 +751,10 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
                   name="apiKey"
                   label={t('settings.apiKey')}
                   rules={[{
-                    required: currentProviderType !== 'comfyui-animatediff' && !editingHasStoredApiKey && !isEditingActivationChannel,
+                    required: apiKeyRequired && !editingHasStoredApiKey && !isEditingActivationChannel,
                     message: `${t('settings.pleaseEnter')} ${t('settings.apiKey')}`,
                   }]}
+                  extra={apiKeyRequired ? undefined : '该渠道无需鉴权，留空即可；若服务前置了鉴权网关再填写'}
                 >
                   <Input.Password
                     placeholder={editingHasStoredApiKey ? t('settings.apiKeyStoredPlaceholder') : t('settings.enterApiKey')}

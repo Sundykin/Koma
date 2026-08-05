@@ -43,6 +43,7 @@ import {
   compileWorkflowVideoDomainRequest,
   getPromptProtocol,
   mapVideoRequestToProviderRequest,
+  resolveITVPrefersLocalAssets,
   resolveITVTransportSupport,
   resolveVideoProtocolCompilationLimit,
 } from './promptCompilation/videoRequestCompiler';
@@ -877,7 +878,7 @@ export class MediaGenerationService {
       request: compiledDomainRequest.request,
       transportSupport,
       maxAdditionalReferences,
-      preferLocalAssetInput: provider.config?.provider === 'seedance',
+      preferLocalAssetInput: resolveITVPrefersLocalAssets(provider),
       fallbackToSourceOnRequiredUploadFailure: false,
     });
     const tracedProviderRequest = withVideoTrace(providerRequest, traceContext);

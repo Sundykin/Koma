@@ -8,6 +8,7 @@ import {
 import { isAssetMentionType, parseMentions } from '../../editor/mentionTypes';
 import { resolveProviderAssetInput } from '../mediaAssetResolver';
 import { compileGrokITV, compileGrokTTI } from './grokImageIndexCompiler';
+import { isImageIndexProtocol } from './imageIndexProtocol';
 import { compilePromptReferences } from './promptReferenceCompiler';
 import type { PromptCompilationDebug, PromptCompilationInput } from './types';
 import { DEFAULT_VIDEO_DURATION_SECONDS } from '../../utils/videoDuration';
@@ -430,6 +431,19 @@ export function getPromptProtocol(provider: unknown): string | undefined {
   return (provider as ITVProviderLike | undefined)?.config?.promptProtocol as string | undefined;
 }
 
+/**
+ * 素材同时存在本地文件与远程 URL 时是否优先用本地文件。
+ *
+ * 由 Provider 通过 `prefersLocalAssets` 声明（自己读字节上传的 provider 应声明 true —— 生成结果的
+ * 远程 URL 常是带签名的临时地址，过期后下载会 403，而本地副本永远可用）。
+ * 未声明时沿用历史行为：仅遗留的 seedance 走本地优先，其余远程优先。
+ */
+export function resolveITVPrefersLocalAssets(provider: unknown): boolean {
+  const declared = (provider as { prefersLocalAssets?: boolean } | undefined)?.prefersLocalAssets;
+  if (typeof declared === 'boolean') return declared;
+  return (provider as ITVProviderLike | undefined)?.config?.provider === 'seedance';
+}
+
 export function resolveITVTransportSupport(provider: unknown): ITVTransportSupport {
   const transports = (provider as ITVProviderLike | undefined)?.assetTransports;
   const primaryTransports = transports?.primaryImage;
@@ -464,6 +478,11 @@ export function resolveVideoProtocolCompilationLimit(params: {
   if (params.protocol === 'grok-image-index') {
     return 3;
   }
+  if (params.protocol === 'minimax-image-tag') {
+    // MiniMax H3 的 ref_images 上限 9 张；这里返回"额外参考图"上限，
+    // reference-to-video 会在映射层再 +1 得到总图数 9。
+    return 8;
+  }
   return undefined;
 }
 
@@ -485,13 +504,18 @@ export function compileVideoRequestPromptReferences<TAsset extends VideoRequestA
   // 协议 → 占位符策略：
   //   grok-image-index → @Image N / @Video N / @Audio N
   //   koma-jimeng      → @image_file_N / @video_file_N / @audio_file_N
+  //   minimax-image-tag → <图片 N> / <视频 N> / <音频 N>
   //   其它 / 不支持视觉参考的能力 → readable-name
-  const replacementStrategy: 'image-index' | 'readable-name' | 'koma-jimeng-file' =
-    params.promptProtocol === 'grok-image-index' && supportsVisualReferenceCompilation(params.request.capability)
-      ? 'image-index'
-      : params.promptProtocol === 'koma-jimeng' && supportsVisualReferenceCompilation(params.request.capability)
-        ? 'koma-jimeng-file'
-        : 'readable-name';
+  const replacementStrategy: 'image-index' | 'readable-name' | 'koma-jimeng-file' | 'minimax-image-tag' =
+    !supportsVisualReferenceCompilation(params.request.capability)
+      ? 'readable-name'
+      : params.promptProtocol === 'grok-image-index'
+        ? 'image-index'
+        : params.promptProtocol === 'koma-jimeng'
+          ? 'koma-jimeng-file'
+          : params.promptProtocol === 'minimax-image-tag'
+            ? 'minimax-image-tag'
+            : 'readable-name';
 
   const compiled = compilePromptReferences({
     prompt: params.request.prompt,
@@ -575,7 +599,7 @@ export function compileWorkflowVideoDomainRequest(params: {
   let compilationDebug: PromptCompilationDebug | undefined;
 
   if (
-    protocol === 'grok-image-index'
+    isImageIndexProtocol(protocol)
     && promptCompilation?.selectedAssets?.length
     && (isImageToVideoRequest(request) || isReferenceToVideoRequest(request))
   ) {
@@ -596,6 +620,7 @@ export function compileWorkflowVideoDomainRequest(params: {
         primaryImage: request.primaryImage,
         selectedAssets,
         extraReferences,
+        protocol,
       });
 
       const compiledAdditional = maxAdditionalReferences != null
@@ -628,6 +653,7 @@ export function compileWorkflowVideoDomainRequest(params: {
           primaryImage: promptCompilation.primaryReferenceSource!,
           selectedAssets,
           extraReferences,
+          protocol,
         });
 
         const compiledReferenceImages = [
@@ -653,6 +679,7 @@ export function compileWorkflowVideoDomainRequest(params: {
           prompt: originalPrompt,
           selectedAssets,
           extraReferences,
+          protocol,
         });
 
         const compiledReferenceImages = maxAdditionalReferences != null
@@ -670,7 +697,7 @@ export function compileWorkflowVideoDomainRequest(params: {
   }
 
   if (
-    protocol !== 'grok-image-index'
+    !isImageIndexProtocol(protocol)
     && promptCompilation?.selectedAssets?.length
   ) {
     const readablePrompt = compileReadableSelectedAssetMentions({
