@@ -170,8 +170,6 @@ export function useStoryboardPersistence(deps: StoryboardPersistenceDeps) {
       });
 
     return activeShotsSaveRef.current;
-    // flushQueuedShotSaves 自引用（finally 里续跑队列）；函数声明稳定无状态，安全
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [message]);
 
   /** 保存分镜数据：先本地更新（输入法不被异步回写打断），再队列化落库 */

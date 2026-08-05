@@ -7,7 +7,7 @@
  */
 import { useCallback } from 'react';
 import type {
-  Shot, Character, Scene, AppSettings, ProjectStyleSnapshot, StoredMediaAsset,
+  Shot, Character, Scene, AppSettings, ProjectStyleSnapshot,
 } from '../../../types';
 import { generateShotImage, batchGenerateShotImages } from '../../../services/ShotGenerationService';
 import { shotRenderWorkflow, batchRenderShots } from '../../../workflow/shotRenderWorkflow';

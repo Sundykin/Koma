@@ -207,8 +207,6 @@ export function useStoryboardShotMutations(deps: StoryboardShotMutationsDeps) {
       } : s
     );
     saveAllShots(updatedShots);
-    // assets 是每轮新建的对象字面量，列入依赖会让回调每轮重建；其内容由 characters/scenes/props 决定
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shots, saveAllShots, handleAssetChange, characters, scenes, props]);
 
   const handleCharactersChange = useCallback(
