@@ -39,7 +39,9 @@
     "verify:plugin-compatibility": "node scripts/test-plugin-compatibility.cjs",
     "verify:plugin": "npm run verify:plugin-sdk-parity && npm run verify:plugin-compatibility",
     "verify:ipc-whitelist": "node scripts/check-ipc-whitelist.cjs",
-    "verify:all": "npm run verify:plugin && npm run verify:ipc-whitelist"
+    "verify:all": "npm run verify:plugin && npm run verify:ipc-whitelist",
+    "test": "npm --prefix frontend run test --",
+    "test:run": "npm --prefix frontend run test -- run"
   },
   "dependencies": {
     "@langchain/anthropic": "^1.3.12",
