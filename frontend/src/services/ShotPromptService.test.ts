@@ -238,7 +238,7 @@ describe('buildDialogueGuardNote', () => {
       'drama',
     );
 
-    expect(note).toContain('【项目叙事模式：剧情模式】');
+    expect(note).toContain('【项目叙事模式：剧情模式 —— 影视化叙事，画面独立讲故事】');
     expect(note).toContain('我：不对，这不对劲。');
     expect(note).toContain('我：我不能就这么认命。');
   });
@@ -251,7 +251,7 @@ describe('buildDialogueGuardNote', () => {
       'narration',
     );
 
-    expect(note).toContain('【项目叙事模式：解说模式】');
+    expect(note).toContain('【项目叙事模式：解说模式 —— 解说字幕驱动画面】');
     expect(note).toContain('不主动把第一人称解说改写成角色对白');
     expect(note).not.toContain('我：不对，这不对劲。');
     expect(note).not.toContain('我：我不能就这么认命。');
