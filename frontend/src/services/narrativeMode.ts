@@ -18,12 +18,9 @@ export function buildShotBreakdownDialogueModeDirective(mode: ProjectNarrativeMo
     ].join('\n');
   }
 
-  return [
-    '【项目叙事模式：剧情模式】',
-    '- 输入剧本是结构化标记行：[旁白] 开头的是旁白，[台词·角色名] 开头的是人物台词，[场景] 开头的是场景标注（仅作断镜参考，不计入字幕行覆盖）。',
-    '- scriptLineIndices 必须连续不重不漏覆盖所有输入行（含 [场景] 行），不要改写任何一行的原文。',
-    '- dialogue 字段已废弃：台词与旁白都由 scriptLines 承载，dialogue 一律填“无”，不要再把解说/台词单独写进 dialogue。',
-  ].join('\n');
+  // 剧情模式的分镜拆解走独立模板（shot_breakdown_drama，创作式分镜脚本），
+  // 不经过本指令；此分支仅为类型完备保留，当前无调用方。
+  return '';
 }
 
 export function buildVideoDialogueModeDirective(mode: ProjectNarrativeMode): string {
