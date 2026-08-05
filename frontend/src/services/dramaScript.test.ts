@@ -168,3 +168,31 @@ describe('drama breakdown: description + voiceLines → ShotScriptLine', () => {
     expect(segments.map(s => s.text)).toEqual(['旁白内容', '台词内容']);
   });
 });
+
+describe('shot script paragraph (分镜整段剧本)', () => {
+  it('serializes lines to paragraph and parses back with roles', async () => {
+    const { serializeShotScriptParagraph, parseShotScriptParagraph } = await import('./dramaScript');
+    const nameById = new Map([['char_1', '宁卓']]);
+    const lines = [
+      { id: '1', text: '废弃戏台，雨夜。宁卓独立台中央。', role: 'description' as const },
+      { id: '2', text: '雨水顺着戏台边缘往下淌', role: 'narration' as const },
+      { id: '3', text: '你们来了', role: 'dialogue' as const, characterId: 'char_1' },
+      { id: '4', text: '谁在那里', role: 'dialogue' as const },
+    ];
+    const text = serializeShotScriptParagraph(lines, nameById);
+    expect(text).toBe([
+      '废弃戏台，雨夜。宁卓独立台中央。',
+      '[旁白] 雨水顺着戏台边缘往下淌',
+      '[台词·宁卓] 你们来了',
+      '[台词] 谁在那里',
+    ].join('\n'));
+
+    const parsed = parseShotScriptParagraph(text);
+    expect(parsed).toEqual([
+      { role: 'description', text: '废弃戏台，雨夜。宁卓独立台中央。' },
+      { role: 'narration', text: '雨水顺着戏台边缘往下淌' },
+      { role: 'dialogue', speaker: '宁卓', text: '你们来了' },
+      { role: 'dialogue', speaker: undefined, text: '谁在那里' },
+    ]);
+  });
+});

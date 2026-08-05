@@ -35,6 +35,7 @@ import {
 } from '@ant-design/icons';
 import type { Shot, ShotImageMode, ShotScriptLine, Character, Scene, Prop, StoredMediaAsset } from '../../types';
 import { ShotScriptLines } from './ShotScriptLines';
+import { ShotScriptParagraph } from './ShotScriptParagraph';
 import {
   getMediaAssetDisplaySource,
   getMediaAssetEditingSource,
@@ -767,16 +768,25 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
           </div>
         </div>
 
-        {/* 列1: 剧本（min-h-0 让 ShotScriptLines 内部滚动条生效，行多了不撑高分镜） */}
+        {/* 列1: 剧本（min-h-0 让内部滚动条生效）
+            剧情模式：整段分镜剧本文本（分镜描述 + [旁白]/[台词·角色] 声音行）；
+            解说模式：逐行字幕块（可拖拽/逐行编辑） */}
         <div className={`${SHOT_LAYOUT.colScript} border-r border-border-subtle flex flex-col min-h-0`}>
           <div className="flex-1 min-h-0 p-1">
-            <ShotScriptLines
-              shotId={shot.id}
-              lines={shot.scriptLines || []}
-              onLinesChange={onScriptLinesChange}
-              characters={narrativeMode === 'drama' ? characters : undefined}
-              showRoleBadge={narrativeMode === 'drama'}
-            />
+            {narrativeMode === 'drama' ? (
+              <ShotScriptParagraph
+                shotId={shot.id}
+                lines={shot.scriptLines || []}
+                characters={characters}
+                onLinesChange={onScriptLinesChange}
+              />
+            ) : (
+              <ShotScriptLines
+                shotId={shot.id}
+                lines={shot.scriptLines || []}
+                onLinesChange={onScriptLinesChange}
+              />
+            )}
           </div>
         </div>
 
