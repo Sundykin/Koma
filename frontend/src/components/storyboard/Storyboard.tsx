@@ -18,7 +18,6 @@ import {
   RobotOutlined,
 } from '@ant-design/icons';
 import type { Shot, ShotImageMode, ShotScriptLine, Character, Scene, Prop, AppSettings, StoredMediaAsset, ProjectStyleSnapshot, ShotMeta } from '../../types';
-import { loadEpisodeShots, saveEpisodeShots, loadCharacters, loadScenes, loadProps, loadEpisodeAnalysis, listShots } from '../../store/projectStore';
 import { useStoryboardMediaGeneration } from './hooks/useStoryboardMediaGeneration';
 import { mediaGenerationService } from '../../services/MediaGenerationService';
 import { runWithTask } from '../../services/taskRunner';
@@ -28,6 +27,7 @@ import { useStoryboardPrompts } from './hooks/useStoryboardPrompts';
 import { loadVoiceLibrary } from '../../services/voiceLibrary/voiceLibraryService';
 import { useStoryboardAudio } from './hooks/useStoryboardAudio';
 import { useStoryboardShotMutations } from './hooks/useStoryboardShotMutations';
+import { useStoryboardPersistence } from './hooks/useStoryboardPersistence';
 import type { VoiceLibrarySnapshot } from '../../types/voice-library';
 import { TaskManager } from '../../services/TaskManager';
 import { useActiveTask, useTaskTransitions, useTasks } from '../../hooks';
@@ -295,9 +295,6 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   // 点击到任务真正落库之间的短暂"提交中"窗口；任务创建后由 activeAnalysisTask 接管
   const [isSubmittingAnalysis, setIsSubmittingAnalysis] = useState(false);
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number; step?: string } | undefined>();
-  const queuedShotsSaveRef = useRef<{ projectId: string; episodeId: string; shots: Shot[] } | null>(null);
-  const activeShotsSaveRef = useRef<Promise<void> | null>(null);
-  const shotStoreRefreshRef = useRef<Promise<void>>(Promise.resolve());
 
   // 预选资产弹窗
   const [presetModalOpen, setPresetModalOpen] = useState(false);
@@ -467,67 +464,6 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   }, [shotVideoSupportMap, shots]);
 
   // 加载数据
-  const loadData = useCallback(async () => {
-    if (!projectId) return;
-    setLoading(true);
-    try {
-      const loadedShots = episodeId ? await loadEpisodeShots(projectId, episodeId) : [];
-      const [loadedCharacters, loadedScenes, loadedProps, episodeAnalysis, loadedShotMetas] = await Promise.all([
-        loadCharacters(projectId),
-        loadScenes(projectId),
-        loadProps(projectId),
-        episodeId ? loadEpisodeAnalysis(projectId, episodeId) : Promise.resolve(null),
-        listShots(projectId),
-      ]);
-
-      // 根据剧集分析结果筛选资产
-      let filteredCharacters = loadedCharacters;
-      let filteredScenes = loadedScenes;
-      let filteredProps = loadedProps;
-
-      if (episodeAnalysis) {
-        // 构建 refs 集合：从 episodeAnalysis.xxxRefs + shots 中的资产 ID 合并
-        const charRefs = new Set(episodeAnalysis.characterRefs || []);
-        const sceneRefs = new Set(episodeAnalysis.sceneRefs || []);
-        const propRefs = new Set(episodeAnalysis.propRefs || []);
-
-        // 补充：从 shots 中提取所有引用的资产 ID（兜底 refs 为空的情况）
-        for (const shot of loadedShots) {
-          for (const id of shot.characters || []) { if (id) charRefs.add(id); }
-          for (const id of shot.scenes || []) { if (id) sceneRefs.add(id); }
-          for (const id of shot.props || []) { if (id) propRefs.add(id); }
-        }
-
-        // 仅在有 refs 时过滤，否则保留全部资产
-        if (charRefs.size > 0) {
-          filteredCharacters = loadedCharacters.filter(c => charRefs.has(c.id));
-        }
-        if (sceneRefs.size > 0) {
-          filteredScenes = loadedScenes.filter(s => sceneRefs.has(s.id));
-        }
-        if (propRefs.size > 0) {
-          filteredProps = loadedProps.filter(p => propRefs.has(p.id));
-        }
-      }
-
-      // 一刀切：移除旧数据迁移/修复逻辑。分镜资产绑定与提示词 @mention 统一使用项目内 ID。
-      // duration 按当前 ITV 渠道 spec 吸附（grok 枚举 / seedance 范围），不再固定 grok
-      const normalizedShots = loadedShots.map(shot => ({ ...shot, duration: clampDurationToSpec(shot.duration, itvDurationSpec) }));
-      shotsRef.current = normalizedShots;
-      setShots(normalizedShots);
-      setShotMetas(loadedShotMetas);
-      setCharacters(filteredCharacters);
-      setScenes(filteredScenes);
-      setProps(filteredProps);
-
-    } catch (err) {
-      logger.error('加载失败', err);
-      message.error('加载分镜数据失败');
-    } finally {
-      setLoading(false);
-    }
-  }, [projectId, episodeId, itvDurationSpec]);
-
   // 启动时拉一次全局音色库快照（builtin + custom 合并）
   useEffect(() => {
     let cancelled = false;
@@ -537,32 +473,29 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     return () => { cancelled = true; };
   }, []);
 
-  const refreshShotsFromStore = useCallback(async () => {
-    if (!projectId || !episodeId) {
-      return;
-    }
-    const [latestShots, latestShotMetas] = await Promise.all([
-      loadEpisodeShots(projectId, episodeId),
-      listShots(projectId),
-    ]);
-    const normalizedShots = latestShots.map(shot => ({ ...shot, duration: clampDurationToSpec(shot.duration, itvDurationSpec) }));
-    shotsRef.current = normalizedShots;
-    setShots(normalizedShots);
-    setShotMetas(latestShotMetas);
-  }, [projectId, episodeId, itvDurationSpec]);
-
-  const queueRefreshShotsFromStore = useCallback((): Promise<void> => {
-    const next = shotStoreRefreshRef.current
-      .catch(() => undefined)
-      .then(() => refreshShotsFromStore())
-      .catch((error: unknown) => {
-        logger.warn('刷新分镜存储失败', {
-          error: error instanceof Error ? error.message : String(error),
-        });
-      });
-    shotStoreRefreshRef.current = next;
-    return next;
-  }, [refreshShotsFromStore]);
+  // 数据加载/保存与删除已拆到 hooks/useStoryboardPersistence
+  const {
+    loadData,
+    refreshShotsFromStore,
+    queueRefreshShotsFromStore,
+    flushQueuedShotSaves,
+    saveAllShots,
+    handleDeleteShot,
+    handleBatchDelete,
+  } = useStoryboardPersistence({
+    projectId,
+    episodeId,
+    itvDurationSpec,
+    shots,
+    shotsRef,
+    setShots,
+    setShotMetas,
+    setCharacters,
+    setScenes,
+    setProps,
+    setLoading,
+    message,
+  });
 
   useEffect(() => {
     loadData();
@@ -647,78 +580,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     }
   );
 
-  const flushQueuedShotSaves = useCallback((): Promise<void> => {
-    if (activeShotsSaveRef.current) {
-      return activeShotsSaveRef.current;
-    }
-
-    const task = (async () => {
-      while (queuedShotsSaveRef.current) {
-        const snapshot = queuedShotsSaveRef.current;
-        queuedShotsSaveRef.current = null;
-        await saveEpisodeShots(snapshot.projectId, snapshot.episodeId, snapshot.shots);
-        // 注：原本这里有「分镜变更 → 回写 episode.scriptText」逻辑（D 项 / commit 436a85b），
-        // 但会带来副作用：清空全部分镜时剧本也被清空、用户回到剧本步看不到原文了。
-        // 已移除——剧本（episode.scriptText）和分镜各自独立持久化，互不影响。
-        // 这意味着在分镜内编辑/拖动字幕行不会反向同步到剧本步；如需保持一致用户须重新推文化。
-      }
-    })();
-
-    activeShotsSaveRef.current = task
-      .catch((error: unknown) => {
-        logger.error('保存分镜失败', error);
-        message.error('保存失败');
-      })
-      .finally(() => {
-        activeShotsSaveRef.current = null;
-        if (queuedShotsSaveRef.current) {
-          void flushQueuedShotSaves();
-        }
-      });
-
-    return activeShotsSaveRef.current;
-  }, [message]);
-
-  // 保存分镜数据
-  const saveAllShots = useCallback((updatedShots: Shot[]) => {
-    if (!episodeId) {
-      message.warning('未选择剧集，无法保存分镜');
-      return Promise.resolve();
-    }
-
-    const normalizedShots = updatedShots.map(shot => ({
-      ...shot,
-      duration: clampDurationToSpec(shot.duration, itvDurationSpec),
-    }));
-
-    // 先本地更新，避免输入法组合输入被异步持久化回写打断。
-    shotsRef.current = normalizedShots;
-    setShots(normalizedShots);
-    queuedShotsSaveRef.current = {
-      projectId,
-      episodeId,
-      shots: normalizedShots,
-    };
-
-    return flushQueuedShotSaves();
-  }, [projectId, episodeId, message, flushQueuedShotSaves, itvDurationSpec]);
-
   // ============ 回调函数 ============
-
-  const handleDeleteShot = useCallback(async (shotId: string) => {
-    const updatedShots = shots.filter(s => s.id !== shotId);
-    await saveAllShots(updatedShots);
-    message.success('分镜已删除');
-  }, [shots, saveAllShots]);
-
-  // 批量删除
-  const handleBatchDelete = useCallback(async (shotIds: string[]) => {
-    const updatedShots = shots.filter(s => !shotIds.includes(s.id));
-    await saveAllShots(updatedShots);
-    message.success(`已删除 ${shotIds.length} 个分镜`);
-  }, [shots, saveAllShots]);
-
-
 
   // dnd-kit 传感器：用 PointerSensor + 5px 激活距离，避免误触发
   const dndSensors = useSensors(
