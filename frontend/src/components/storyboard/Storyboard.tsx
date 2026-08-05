@@ -18,22 +18,18 @@ import {
   LoadingOutlined,
   RobotOutlined,
 } from '@ant-design/icons';
-import type { Shot, ShotImageMode, ShotScriptLine, Character, Scene, Prop, AppSettings, StoredMediaAsset, ProjectStyleSnapshot, ShotMeta, ShotAudioBinding } from '../../types';
+import type { Shot, ShotImageMode, ShotScriptLine, Character, Scene, Prop, AppSettings, StoredMediaAsset, ProjectStyleSnapshot, ShotMeta } from '../../types';
 import { loadEpisodeShots, saveEpisodeShots, loadCharacters, loadScenes, loadProps, loadEpisodeAnalysis, listShots } from '../../store/projectStore';
-import { generateShotImage, batchGenerateShotImages } from '../../services/ShotGenerationService';
+import { useStoryboardMediaGeneration } from './hooks/useStoryboardMediaGeneration';
 import { mediaGenerationService } from '../../services/MediaGenerationService';
-import { runWithConcurrency } from '../../utils/concurrency';
-import { shotRenderWorkflow, batchRenderShots } from '../../workflow/shotRenderWorkflow';
 import { runWithTask } from '../../services/taskRunner';
 import { submitShotAnalysisTask } from '../../services/analysisTaskClient';
 import type { PresetAssets } from '../../services/ShotAnalysisService';
-import { generateShotPrompt, batchGenerateShotPrompts } from '../../services/ShotPromptService';
+import { useStoryboardPrompts } from './hooks/useStoryboardPrompts';
 import { loadVoiceLibrary } from '../../services/voiceLibrary/voiceLibraryService';
-import { prepareShotAudio } from '../../services/voiceLibrary/shotVoiceCompile';
-import { resolveShotLineVoice } from '../../services/voiceLibrary/shotLineVoice';
+import { useStoryboardAudio } from './hooks/useStoryboardAudio';
 import type { VoiceLibrarySnapshot } from '../../types/voice-library';
 import { TaskManager } from '../../services/TaskManager';
-import { findActiveTask } from '../../services/tasksIPC';
 import { useActiveTask, useTaskTransitions, useTasks } from '../../hooks';
 import { ScriptEditor } from '../../editor';
 import type { MentionItem } from '../../editor';
@@ -67,7 +63,7 @@ import {
 import { getModelMaxReferenceImages } from '../../providers/itv/modelCatalog';
 import './Storyboard.scss';
 import './ShotListEditor.scss';
-import { getMediaAssetDisplaySource, scriptLinesFromText, getShotScriptText, buildShotVoiceSegments } from '../../types';
+import { getMediaAssetDisplaySource, scriptLinesFromText, getShotScriptText } from '../../types';
 import { findVersionNumberForVideoAsset } from '../../utils/shotVersionSelection';
 
 const logger = createLogger('Storyboard');
@@ -765,132 +761,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     message.success(`已删除 ${shotIds.length} 个分镜`);
   }, [shots, saveAllShots]);
 
-  const handleGenerateShotImage = useCallback(async (shotId: string) => {
-    if (!episodeId) {
-      message.warning('未选择剧集');
-      return;
-    }
-    const shot = shotsRef.current.find(s => s.id === shotId);
-    if (!shot) {
-      message.error('分镜不存在');
-      return;
-    }
-    if (!shot.imagePrompt?.trim()) {
-      message.warning('请先填写图片提示词');
-      return;
-    }
-    setSubmittingShots(prev => new Set(prev).add(shotId));
-    try {
-      await flushQueuedShotSaves();
-      const asset = await generateShotImage(projectId, episodeId, shotId, characters, scenes, ttiSelection, {
-        aspectRatio,
-        styleSnapshot,
-        shotSnapshot: shot,
-        shotsSnapshot: shotsRef.current,
-      });
-      message.success('分镜图片生成完成');
-      const updatedShots = shotsRef.current.map(s => {
-        if (s.id !== shotId) return s;
-        const existing = s.media?.images || [];
-        return {
-          ...s,
-          media: {
-            ...(s.media || {}),
-            images: [...existing, asset],
-            currentImageIndex: existing.length,
-          },
-        };
-      });
-      shotsRef.current = updatedShots;
-      setShots(updatedShots);
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      message.error(errorMessage || '启动生成失败');
-    } finally {
-      setSubmittingShots(prev => {
-        const next = new Set(prev);
-        next.delete(shotId);
-        return next;
-      });
-    }
-  }, [projectId, episodeId, characters, scenes, ttiSelection, aspectRatio, styleSnapshot, message, flushQueuedShotSaves]);
 
-  // 渲染视频
-  const handleRenderShotVideo = useCallback(async (shotId: string) => {
-    const shot = shotsRef.current.find(s => s.id === shotId);
-    if (!shot) return;
-    if (!shot.videoPrompt?.trim()) {
-      message.warning('请先填写视频提示词');
-      return;
-    }
-    const support = shotVideoSupportMap.get(shotId);
-    if (support?.disabledReason) {
-      message.error(support.disabledReason);
-      return;
-    }
-    setSubmittingRenderShots(prev => new Set(prev).add(shotId));
-    setShotVideoProgress(prev => {
-      const next = new Map(prev);
-      next.set(shotId, { progress: 0, step: '准备渲染...' });
-      return next;
-    });
-    try {
-      await flushQueuedShotSaves();
-      const { result } = await runWithTask({
-        projectId,
-        category: 'analysis',
-        subType: 'shot-generation',
-        targetType: 'shot',
-        targetId: shotId,
-        targetName: `分镜 #${shotId.slice(-6)} 视频生成`,
-        type: 'shot-generation',
-        execute: async (taskCtx) => shotRenderWorkflow(
-          {
-            projectId,
-            episodeId,
-            shot,
-            settings: effectiveSettings,
-            aspectRatio,
-            mediaSelections: {
-              ttiSelection,
-              itvSelection,
-              ttsSelection,
-            },
-            styleSnapshot,
-            allShots: shotsRef.current,
-          },
-          (progress, step) => {
-            setShotVideoProgress(prev => {
-              const next = new Map(prev);
-              next.set(shotId, { progress, step: step || '' });
-              return next;
-            });
-            taskCtx.progress(progress, step);
-          }
-        ),
-      });
-      if (result.success && result.version) {
-        await refreshShotsFromStore();
-        message.success('分镜渲染完成');
-      } else {
-        message.error(result.error || '渲染失败');
-      }
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      message.error(errorMessage || '渲染失败');
-    } finally {
-      setSubmittingRenderShots(prev => {
-        const next = new Set(prev);
-        next.delete(shotId);
-        return next;
-      });
-      setShotVideoProgress(prev => {
-        const next = new Map(prev);
-        next.delete(shotId);
-        return next;
-      });
-    }
-  }, [projectId, episodeId, shotVideoSupportMap, effectiveSettings, ttiSelection, itvSelection, ttsSelection, aspectRatio, styleSnapshot, message, refreshShotsFromStore, flushQueuedShotSaves]);
 
   // 单分镜内字幕行变更（编辑 / 添加 / 删除 / 同分镜内排序 / 任意位置插入）
   const handleScriptLinesChange = useCallback((shotId: string, lines: ShotScriptLine[]) => {
@@ -1193,435 +1064,32 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   }, [shots, saveAllShots]);
 
   // 生成图片提示词（首次生成）
-  const handleGenerateImagePrompt = useCallback(async (shotId: string) => {
-    if (!episodeId) {
-      message.warning('未选择剧集');
-      return;
-    }
-    const shot = shotsRef.current.find(s => s.id === shotId);
-    if (!shot) return;
-    setSubmittingImagePrompts(prev => new Set(prev).add(shotId));
-    try {
-      await flushQueuedShotSaves();
-      const shotsSnapshot = shotsRef.current;
-      const latestShot = shotsSnapshot.find(s => s.id === shotId) || shot;
-      const result = await generateShotPrompt(
-        projectId,
-        episodeId,
-        latestShot,
-        projectStylePrompt,
-        llmSelection,
-        { image: true, video: false },  // 只生成图片提示词
-        { shotsSnapshot },
-        styleSnapshot
-      );
-      if (result.success) {
-        const updatedShots = shotsRef.current.map(s => s.id === shotId ? {
-          ...s,
-          imagePrompt: result.imagePrompt,
-        } : s);
-        shotsRef.current = updatedShots;
-        setShots(updatedShots);
-        message.success('图片提示词生成完成');
-      } else {
-        message.error(result.error || '生成失败');
-      }
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      message.error(errorMessage || '生成失败');
-    } finally {
-      setSubmittingImagePrompts(prev => {
-        const next = new Set(prev);
-        next.delete(shotId);
-        return next;
-      });
-    }
-  }, [projectId, episodeId, llmSelection, projectStylePrompt, styleSnapshot, flushQueuedShotSaves]);
+  // 提示词生成/优化逻辑已拆到 hooks/useStoryboardPrompts（单镜 + 批量参数化）
+  const {
+    ensureNoActiveBatch,
+    handleGenerateImagePrompt,
+    handleGenerateVideoPrompt,
+    handleOptimizeImagePrompt,
+    handleOptimizeVideoPrompt,
+    handleBatchGenerateImagePrompts,
+    handleBatchReGenerateImagePrompts,
+    handleBatchGenerateVideoPrompts,
+    handleBatchReGenerateVideoPrompts,
+  } = useStoryboardPrompts({
+    projectId,
+    episodeId,
+    llmSelection,
+    projectStylePrompt,
+    styleSnapshot,
+    shotsRef,
+    setShots,
+    setSubmittingImagePrompts,
+    setSubmittingVideoPrompts,
+    setBatchProgress,
+    flushQueuedShotSaves,
+    message,
+  });
 
-  // 生成视频提示词（首次生成）
-  const handleGenerateVideoPrompt = useCallback(async (shotId: string) => {
-    if (!episodeId) {
-      message.warning('未选择剧集');
-      return;
-    }
-    const shot = shotsRef.current.find(s => s.id === shotId);
-    if (!shot) return;
-    setSubmittingVideoPrompts(prev => new Set(prev).add(shotId));
-    try {
-      await flushQueuedShotSaves();
-      const shotsSnapshot = shotsRef.current;
-      const latestShot = shotsSnapshot.find(s => s.id === shotId) || shot;
-      const result = await generateShotPrompt(
-        projectId,
-        episodeId,
-        latestShot,
-        projectStylePrompt,
-        llmSelection,
-        { image: false, video: true },  // 只生成视频提示词
-        { shotsSnapshot },
-        styleSnapshot
-      );
-      if (result.success) {
-        const updatedShots = shotsRef.current.map(s => s.id === shotId ? {
-          ...s,
-          videoPrompt: result.videoPrompt,
-        } : s);
-        shotsRef.current = updatedShots;
-        setShots(updatedShots);
-        message.success('视频提示词生成完成');
-      } else {
-        message.error(result.error || '生成失败');
-      }
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      message.error(errorMessage || '生成失败');
-    } finally {
-      setSubmittingVideoPrompts(prev => {
-        const next = new Set(prev);
-        next.delete(shotId);
-        return next;
-      });
-    }
-  }, [projectId, episodeId, llmSelection, projectStylePrompt, styleSnapshot, flushQueuedShotSaves]);
-
-  // 优化图片提示词（强制重新生成）
-  const handleOptimizeImagePrompt = useCallback(async (shotId: string, _currentPrompt: string) => {
-    if (!episodeId) {
-      message.warning('未选择剧集');
-      return;
-    }
-    const shot = shotsRef.current.find(s => s.id === shotId);
-    if (!shot) return;
-    setSubmittingImagePrompts(prev => new Set(prev).add(shotId));
-    try {
-      await flushQueuedShotSaves();
-      const shotsSnapshot = shotsRef.current;
-      const latestShot = shotsSnapshot.find(s => s.id === shotId) || shot;
-      const result = await generateShotPrompt(
-        projectId,
-        episodeId,
-        latestShot,
-        projectStylePrompt,
-        llmSelection,
-        { image: true, video: false },
-        { force: true, shotsSnapshot },  // 强制重新生成
-        styleSnapshot
-      );
-      if (result.success) {
-        const updatedShots = shotsRef.current.map(s => s.id === shotId ? {
-          ...s,
-          imagePrompt: result.imagePrompt,
-        } : s);
-        shotsRef.current = updatedShots;
-        setShots(updatedShots);
-        message.success('图片提示词优化完成');
-      } else {
-        message.error(result.error || '优化失败');
-      }
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      message.error(errorMessage || '优化失败');
-    } finally {
-      setSubmittingImagePrompts(prev => {
-        const next = new Set(prev);
-        next.delete(shotId);
-        return next;
-      });
-    }
-  }, [projectId, episodeId, llmSelection, projectStylePrompt, styleSnapshot, flushQueuedShotSaves]);
-
-  // 优化视频提示词（强制重新生成）
-  const handleOptimizeVideoPrompt = useCallback(async (shotId: string, _currentPrompt: string) => {
-    if (!episodeId) {
-      message.warning('未选择剧集');
-      return;
-    }
-    const shot = shotsRef.current.find(s => s.id === shotId);
-    if (!shot) return;
-    setSubmittingVideoPrompts(prev => new Set(prev).add(shotId));
-    try {
-      await flushQueuedShotSaves();
-      const shotsSnapshot = shotsRef.current;
-      const latestShot = shotsSnapshot.find(s => s.id === shotId) || shot;
-      const result = await generateShotPrompt(
-        projectId,
-        episodeId,
-        latestShot,
-        projectStylePrompt,
-        llmSelection,
-        { image: false, video: true },
-        { force: true, shotsSnapshot },  // 强制重新生成
-        styleSnapshot
-      );
-      if (result.success) {
-        const updatedShots = shotsRef.current.map(s => s.id === shotId ? {
-          ...s,
-          videoPrompt: result.videoPrompt,
-        } : s);
-        shotsRef.current = updatedShots;
-        setShots(updatedShots);
-        message.success('视频提示词优化完成');
-      } else {
-        message.error(result.error || '优化失败');
-      }
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      message.error(errorMessage || '优化失败');
-    } finally {
-      setSubmittingVideoPrompts(prev => {
-        const next = new Set(prev);
-        next.delete(shotId);
-        return next;
-      });
-    }
-  }, [projectId, episodeId, llmSelection, projectStylePrompt, styleSnapshot, flushQueuedShotSaves]);
-
-  // 批量入口前置守门：DB 里已经有同 (type, episode) 的活跃任务（pending/running/processing）
-  // 时直接告诉用户当前批量在跑，不再创建第二条。这是离开页面、submitting 本地集合丢失
-  // 之后再次点击批量按钮的去重 — 之前只能靠组件内 Set 兜底，unmount 后失效，会重复提交。
-  const ensureNoActiveBatch = useCallback(async (
-    type: string,
-    label: string,
-  ): Promise<boolean> => {
-    if (!projectId || !episodeId) return true;
-    const existing = await findActiveTask({
-      scope: `project:${projectId}`,
-      type,
-      targetKind: 'episode',
-      targetId: episodeId,
-    });
-    if (existing) {
-      message.info(`已有${label}任务在执行中，请等待完成（可在任务面板查看进度）`);
-      return false;
-    }
-    return true;
-  }, [projectId, episodeId, message]);
-
-  // 批量生成图片提示词（跳过已有图片提示词的）
-  const handleBatchGenerateImagePrompts = useCallback(async (targetShotIds?: string[]) => {
-    if (!episodeId) {
-      message.warning('未选择剧集');
-      return;
-    }
-    if (!(await ensureNoActiveBatch('prompt-generation:image', '批量图片提示词'))) return;
-    await flushQueuedShotSaves();
-    const currentShots = shotsRef.current;
-    const baseShots = targetShotIds
-      ? currentShots.filter(s => targetShotIds.includes(s.id))
-      : currentShots;
-    const shotsWithoutPrompt = baseShots.filter(s => !s.imagePrompt?.trim());
-    if (shotsWithoutPrompt.length === 0) {
-      message.info('所选分镜都已有图片提示词');
-      return;
-    }
-    const shotIds = shotsWithoutPrompt.map(s => s.id);
-    setSubmittingImagePrompts(new Set(shotIds));
-    setBatchProgress({ current: 0, total: shotsWithoutPrompt.length, step: '准备生成...' });
-    try {
-      const results = await batchGenerateShotPrompts(
-        projectId,
-        episodeId,
-        shotsWithoutPrompt,
-        projectStylePrompt,
-        (current, total, result) => {
-          setBatchProgress({ current, total, step: `生成中 ${current}/${total}` });
-          if (result.success) {
-            setShots(prev => prev.map(s => s.id === result.shotId ? {
-              ...s,
-              imagePrompt: result.imagePrompt,
-            } : s));
-          }
-        },
-        llmSelection,
-        styleSnapshot,
-        { image: true, video: false },
-        { shotsSnapshot: currentShots }
-      );
-      const successCount = results.filter(r => r.success).length;
-      if (successCount === 0 && results.length > 0) {
-        const firstError = results.find(r => r.error)?.error;
-        message.error(`图片提示词生成全部失败${firstError ? `: ${firstError}` : ''}`);
-      } else {
-        message.success(`图片提示词生成完成: ${successCount}/${results.length} 成功`);
-      }
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      message.error(errorMessage || '批量生成失败');
-    } finally {
-      setSubmittingImagePrompts(new Set());
-      setBatchProgress(undefined);
-    }
-  }, [projectId, episodeId, llmSelection, projectStylePrompt, styleSnapshot, ensureNoActiveBatch, message, flushQueuedShotSaves]);
-
-  // 批量重新生成图片提示词
-  const handleBatchReGenerateImagePrompts = useCallback(async (targetShotIds?: string[]) => {
-    if (!episodeId) {
-      message.warning('未选择剧集');
-      return;
-    }
-    // batchGenerateShotPrompts 的 task type 固定是 prompt-generation:*（不区分 force），
-    // 所以 re-generate 与 generate 共享同一去重 key。
-    if (!(await ensureNoActiveBatch('prompt-generation:image', '批量图片提示词'))) return;
-    await flushQueuedShotSaves();
-    const currentShots = shotsRef.current;
-    const baseShots = targetShotIds
-      ? currentShots.filter(s => targetShotIds.includes(s.id))
-      : currentShots;
-    const shotsWithPrompt = baseShots.filter(s => s.imagePrompt?.trim());
-    if (shotsWithPrompt.length === 0) {
-      message.info('所选分镜都没有图片提示词');
-      return;
-    }
-    const shotIds = shotsWithPrompt.map(s => s.id);
-    setSubmittingImagePrompts(new Set(shotIds));
-    setBatchProgress({ current: 0, total: shotsWithPrompt.length, step: '准备重新生成...' });
-    try {
-      const results = await batchGenerateShotPrompts(
-        projectId,
-        episodeId,
-        shotsWithPrompt,
-        projectStylePrompt,
-        (current, total, result) => {
-          setBatchProgress({ current, total, step: `重新生成中 ${current}/${total}` });
-          if (result.success) {
-            setShots(prev => prev.map(s => s.id === result.shotId ? {
-              ...s,
-              imagePrompt: result.imagePrompt,
-            } : s));
-          }
-        },
-        llmSelection,
-        styleSnapshot,
-        { image: true, video: false },
-        { force: true, shotsSnapshot: currentShots }
-      );
-      const successCount = results.filter(r => r.success).length;
-      if (successCount === 0 && results.length > 0) {
-        const firstError = results.find(r => r.error)?.error;
-        message.error(`图片提示词重新生成全部失败${firstError ? `: ${firstError}` : ''}`);
-      } else {
-        message.success(`图片提示词重新生成完成: ${successCount}/${results.length} 成功`);
-      }
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      message.error(errorMessage || '批量重新生成失败');
-    } finally {
-      setSubmittingImagePrompts(new Set());
-      setBatchProgress(undefined);
-    }
-  }, [projectId, episodeId, llmSelection, projectStylePrompt, styleSnapshot, ensureNoActiveBatch, message, flushQueuedShotSaves]);
-
-  // 批量生成视频提示词（跳过已有视频提示词的）
-  const handleBatchGenerateVideoPrompts = useCallback(async (targetShotIds?: string[]) => {
-    if (!episodeId) {
-      message.warning('未选择剧集');
-      return;
-    }
-    if (!(await ensureNoActiveBatch('prompt-generation:video', '批量视频提示词'))) return;
-    await flushQueuedShotSaves();
-    const currentShots = shotsRef.current;
-    const baseShots = targetShotIds
-      ? currentShots.filter(s => targetShotIds.includes(s.id))
-      : currentShots;
-    const shotsWithoutPrompt = baseShots.filter(s => !s.videoPrompt?.trim());
-    if (shotsWithoutPrompt.length === 0) {
-      message.info('所选分镜都已有视频提示词');
-      return;
-    }
-    const shotIds = shotsWithoutPrompt.map(s => s.id);
-    setSubmittingVideoPrompts(new Set(shotIds));
-    setBatchProgress({ current: 0, total: shotsWithoutPrompt.length, step: '准备生成...' });
-    try {
-      const results = await batchGenerateShotPrompts(
-        projectId,
-        episodeId,
-        shotsWithoutPrompt,
-        projectStylePrompt,
-        (current, total, result) => {
-          setBatchProgress({ current, total, step: `生成中 ${current}/${total}` });
-          if (result.success) {
-            setShots(prev => prev.map(s => s.id === result.shotId ? {
-              ...s,
-              videoPrompt: result.videoPrompt,
-            } : s));
-          }
-        },
-        llmSelection,
-        styleSnapshot,
-        { image: false, video: true },
-        { shotsSnapshot: currentShots }
-      );
-      const successCount = results.filter(r => r.success).length;
-      if (successCount === 0 && results.length > 0) {
-        const firstError = results.find(r => r.error)?.error;
-        message.error(`视频提示词生成全部失败${firstError ? `: ${firstError}` : ''}`);
-      } else {
-        message.success(`视频提示词生成完成: ${successCount}/${results.length} 成功`);
-      }
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      message.error(errorMessage || '批量生成失败');
-    } finally {
-      setSubmittingVideoPrompts(new Set());
-      setBatchProgress(undefined);
-    }
-  }, [projectId, episodeId, llmSelection, projectStylePrompt, styleSnapshot, ensureNoActiveBatch, message, flushQueuedShotSaves]);
-
-  // 批量重新生成视频提示词
-  const handleBatchReGenerateVideoPrompts = useCallback(async (targetShotIds?: string[]) => {
-    if (!episodeId) {
-      message.warning('未选择剧集');
-      return;
-    }
-    if (!(await ensureNoActiveBatch('prompt-generation:video', '批量视频提示词'))) return;
-    await flushQueuedShotSaves();
-    const currentShots = shotsRef.current;
-    const baseShots = targetShotIds
-      ? currentShots.filter(s => targetShotIds.includes(s.id))
-      : currentShots;
-    const shotsWithPrompt = baseShots.filter(s => s.videoPrompt?.trim());
-    if (shotsWithPrompt.length === 0) {
-      message.info('所选分镜都没有视频提示词');
-      return;
-    }
-    const shotIds = shotsWithPrompt.map(s => s.id);
-    setSubmittingVideoPrompts(new Set(shotIds));
-    setBatchProgress({ current: 0, total: shotsWithPrompt.length, step: '准备重新生成...' });
-    try {
-      const results = await batchGenerateShotPrompts(
-        projectId,
-        episodeId,
-        shotsWithPrompt,
-        projectStylePrompt,
-        (current, total, result) => {
-          setBatchProgress({ current, total, step: `重新生成中 ${current}/${total}` });
-          if (result.success) {
-            setShots(prev => prev.map(s => s.id === result.shotId ? {
-              ...s,
-              videoPrompt: result.videoPrompt,
-            } : s));
-          }
-        },
-        llmSelection,
-        styleSnapshot,
-        { image: false, video: true },
-        { force: true, shotsSnapshot: currentShots }
-      );
-      const successCount = results.filter(r => r.success).length;
-      if (successCount === 0 && results.length > 0) {
-        const firstError = results.find(r => r.error)?.error;
-        message.error(`视频提示词重新生成全部失败${firstError ? `: ${firstError}` : ''}`);
-      } else {
-        message.success(`视频提示词重新生成完成: ${successCount}/${results.length} 成功`);
-      }
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      message.error(errorMessage || '批量重新生成失败');
-    } finally {
-      setSubmittingVideoPrompts(new Set());
-      setBatchProgress(undefined);
-    }
-  }, [projectId, episodeId, llmSelection, projectStylePrompt, styleSnapshot, ensureNoActiveBatch, message, flushQueuedShotSaves]);
 
   // 创建新分镜
   const createNewShot = useCallback((): Shot => ({
@@ -1745,252 +1213,26 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     saveAllShots(updatedShots);
   }, [shots, saveAllShots]);
 
-  /**
-   * 单镜配音：调用 MediaGenerationService.generateAudio
-   *
-   * 剧情模式按字幕行的旁白/台词分段选音色合成；解说模式沿用 dialogue→scriptLines 单音色。
-   * Voice 来源：当前 ttsSelection 渠道的 defaultVoice（在 channel.providerConfig 里），
-   * 走 MediaGenerationService 内部 resolveProviderAndContext，不需要这里手动指定。
-   */
-  const handleGenerateShotAudio = useCallback(async (shotId: string) => {
-    if (!episodeId) {
-      message.warning('未选择剧集');
-      return;
-    }
-    const shot = shots.find(s => s.id === shotId);
-    if (!shot) return;
+  // 配音逻辑已拆到 hooks/useStoryboardAudio（剧情分段音色 + 解说单音色）
+  const {
+    handleGenerateShotAudio,
+    handleBatchGenerateAudios,
+    handleBatchReGenerateAudios,
+  } = useStoryboardAudio({
+    projectId,
+    episodeId,
+    shots,
+    characters,
+    voiceLibrary,
+    ttsSelection,
+    ttsVoiceId,
+    ttsSpeed,
+    setShots,
+    setBatchProgress,
+    message,
+  });
 
-    // 剧情模式：旁白 + 台词各按角色音色分段合成后拼接；解说模式：整段单音色（兼容旧路径）
-    const voiceSegments = buildShotVoiceSegments(shot);
-    const legacyText = (shot.dialogue || '').trim() || getShotScriptText(shot).trim();
-    if (!voiceSegments.length && !legacyText) {
-      message.warning('该分镜没有可配音的台词或字幕文本');
-      return;
-    }
 
-    const rate = typeof ttsSpeed === 'number' ? ttsSpeed : 1.2;
-    let audioBindings: ShotAudioBinding[] | undefined;
-
-    try {
-      const { result: asset } = await runWithTask({
-        projectId,
-        category: 'asset',
-        subType: 'audio',
-        targetType: 'shot',
-        targetId: shotId,
-        targetName: `分镜 #${shotId.slice(-6)} 配音`,
-        type: 'audio-generation',
-        execute: async (taskCtx) => {
-          let a;
-          if (voiceSegments.length > 0) {
-            taskCtx.progress(15, `分段合成配音（${voiceSegments.length} 段）...`);
-            // 经音色库做 legacy 归一 + providerVoiceId 解析，并收集绑定信息供 UI 展示
-            const resolutions = voiceSegments.map(seg => resolveShotLineVoice({
-              role: seg.role,
-              characterId: seg.characterId,
-              characters,
-              projectNarrationVoiceId: ttsVoiceId,
-              voiceLibrary,
-            }));
-            const resolvedSegments = voiceSegments.map((seg, i) => ({
-              text: seg.text,
-              voiceId: resolutions[i].voiceId,
-            }));
-            audioBindings = resolutions.flatMap((r, i) => (r.binding ? [{ index: i, ...r.binding }] : []));
-            a = await mediaGenerationService.generateShotAudioWithSegments({
-              projectId,
-              ownerRef: { projectId, ownerType: 'shot', ownerId: shotId, episodeId, slot: 'audio' },
-              segments: resolvedSegments,
-              options: { rate },
-              ttsSelection,
-              taskName: `分镜 #${shotId.slice(-6)} 配音`,
-            });
-          } else {
-            taskCtx.progress(15, '调用 TTS...');
-            const prepared = prepareShotAudio({
-              dialogue: legacyText,
-              voiceLibrary,
-              characters,
-              projectFallbackVoiceId: ttsVoiceId,
-              defaultVoiceId: ttsVoiceId,
-            });
-            a = await mediaGenerationService.generateAudio({
-              projectId,
-              ownerRef: { projectId, ownerType: 'shot', ownerId: shotId, episodeId, slot: 'audio' },
-              request: { text: prepared.text, voiceId: prepared.voiceId, options: { rate } },
-              ttsSelection,
-              taskName: `分镜 #${shotId.slice(-6)} 配音`,
-            });
-          }
-          taskCtx.progress(100, '完成');
-          return a;
-        },
-      });
-      message.success('分镜配音生成完成');
-      setShots(prev => prev.map(s => {
-        if (s.id !== shotId) return s;
-        const existing = s.media?.audios || [];
-        return {
-          ...s,
-          ...(audioBindings ? { audioBindings } : {}),
-          media: {
-            ...(s.media || {}),
-            audios: [...existing, asset],
-            currentAudioIndex: existing.length,
-          },
-        };
-      }));
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      message.error(errorMessage || '配音失败');
-    }
-  }, [projectId, episodeId, shots, characters, ttsSelection, ttsVoiceId, ttsSpeed, message]);
-
-  /**
-   * 批量配音：跳过已有配音的分镜（force=false）/ 强制重生成（force=true）。
-   * concurrency=2 控制 TTS 并发，避免上游 429。
-   */
-  const handleBatchAudios = useCallback(async (force: boolean = false, targetShotIds?: string[]) => {
-    if (!episodeId) {
-      message.warning('未选择剧集');
-      return;
-    }
-    const baseShots = targetShotIds
-      ? shots.filter(s => targetShotIds.includes(s.id))
-      : shots;
-    const candidates = baseShots.filter((s) => {
-      const text = (s.dialogue || '').trim() || getShotScriptText(s).trim();
-      if (!text) return false;
-      const hasAudio = (s.media?.audios?.length || 0) > 0;
-      return force ? hasAudio || !hasAudio : !hasAudio;
-    });
-    if (candidates.length === 0) {
-      message.info(force ? '所选分镜都没有可配音的台词' : '所选分镜要么没台词，要么都已有配音');
-      return;
-    }
-
-    setBatchProgress({ current: 0, total: candidates.length, step: '准备配音...' });
-
-    // 批量任务也包到 runWithTask（target=episode），任务面板能看到一条总进度条。
-    // 每个分镜的单条配音也会单独出一条任务（generateAudio 内部走 generateAudio
-    // 的轨道，不走 runWithTask；批量这层只统计聚合进度）。
-    try {
-      const { result: results } = await runWithTask({
-        projectId,
-        category: 'asset',
-        subType: 'audio',
-        targetType: 'episode',
-        targetId: episodeId,
-        targetName: `批量配音（${candidates.length} 个分镜）`,
-        type: 'audio-generation',
-        metadata: { shotCount: candidates.length, force },
-        execute: async (taskCtx) => {
-          let done = 0;
-          const inner = candidates.map((shot) => async () => {
-            const rate = typeof ttsSpeed === 'number' ? ttsSpeed : 1.2;
-            const voiceSegments = buildShotVoiceSegments(shot);
-            const legacyText = (shot.dialogue || '').trim() || getShotScriptText(shot).trim();
-            try {
-              let asset;
-              let audioBindings: ShotAudioBinding[] | undefined;
-              if (voiceSegments.length > 0) {
-                const resolutions = voiceSegments.map(seg => resolveShotLineVoice({
-                  role: seg.role,
-                  characterId: seg.characterId,
-                  characters,
-                  projectNarrationVoiceId: ttsVoiceId,
-                  voiceLibrary,
-                }));
-                audioBindings = resolutions.flatMap((r, i) => (r.binding ? [{ index: i, ...r.binding }] : []));
-                asset = await mediaGenerationService.generateShotAudioWithSegments({
-                  projectId,
-                  ownerRef: { projectId, ownerType: 'shot', ownerId: shot.id, episodeId, slot: 'audio' },
-                  segments: voiceSegments.map((seg, i) => ({
-                    text: seg.text,
-                    voiceId: resolutions[i].voiceId,
-                  })),
-                  options: { rate },
-                  ttsSelection,
-                  taskName: `分镜 #${shot.id.slice(-6)} 配音`,
-                });
-              } else {
-                const prepared = prepareShotAudio({
-                  dialogue: legacyText,
-                  voiceLibrary,
-                  characters,
-                  projectFallbackVoiceId: ttsVoiceId,
-                  defaultVoiceId: ttsVoiceId,
-                });
-                asset = await mediaGenerationService.generateAudio({
-                  projectId,
-                  ownerRef: { projectId, ownerType: 'shot', ownerId: shot.id, episodeId, slot: 'audio' },
-                  request: { text: prepared.text, voiceId: prepared.voiceId, options: { rate } },
-                  ttsSelection,
-                  taskName: `分镜 #${shot.id.slice(-6)} 配音`,
-                });
-              }
-              return { shotId: shot.id, asset, audioBindings, success: true as const };
-            } catch (err: unknown) {
-              return {
-                shotId: shot.id,
-                success: false as const,
-                error: err instanceof Error ? err.message : String(err),
-              };
-            } finally {
-              done += 1;
-              const percent = Math.round((done / candidates.length) * 100);
-              setBatchProgress({ current: done, total: candidates.length, step: `分镜 ${shot.id.slice(-6)}` });
-              taskCtx.progress(percent, `${done}/${candidates.length} 完成`);
-            }
-          });
-          const settled = await runWithConcurrency(inner, 2);
-          return settled.map((r) =>
-            r.status === 'fulfilled'
-              ? r.value
-              : { shotId: '', success: false as const, error: String(r.reason) },
-          );
-        },
-      });
-      // 回写 UI shots state（避免依赖 TaskManager 监听）
-      setShots(prev => prev.map(s => {
-        const hit = results.find(r => r.success && r.shotId === s.id);
-        if (!hit?.success || !('asset' in hit)) return s;
-        const existing = s.media?.audios || [];
-        return {
-          ...s,
-          ...(hit.audioBindings ? { audioBindings: hit.audioBindings } : {}),
-          media: {
-            ...(s.media || {}),
-            audios: [...existing, hit.asset],
-            currentAudioIndex: existing.length,
-          },
-        };
-      }));
-      const successCount = results.filter(r => r.success).length;
-      const failed = results.filter(r => !r.success);
-      if (failed.length === 0) {
-        message.success(`批量配音完成：成功 ${successCount}/${results.length}`);
-      } else {
-        message.warning(`批量配音完成：成功 ${successCount}/${results.length}，失败 ${failed.length}`);
-      }
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      message.error(errorMessage || '批量配音失败');
-    } finally {
-      setBatchProgress(undefined);
-    }
-  }, [projectId, episodeId, shots, characters, voiceLibrary, ttsSelection, ttsVoiceId, ttsSpeed, message]);
-
-  const handleBatchGenerateAudios = useCallback(
-    (targetShotIds?: string[]) => handleBatchAudios(false, targetShotIds),
-    [handleBatchAudios],
-  );
-  const handleBatchReGenerateAudios = useCallback(
-    (targetShotIds?: string[]) => handleBatchAudios(true, targetShotIds),
-    [handleBatchAudios],
-  );
-
-  // 在指定位置上方插入
   const handleInsertAbove = useCallback(async (shotId: string) => {
     const index = shots.findIndex(s => s.id === shotId);
     if (index < 0) return;
@@ -2127,301 +1369,43 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   }, [editFormData, editingShot, shots, saveAllShots, itvDurationSpec]);
 
   // 批量生成图片（跳过已有图片的）
-  const handleBatchGenerate = useCallback(async (targetShotIds?: string[]) => {
-    if (!episodeId) {
-      message.warning('未选择剧集');
-      return;
-    }
-    // batchGenerateShotImages 与 batchRenderShots 共享 type='shot-generation'，所以
-    // 图片批量与视频批量任意一个在跑都要拦下，避免提交链路里 LLM/上游 provider 互相挤压。
-    if (!(await ensureNoActiveBatch('shot-generation', '批量图片/视频生成'))) return;
-    await flushQueuedShotSaves();
-    const currentShots = shotsRef.current;
-    const baseShots = targetShotIds
-      ? currentShots.filter(s => targetShotIds.includes(s.id))
-      : currentShots;
-    const shotsWithoutImage = baseShots.filter(s => getShotImageCount(s) === 0 && s.imagePrompt?.trim());
-    if (shotsWithoutImage.length === 0) {
-      message.info('所选分镜都已有图片，或没有可用图片提示词');
-      return;
-    }
-    const shotIds = shotsWithoutImage.map(s => s.id);
-    setSubmittingShots(new Set(shotIds));
-    try {
-      const indexMap = new Map(shotIds.map((id, idx) => [id, idx]));
-      setBatchProgress({ current: 0, total: shotIds.length, step: '准备生成...' });
-      const results = await batchGenerateShotImages(projectId, episodeId, shotIds, characters, scenes, ttiSelection, {
-        aspectRatio,
-        styleSnapshot,
-        shotsSnapshot: currentShots,
-        onItemComplete: async (item) => {
-          setSubmittingShots(prev => {
-            const next = new Set(prev);
-            next.delete(item.shotId);
-            return next;
-          });
-          if (item.success) {
-            void queueRefreshShotsFromStore();
-          }
-        },
-        onProgress: (_overall, current) => {
-          const idx = (indexMap.get(current.shotId) ?? 0) + 1;
-          setBatchProgress({
-            current: idx,
-            total: shotIds.length,
-            step: current.step ? `分镜 ${current.shotId}: ${current.step}` : `分镜 ${current.shotId}`,
-          });
-        },
-      });
+  // 单镜/批量媒体生成逻辑已拆到 hooks/useStoryboardMediaGeneration（图片/视频 × 生成/重生成）
+  const {
+    handleGenerateShotImage,
+    handleRenderShotVideo,
+    handleBatchGenerate,
+    handleBatchReGenerateImages,
+    handleBatchRenderVideos,
+    handleBatchReGenerateVideos,
+  } = useStoryboardMediaGeneration({
+    projectId,
+    episodeId,
+    characters,
+    scenes,
+    ttiSelection,
+    itvSelection,
+    ttsSelection,
+    aspectRatio,
+    styleSnapshot,
+    effectiveSettings,
+    shotsRef,
+    setShots,
+    setSubmittingShots,
+    setSubmittingRenderShots,
+    setShotVideoProgress,
+    setBatchProgress,
+    flushQueuedShotSaves,
+    queueRefreshShotsFromStore,
+    refreshShotsFromStore,
+    shotVideoSupportMap,
+    buildUnsupportedShotVideoMessage,
+    ensureNoActiveBatch,
+    getShotImageCount,
+    getShotVideoCount,
+    message,
+  });
 
-      const successCount = results.filter(r => r.success).length;
-      if (successCount > 0) {
-        await queueRefreshShotsFromStore();
-      }
-      const failed = results.filter(r => !r.success);
-      if (failed.length === 0) {
-        message.success(`批量生成完成：成功 ${successCount}/${results.length}`);
-      } else {
-        message.warning(`批量生成完成：成功 ${successCount}/${results.length}，失败 ${failed.length}`);
-      }
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      message.error(errorMessage || '批量生成失败');
-    } finally {
-      setSubmittingShots(new Set());
-      setBatchProgress(undefined);
-    }
-  }, [projectId, episodeId, characters, scenes, ttiSelection, aspectRatio, styleSnapshot, queueRefreshShotsFromStore, ensureNoActiveBatch, message, flushQueuedShotSaves]);
 
-  // 批量重新生成图片（强制重新生成已有图片的）
-  const handleBatchReGenerateImages = useCallback(async (targetShotIds?: string[]) => {
-    if (!episodeId) {
-      message.warning('未选择剧集');
-      return;
-    }
-    if (!(await ensureNoActiveBatch('shot-generation', '批量图片/视频生成'))) return;
-    await flushQueuedShotSaves();
-    const currentShots = shotsRef.current;
-    const baseShots = targetShotIds
-      ? currentShots.filter(s => targetShotIds.includes(s.id))
-      : currentShots;
-    const shotsWithImage = baseShots.filter(s => getShotImageCount(s) > 0 && s.imagePrompt?.trim());
-    if (shotsWithImage.length === 0) {
-      message.info('所选分镜都没有图片，或没有可用图片提示词');
-      return;
-    }
-    const shotIds = shotsWithImage.map(s => s.id);
-    setSubmittingShots(new Set(shotIds));
-    try {
-      const indexMap = new Map(shotIds.map((id, idx) => [id, idx]));
-      setBatchProgress({ current: 0, total: shotIds.length, step: '准备生成...' });
-      const results = await batchGenerateShotImages(projectId, episodeId, shotIds, characters, scenes, ttiSelection, {
-        aspectRatio,
-        styleSnapshot,
-        shotsSnapshot: currentShots,
-        onItemComplete: async (item) => {
-          setSubmittingShots(prev => {
-            const next = new Set(prev);
-            next.delete(item.shotId);
-            return next;
-          });
-          if (item.success) {
-            void queueRefreshShotsFromStore();
-          }
-        },
-        onProgress: (_overall, current) => {
-          const idx = (indexMap.get(current.shotId) ?? 0) + 1;
-          setBatchProgress({
-            current: idx,
-            total: shotIds.length,
-            step: current.step ? `分镜 ${current.shotId}: ${current.step}` : `分镜 ${current.shotId}`,
-          });
-        },
-      });
-
-      const successCount = results.filter(r => r.success).length;
-      if (successCount > 0) {
-        await queueRefreshShotsFromStore();
-      }
-      const failed = results.filter(r => !r.success);
-      if (failed.length === 0) {
-        message.success(`批量重新生成完成：成功 ${successCount}/${results.length}`);
-      } else {
-        message.warning(`批量重新生成完成：成功 ${successCount}/${results.length}，失败 ${failed.length}`);
-      }
-    } catch (err: any) {
-      message.error(err.message || '批量重新生成失败');
-    } finally {
-      setSubmittingShots(new Set());
-      setBatchProgress(undefined);
-    }
-  }, [projectId, episodeId, characters, scenes, ttiSelection, aspectRatio, styleSnapshot, queueRefreshShotsFromStore, ensureNoActiveBatch, message, flushQueuedShotSaves]);
-
-  // 批量渲染视频（生成空白项：仅渲染没有视频的分镜，与图片批量保持一致）
-  const handleBatchRenderVideos = useCallback(async (targetShotIds?: string[]) => {
-    if (!episodeId) {
-      message.warning('未选择剧集');
-      return;
-    }
-    if (!(await ensureNoActiveBatch('shot-generation', '批量图片/视频生成'))) return;
-    await flushQueuedShotSaves();
-    const currentShots = shotsRef.current;
-    const baseShots = targetShotIds
-      ? currentShots.filter(s => targetShotIds.includes(s.id))
-      : currentShots;
-    const shotsWithoutVideo = baseShots.filter(s => getShotVideoCount(s) === 0 && s.videoPrompt?.trim());
-    if (shotsWithoutVideo.length === 0) {
-      message.info('所选分镜都已有视频，或没有可用视频提示词');
-      return;
-    }
-    const unsupportedMessage = buildUnsupportedShotVideoMessage(shotsWithoutVideo);
-    if (unsupportedMessage) {
-      message.error(unsupportedMessage);
-      return;
-    }
-    const shotIds = shotsWithoutVideo.map(s => s.id);
-    setSubmittingRenderShots(new Set(shotIds));
-    setBatchProgress({ current: 0, total: shotIds.length, step: '准备批量渲染...' });
-    try {
-      const indexMap = new Map(shotIds.map((id, idx) => [id, idx]));
-      const { result } = await runWithTask({
-        projectId,
-        category: 'analysis',
-        subType: 'shot-generation',
-        targetType: 'episode',
-        targetId: episodeId,
-        targetName: `批量视频渲染（${shotsWithoutVideo.length} 个分镜）`,
-        type: 'shot-generation',
-        metadata: { shotCount: shotsWithoutVideo.length, shotIds, batchKind: 'video' },
-        execute: async (taskCtx) => batchRenderShots(
-          {
-            projectId,
-            episodeId,
-            shots: shotsWithoutVideo,
-            settings: effectiveSettings,
-            aspectRatio,
-            mediaSelections: {
-              ttiSelection,
-              itvSelection,
-              ttsSelection,
-            },
-            styleSnapshot,
-            allShots: currentShots,
-            onShotComplete: async (item) => {
-              setSubmittingRenderShots(prev => {
-                const next = new Set(prev);
-                next.delete(item.shotId);
-                return next;
-              });
-              if (item.success) {
-                void queueRefreshShotsFromStore();
-              }
-            },
-          },
-          (overall, current) => {
-            const idx = (indexMap.get(current.shotId) ?? 0) + 1;
-            setBatchProgress({
-              current: idx,
-              total: shotIds.length,
-              step: `分镜 ${current.shotId.slice(-6)}: ${current.step || ''}`,
-            });
-            taskCtx.progress(overall, `${current.shotId.slice(-6)}: ${current.step || ''}`);
-          }
-        ),
-      });
-      await queueRefreshShotsFromStore();
-      message.success(`批量渲染完成: ${result.success} 成功, ${result.failed} 失败`);
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      message.error(errorMessage || '批量渲染失败');
-    } finally {
-      setSubmittingRenderShots(new Set());
-      setBatchProgress(undefined);
-    }
-  }, [projectId, episodeId, effectiveSettings, ttiSelection, itvSelection, ttsSelection, aspectRatio, styleSnapshot, buildUnsupportedShotVideoMessage, message, queueRefreshShotsFromStore, ensureNoActiveBatch, flushQueuedShotSaves]);
-
-  // 批量重新生成视频（已有视频的）
-  const handleBatchReGenerateVideos = useCallback(async (targetShotIds?: string[]) => {
-    if (!episodeId) {
-      message.warning('未选择剧集');
-      return;
-    }
-    if (!(await ensureNoActiveBatch('shot-generation', '批量图片/视频生成'))) return;
-    await flushQueuedShotSaves();
-    const currentShots = shotsRef.current;
-    const baseShots = targetShotIds
-      ? currentShots.filter(s => targetShotIds.includes(s.id))
-      : currentShots;
-    const shotsWithVideo = baseShots.filter(s => getShotVideoCount(s) > 0 && s.videoPrompt?.trim());
-    if (shotsWithVideo.length === 0) {
-      message.info('所选分镜都没有视频，或没有可用视频提示词');
-      return;
-    }
-    const unsupportedMessage = buildUnsupportedShotVideoMessage(shotsWithVideo);
-    if (unsupportedMessage) {
-      message.error(unsupportedMessage);
-      return;
-    }
-    const shotIds = shotsWithVideo.map(s => s.id);
-    setSubmittingRenderShots(new Set(shotIds));
-    setBatchProgress({ current: 0, total: shotIds.length, step: '准备批量重新渲染...' });
-    try {
-      const indexMap = new Map(shotIds.map((id, idx) => [id, idx]));
-      const { result } = await runWithTask({
-        projectId,
-        category: 'analysis',
-        subType: 'shot-generation',
-        targetType: 'episode',
-        targetId: episodeId,
-        targetName: `批量重新渲染视频（${shotsWithVideo.length} 个分镜）`,
-        type: 'shot-generation',
-        metadata: { shotCount: shotsWithVideo.length, shotIds, batchKind: 'video', regenerate: true },
-        execute: async (taskCtx) => batchRenderShots(
-          {
-            projectId,
-            episodeId,
-            shots: shotsWithVideo,
-            settings: effectiveSettings,
-            aspectRatio,
-            mediaSelections: {
-              ttiSelection,
-              itvSelection,
-              ttsSelection,
-            },
-            styleSnapshot,
-            allShots: currentShots,
-            onShotComplete: async (item) => {
-              setSubmittingRenderShots(prev => {
-                const next = new Set(prev);
-                next.delete(item.shotId);
-                return next;
-              });
-              if (item.success) {
-                void queueRefreshShotsFromStore();
-              }
-            },
-          },
-          (overall, current) => {
-            const idx = (indexMap.get(current.shotId) ?? 0) + 1;
-            setBatchProgress({
-              current: idx,
-              total: shotIds.length,
-              step: `分镜 ${current.shotId.slice(-6)}: ${current.step || ''}`,
-            });
-            taskCtx.progress(overall, `${current.shotId.slice(-6)}: ${current.step || ''}`);
-          }
-        ),
-      });
-      await queueRefreshShotsFromStore();
-      message.success(`批量重新渲染完成: ${result.success} 成功, ${result.failed} 失败`);
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      message.error(errorMessage || '批量重新渲染失败');
-    } finally {
-      setSubmittingRenderShots(new Set());
-      setBatchProgress(undefined);
-    }
-  }, [projectId, episodeId, effectiveSettings, ttiSelection, itvSelection, ttsSelection, aspectRatio, styleSnapshot, buildUnsupportedShotVideoMessage, message, queueRefreshShotsFromStore, ensureNoActiveBatch, flushQueuedShotSaves]);
 
   // ============ 渲染 ============
 
