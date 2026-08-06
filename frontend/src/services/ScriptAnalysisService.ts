@@ -9,6 +9,7 @@ import type { ResolvedPromptTemplate } from '../store/promptTemplates';
 import { logLLMCall } from '../store/aiCallLogger';
 import { createLogger } from '../store/logger';
 import { TaskManager, Task } from './TaskManager';
+import { mergeAssetEntities } from './entityMerge';
 import { createTaskCancellationSignal } from './taskCancellationSignal';
 import { parseLLMJSON } from '../utils/llmJsonParser';
 import { runWithConcurrency } from '../utils/concurrency';
@@ -972,30 +973,19 @@ export class BackgroundAnalysisService {
    * 同名资产采取 upsert 语义：用新提取的描述字段覆盖旧记录，但保留旧的 id / createdAt / 已生成的 media
    * 以避免 entity_episode_refs 外键引用失效与媒体资产丢失
    */
-  private mergeAssets<T extends { id: string; name: string }>(
+  /**
+   * 实体归并：精确名 → 规范名（去标点/位置后缀）→ 别名相交 三级兜底，
+   * 避免 LLM 输出"小木屋内部/小木屋"这类叫法变体产生重复资产。
+   * 实现见 services/entityMerge.ts（保留既有 id/createdAt/media，别名取并集）。
+   */
+  private mergeAssets<T extends { id: string; name: string; aliases?: string }>(
     existing: T[],
     newItems: T[],
     key: keyof T
   ): T[] {
-    const existingMap = new Map(existing.map(item => [item[key], item]));
-
-    for (const item of newItems) {
-      const prev = existingMap.get(item[key]);
-      if (prev) {
-        const prevAny = prev as any;
-        existingMap.set(item[key], {
-          ...prev,
-          ...item,
-          id: prevAny.id,
-          createdAt: prevAny.createdAt ?? (item as any).createdAt,
-          media: prevAny.media ?? (item as any).media,
-        } as T);
-      } else {
-        existingMap.set(item[key], item);
-      }
-    }
-
-    return Array.from(existingMap.values());
+    // key 目前固定为 'name'；归并模块按 name+aliases 匹配
+    void key;
+    return mergeAssetEntities(existing, newItems);
   }
 }
 
