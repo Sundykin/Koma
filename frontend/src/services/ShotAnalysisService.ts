@@ -406,9 +406,11 @@ export class ShotAnalysisService {
     const styledPrompt = this.appendStyleRequirement(resolvedPrompt.prompt);
 
     const systemPrompt = [
-      '你是一个专业的影视分镜师。把剧本拆解成真正的分镜：每镜写一段完整的分镜脚本',
+      '你是一个专业的影视分镜师。把剧本拆解成真正的分镜：每镜写一段专业的分镜脚本',
       '（画面/动作/场景 + 台词与声音的自然行文，像正规分镜脚本，不加 [旁白]/[台词] 标注）。',
-      '台词与关键情节必须全部覆盖，不得遗漏。只输出 JSON，不要任何解释。',
+      '只写摄影机能拍到、麦克风能录到的当下内容；严禁复述角色设定、外貌清单、背景故事、',
+      '世界观介绍与心理活动，严禁照抄参考资料中的资产描述。台词与关键情节必须全部覆盖，',
+      '不得遗漏。只输出 JSON，不要任何解释。',
     ].join('\n');
 
     const chunkTraceId = chunk.total > 1 ? `${traceId}-chunk-${chunk.index + 1}` : traceId;
