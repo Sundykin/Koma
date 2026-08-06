@@ -83,41 +83,24 @@ interface ContextMenuState {
   clipLocalTime?: number;
 }
 
-// 基础常量
-const BASE_PIXELS_PER_SECOND = 20;
-const TRACK_HEIGHT = 80;
-const CLIP_HEIGHT = 64;
-const RULER_HEIGHT = 32;
-const HEADER_WIDTH = 200;
-const DRAG_THRESHOLD = 5;
-
-// 缩放配置
-const ZOOM_MIN = 0.1;
-const ZOOM_MAX = 5;
-const ZOOM_STEP = 0.1;
-const ZOOM_PRESETS = [0.25, 0.5, 1, 2, 3];
-
-// 吸附配置
-const SNAP_THRESHOLD = 8; // 像素距离阈值
-type SnapTarget = 'playhead' | 'clipStart' | 'clipEnd';
-
-// 计算动态刻度间隔
-const getMarkerInterval = (pixelsPerSecond: number): number => {
-  // 根据缩放级别自动调整刻度间隔
-  if (pixelsPerSecond >= 100) return 1;    // 每秒一个
-  if (pixelsPerSecond >= 50) return 2;     // 每2秒
-  if (pixelsPerSecond >= 20) return 5;     // 每5秒
-  if (pixelsPerSecond >= 10) return 10;    // 每10秒
-  if (pixelsPerSecond >= 5) return 30;     // 每30秒
-  return 60;                                // 每分钟
-};
-
-const formatTime = (seconds: number): string => {
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  const ms = Math.floor((seconds % 1) * 100);
-  return `${m}:${s.toString().padStart(2, '0')}.${ms.toString().padStart(2, '0')}`;
-};
+// 布局常量 / 刻度 / 吸附逻辑已拆到 ./timelineUtils（纯函数，独立测试）
+import {
+  BASE_PIXELS_PER_SECOND,
+  TRACK_HEIGHT,
+  CLIP_HEIGHT,
+  RULER_HEIGHT,
+  HEADER_WIDTH,
+  DRAG_THRESHOLD,
+  ZOOM_MIN,
+  ZOOM_MAX,
+  ZOOM_STEP,
+  ZOOM_PRESETS,
+  collectSnapPoints,
+  findSnapPoint as findSnapPointPure,
+  formatTime,
+  getMarkerInterval,
+  type SnapTarget,
+} from './timelineUtils';
 
 // Filmstrip 组件
 const Filmstrip: React.FC<{ clip: Clip; frames?: string[]; pixelsPerSecond: number }> = ({ clip, frames, pixelsPerSecond }) => {
@@ -299,20 +282,8 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
   const totalSeconds = Math.max(duration + 10, 60);
   const totalWidth = totalSeconds * pixelsPerSecond;
 
-  // 收集所有吸附点（用于拖拽时的吸附）
-  const snapPoints = useMemo(() => {
-    const points: Array<{ time: number; type: SnapTarget }> = [];
-    // 播放头位置
-    points.push({ time: currentTime, type: 'playhead' });
-    // 所有片段的起止点
-    resolvedTracks.forEach((track) => {
-      track.clipWindows.forEach((clip) => {
-        points.push({ time: clip.resolvedStart, type: 'clipStart' });
-        points.push({ time: clip.resolvedEnd, type: 'clipEnd' });
-      });
-    });
-    return points;
-  }, [currentTime, resolvedTracks]);
+  // 收集所有吸附点（用于拖拽时的吸附）：播放头 + 所有片段起止点
+  const snapPoints = useMemo(() => collectSnapPoints(resolvedTracks, currentTime), [currentTime, resolvedTracks]);
 
   // 收集所有视频片段用于帧提取
   const videoClips = useMemo(() => {
@@ -368,17 +339,10 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
   const scrollLeft = containerRef.current?.scrollLeft || 0;
   const playheadX = playheadPositionRef.current.viewportX + currentTime * pixelsPerSecond - scrollLeft;
 
-  // 吸附检测函数
+  // 吸附检测函数（纯逻辑在 timelineUtils.findSnapPoint，这里只叠加开关）
   const findSnapPoint = useCallback((time: number, _excludeClipId?: string): { time: number; type: SnapTarget } | null => {
     if (!snapEnabled) return null;
-
-    for (const point of snapPoints) {
-      const pixelDiff = Math.abs((point.time - time) * pixelsPerSecond);
-      if (pixelDiff < SNAP_THRESHOLD) {
-        return point;
-      }
-    }
-    return null;
+    return findSnapPointPure(snapPoints, time, pixelsPerSecond);
   }, [snapEnabled, snapPoints, pixelsPerSecond]);
 
   // 缩放控制
