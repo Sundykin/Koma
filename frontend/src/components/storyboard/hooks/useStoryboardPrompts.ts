@@ -227,8 +227,8 @@ export function useStoryboardPrompts(deps: StoryboardPromptsDeps) {
   // 分镜脚本升级（补摄影语言）的进行态
   const [upgradingShots, setUpgradingShots] = useState<Set<string>>(new Set());
 
-  /** 升级单个分镜脚本为专业描述（保留剧情/台词，补景别/机位/光线） */
-  const handleUpgradeShotScript = useCallback(async (shotId: string) => {
+  /** 升级/换拍法单个分镜脚本（mode='upgrade' 补摄影语言，'rewrite' 换画面表达） */
+  const runShotScriptTransform = useCallback(async (shotId: string, mode: 'upgrade' | 'rewrite') => {
     if (!episodeId) {
       message.warning('未选择剧集');
       return;
@@ -238,7 +238,7 @@ export function useStoryboardPrompts(deps: StoryboardPromptsDeps) {
     setUpgradingShots(prev => new Set(prev).add(shotId));
     try {
       await flushQueuedShotSaves();
-      const result = await upgradeShotScript(projectId, episodeId, shot, llmSelection);
+      const result = await upgradeShotScript(projectId, episodeId, shot, llmSelection, { mode });
       if (result.success && result.scriptLines) {
         // 脚本景别同步到 shotType 字段（图片提示词推荐景别与脚本一致）
         const mappedShotType = shotSizeToShotType({ scriptLines: result.scriptLines });
@@ -247,15 +247,14 @@ export function useStoryboardPrompts(deps: StoryboardPromptsDeps) {
           scriptLines: result.scriptLines!,
           ...(mappedShotType ? { shotType: mappedShotType } : {}),
           // 记录升级前的脚本/台词指纹：升级后指纹不同 → 立即判提示词/配音"待更新"
-          // （清空指纹会因 isXxxStale 的"无指纹不算滞后"而不显示待更新——那是 bug）
           promptScriptHash: computeShotScriptHash(s.scriptLines),
           voiceScriptHash: computeShotVoiceHash(s),
         } : s);
         shotsRef.current = updatedShots;
         setShots(updatedShots);
-        message.success('分镜脚本已升级（补全景别/机位/光线）');
+        message.success(mode === 'rewrite' ? '分镜脚本已换拍法（可对比不同画面感）' : '分镜脚本已升级（补全景别/机位/光线）');
       } else {
-        message.error(result.error || '脚本升级失败');
+        message.error(result.error || '脚本处理失败');
       }
     } catch (err: unknown) {
       message.error(err instanceof Error ? err.message : String(err));
@@ -267,6 +266,16 @@ export function useStoryboardPrompts(deps: StoryboardPromptsDeps) {
       });
     }
   }, [projectId, episodeId, llmSelection, flushQueuedShotSaves, message, setShots, shotsRef]);
+
+  /** 升级单个分镜脚本为专业描述（保留剧情/台词，补景别/机位/光线） */
+  const handleUpgradeShotScript = useCallback(async (shotId: string) => {
+    await runShotScriptTransform(shotId, 'upgrade');
+  }, [runShotScriptTransform]);
+
+  /** 换拍法（保持剧情/台词，重写画面表达） */
+  const handleRewriteShotScript = useCallback(async (shotId: string) => {
+    await runShotScriptTransform(shotId, 'rewrite');
+  }, [runShotScriptTransform]);
 
   /** 批量补全摄影语言：只处理缺景别+机位的分镜，并发 2，成功时更新脚本 */
   const handleBatchUpgradeShotScripts = useCallback(async (targetShotIds?: string[]) => {
@@ -341,6 +350,7 @@ export function useStoryboardPrompts(deps: StoryboardPromptsDeps) {
     ensureNoActiveBatch,
     upgradingShots,
     handleUpgradeShotScript,
+    handleRewriteShotScript,
     handleBatchUpgradeShotScripts,
     handleGenerateImagePrompt,
     handleGenerateVideoPrompt,

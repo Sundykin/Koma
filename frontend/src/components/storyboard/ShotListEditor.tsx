@@ -87,6 +87,8 @@ export interface ShotListEditorProps {
   onBulkCalibrateDurations?: () => void;
   /** 升级分镜脚本（补摄影语言） */
   onUpgradeShotScript?: (shotId: string) => void;
+  /** 换拍法（保持剧情/台词，重写画面表达） */
+  onRewriteShotScript?: (shotId: string) => void;
   /** 脚本升级进行中的分镜集合 */
   upgradingShots?: Set<string>;
   /** 批量补全摄影语言 */
@@ -164,6 +166,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   onBulkDurationChange,
   onBulkCalibrateDurations,
   onUpgradeShotScript,
+  onRewriteShotScript,
   upgradingShots,
   onBulkUpgradeScripts,
   onReGenerateStaleImagePrompts,
@@ -378,6 +381,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
           totalCount={latestShots.length}
           narrativeMode={narrativeMode}
           onUpgradeShotScript={onUpgradeShotScript}
+          onRewriteShotScript={onRewriteShotScript}
           upgrading={upgradingShots?.has(shot.id)}
           prevShotSize={prevShotSize}
           prevLightTone={prevLightTone}
@@ -462,6 +466,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
       onOptimizeImagePrompt,
       onOptimizeVideoPrompt,
       onUpgradeShotScript,
+      onRewriteShotScript,
       upgradingShots,
       onGenerateImage,
       onGenerateVideo,

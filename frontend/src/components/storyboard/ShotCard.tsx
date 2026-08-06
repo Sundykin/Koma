@@ -111,6 +111,8 @@ export interface ShotCardProps {
   onScriptLinesChange: (shotId: string, lines: ShotScriptLine[]) => void;
   /** 升级分镜脚本（补摄影语言） */
   onUpgradeShotScript?: (shotId: string) => void;
+  /** 换拍法（保持剧情/台词，重写画面表达） */
+  onRewriteShotScript?: (shotId: string) => void;
   /** 脚本升级进行中 */
   upgrading?: boolean;
   /** 上一镜主景别（用于跳变提示） */
@@ -184,6 +186,7 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
   onActivate,
   onScriptLinesChange,
   onUpgradeShotScript,
+  onRewriteShotScript,
   upgrading,
   prevShotSize,
   prevLightTone,
@@ -735,7 +738,17 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
                     disabled={upgrading}
                     title="用 AI 补全景别/机位/光线（保留剧情与台词）"
                   >
-                    {upgrading ? '升级中...' : 'AI 补全摄影语言'}
+                    {upgrading ? '处理中...' : 'AI 补全摄影语言'}
+                  </button>
+                )}
+                {narrativeMode === 'drama' && onRewriteShotScript && (
+                  <button
+                    className="text-[10px] text-text-secondary hover:opacity-80 cursor-pointer shrink-0 disabled:opacity-50"
+                    onClick={() => onRewriteShotScript(shot.id)}
+                    disabled={upgrading}
+                    title="保持剧情/台词，重写画面表达（换景别/机位/光线组合）"
+                  >
+                    {upgrading ? '' : '换拍法'}
                   </button>
                 )}
                 <button

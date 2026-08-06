@@ -577,6 +577,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     handleBatchReGenerateVideoPrompts,
     upgradingShots,
     handleUpgradeShotScript,
+    handleRewriteShotScript,
     handleBatchUpgradeShotScripts,
   } = useStoryboardPrompts({
     projectId,
@@ -862,6 +863,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             onActiveShotChange={setActiveShotId}
             onScriptLinesChange={handleScriptLinesChange}
             onUpgradeShotScript={handleUpgradeShotScript}
+            onRewriteShotScript={handleRewriteShotScript}
             upgradingShots={upgradingShots}
             onImagePromptChange={handleImagePromptChange}
             onVideoPromptChange={handleVideoPromptChange}

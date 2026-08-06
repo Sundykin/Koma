@@ -33,11 +33,17 @@ export function shotScriptToText(shot: Pick<Shot, 'scriptLines'>): string {
 /**
  * 升级单个分镜的分镜脚本为专业版本（补摄影语言）。
  */
+export interface UpgradeShotScriptOptions {
+  /** 默认升级（补摄影语言）；'rewrite' 换拍法（重写画面表达） */
+  mode?: 'upgrade' | 'rewrite';
+}
+
 export async function upgradeShotScript(
   projectId: string,
   episodeId: string,
   shot: Shot,
   llmSelection?: string,
+  options?: UpgradeShotScriptOptions,
 ): Promise<ShotScriptUpgradeResult> {
   const currentText = shotScriptToText(shot).trim();
   if (!currentText) {
@@ -49,7 +55,8 @@ export async function upgradeShotScript(
     const ctx = await createCreationContext(projectId, episodeId, {
       llmConfigId: llmSelection,
     });
-    const resolved = await resolvePromptTemplate('shot_script_upgrade', {
+    const templateId = options?.mode === 'rewrite' ? 'shot_script_rewrite' : 'shot_script_upgrade';
+    const resolved = await resolvePromptTemplate(templateId, {
       script: currentText,
     });
     const result = await ctx.llmProvider.chat([
