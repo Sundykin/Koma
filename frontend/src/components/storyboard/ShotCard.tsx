@@ -34,6 +34,7 @@ import {
   DownOutlined,
 } from '@ant-design/icons';
 import type { Shot, ShotImageMode, ShotScriptLine, Character, Scene, Prop, StoredMediaAsset } from '../../types';
+import { buildShotVoiceSegments } from '../../types';
 import { ShotScriptLines } from './ShotScriptLines';
 import { ShotScriptParagraph } from './ShotScriptParagraph';
 import {
@@ -398,6 +399,15 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
     return audios[idx] || audios[audios.length - 1];
   }, [shot.media?.audios, shot.media?.currentAudioIndex]);
 
+  // 配音内容预览（让用户生成前知道会读什么）
+  const voiceSegments = useMemo(() => buildShotVoiceSegments(shot), [shot]);
+  const voicePreview = useMemo(() => {
+    if (!voiceSegments.length) return undefined;
+    const first = voiceSegments[0];
+    const label = first.role === 'dialogue' ? '台词' : '旁白';
+    return `${label}：${first.text.slice(0, 20)}${first.text.length > 20 ? '…' : ''}`;
+  }, [voiceSegments]);
+
   // 实际配音时长 vs 分镜时长（音画同步可视化；超 1.3x 警示）
   const audioDurationSec = useMemo(() => {
     const ms = currentAudio?.durationMs;
@@ -624,7 +634,14 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
               <Button size="small" type="text" className={actionBtnClass} icon={<MergeCellsOutlined />} disabled={isFirst} onClick={() => onMergeUp(shot.id)} />
             </Tooltip>
             {onGenerateAudio && (
-              <Tooltip title={voiceStale ? '台词已改，建议重新生成配音' : (currentAudio ? '重新生成配音 (TTS)' : '生成配音 (TTS)')} placement="right">
+              <Tooltip
+                title={voiceStale
+                  ? '台词已改，建议重新生成配音'
+                  : (currentAudio
+                      ? `重新生成配音 (TTS)${voicePreview ? ` · ${voicePreview}` : ''}`
+                      : (voicePreview ? `生成配音 (TTS) · ${voicePreview}` : '生成配音 (TTS)（分镜无台词/旁白，需先补台词）'))}
+                placement="right"
+              >
                 <Button
                   size="small"
                   type="text"
