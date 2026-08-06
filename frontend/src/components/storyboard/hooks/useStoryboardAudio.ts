@@ -6,7 +6,8 @@
  * 后由 ffmpeg 顺序拼接；解说模式：沿用 dialogue→scriptLines 单音色整段路径。
  * 解析出的绑定信息回写 shot.audioBindings 供 UI 展示。
  */
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
+import { App as AntApp } from 'antd';
 import type { Shot, ShotAudioBinding, Character, StoredMediaAsset } from '../../../types';
 import { buildShotVoiceSegments, getShotScriptText } from '../../../types';
 import { computeShotVoiceHash } from '../../../services/shotFreshness';
@@ -178,6 +179,9 @@ export function useStoryboardAudio(deps: StoryboardAudioDeps) {
    * 批量配音：跳过已有配音的分镜（force=false）/ 强制重生成（force=true）。
    * concurrency=2 控制 TTS 并发，避免上游 429。
    */
+  const { modal } = AntApp.useApp();
+  // 最新 handleBatchAudios 引用：失败后"重试失败项"递归调用复用同一入口
+  const handleBatchAudiosRef = useRef<(...args: Parameters<typeof handleBatchAudios>) => Promise<void>>(async () => {});
   const handleBatchAudios = useCallback(async (force: boolean = false, targetShotIds?: string[]) => {
     if (!episodeId) {
       message.warning('未选择剧集');
@@ -268,6 +272,16 @@ export function useStoryboardAudio(deps: StoryboardAudioDeps) {
         message.success(`批量配音完成：成功 ${successCount}/${results.length}`);
       } else {
         message.warning(`批量配音完成：成功 ${successCount}/${results.length}，失败 ${failed.length}`);
+        const failedShotIds = failed.map(r => r.shotId).filter(Boolean);
+        const retry = await modal.confirm({
+          title: `${failed.length} 个分镜配音失败`,
+          content: '可立即重试失败分镜（成功的不会重复配音），或稍后在分镜卡上逐个重新配音。',
+          okText: '重试失败项',
+          cancelText: '稍后',
+        });
+        if (retry && failedShotIds.length > 0) {
+          await handleBatchAudiosRef.current?.(false, failedShotIds);
+        }
       }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : String(err);
@@ -275,7 +289,8 @@ export function useStoryboardAudio(deps: StoryboardAudioDeps) {
     } finally {
       setBatchProgress(undefined);
     }
-  }, [projectId, episodeId, shots, characters, voiceLibrary, ttsSelection, ttsVoiceId, ttsSpeed, message, setShots, setBatchProgress]);
+  }, [projectId, episodeId, shots, characters, voiceLibrary, ttsSelection, ttsVoiceId, ttsSpeed, message, modal, setShots, setBatchProgress]);
+  handleBatchAudiosRef.current = handleBatchAudios;
 
   const handleBatchGenerateAudios = useCallback(
     (targetShotIds?: string[]) => handleBatchAudios(false, targetShotIds),
