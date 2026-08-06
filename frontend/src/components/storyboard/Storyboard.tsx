@@ -577,6 +577,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     handleBatchReGenerateVideoPrompts,
     upgradingShots,
     handleUpgradeShotScript,
+    handleBatchUpgradeShotScripts,
   } = useStoryboardPrompts({
     projectId,
     episodeId,
@@ -906,6 +907,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             onBulkImageModeChange={handleBulkImageModeChange}
             onBulkDurationChange={handleBulkDurationChange}
             onBulkCalibrateDurations={handleBulkCalibrateDurations}
+            onBulkUpgradeScripts={() => handleBatchUpgradeShotScripts()}
             durationSpec={itvDurationSpec}
           />
           </DndContext>

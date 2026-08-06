@@ -7,8 +7,10 @@
  */
 import { useCallback, useState } from 'react';
 import { upgradeShotScript } from '../../../services/shotScriptUpgrade';
+import { extractShotPhotography } from '../../../services/photographyElements';
+import { runWithConcurrency } from '../../../utils/concurrency';
 import { computeShotScriptHash } from '../../../services/shotFreshness';
-import type { Shot, ProjectStyleSnapshot } from '../../../types';
+import type { Shot, ProjectStyleSnapshot, ShotScriptLine } from '../../../types';
 import { generateShotPrompt, batchGenerateShotPrompts } from '../../../services/ShotPromptService';
 import { findActiveTask } from '../../../services/tasksIPC';
 
@@ -262,10 +264,79 @@ export function useStoryboardPrompts(deps: StoryboardPromptsDeps) {
     }
   }, [projectId, episodeId, llmSelection, flushQueuedShotSaves, message, setShots, shotsRef]);
 
+  /** 批量补全摄影语言：只处理缺景别+机位的分镜，并发 2，成功时更新脚本 */
+  const handleBatchUpgradeShotScripts = useCallback(async (targetShotIds?: string[]) => {
+    if (!episodeId) {
+      message.warning('未选择剧集');
+      return;
+    }
+    await flushQueuedShotSaves();
+    const currentShots = shotsRef.current;
+    const baseShots = targetShotIds
+      ? currentShots.filter(s => targetShotIds.includes(s.id))
+      : currentShots;
+    // 只升级缺景别且缺机位的分镜（画面感不足的）；已有完整摄影语言的不动
+    const targetShots = baseShots.filter(s => {
+      const el = extractShotPhotography(s);
+      return el.shotSizes.length === 0 && el.cameraAngles.length === 0;
+    });
+    if (targetShots.length === 0) {
+      message.info('所选分镜都有摄影语言，无需补全');
+      return;
+    }
+    setUpgradingShots(new Set(targetShots.map(s => s.id)));
+    setBatchProgress({ current: 0, total: targetShots.length, step: '准备补全摄影语言...' });
+    try {
+      const results = (await runWithConcurrency(
+        targetShots.map(shot => async () => {
+          const result = await upgradeShotScript(projectId, episodeId, shot, llmSelection);
+          return { shotId: shot.id, success: result.success, scriptLines: result.scriptLines, error: result.error };
+        }),
+        2,
+      )).map((settled, index) => {
+        const shotId = targetShots[index]?.id ?? '';
+        if (settled.status === 'rejected') {
+          return { shotId, success: false, scriptLines: undefined as ShotScriptLine[] | undefined, error: String(settled.reason) };
+        }
+        return settled.value;
+      });
+
+      const successCount = results.filter(r => r.success).length;
+      // 逐项回写（统一在全部完成后一次更新，避免并发 setShots 竞态）
+      const upgradeById = new Map<string, ShotScriptLine[]>(
+        results
+          .filter((r): r is typeof r & { scriptLines: ShotScriptLine[] } => Boolean(r.success && r.scriptLines))
+          .map(r => [r.shotId, r.scriptLines]),
+      );
+      if (upgradeById.size > 0) {
+        const updatedShots = shotsRef.current.map(s => upgradeById.has(s.id) ? {
+          ...s,
+          scriptLines: upgradeById.get(s.id)!,
+          promptScriptHash: undefined,
+          voiceScriptHash: undefined,
+        } : s);
+        shotsRef.current = updatedShots;
+        setShots(updatedShots);
+      }
+      if (successCount === 0 && results.length > 0) {
+        const firstError = results.find(r => r.error)?.error;
+        message.error(`补全摄影语言全部失败${firstError ? `: ${firstError}` : ''}`);
+      } else {
+        message.success(`补全摄影语言完成: ${successCount}/${results.length} 成功`);
+      }
+    } catch (err: unknown) {
+      message.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setUpgradingShots(new Set());
+      setBatchProgress(undefined);
+    }
+  }, [projectId, episodeId, llmSelection, flushQueuedShotSaves, message, setShots, shotsRef, setBatchProgress]);
+
   return {
     ensureNoActiveBatch,
     upgradingShots,
     handleUpgradeShotScript,
+    handleBatchUpgradeShotScripts,
     handleGenerateImagePrompt,
     handleGenerateVideoPrompt,
     handleOptimizeImagePrompt,

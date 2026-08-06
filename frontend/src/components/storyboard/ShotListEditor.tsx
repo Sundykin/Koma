@@ -84,6 +84,8 @@ export interface ShotListEditorProps {
   onUpgradeShotScript?: (shotId: string) => void;
   /** 脚本升级进行中的分镜集合 */
   upgradingShots?: Set<string>;
+  /** 批量补全摄影语言 */
+  onBulkUpgradeScripts?: () => void;
   onBulkImageModeChange?: (mode: Exclude<ShotImageMode, 'grid'>) => void;
   /** 当前项目选择的 ITV 渠道时长规格，透传给 ShotCard 决定时长控件渲染方式 */
   durationSpec?: import('../../providers/itv/durationSpec').VideoDurationSpec;
@@ -154,6 +156,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   onBulkCalibrateDurations,
   onUpgradeShotScript,
   upgradingShots,
+  onBulkUpgradeScripts,
   durationSpec,
   videoProgressMap,
 }) => {
@@ -418,6 +421,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
               onBulkImageModeChange={onBulkImageModeChange}
               onBulkDurationChange={onBulkDurationChange}
               onBulkCalibrateDurations={onBulkCalibrateDurations}
+            onBulkUpgradeScripts={onBulkUpgradeScripts}
               onAddShot={onAddShot}
               onBatchDelete={handleBatchDelete}
             />
