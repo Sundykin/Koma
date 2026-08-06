@@ -5,12 +5,13 @@
  * 几分钟的成片要渲几千帧，非常慢。成熟剪辑软件（Premiere 智能渲染 / 剪映
  * 快速导出）在"片段无特效叠加"时走直接拼接 —— 本模块就是那个资格判定。
  *
- * 合格条件（v1 严格版）：
- *   - 仅主视频轨有内容（多轨叠加需要合成，不支持）
+ * 合格条件：
+ *   - 仅一条视频轨有内容（多轨叠加需要合成，不支持）
  *   - 视频/图片片段：无关键帧、无滤镜、无动画、无蒙版、无变换（位移/缩放/旋转/透明度）
- *   - 无转场、无文字轨内容、无音频轨内容（独立音轨需要时间轴定位，v1 不支持）
+ *   - 无转场、无文字轨内容（字幕烧录需要渲染，走逐帧路径）
+ *   - 音频片段：源为本地文件即可——按时间轴位置 adelay 定位混入（v2 起支持）
  *   - 片段源可解析为本地文件（koma-local:// 或绝对路径；远程 URL 需先落盘）
- *   - 时间轴上片段互不重叠
+ *   - 时间轴上视频片段互不重叠
  */
 import { MediaType, type Clip, type Track } from '../../types/editor';
 import { fromKomaLocalUrl } from '../../utils/urlUtils';
@@ -61,14 +62,13 @@ export function analyzeTimelineForFastConcat(tracks: Track[]): FastConcatAnalysi
   const textClipCount = activeTracks
     .filter(track => track.type === 'text')
     .reduce((sum, track) => sum + track.clips.length, 0);
-  const audioClipCount = activeTracks
+  const audioTrackClips = activeTracks
     .filter(track => track.type === 'audio')
-    .reduce((sum, track) => sum + track.clips.length, 0);
+    .flatMap(track => track.clips);
   const transitionCount = activeTracks
     .reduce((sum, track) => sum + (track.transitions?.length ?? 0), 0);
 
   if (textClipCount > 0) reasons.push('含字幕/文字片段');
-  if (audioClipCount > 0) reasons.push('含独立音频片段（配音/配乐需要时间轴定位）');
   if (transitionCount > 0) reasons.push('含转场');
   if (videoTracks.length === 0) reasons.push('没有视频片段');
   if (videoTracks.length > 1) reasons.push('多条视频轨叠加需要合成');
@@ -82,6 +82,27 @@ export function analyzeTimelineForFastConcat(tracks: Track[]): FastConcatAnalysi
         break;
       }
     }
+  }
+
+  const audioClipsOut: ConcatMediaClipOptions['clips'] = [];
+  for (const audioClip of audioTrackClips) {
+    if (audioClip.audioFade) {
+      reasons.push(`音频片段「${audioClip.name}」带淡入淡出`);
+      continue;
+    }
+    const localPath = resolveClipLocalPath(audioClip.src);
+    if (!localPath) {
+      reasons.push(`音频片段「${audioClip.name}」的源不是本地文件`);
+      continue;
+    }
+    audioClipsOut.push({
+      kind: 'audio',
+      source: localPath,
+      offsetSec: Math.max(0, audioClip.offset || 0),
+      durationSec: Math.max(0.1, audioClip.duration),
+      startSec: Math.max(0, audioClip.start),
+      label: audioClip.name,
+    });
   }
 
   for (const clip of orderedClips) {
@@ -110,7 +131,7 @@ export function analyzeTimelineForFastConcat(tracks: Track[]): FastConcatAnalysi
   return {
     eligible: reasons.length === 0 && clips.length > 0,
     reasons: Array.from(new Set(reasons)),
-    clips,
+    clips: [...clips, ...audioClipsOut],
     videoClipCount: clips.length,
   };
 }

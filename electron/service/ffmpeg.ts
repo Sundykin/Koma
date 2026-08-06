@@ -112,9 +112,11 @@ export interface ConcatMediaClipOptions {
   clips: Array<{
     kind: 'video' | 'image' | 'audio';
     source: string;
-    /** 视频段在源素材内的起始秒（剪辑 trim 的入点）；缺省从头开始 */
+    /** 视频/音频段在源素材内的起始秒（剪辑 trim 的入点）；缺省从头开始 */
     offsetSec?: number;
     durationSec?: number;
+    /** 音频段在时间轴上的起始秒（配音/配乐定位）；缺省按顺序头尾相接 */
+    startSec?: number;
     label?: string;
   }>;
   outputPath: string;
@@ -1115,7 +1117,7 @@ export class FFmpegService {
     await fs.promises.mkdir(workDir, { recursive: true });
 
     const normalizedPaths: string[] = [];
-    const audioPaths: string[] = [];
+    const audioClips: Array<{ source: string; offsetSec: number; durationSec: number; startSec: number }> = [];
     const total = clips.length;
     try {
       for (let index = 0; index < clips.length; index += 1) {
@@ -1125,7 +1127,12 @@ export class FFmpegService {
         const isImage = clip.kind === 'image';
         const isAudio = clip.kind === 'audio';
         if (isAudio) {
-          audioPaths.push(source);
+          audioClips.push({
+            source,
+            offsetSec: Math.max(0, Number(clip.offsetSec) || 0),
+            durationSec: Math.max(0, Number(clip.durationSec) || 0),
+            startSec: Math.max(0, Number(clip.startSec) || 0),
+          });
           onProgress?.(Math.round(((index + 0.2) / total) * 20));
           continue;
         }
@@ -1229,7 +1236,7 @@ export class FFmpegService {
         .join('\n');
       await fs.promises.writeFile(listPath, listContent, 'utf8');
 
-      const mergedVideoPath = audioPaths.length > 0 ? path.join(workDir, 'merged-video.mp4') : outputPath;
+      const mergedVideoPath = audioClips.length > 0 ? path.join(workDir, 'merged-video.mp4') : outputPath;
       await this.runFFmpeg([
         '-f', 'concat',
         '-safe', '0',
@@ -1240,16 +1247,34 @@ export class FFmpegService {
         mergedVideoPath,
       ]);
 
-      if (audioPaths.length > 0) {
+      if (audioClips.length > 0) {
         const args: string[] = ['-i', mergedVideoPath];
-        for (const audioPath of audioPaths) {
-          args.push('-i', audioPath);
+        for (const audioClip of audioClips) {
+          args.push('-i', audioClip.source);
         }
         const filterParts: string[] = [];
         const audioInputs = ['[0:a]'];
-        for (let index = 0; index < audioPaths.length; index += 1) {
+        for (let index = 0; index < audioClips.length; index += 1) {
           const inputIndex = index + 1;
-          filterParts.push(`[${inputIndex}:a]aresample=44100,asetpts=PTS-STARTPTS[a${index}]`);
+          const audioClip = audioClips[index];
+          // 先按源内偏移/时长截取，再按时间轴位置延时（adelay 双声道各一份）
+          const chain: string[] = [];
+          if (audioClip.offsetSec > 0 || audioClip.durationSec > 0) {
+            const trimStart = audioClip.offsetSec;
+            const trimEnd = audioClip.durationSec > 0
+              ? audioClip.offsetSec + audioClip.durationSec
+              : undefined;
+            chain.push(`atrim=start=${trimStart}${trimEnd !== undefined ? `:end=${trimEnd}` : ''}`);
+            chain.push('asetpts=PTS-STARTPTS');
+          }
+          chain.push('aresample=44100');
+          if (audioClip.startSec > 0) {
+            const delayMs = Math.round(audioClip.startSec * 1000);
+            chain.push(`adelay=${delayMs}|${delayMs}`);
+          } else {
+            chain.push('asetpts=PTS-STARTPTS');
+          }
+          filterParts.push(`[${inputIndex}:a]${chain.join(',')}[a${index}]`);
           audioInputs.push(`[a${index}]`);
         }
         filterParts.push(`${audioInputs.join('')}amix=inputs=${audioInputs.length}:duration=first:dropout_transition=0[aout]`);

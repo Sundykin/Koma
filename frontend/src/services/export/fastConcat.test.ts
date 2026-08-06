@@ -75,12 +75,41 @@ describe('analyzeTimelineForFastConcat', () => {
     expect(result.reasons.join()).toContain('字幕');
   });
 
-  it('含独立音频轨 → 不合格（v1 不支持音轨定位）', () => {
+  it('本地音频片段按时间轴位置放行（v2 定位混入）', () => {
     const tracks = [
-      videoTrack([clip()]),
-      { id: 't3', type: 'audio', clips: [clip({ type: MediaType.AUDIO })], order: -1 } as Track,
+      videoTrack([clip({ duration: 8 })]),
+      {
+        id: 't3', type: 'audio', order: -1,
+        clips: [clip({ type: MediaType.AUDIO, src: '/vo/narration.mp3', start: 1.5, duration: 4, offset: 0.5, name: '配音' })],
+      } as Track,
     ];
-    expect(analyzeTimelineForFastConcat(tracks).eligible).toBe(false);
+    const result = analyzeTimelineForFastConcat(tracks);
+    expect(result.eligible).toBe(true);
+    const audio = result.clips.find(c => c.kind === 'audio');
+    expect(audio).toEqual({
+      kind: 'audio',
+      source: '/vo/narration.mp3',
+      offsetSec: 0.5,
+      durationSec: 4,
+      startSec: 1.5,
+      label: '配音',
+    });
+  });
+
+  it('音频源非本地或带淡入淡出 → 不合格', () => {
+    const remoteAudio = analyzeTimelineForFastConcat([
+      videoTrack([clip()]),
+      { id: 't3', type: 'audio', clips: [clip({ type: MediaType.AUDIO, src: 'https://x/vo.mp3' })], order: -1 } as Track,
+    ]);
+    expect(remoteAudio.eligible).toBe(false);
+    expect(remoteAudio.reasons.join()).toContain('不是本地文件');
+
+    const faded = analyzeTimelineForFastConcat([
+      videoTrack([clip()]),
+      { id: 't3', type: 'audio', clips: [clip({ type: MediaType.AUDIO, src: '/a.mp3', audioFade: { fadeInDuration: 1 } as never })], order: -1 } as Track,
+    ]);
+    expect(faded.eligible).toBe(false);
+    expect(faded.reasons.join()).toContain('淡入淡出');
   });
 
   it('转场/重叠/特效/远程源逐条拦截', () => {
