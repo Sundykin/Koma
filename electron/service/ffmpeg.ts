@@ -112,6 +112,8 @@ export interface ConcatMediaClipOptions {
   clips: Array<{
     kind: 'video' | 'image' | 'audio';
     source: string;
+    /** 视频段在源素材内的起始秒（剪辑 trim 的入点）；缺省从头开始 */
+    offsetSec?: number;
     durationSec?: number;
     label?: string;
   }>;
@@ -1145,6 +1147,11 @@ export class FFmpegService {
           }
         }
 
+        const offsetSec = Math.max(0, Number(clip.offsetSec) || 0);
+        // 视频段支持 trim：-ss 输入跳转（重编码场景下帧精确）；-t 仅当显式给了
+        // durationSec 才加——否则保持原行为取整段源（duration 缺省值是图片档 3s，
+        // 误用于视频会把长素材截短）
+        const videoDurationSec = Math.max(0, Number(clip.durationSec) || 0);
         const args = isImage
           ? [
               '-loop', '1',
@@ -1166,9 +1173,11 @@ export class FFmpegService {
             ]
           : hasAudio
             ? [
+                ...(offsetSec > 0 ? ['-ss', String(offsetSec)] : []),
                 '-i', source,
                 '-map', '0:v:0',
                 '-map', '0:a:0',
+                ...(videoDurationSec > 0 ? ['-t', String(videoDurationSec)] : []),
                 '-vf', videoFilter,
                 '-shortest',
                 '-c:v', 'libx264',
@@ -1184,11 +1193,13 @@ export class FFmpegService {
                 segmentPath,
               ]
             : [
+                ...(offsetSec > 0 ? ['-ss', String(offsetSec)] : []),
                 '-i', source,
                 '-f', 'lavfi',
                 '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
                 '-map', '0:v:0',
                 '-map', '1:a:0',
+                ...(videoDurationSec > 0 ? ['-t', String(videoDurationSec)] : []),
                 '-vf', videoFilter,
                 '-shortest',
                 '-c:v', 'libx264',

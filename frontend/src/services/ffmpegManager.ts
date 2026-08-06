@@ -119,6 +119,8 @@ export interface ConcatMediaClipOptions {
   clips: Array<{
     kind: 'video' | 'image' | 'audio';
     source: string;
+    /** 视频段在源素材内的起始秒（剪辑 trim 入点）；缺省从头开始 */
+    offsetSec?: number;
     durationSec?: number;
     label?: string;
   }>;

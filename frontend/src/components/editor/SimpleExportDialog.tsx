@@ -9,6 +9,8 @@ import { Track } from '../../types/editor';
 import { SimpleExportRenderer, SimpleExportConfig, SimpleExportProgress } from '../../services/simpleExportRenderer';
 import { saveFileDialog, openDirectoryDialog, isElectron, writeFile, createDirectory, fsCopy, fsExists } from '../../services/electronService';
 import { exporterRegistry } from '../../services/draftExport';
+import { analyzeTimelineForFastConcat } from '../../services/export/fastConcat';
+import { ffmpegManager } from '../../services/ffmpegManager';
 import type { DraftExportOptions } from '../../services/draftExport';
 import { checkExportCompatibility } from '../../services/draftExport/exportCapabilityChecker';
 import type { JianyingDraftContent, JianyingDraftMetaInfo } from '../../types/jianying';
@@ -97,6 +99,10 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
   // 检测高级特性兼容性
   const compatibilityReport = useMemo(() => checkExportCompatibility(tracks), [tracks]);
 
+  // 快速拼接资格（无特效/转场/字幕/独立音轨时可跳过逐帧渲染，直接 ffmpeg 顺序拼接）
+  const fastConcatAnalysis = useMemo(() => analyzeTimelineForFastConcat(tracks), [tracks]);
+  const [useFastConcat, setUseFastConcat] = useState(true);
+
   // 同步 canvasSize 到视频表单，并重置草稿表单
   useEffect(() => {
     if (open) {
@@ -184,6 +190,31 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
       setExporting(true);
       setProgress(null);
 
+      // 快速拼接：无特效时间轴直接 ffmpeg 顺序拼接（秒级），跳过 canvas 逐帧渲染
+      if (useFastConcat && fastConcatAnalysis.eligible) {
+        const concatFps = ([24, 30, 60].includes(values.fps) ? values.fps : 30) as 24 | 30 | 60;
+        await ffmpegManager.concatMediaClips({
+          clips: fastConcatAnalysis.clips,
+          outputPath: values.videoOutputPath,
+          width: values.width,
+          height: values.height,
+          fps: concatFps,
+          onProgress: (percent) => setProgress({
+            stage: 'encoding',
+            progress: percent / 100,
+            currentFrame: 0,
+            totalFrames: 0,
+            message: '快速拼接片段中…',
+          }),
+        });
+        modal.success({
+          title: '导出完成',
+          content: `视频已保存到: ${values.videoOutputPath}`,
+        });
+        onClose();
+        return;
+      }
+
       const exporter = new SimpleExportRenderer(config);
       exporterRef.current = exporter;
 
@@ -212,7 +243,7 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
       exporterRef.current?.dispose();
       exporterRef.current = null;
     }
-  }, [duration, message, modal, onClose, tracks, videoForm]);
+  }, [duration, message, modal, onClose, tracks, videoForm, useFastConcat, fastConcatAnalysis]);
 
   // 草稿导出
   const handleDraftExport = useCallback(async () => {
@@ -497,6 +528,27 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
                   ))}
                 </Radio.Group>
               </Form.Item>
+
+              {/* 快速拼接：无特效时间轴可跳过逐帧渲染（合格时默认开） */}
+              {fastConcatAnalysis.eligible ? (
+                <Form.Item className="settings-form-item-flush" style={{ marginBottom: 12 }}>
+                  <Checkbox
+                    checked={useFastConcat}
+                    onChange={(e) => setUseFastConcat(e.target.checked)}
+                  >
+                    快速拼接导出（片段无特效/转场/字幕，直接顺序拼接，比逐帧渲染快几十倍）
+                  </Checkbox>
+                </Form.Item>
+              ) : (
+                fastConcatAnalysis.reasons.length > 0 && (
+                  <Alert
+                    type="info"
+                    showIcon
+                    style={{ marginBottom: 12 }}
+                    message={`当前时间轴需逐帧渲染导出（${fastConcatAnalysis.reasons.slice(0, 2).join('、')}）`}
+                  />
+                )
+              )}
 
               {/* 自定义分辨率 */}
               <Space>
