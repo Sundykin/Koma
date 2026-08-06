@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeShotScriptHash, isShotPromptStale, computeShotVoiceHash, isShotVoiceStale, estimateShotSpeechDuration, isShotSpeechOverDuration, isShotSpeechUnderused, suggestCalibratedDuration, getShotAudioDurationSec } from './shotFreshness';
+import { computeShotScriptHash, isShotPromptStale, computeShotVoiceHash, isShotVoiceStale, estimateShotSpeechDuration, isShotSpeechOverDuration, isShotSpeechUnderused, suggestCalibratedDuration, getShotAudioDurationSec, detectInconsistentCharacterVoices } from './shotFreshness';
 import type { ShotScriptLine } from '../types/scene-character';
 
 const line = (text: string, role?: ShotScriptLine['role'], characterId?: string): ShotScriptLine => ({
@@ -172,5 +172,35 @@ describe('实际配音时长参与校准', () => {
       media: { audios: [audio(10000)], currentAudioIndex: 0 },
     };
     expect(suggestCalibratedDuration(shot)).toBeUndefined();
+  });
+});
+
+describe('角色音色跨镜一致性', () => {
+  const binding = (characterId: string, voiceProfileId: string, voiceName = characterId) => ({
+    index: 0, voiceProfileId, voiceName, sourceCharacterId: characterId,
+  });
+
+  it('同一角色跨镜音色一致 → 不报', () => {
+    const shots = [
+      { audioBindings: [binding('c1', 'v1', '叶赎')] },
+      { audioBindings: [binding('c1', 'v1', '叶赎')] },
+    ];
+    expect(detectInconsistentCharacterVoices(shots)).toEqual([]);
+  });
+
+  it('同一角色跨镜音色不同 → 报不一致', () => {
+    const shots = [
+      { audioBindings: [binding('c1', 'v1', '叶赎')] },
+      { audioBindings: [binding('c1', 'v2', '叶赎')] },
+    ];
+    const result = detectInconsistentCharacterVoices(shots);
+    expect(result).toHaveLength(1);
+    expect(result[0].characterId).toBe('c1');
+    expect(result[0].voices.sort()).toEqual(['v1', 'v2']);
+  });
+
+  it('无绑定/无 sourceCharacterId 不参与', () => {
+    expect(detectInconsistentCharacterVoices([{ audioBindings: [] }])).toEqual([]);
+    expect(detectInconsistentCharacterVoices([{ audioBindings: [{ index: 0, voiceProfileId: 'v', voiceName: 'x' }] }])).toEqual([]);
   });
 });

@@ -171,3 +171,44 @@ export function getShotAudioDurationSec(shot: {
   const ms = audio?.durationMs;
   return ms && ms > 0 ? ms / 1000 : undefined;
 }
+
+// ---------------------------------------------------------------------------
+// 角色音色跨镜一致性
+// ---------------------------------------------------------------------------
+
+export interface CharacterVoiceInconsistency {
+  characterId: string;
+  name: string;
+  /** 该角色在跨镜中使用过的音色 profile id 集合 */
+  voices: string[];
+}
+
+/**
+ * 检测同一角色在不同镜使用了不同音色（跨镜声音不一致）。
+ * 基于 shot.audioBindings 的 sourceCharacterId → voiceProfileId 映射。
+ */
+export function detectInconsistentCharacterVoices(
+  shots: Array<{ audioBindings?: Array<{
+    index?: number;
+    sourceCharacterId?: string;
+    voiceProfileId?: string;
+    voiceName?: string;
+  }> }>,
+): CharacterVoiceInconsistency[] {
+  const byChar = new Map<string, { name: string; voices: Set<string> }>();
+  for (const shot of shots) {
+    for (const binding of shot.audioBindings ?? []) {
+      if (!binding.sourceCharacterId || !binding.voiceProfileId) continue;
+      const entry = byChar.get(binding.sourceCharacterId) ?? { name: binding.voiceName || '', voices: new Set<string>() };
+      entry.voices.add(binding.voiceProfileId);
+      byChar.set(binding.sourceCharacterId, entry);
+    }
+  }
+  return Array.from(byChar.entries())
+    .filter(([, entry]) => entry.voices.size > 1)
+    .map(([characterId, entry]) => ({
+      characterId,
+      name: entry.name,
+      voices: Array.from(entry.voices),
+    }));
+}

@@ -12,7 +12,7 @@ import type { MentionItem } from '../../editor';
 import type { Shot, ShotImageMode, ShotScriptLine, Character, Scene, Prop, StoredMediaAsset } from '../../types';
 import { getMediaAssetDisplaySource } from '../../types';
 import { getPrimaryShotSize, extractShotPhotography, detectShotLightTone, isSameScene } from '../../services/photographyElements';
-import { isShotSpeechOverDuration, isShotPromptStale, isShotVoiceStale } from '../../services/shotFreshness';
+import { isShotSpeechOverDuration, isShotPromptStale, isShotVoiceStale, detectInconsistentCharacterVoices } from '../../services/shotFreshness';
 import { findDialogueCharactersMissingVoice } from '../../services/shotReference/readiness';
 import { ShotCard } from './ShotCard';
 
@@ -306,10 +306,11 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
         voiceStaleIds.push(s.id);
       }
     }
-    // 全部就绪：无质量缺口 + 视频渲染齐全（配音可选）
+    // 角色音色跨镜不一致（同一角色不同镜用不同音色 → 声音跳）
+    const voiceInconsistent = detectInconsistentCharacterVoices(shots).length;
     const allReady = missingPhoto === 0 && overDuration === 0 && missingVoice === 0
-      && promptStale === 0 && videoCount === shots.length;
-    return { missingPhoto, overDuration, videoCount, audioCount, missingVoice, promptStale, promptStaleIds, voiceStale, voiceStaleIds, allReady };
+      && promptStale === 0 && voiceInconsistent === 0 && videoCount === shots.length;
+    return { missingPhoto, overDuration, videoCount, audioCount, missingVoice, promptStale, promptStaleIds, voiceStale, voiceStaleIds, voiceInconsistent, allReady };
   }, [shots, characters]);
 
   const renderShotRow = useCallback(
@@ -496,6 +497,11 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
               >
                 提示词待更新 {readinessStats.promptStale} 镜（重生成）
               </button>
+            )}
+            {readinessStats.voiceInconsistent > 0 && (
+              <span className="text-status-warning" title="同一角色在不同镜用了不同音色，声音会跳——检查角色音色绑定">
+                角色音色不一致 {readinessStats.voiceInconsistent}
+              </span>
             )}
             {readinessStats.voiceStale > 0 && (
               <button
