@@ -7,7 +7,7 @@
  */
 import { useCallback, useState } from 'react';
 import { upgradeShotScript } from '../../../services/shotScriptUpgrade';
-import { extractShotPhotography } from '../../../services/photographyElements';
+import { extractShotPhotography, shotSizeToShotType } from '../../../services/photographyElements';
 import { runWithConcurrency } from '../../../utils/concurrency';
 import { computeShotScriptHash } from '../../../services/shotFreshness';
 import type { Shot, ProjectStyleSnapshot, ShotScriptLine } from '../../../types';
@@ -240,9 +240,12 @@ export function useStoryboardPrompts(deps: StoryboardPromptsDeps) {
       await flushQueuedShotSaves();
       const result = await upgradeShotScript(projectId, episodeId, shot, llmSelection);
       if (result.success && result.scriptLines) {
+        // 脚本景别同步到 shotType 字段（图片提示词推荐景别与脚本一致）
+        const mappedShotType = shotSizeToShotType({ scriptLines: result.scriptLines });
         const updatedShots = shotsRef.current.map(s => s.id === shotId ? {
           ...s,
           scriptLines: result.scriptLines!,
+          ...(mappedShotType ? { shotType: mappedShotType } : {}),
           // 脚本变了 → 提示词/配音新鲜度标记清掉（等待重新生成）
           promptScriptHash: undefined,
           voiceScriptHash: undefined,
@@ -312,6 +315,7 @@ export function useStoryboardPrompts(deps: StoryboardPromptsDeps) {
         const updatedShots = shotsRef.current.map(s => upgradeById.has(s.id) ? {
           ...s,
           scriptLines: upgradeById.get(s.id)!,
+          ...(shotSizeToShotType({ scriptLines: upgradeById.get(s.id)! }) ? { shotType: shotSizeToShotType({ scriptLines: upgradeById.get(s.id)! })! } : {}),
           promptScriptHash: undefined,
           voiceScriptHash: undefined,
         } : s);

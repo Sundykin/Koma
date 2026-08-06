@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { extractPhotographyElements, extractShotPhotography, getPrimaryShotSize, isShotSizeJump } from './photographyElements';
+import { extractPhotographyElements, extractShotPhotography, getPrimaryShotSize, isShotSizeJump, shotSizeToShotType } from './photographyElements';
 import type { ShotScriptLine } from '../types/scene-character';
 
 const desc = (text: string): ShotScriptLine => ({
@@ -68,5 +68,15 @@ describe('景别连贯性', () => {
   it('缺景别不判跳变', () => {
     expect(isShotSizeJump(undefined, '全景')).toBe(false);
     expect(isShotSizeJump('特写', undefined)).toBe(false);
+  });
+});
+
+describe('景别 → shotType 映射', () => {
+  it('主景别映射到 shotType 枚举', () => {
+    expect(shotSizeToShotType({ scriptLines: [desc('特写，平视。')] })).toBe('close-up');
+    expect(shotSizeToShotType({ scriptLines: [desc('全景，仰视。')] })).toBe('wide');
+    expect(shotSizeToShotType({ scriptLines: [desc('大全景。')] })).toBe('extreme-wide');
+    expect(shotSizeToShotType({ scriptLines: [desc('近景。')] })).toBe('medium');
+    expect(shotSizeToShotType({ scriptLines: [desc('两人激战')] })).toBeUndefined();
   });
 });

@@ -19,7 +19,8 @@ export interface PhotographyElements {
   lightings: string[];
 }
 
-const SHOT_SIZE_WORDS = ['特写', '近景', '中景', '全景', '大全景', '远景'];
+// 大全景/远景在扫描时必须在全景前（大全景包含子串全景，先匹配具体的）
+const SHOT_SIZE_WORDS = ['大全景', '远景', '特写', '近景', '中景', '全景'];
 const CAMERA_ANGLE_WORDS = ['平视', '俯视', '仰视', '低机位', '高机位', '低角度', '高角度', '过肩', '越肩', '侧拍', '正拍', '背拍'];
 const LIGHT_WORDS = ['逆光', '侧光', '顶光', '背光', '月光', '日光', '烛光', '油灯', '暖黄', '冷白', '明亮', '昏暗', '暗部', '明暗', '阴影', '逆光剪影'];
 
@@ -87,4 +88,23 @@ export function isShotSizeJump(sizeA: string | undefined, sizeB: string | undefi
   const b = SHOT_SIZE_RANK[sizeB];
   if (!a || !b) return false;
   return Math.abs(a - b) >= 2;
+}
+
+/** shot.shotType 枚举 */
+export type ShotTypeValue = 'close-up' | 'medium' | 'wide' | 'extreme-wide';
+
+/** 景别 → shotType 枚举映射（特写→close-up 等；识别不到返回 undefined） */
+const SIZE_TO_SHOT_TYPE: Record<string, ShotTypeValue> = {
+  '特写': 'close-up',
+  '近景': 'medium',
+  '中景': 'medium',
+  '全景': 'wide',
+  '大全景': 'extreme-wide',
+  '远景': 'extreme-wide',
+};
+
+/** 分镜主景别映射到 shot.shotType 枚举值（升级脚本时同步字段，保证提示词推荐景别与脚本一致） */
+export function shotSizeToShotType(shot: { scriptLines?: ShotScriptLine[] }): ShotTypeValue | undefined {
+  const primary = getPrimaryShotSize(shot);
+  return primary ? SIZE_TO_SHOT_TYPE[primary] : undefined;
 }
