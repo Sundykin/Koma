@@ -436,7 +436,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       });
       return [shot.id, support] as const;
     }));
-  }, [shots, characters, scenes, props, effectiveSettings, itvSelection, selectedItvModelCapabilities]);
+  }, [shots, characters, scenes, props, effectiveSettings, itvSelection, selectedItvModelCapabilities, selectedItvModelMaxRefs]);
 
   const buildUnsupportedShotVideoMessage = useCallback((targetShots: Shot[]) => {
     const unsupported = targetShots
@@ -745,7 +745,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     setEditModalOpen(false);
     setEditingShot(null);
     setEditFormData({});
-  }, [editFormData, editingShot, shots, saveAllShots, itvDurationSpec]);
+  }, [editFormData, editingShot, shots, saveAllShots, itvDurationSpec, message, narrativeMode, speakerNameById]);
 
   // 批量生成图片（跳过已有图片的）
   // 单镜/批量媒体生成逻辑已拆到 hooks/useStoryboardMediaGeneration（图片/视频 × 生成/重生成）

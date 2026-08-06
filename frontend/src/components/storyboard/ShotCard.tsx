@@ -247,9 +247,9 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
     onActivate?.(shot.id);
   }, [shot.id, onActivate]);
 
-  const images = shot.media?.images || [];
-  const referenceImages = shot.media?.references || [];
-  const videos = shot.media?.videos || [];
+  const images = useMemo(() => shot.media?.images || [], [shot.media?.images]);
+  const referenceImages = useMemo(() => shot.media?.references || [], [shot.media?.references]);
+  const videos = useMemo(() => shot.media?.videos || [], [shot.media?.videos]);
 
   const imageSources = useMemo(
     () => images.map(a => getMediaAssetDisplaySource(a) || '').filter(Boolean),

@@ -299,6 +299,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
     },
     [
       projectId,
+      narrativeMode,
       characters,
       scenes,
       props,

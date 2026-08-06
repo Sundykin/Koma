@@ -43,7 +43,7 @@ export function useStoryboardTaskSubscriptions(deps: StoryboardTaskSubscriptions
   // 任务被 useActiveTask 接管后清掉提交中标志（避免成功路径不归零）
   useEffect(() => {
     if (activeAnalysisTask) setIsSubmittingAnalysis(false);
-  }, [activeAnalysisTask?.id]);
+  }, [activeAnalysisTask, setIsSubmittingAnalysis]);
 
   // 监听分析任务终态转换（edge-triggered 副作用）
   useTaskTransitions(

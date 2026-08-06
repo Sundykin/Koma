@@ -5,7 +5,7 @@
  * 角色/场景/道具、参考图/多图/多视频、合并/移动、新建/插入、图片与视频模式切换。
  * 全部收敛为「算出新 shots → saveAllShots」单一写入路径。
  */
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { DragEndEvent } from '@dnd-kit/core';
 import type {
@@ -80,7 +80,7 @@ export function useStoryboardShotMutations(deps: StoryboardShotMutationsDeps) {
     message,
   } = deps;
 
-  const assets = { characters, scenes, props };
+  const assets = useMemo(() => ({ characters, scenes, props }), [characters, scenes, props]);
   const { syncFromPrompt, handleAssetChange } = useShotAssetSync(assets);
 
   /** 单分镜内字幕行变更（编辑 / 添加 / 删除 / 同分镜内排序 / 任意位置插入） */
@@ -207,7 +207,7 @@ export function useStoryboardShotMutations(deps: StoryboardShotMutationsDeps) {
       } : s
     );
     saveAllShots(updatedShots);
-  }, [shots, saveAllShots, handleAssetChange, characters, scenes, props]);
+  }, [shots, saveAllShots, handleAssetChange, assets]);
 
   const handleCharactersChange = useCallback(
     (shotId: string, characterIds: string[]) => runAssetChange('character', shotId, characterIds),
