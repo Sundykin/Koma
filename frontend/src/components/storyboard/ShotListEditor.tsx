@@ -378,6 +378,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
             {/* 公共表头 - 集成全选和批量操作；置于虚拟滚动外，长列表滚动时常驻可见 */}
             <ShotListHeader
               totalCount={shots.length}
+              totalDurationSec={shots.reduce((sum, shot) => sum + (Number(shot.duration) || 0), 0)}
               selectedCount={selectedCount}
               isAllSelected={isAllSelected}
               isIndeterminate={isIndeterminate}

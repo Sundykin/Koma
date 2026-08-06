@@ -20,6 +20,8 @@ import type { ShotImageMode } from '../../types';
 
 interface ShotListHeaderProps {
   totalCount: number;
+  /** 所有分镜时长之和（秒）；提供时在操作列显示「N 镜 · M分M秒」 */
+  totalDurationSec?: number;
   selectedCount: number;
   isAllSelected: boolean;
   isIndeterminate: boolean;
@@ -51,6 +53,7 @@ interface ShotListHeaderProps {
 
 export const ShotListHeader: React.FC<ShotListHeaderProps> = ({
   totalCount,
+  totalDurationSec,
   selectedCount,
   isAllSelected,
   isIndeterminate,
@@ -149,6 +152,17 @@ export const ShotListHeader: React.FC<ShotListHeaderProps> = ({
               <Button type="text" danger size="small" className="!w-5 !h-5 !p-0" icon={<DeleteOutlined className="text-[11px]" />} />
             </Tooltip>
           </Popconfirm>
+        )}
+        {/* 分镜统计：总镜数 + 总时长（剪辑序列时长概念，用户一眼看到是否匹配目标时长）。
+            80px 操作列放不下单行，用两行紧凑排列 */}
+        {!hasSelected && totalCount > 0 && (
+          <Tooltip title="分镜总时长（各分镜时长之和）">
+            <span className="text-[10px] text-text-tertiary leading-tight text-center">
+              {totalCount} 镜
+              <br />
+              {totalDurationSec !== undefined ? `${Math.floor(totalDurationSec / 60)}分${Math.round(totalDurationSec % 60)}秒` : ''}
+            </span>
+          </Tooltip>
         )}
       </div>
 
