@@ -272,10 +272,15 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   const [episodePreviewOpen, setEpisodePreviewOpen] = useState(false);
   const [playIndex, setPlayIndex] = useState(0);
   const playableVideos = useMemo(
-    () => shots.map(s => ({ shotId: s.id, src: getShotCurrentVideoSource(s) })).filter(v => Boolean(v.src)),
+    () => shots.map(s => ({
+      shotId: s.id,
+      src: getShotCurrentVideoSource(s),
+      size: getPrimaryShotSize(s),
+    })).filter(v => Boolean(v.src)),
     [shots],
   );
-  const currentPlaySrc = playIndex < playableVideos.length ? playableVideos[playIndex].src : undefined;
+  const currentPlayVideo = playIndex < playableVideos.length ? playableVideos[playIndex] : undefined;
+  const currentPlaySrc = currentPlayVideo?.src;
 
   // 批量操作已用时长（秒）：batchProgress 活跃时每秒递增，结束归零
   const [batchElapsedSec, setBatchElapsedSec] = useState(0);
@@ -568,7 +573,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
           onCancel={() => setEpisodePreviewOpen(false)}
           footer={null}
           width={800}
-          title={`成片预览 · 第 ${playIndex + 1}/${playableVideos.length} 镜`}
+          title={`成片预览 · 第 ${playIndex + 1}/${playableVideos.length} 镜${currentPlayVideo?.size ? ` · ${currentPlayVideo.size}` : ''}`}
           destroyOnClose
         >
           {currentPlaySrc && (
