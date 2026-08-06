@@ -449,11 +449,37 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
     );
   };
 
+  // 图片就绪计数（定妆照/场景图/道具图）——让用户一眼看到"还差几张没生成"
+  const characterImageReadyCount = useMemo(
+    () => characters.filter(char => Boolean(getCharacterCostumePhotoSource(char))).length,
+    [characters],
+  );
+  const sceneImageReadyCount = useMemo(
+    () => scenes.filter(scene => Boolean(getScenePreviewImageSource(scene))).length,
+    [scenes],
+  );
+  const propImageReadyCount = useMemo(
+    () => props.filter(prop => Boolean(getPropPreviewImageSource(prop))).length,
+    [props],
+  );
+
+  /** 标题栏的就绪徽标：全部有图时淡色，有缺时警示色 */
+  const renderReadyBadge = (ready: number, total: number) => {
+    if (total === 0) return null;
+    const complete = ready === total;
+    return (
+      <span className={`text-xs ${complete ? 'text-text-tertiary' : 'text-status-warning'}`}>
+        · {ready}/{total} 有图
+      </span>
+    );
+  };
+
   // 角色列表 - 网格布局
   const renderCharacters = () => (
     <div className="h-full flex flex-col">
       <div className="p-2 border-b border-border-subtle flex justify-between items-center bg-bg-surface/50">
         <span className="text-xs text-text-tertiary">{t('asset.totalCharacters', { count: characters.length })}</span>
+        {renderReadyBadge(characterImageReadyCount, characters.length)}
         {renderHeaderActions('character', handleCreateCharacter)}
       </div>
       <div className={`flex-1 overflow-y-auto p-2 ${styles.scrollbar}`}>
@@ -483,6 +509,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
     <div className="h-full flex flex-col">
       <div className="p-2 border-b border-border-subtle flex justify-between items-center bg-bg-surface/50">
         <span className="text-xs text-text-tertiary">{t('asset.totalScenes', { count: scenes.length })}</span>
+        {renderReadyBadge(sceneImageReadyCount, scenes.length)}
         {renderHeaderActions('scene', handleCreateScene)}
       </div>
       <div className={`flex-1 overflow-y-auto p-2 ${styles.scrollbar}`}>
@@ -511,6 +538,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
     <div className="h-full flex flex-col">
       <div className="p-2 border-b border-border-subtle flex justify-between items-center bg-bg-surface/50">
         <span className="text-xs text-text-tertiary">{t('asset.totalProps', { count: props.length })}</span>
+        {renderReadyBadge(propImageReadyCount, props.length)}
         {renderHeaderActions('prop', handleCreateProp)}
       </div>
       <div className={`flex-1 overflow-y-auto p-2 ${styles.scrollbar}`}>
