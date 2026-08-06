@@ -13,6 +13,7 @@ import type { Shot, ShotImageMode, ShotScriptLine, Character, Scene, Prop, Store
 import { getMediaAssetDisplaySource } from '../../types';
 import { getPrimaryShotSize, extractShotPhotography } from '../../services/photographyElements';
 import { isShotSpeechOverDuration } from '../../services/shotFreshness';
+import { findDialogueCharactersMissingVoice } from '../../services/shotReference/readiness';
 import { ShotCard } from './ShotCard';
 
 const { Text } = Typography;
@@ -269,8 +270,10 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
       if ((s.media?.videos?.length || 0) > 0) videoCount += 1;
       if ((s.media?.audios?.length || 0) > 0) audioCount += 1;
     }
-    return { missingPhoto, overDuration, videoCount, audioCount };
-  }, [shots]);
+    // 有台词但没绑音色的角色（视频渲染的音色参考缺失）
+    const missingVoice = findDialogueCharactersMissingVoice(shots, characters).length;
+    return { missingPhoto, overDuration, videoCount, audioCount, missingVoice };
+  }, [shots, characters]);
 
   const renderShotRow = useCallback(
     (index: number, shot: Shot) => {
@@ -427,6 +430,11 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
               >
                 台词超时长 {readinessStats.overDuration} 镜（校准）
               </button>
+            )}
+            {readinessStats.missingVoice > 0 && (
+              <span className="text-status-warning" title="有台词但没绑音色的角色，视频渲染时声音参考缺失（到角色详情绑定音色）">
+                缺音色 {readinessStats.missingVoice} 角色
+              </span>
             )}
             <span className="text-text-tertiary">
               视频 {readinessStats.videoCount}/{shots.length} · 配音 {readinessStats.audioCount}/{shots.length}
