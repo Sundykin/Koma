@@ -49,6 +49,8 @@ interface ShotListHeaderProps {
   onBulkImageModeChange?: (mode: Exclude<ShotImageMode, 'grid'>) => void;
   /** 批量统一分镜时长（秒） */
   onBulkDurationChange?: (duration: number) => void;
+  /** 批量校准台词超时长的分镜（补足到朗读估算时长） */
+  onBulkCalibrateDurations?: () => void;
   onAddShot: () => void;
   onBatchDelete: () => void;
 }
@@ -78,6 +80,7 @@ export const ShotListHeader: React.FC<ShotListHeaderProps> = ({
   onBulkVideoModeChange,
   onBulkImageModeChange,
   onBulkDurationChange,
+  onBulkCalibrateDurations,
   onAddShot,
   onBatchDelete,
 }) => {
@@ -121,11 +124,18 @@ export const ShotListHeader: React.FC<ShotListHeaderProps> = ({
       key: 'bulk-duration',
       label: '时长切换',
       type: 'group' as const,
-      children: BULK_DURATION_OPTIONS.map(seconds => ({
-        key: `dur-${seconds}`,
-        label: `全部设为 ${seconds} 秒`,
-        onClick: () => onBulkDurationChange(seconds),
-      })),
+      children: [
+        ...BULK_DURATION_OPTIONS.map(seconds => ({
+          key: `dur-${seconds}`,
+          label: `全部设为 ${seconds} 秒`,
+          onClick: () => onBulkDurationChange(seconds),
+        })),
+        ...(onBulkCalibrateDurations ? [{
+          key: 'dur-calibrate',
+          label: '按台词量校准超配时长',
+          onClick: () => onBulkCalibrateDurations(),
+        }] : []),
+      ],
     }] : []),
     ...(onBulkImageModeChange ? [{
       key: 'image-mode',

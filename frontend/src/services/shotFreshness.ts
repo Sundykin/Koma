@@ -137,3 +137,19 @@ export function isShotSpeechUnderused(shot: {
   if (duration < 8) return false;
   return estimateShotSpeechDuration(shot) < duration * 0.4;
 }
+
+/** 短剧单镜时长上限（秒）：超过此值应拆镜而非无限加长 */
+export const MAX_SINGLE_SHOT_SECONDS = 20;
+
+/**
+ * 台词超时长分镜的建议时长（秒）：补足到估算朗读时长，但不超过单镜上限。
+ * 未超配返回 undefined（无需校准）。超过上限的保持警示（提示拆镜）。
+ */
+export function suggestCalibratedDuration(shot: {
+  duration?: number;
+  scriptLines?: ShotScriptLine[];
+}): number | undefined {
+  if (!isShotSpeechOverDuration(shot)) return undefined;
+  const estimated = Math.ceil(estimateShotSpeechDuration(shot));
+  return Math.min(MAX_SINGLE_SHOT_SECONDS, Math.max(Number(shot.duration) || 0, estimated));
+}

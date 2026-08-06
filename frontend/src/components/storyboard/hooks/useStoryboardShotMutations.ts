@@ -15,6 +15,7 @@ import type { ShotImageMode } from '../../../types';
 import { useShotAssetSync } from '../../../hooks/useShotAssetSync';
 import { clampDurationToSpec, type VideoDurationSpec } from '../../../providers/itv/durationSpec';
 import { findVersionNumberForVideoAsset } from '../../../utils/shotVersionSelection';
+import { suggestCalibratedDuration } from '../../../services/shotFreshness';
 
 export type EditableShotImageMode = Exclude<ShotImageMode, 'grid'>;
 
@@ -406,6 +407,24 @@ export function useStoryboardShotMutations(deps: StoryboardShotMutationsDeps) {
     saveAllShots(updatedShots);
   }, [shots, saveAllShots]);
 
+  /** 批量校准台词超时长的分镜：补足到估算朗读时长（不超过单镜上限），未超配不动 */
+  const handleBulkCalibrateDurations = useCallback(() => {
+    if (!shots.length) return;
+    let changed = 0;
+    const updatedShots = shots.map(s => {
+      const suggested = suggestCalibratedDuration(s);
+      if (suggested === undefined || suggested === Number(s.duration)) return s;
+      changed += 1;
+      return { ...s, duration: suggested };
+    });
+    if (changed === 0) {
+      message.info('没有台词超时长的分镜需要校准');
+      return;
+    }
+    saveAllShots(updatedShots);
+    message.success(`已校准 ${changed} 个分镜时长（台词朗读匹配）`);
+  }, [shots, saveAllShots, message]);
+
   return {
     handleScriptLinesChange,
     handleScriptLineDragEnd,
@@ -432,5 +451,6 @@ export function useStoryboardShotMutations(deps: StoryboardShotMutationsDeps) {
     handleShotVideoModeChange,
     handleBulkVideoModeChange,
     handleBulkDurationChange,
+    handleBulkCalibrateDurations,
   };
 }

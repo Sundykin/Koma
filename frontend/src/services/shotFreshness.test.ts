@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeShotScriptHash, isShotPromptStale, computeShotVoiceHash, isShotVoiceStale, estimateShotSpeechDuration, isShotSpeechOverDuration, isShotSpeechUnderused } from './shotFreshness';
+import { computeShotScriptHash, isShotPromptStale, computeShotVoiceHash, isShotVoiceStale, estimateShotSpeechDuration, isShotSpeechOverDuration, isShotSpeechUnderused, suggestCalibratedDuration } from './shotFreshness';
 import type { ShotScriptLine } from '../types/scene-character';
 
 const line = (text: string, role?: ShotScriptLine['role'], characterId?: string): ShotScriptLine => ({
@@ -116,5 +116,27 @@ describe('时长 vs 台词量合理性', () => {
   it('description 引号台词计入估算', () => {
     const shot = { scriptLines: [{ id: 'l', text: '叶赎："' + '字'.repeat(50) + '"', role: 'description' as const }] };
     expect(estimateShotSpeechDuration(shot)).toBeGreaterThan(10);
+  });
+});
+
+describe('suggestCalibratedDuration', () => {
+  const dlg = (text: string): ShotScriptLine => ({
+    id: Math.random().toString(36), text, role: 'dialogue',
+  });
+
+  it('超配镜补足到估算时长（受单镜上限约束）', () => {
+    // 120 字 ≈ 27 秒，超配 12 秒镜 → 建议 20s（上限）
+    const heavy = { duration: 12, scriptLines: [dlg('字'.repeat(120))] };
+    const suggested = suggestCalibratedDuration(heavy);
+    expect(suggested).toBeGreaterThan(12);
+    expect(suggested).toBeLessThanOrEqual(20);
+  });
+
+  it('轻度超配补足到估算值；未超配返回 undefined', () => {
+    // 60 字 ≈ 13 秒，超配 8 秒镜 → 建议 ~13s
+    const mild = { duration: 8, scriptLines: [dlg('字'.repeat(60))] };
+    expect(suggestCalibratedDuration(mild)).toBeGreaterThan(8);
+    // 30 秒镜放 100 字台词，不超配
+    expect(suggestCalibratedDuration({ duration: 30, scriptLines: [dlg('字'.repeat(100))] })).toBeUndefined();
   });
 });

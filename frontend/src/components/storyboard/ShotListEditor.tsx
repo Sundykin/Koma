@@ -78,6 +78,8 @@ export interface ShotListEditorProps {
   onBulkVideoModeChange?: (mode: 'multi-ref' | 'first-frame') => void;
   /** 批量统一分镜时长（秒） */
   onBulkDurationChange?: (duration: number) => void;
+  /** 批量校准台词超时长的分镜 */
+  onBulkCalibrateDurations?: () => void;
   onBulkImageModeChange?: (mode: Exclude<ShotImageMode, 'grid'>) => void;
   /** 当前项目选择的 ITV 渠道时长规格，透传给 ShotCard 决定时长控件渲染方式 */
   durationSpec?: import('../../providers/itv/durationSpec').VideoDurationSpec;
@@ -145,6 +147,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   onBulkVideoModeChange,
   onBulkImageModeChange,
   onBulkDurationChange,
+  onBulkCalibrateDurations,
   durationSpec,
   videoProgressMap,
 }) => {
@@ -404,6 +407,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
               onBulkVideoModeChange={onBulkVideoModeChange}
               onBulkImageModeChange={onBulkImageModeChange}
               onBulkDurationChange={onBulkDurationChange}
+              onBulkCalibrateDurations={onBulkCalibrateDurations}
               onAddShot={onAddShot}
               onBatchDelete={handleBatchDelete}
             />
