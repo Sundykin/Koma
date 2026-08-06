@@ -98,4 +98,26 @@ describe('findDialogueCharactersMissingVoice', () => {
     const shots = [{ id: 's1', scriptLines: [nar(), dlg('ghost')] }] as unknown as Shot[];
     expect(findDialogueCharactersMissingVoice(shots, [])).toEqual([]);
   });
+
+  it('description 里的引号台词 speaker 按名字定位角色（全 description 项目不漏检）', () => {
+    const shots = [{
+      id: 's1',
+      scriptLines: [{ id: '1', text: '叶赎抬眼："你们来了。"', role: 'description' }],
+    }] as unknown as Shot[];
+    const characters = [
+      charWithVoice('c1', '叶赎'),              // 无音色 → 应计入
+      charWithVoice('c2', '小白', 'voice-profile-1'), // 有音色 → 不计入
+    ];
+    const missing = findDialogueCharactersMissingVoice(shots, characters);
+    expect(missing).toEqual([{ characterId: 'c1', name: '叶赎' }]);
+  });
+
+  it('description 无台词的画面文本不误报音色', () => {
+    const shots = [{
+      id: 's1',
+      scriptLines: [{ id: '1', text: '雨夜，小木屋内，油灯摇曳。', role: 'description' }],
+    }] as unknown as Shot[];
+    const characters = [charWithVoice('c1', '叶赎')];
+    expect(findDialogueCharactersMissingVoice(shots, characters)).toEqual([]);
+  });
 });

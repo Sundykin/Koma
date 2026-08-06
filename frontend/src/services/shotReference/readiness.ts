@@ -12,6 +12,7 @@
  */
 import type { Character, Prop, Scene, Shot, StoredMediaAsset } from '../../types';
 import type { ShotScriptLine } from '../../types/scene-character';
+import { extractDialoguesFromDescription } from '../../types/shot-script';
 
 export type MissingAssetKind = 'character' | 'scene' | 'prop';
 
@@ -107,14 +108,31 @@ export function findDialogueCharactersMissingVoice(
   const missing: MissingVoiceBinding[] = [];
   const seen = new Set<string>();
 
+  const knownNames = characters.map(char => char.name).filter(Boolean);
+  // 按名字定位角色（description 里提取的台词 speaker 是名字，需映射到 characterId）
+  const findByName = (name: string): Character | undefined =>
+    characters.find(char => char.name === name);
+
   for (const shot of shots) {
     for (const line of (shot.scriptLines ?? []) as ShotScriptLine[]) {
-      if (line.role !== 'dialogue' || !line.characterId) continue;
-      if (seen.has(line.characterId)) continue;
-      seen.add(line.characterId);
-      const character = characters.find(c => c.id === line.characterId);
-      if (!character || character.voiceId) continue;
-      missing.push({ characterId: character.id, name: character.name || '未命名' });
+      if (line.role === 'dialogue' && line.characterId) {
+        if (seen.has(line.characterId)) continue;
+        seen.add(line.characterId);
+        const character = characters.find(c => c.id === line.characterId);
+        if (!character || character.voiceId) continue;
+        missing.push({ characterId: character.id, name: character.name || '未命名' });
+        continue;
+      }
+      // description：台词用引号包在段落里（剧情模式分镜脚本），提取 speaker 后按名字定位角色
+      if (line.role === 'description') {
+        for (const d of extractDialoguesFromDescription(line.text, knownNames)) {
+          if (!d.speaker) continue;
+          const character = findByName(d.speaker);
+          if (!character || seen.has(character.id) || character.voiceId) continue;
+          seen.add(character.id);
+          missing.push({ characterId: character.id, name: character.name || '未命名' });
+        }
+      }
     }
   }
   return missing;
