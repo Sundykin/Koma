@@ -8,7 +8,7 @@
  *   - flushQueuedShotSaves：保存队列消费（同一时间最多一个在跑，期间新改动重新排队）
  *   - handleDeleteShot / handleBatchDelete：删除分镜
  */
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import type { Shot, ShotMeta, Character, Scene, Prop } from '../../../types';
 import {
   loadEpisodeShots,
@@ -21,6 +21,7 @@ import {
 } from '../../../store/projectStore';
 import { clampDurationToSpec, type VideoDurationSpec } from '../../../providers/itv/durationSpec';
 import { createLogger } from '../../../store/logger';
+import { registerSaveFlush } from '../../../services/saveFlushRegistry';
 
 const logger = createLogger('StoryboardPersistence');
 
@@ -206,6 +207,9 @@ export function useStoryboardPersistence(deps: StoryboardPersistenceDeps) {
     await saveAllShots(updatedShots);
     message.success(`已删除 ${shotIds.length} 个分镜`);
   }, [shots, saveAllShots, message]);
+
+  // 窗口关闭/跳转前冲刷队列中的分镜保存
+  useEffect(() => registerSaveFlush(flushQueuedShotSaves), [flushQueuedShotSaves]);
 
   return {
     loadData,

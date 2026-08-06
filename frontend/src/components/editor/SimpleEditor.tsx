@@ -4,6 +4,7 @@
  */
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { App } from 'antd';
+import { registerSaveFlush } from '../../services/saveFlushRegistry';
 import { Track, Clip, Asset, MediaType, EasingType, Keyframe } from '../../types/editor';
 import { SimpleTimeline } from './SimpleTimeline';
 import { SimplePlayer } from './SimplePlayer';
@@ -428,6 +429,9 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
   // 自动保存（防抖 1 秒）
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isFirstRender = useRef(true);
+  // 最新 tracks 引用：供卸载冲刷 effect 读到当前值（防抖 timer 闭包只持有当轮渲染的 tracks）
+  const tracksRef = useRef(tracks);
+  tracksRef.current = tracks;
 
   useEffect(() => {
     // 跳过首次渲染和加载中状态
@@ -463,6 +467,24 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
       }
     };
   }, [tracks, projectId, episodeId, isLoadingTimeline, hasBlockingTimelineError]);
+
+  // 窗口关闭/跳转前立即保存（清掉防抖定时器直接落盘），避免丢失防抖窗口内的剪辑
+  useEffect(() => registerSaveFlush(async () => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
+    if (!projectId || !episodeId || isLoadingTimeline || hasBlockingTimelineError) return;
+    try {
+      await saveEpisodeTimeline(projectId, episodeId, {
+        version: CURRENT_TIMELINE_VERSION,
+        tracks: tracksRef.current,
+        createdAt: timelineCreatedAtRef.current,
+      });
+    } catch (err) {
+      logger.error('卸载冲刷保存失败', err);
+    }
+  }), [projectId, episodeId, isLoadingTimeline, hasBlockingTimelineError]);
 
   const togglePlay = useCallback(() => {
     setIsPlaying(prev => !prev);

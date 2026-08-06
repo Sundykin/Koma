@@ -22,6 +22,7 @@ import {
   setCurrentProject,
   USER_INTERRUPTED_REASON,
 } from './store/projectOpenService';
+import { armUnloadFlush } from './services/saveFlushRegistry';
 import { loadCharacters, loadScenes, loadProps, loadShots, loadEpisodeShots, saveEpisode, createEpisode } from './store/projectStore';
 import { Spin, App as AntApp, Button, Input, Typography } from 'antd';
 import { KeyOutlined } from '@ant-design/icons';
@@ -126,6 +127,11 @@ const AppContent: React.FC = () => {
     activationService.getActivationInfo()
       .then(info => setActivationInfo(info))
       .finally(() => setActivationLoading(false));
+  }, []);
+
+  // 窗口关闭/跳前冲刷所有防抖中的保存（剧本/分镜/剪辑时间线）
+  useEffect(() => {
+    armUnloadFlush();
   }, []);
 
   const activationLocked = !activationLoading && !activationInfo;

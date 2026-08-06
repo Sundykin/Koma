@@ -8,6 +8,7 @@ import { Film, Loader2 } from 'lucide-react';
 import { InlineProjectToolbar } from './InlineProjectToolbar';
 import { ScriptEditor } from '../../editor';
 import { saveEpisode, loadEpisodeAnalysis, saveEpisodeAnalysis } from '../../store/projectStore';
+import { registerSaveFlush } from '../../services/saveFlushRegistry';
 import { generateRandomScript, polishScript } from '../../workflow/scriptGenerator';
 import { submitScriptAnalysisTask } from '../../services/analysisTaskClient';
 import { generateTweetScript } from '../../services/TweetCopyService';
@@ -126,6 +127,9 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
     }
     return saveScript(localScript);
   }, [localScript, saveScript]);
+
+  // 窗口关闭/跳转前冲刷防抖中的剧本保存（注册表见 saveFlushRegistry）
+  useEffect(() => registerSaveFlush(flushSave), [flushSave]);
 
   const handleManualSave = useCallback(async () => {
     if (!episode) {
