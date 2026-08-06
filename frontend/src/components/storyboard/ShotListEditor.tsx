@@ -2,7 +2,7 @@
  * 分镜列表编辑器
  * 内联编辑模式，每行一个分镜
  */
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { Button, Typography, Progress } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
@@ -11,7 +11,8 @@ import { ShotListHeader } from './ShotListHeader';
 import type { MentionItem } from '../../editor';
 import type { Shot, ShotImageMode, ShotScriptLine, Character, Scene, Prop, StoredMediaAsset } from '../../types';
 import { getMediaAssetDisplaySource } from '../../types';
-import { getPrimaryShotSize } from '../../services/photographyElements';
+import { getPrimaryShotSize, extractShotPhotography } from '../../services/photographyElements';
+import { isShotSpeechOverDuration } from '../../services/shotFreshness';
 import { ShotCard } from './ShotCard';
 
 const { Text } = Typography;
@@ -255,6 +256,22 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
     });
   }, [activeShotId]);
 
+  // 生产就绪度：缺摄影语言 / 台词超时长 / 视频配音进度（供顶部就绪条展示）
+  const readinessStats = useMemo(() => {
+    let missingPhoto = 0;
+    let overDuration = 0;
+    let videoCount = 0;
+    let audioCount = 0;
+    for (const s of shots) {
+      const el = extractShotPhotography(s);
+      if (el.shotSizes.length === 0 && el.cameraAngles.length === 0) missingPhoto += 1;
+      if (isShotSpeechOverDuration(s)) overDuration += 1;
+      if ((s.media?.videos?.length || 0) > 0) videoCount += 1;
+      if ((s.media?.audios?.length || 0) > 0) audioCount += 1;
+    }
+    return { missingPhoto, overDuration, videoCount, audioCount };
+  }, [shots]);
+
   const renderShotRow = useCallback(
     (index: number, shot: Shot) => {
       const latestShots = shotsForScrollRef.current;
@@ -386,6 +403,34 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
             <Text type="secondary" className="batchProgressStep">
               {batchProgress.step || `${batchProgress.current}/${batchProgress.total}`}
             </Text>
+          </div>
+        )}
+
+        {/* 生产就绪条：一眼看到还有哪些准备工作，可点击批量修复 */}
+        {shots.length > 0 && (
+          <div className="px-3 py-1 bg-bg-surface/40 border-b border-border-subtle flex items-center gap-3 text-[11px] flex-wrap">
+            <span className="text-text-secondary font-medium">生产就绪</span>
+            {readinessStats.missingPhoto > 0 && onBulkUpgradeScripts && (
+              <button
+                className="text-status-warning hover:opacity-80 cursor-pointer"
+                onClick={() => onBulkUpgradeScripts()}
+                title="一键给缺景别/机位的分镜补全摄影语言"
+              >
+                缺摄影语言 {readinessStats.missingPhoto} 镜（升级）
+              </button>
+            )}
+            {readinessStats.overDuration > 0 && onBulkCalibrateDurations && (
+              <button
+                className="text-status-warning hover:opacity-80 cursor-pointer"
+                onClick={() => onBulkCalibrateDurations()}
+                title="一键校准台词超时长的分镜时长"
+              >
+                台词超时长 {readinessStats.overDuration} 镜（校准）
+              </button>
+            )}
+            <span className="text-text-tertiary">
+              视频 {readinessStats.videoCount}/{shots.length} · 配音 {readinessStats.audioCount}/{shots.length}
+            </span>
           </div>
         )}
 
