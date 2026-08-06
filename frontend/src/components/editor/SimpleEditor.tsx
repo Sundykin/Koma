@@ -3,6 +3,7 @@
  * 迁移自 electron-egg，完整功能版
  */
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { extractDialoguesFromDescription } from '../../types/shot-script';
 import { App } from 'antd';
 import { registerSaveFlush } from '../../services/saveFlushRegistry';
 import { Track, Clip, Asset, MediaType, EasingType, Keyframe } from '../../types/editor';
@@ -118,9 +119,14 @@ export function shotsToTracks(shots: Shot[]): Track[] {
 
     // 字幕轨道只取声音行（旁白 + 台词）：剧情模式的分镜描述行（description）是画面文本，
     // 不是成片字幕；解说模式整列都是旁白字幕，全部进入。shot.dialogue 已不再是字幕来源。
+    // 剧情模式的台词用引号包在 description 里 —— 一并提取进字幕，否则全 description 的项目无字幕。
     const subtitleText = (shot.scriptLines ?? [])
-      .filter(line => line.role !== 'description')
-      .map(line => line.text)
+      .flatMap(line => {
+        if (line.role !== 'description') return [line.text];
+        return extractDialoguesFromDescription(line.text).map(d => d.text);
+      })
+      .filter(text => text?.trim())
+      .map(text => text.trim())
       .join('\n')
       .trim();
     if (subtitleText) {

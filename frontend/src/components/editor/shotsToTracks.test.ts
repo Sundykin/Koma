@@ -28,6 +28,19 @@ describe('shotsToTracks 字幕轨道（text-main）', () => {
     expect(textTrack?.clips[0].src).toBe('第一句解说\n第二句解说');
   });
 
+  it('剧情模式：description 里的引号台词进字幕轨（全 description 项目不再无字幕）', () => {
+    const tracks = shotsToTracks([
+      makeShot([
+        { id: '1', text: '叶赎抬眼："你们来了。"', role: 'description' },
+      ]),
+    ]);
+    const textTrack = tracks.find(t => t.id === 'text-main');
+    expect(textTrack?.clips).toHaveLength(1);
+    // 画面文本不进字幕，引号台词进
+    expect(textTrack?.clips[0].src).toBe('你们来了。');
+    expect(textTrack?.clips[0].src).not.toContain('叶赎抬眼');
+  });
+
   it('剧情模式：分镜描述行（description）不进字幕轨道，只有旁白/台词进', () => {
     const tracks = shotsToTracks([
       makeShot([
