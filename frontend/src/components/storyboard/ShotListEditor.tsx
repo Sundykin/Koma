@@ -12,7 +12,8 @@ import type { MentionItem } from '../../editor';
 import type { Shot, ShotImageMode, ShotScriptLine, Character, Scene, Prop, StoredMediaAsset } from '../../types';
 import { getMediaAssetDisplaySource } from '../../types';
 import { getPrimaryShotSize, extractShotPhotography, detectShotLightTone, isSameScene } from '../../services/photographyElements';
-import { getShotCurrentVideoSource } from '../../utils/mediaSelectors';
+import { getShotCurrentVideoSource, getShotCurrentVideoAsset } from '../../utils/mediaSelectors';
+import { StagePlayer } from '../video/StagePlayer';
 import { isShotSpeechOverDuration, isShotPromptStale, isShotVoiceStale, detectInconsistentCharacterVoices } from '../../services/shotFreshness';
 import { findDialogueCharactersMissingVoice, findCharactersNotInShots } from '../../services/shotReference/readiness';
 import { buildProductionReport, formatProductionReport } from '../../services/productionReport';
@@ -275,16 +276,12 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   const [episodePreviewOpen, setEpisodePreviewOpen] = useState(false);
   const [scriptPreviewOpen, setScriptPreviewOpen] = useState(false);
   const [playIndex, setPlayIndex] = useState(0);
-  const playableVideos = useMemo(
-    () => shots.map(s => ({
-      shotId: s.id,
-      src: getShotCurrentVideoSource(s),
-      size: getPrimaryShotSize(s),
-    })).filter(v => Boolean(v.src)),
+  // 有视频的分镜（预览用 StagePlayer，内部处理源可播放性）
+  const playableShots = useMemo(
+    () => shots.filter(s => Boolean(getShotCurrentVideoSource(s))),
     [shots],
   );
-  const currentPlayVideo = playIndex < playableVideos.length ? playableVideos[playIndex] : undefined;
-  const currentPlaySrc = currentPlayVideo?.src;
+  const currentPlayShot = playIndex < playableShots.length ? playableShots[playIndex] : undefined;
 
   // 整集剧本预览文本（所有镜脚本连起来，便于整体阅读/检查衔接）
   const fullScriptText = useMemo(() => shots.map((s, i) => {
@@ -596,7 +593,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
             >
               剧本预览
             </button>
-            {playableVideos.length > 0 && (
+            {playableShots.length > 0 && (
               <button
                 className="text-text-secondary hover:opacity-80 cursor-pointer"
                 title="连续播放所有已渲染视频，预览成片效果"
@@ -648,18 +645,18 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
           onCancel={() => setEpisodePreviewOpen(false)}
           footer={null}
           width={800}
-          title={`成片预览 · 第 ${playIndex + 1}/${playableVideos.length} 镜${currentPlayVideo?.size ? ` · ${currentPlayVideo.size}` : ''}`}
+          title={`成片预览 · 第 ${playIndex + 1}/${playableShots.length} 镜${currentPlayShot ? ` · ${getPrimaryShotSize(currentPlayShot) ?? ''}` : ''}`}
           destroyOnClose
         >
-          {currentPlaySrc && (
-            <video
-              key={currentPlaySrc}
-              src={currentPlaySrc}
-              controls
-              autoPlay
+          {currentPlayShot && (
+            <StagePlayer
+              key={currentPlayShot.id}
+              videoPath={getShotCurrentVideoSource(currentPlayShot)}
+              videoUrl={getShotCurrentVideoAsset(currentPlayShot)?.remoteUrl}
               className="w-full aspect-video bg-black rounded"
+              autoPlay
               onEnded={() => {
-                if (playIndex + 1 < playableVideos.length) {
+                if (playIndex + 1 < playableShots.length) {
                   setPlayIndex(i => i + 1);
                 } else {
                   setEpisodePreviewOpen(false);
