@@ -7,6 +7,9 @@ import {
   isKomaActivationManagedChannel,
   withKomaActivationChannelMarker,
 } from '../utils/activationManagedChannels';
+import { createLogger } from '../store/logger';
+
+const logger = createLogger('activation');
 
 export interface ActivationInfo {
   activatedAt: number;
@@ -30,7 +33,7 @@ async function deleteActivationManagedChannels(): Promise<void> {
       if (!isKomaActivationManagedChannel(channel)) continue;
       await channelConfigService.deleteChannel(id);
     } catch {
-      console.error('Failed to delete activation managed channel');
+      logger.error('Failed to delete activation managed channel');
     }
   }
 }
@@ -84,7 +87,7 @@ export const activationService = {
       if (data.maskedKey && data.defaultChannelIds?.llm) {
         if (electronService.isElectron()) {
           await activationService.reconcileMissingManagedChannels().catch((err) => {
-            console.warn('reconcileMissingManagedChannels failed (ignored)', err?.message || err);
+            logger.warn('reconcileMissingManagedChannels failed (ignored)', err?.message || err);
           });
         }
         return data as ActivationInfo;
@@ -129,7 +132,7 @@ export const activationService = {
       return null;
     } catch {
       // 不记录 err 对象或 apiKey
-      console.error('Failed to get activation info');
+      logger.error('Failed to get activation info');
       return null;
     }
   },
@@ -148,7 +151,7 @@ export const activationService = {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(info));
       }
     } catch {
-      console.error('Failed to save activation info');
+      logger.error('Failed to save activation info');
     }
   },
 
@@ -160,7 +163,7 @@ export const activationService = {
       try {
         await deleteActivationManagedChannels();
       } catch {
-        console.error('Failed to delete activation managed channels');
+        logger.error('Failed to delete activation managed channels');
       }
 
       try {
@@ -169,7 +172,7 @@ export const activationService = {
           throw new Error(res.error || 'Unknown error');
         }
       } catch {
-        console.error('Failed to clear activation info');
+        logger.error('Failed to clear activation info');
       }
       return;
     }
@@ -177,7 +180,7 @@ export const activationService = {
     try {
       localStorage.removeItem(STORAGE_KEY);
     } catch {
-      console.error('Failed to clear activation info');
+      logger.error('Failed to clear activation info');
     }
   },
 
@@ -211,7 +214,7 @@ export const activationService = {
       // 其它错误不视为无效，但验证不通过
       return { success: false, status: response.status, error: 'verify_failed' };
     } catch {
-      console.error('Network error during API key verification');
+      logger.error('Network error during API key verification');
       return { success: false, error: 'network_error' };
     }
   },
@@ -243,7 +246,7 @@ export const activationService = {
 
       return { success: false, status: response.status, error: 'verify_failed' };
     } catch {
-      console.error('Network error during stored activation verification');
+      logger.error('Network error during stored activation verification');
       return { success: false, error: 'network_error' };
     }
   },
@@ -295,7 +298,7 @@ export const activationService = {
 
       return { success: false, error: 'usage_failed' };
     } catch {
-      console.error('Network error during token usage check');
+      logger.error('Network error during token usage check');
       return { success: false, error: 'network_error' };
     }
   },
@@ -345,7 +348,7 @@ export const activationService = {
       }
       return { success: false, error: 'usage_failed' };
     } catch {
-      console.error('Network error during stored token usage check');
+      logger.error('Network error during stored token usage check');
       return { success: false, error: 'network_error' };
     }
   },
@@ -598,7 +601,7 @@ export const activationService = {
         }
       };
     } catch {
-      console.error('Failed to ensure default model channels');
+      logger.error('Failed to ensure default model channels');
       return { success: false, error: 'default_channels_failed' };
     }
   },
@@ -613,7 +616,7 @@ export const activationService = {
    *      等，需要纠正为 koma-suihe-itv（独立 runtime）。仅按 id+providerType 期望值校验，
    *      不匹配就强制 update 修正（apiKey 由后端从同批管理渠道解密继承，不需要前端持有明文）。
    *
-   * 失败/部分失败都不影响应用启动（仅 console.warn）。
+   * 失败/部分失败都不影响应用启动（仅记日志警告）。
    */
   async reconcileMissingManagedChannels(): Promise<void> {
     if (!electronService.isElectron()) return;
@@ -745,8 +748,8 @@ export const activationService = {
         continue;
       }
       if (existing.providerType !== entry.providerType) {
-        console.info(
-          `[activation] managed channel ${entry.id} providerType drift detected: ${existing.providerType} → ${entry.providerType}, fixing`,
+        logger.info(
+          `managed channel ${entry.id} providerType drift detected: ${existing.providerType} → ${entry.providerType}, fixing`,
         );
         reconcileConfigs.push(entry.cfg);
         continue;
@@ -760,8 +763,8 @@ export const activationService = {
         return (expectedModel.capabilities || []).some((cap) => !existingCaps.has(cap));
       });
       if (capabilityDrift) {
-        console.info(
-          `[activation] managed channel ${entry.id} model capability drift detected, fixing`,
+        logger.info(
+          `managed channel ${entry.id} model capability drift detected, fixing`,
         );
         reconcileConfigs.push(entry.cfg);
       }
@@ -771,10 +774,10 @@ export const activationService = {
     // 用所有"已存在"的管理渠道做 apiKey 继承源（含被纠正的渠道本身——它们也已经有密文 apiKey）
     const sourceChannelIds = allManagedIds.filter((id) => channelMap.get(id));
     if (sourceChannelIds.length === 0) {
-      console.warn('[activation] no source channel to inherit apiKey, skipping reconcile');
+      logger.warn('no source channel to inherit apiKey, skipping reconcile');
       return;
     }
     await channelConfigService.reconcileActivationChannels(reconcileConfigs, sourceChannelIds);
-    console.info(`[activation] reconciled ${reconcileConfigs.length} managed channel(s)`);
+    logger.info(`reconciled ${reconcileConfigs.length} managed channel(s)`);
   },
 };

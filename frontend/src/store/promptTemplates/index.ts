@@ -16,6 +16,7 @@ import {
   getVariableNames,
 } from './variables';
 import { DEFAULT_TEMPLATES } from './defaults';
+import { createLogger } from '../logger';
 import type {
   PromptTemplate,
   PromptTemplateCategory,
@@ -25,6 +26,7 @@ import type {
   ResolvedPromptTemplate,
 } from './types';
 
+const logger = createLogger('PromptTemplate');
 export * from './types';
 export * from './variables';
 export * from './defaults';
@@ -249,7 +251,7 @@ export async function loadPromptTemplates(): Promise<Record<string, PromptTempla
   for (const cp of customs) {
     if (templates[cp.id]) {
       // 防御：custom id 与默认 id 冲突时不覆盖默认模板
-      console.warn(`[PromptTemplate] 自定义模板 id "${cp.id}" 与默认模板冲突，已忽略 custom`);
+      logger.warn(`自定义模板 id "${cp.id}" 与默认模板冲突，已忽略 custom`);
       continue;
     }
     templates[cp.id] = {
@@ -496,7 +498,7 @@ export async function resolvePromptTemplate(
     if (validation.missingRequiredVariables.length > 0) {
       warnings.push(`模板中缺少变量占位符: ${validation.missingRequiredVariables.join(', ')}`);
     }
-    console.warn(`[PromptTemplate] 模板 ${type} 校验警告: ${warnings.join('；')}`);
+    logger.warn(`模板 ${type} 校验警告: ${warnings.join('；')}`);
   }
 
   // 过滤掉模板未声明的多余变量（内建全局变量除外）；仅警告，不阻断
@@ -504,7 +506,7 @@ export async function resolvePromptTemplate(
     variable => !variableNames.includes(variable) && !INTRINSIC_GLOBAL_VARIABLE_NAMES.has(variable)
   );
   if (unknownVariables.length > 0) {
-    console.warn(`[PromptTemplate] 模板 ${type} 收到未声明变量（已忽略）: ${unknownVariables.join(', ')}`);
+    logger.warn(`模板 ${type} 收到未声明变量（已忽略）: ${unknownVariables.join(', ')}`);
   }
   const filteredVariables = Object.fromEntries(
     Object.entries(mergedVariables).filter(
@@ -526,7 +528,7 @@ export async function resolvePromptTemplate(
   const unresolvedVariables = extractTemplateVariables(prompt);
   let finalPrompt = prompt;
   if (unresolvedVariables.length > 0) {
-    console.warn(`[PromptTemplate] 模板 ${type} 仍有未替换变量（已清除）: ${unresolvedVariables.join(', ')}`);
+    logger.warn(`模板 ${type} 仍有未替换变量（已清除）: ${unresolvedVariables.join(', ')}`);
     // 清除未替换的 {{ variable }} 占位符，避免阻断生成流程
     finalPrompt = prompt.replace(/\{\{\s*\w+\s*\}\}/g, '');
   }

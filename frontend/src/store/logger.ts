@@ -28,7 +28,8 @@ let enableFile = true;
 
 // 写入文件日志（追加模式）
 async function writeToFile(entry: LogEntry): Promise<void> {
-  if (!electronService.isElectron() || !enableFile) return;
+  // 防御：单测里 electronService 常被部分 mock（无 isElectron），不能因此抛出未处理异常
+  if (typeof electronService.isElectron !== 'function' || !electronService.isElectron() || !enableFile) return;
 
   try {
     await electronService.diagnostics.appendRendererLog({
