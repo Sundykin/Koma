@@ -284,6 +284,12 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
 
   // 批量操作已用时长（秒）：batchProgress 活跃时每秒递增，结束归零
   const [batchElapsedSec, setBatchElapsedSec] = useState(0);
+  // 预计剩余时间（基于已用时长与完成比例线性估算）
+  const estimatedRemainingSec = useMemo(() => {
+    if (!batchProgress || batchProgress.current <= 0 || batchProgress.total <= batchProgress.current) return undefined;
+    const perItem = batchElapsedSec / batchProgress.current;
+    return perItem * (batchProgress.total - batchProgress.current);
+  }, [batchProgress, batchElapsedSec]);
   const batchActive = Boolean(batchProgress && batchProgress.total > 0);
   useEffect(() => {
     if (!batchActive) {
@@ -475,6 +481,9 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
               {batchElapsedSec > 0 && (
                 <span className="ml-2 text-text-tertiary">
                   已用 {Math.floor(batchElapsedSec / 60)}分{batchElapsedSec % 60}秒
+                  {estimatedRemainingSec !== undefined && (
+                    <> · 预计剩余 {Math.floor(estimatedRemainingSec / 60)}分{Math.round(estimatedRemainingSec % 60)}秒</>
+                  )}
                 </span>
               )}
             </Text>
