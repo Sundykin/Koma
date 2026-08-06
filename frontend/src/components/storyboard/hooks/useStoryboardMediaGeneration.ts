@@ -204,8 +204,10 @@ export function useStoryboardMediaGeneration(deps: StoryboardMediaGenerationDeps
     }
   }, [projectId, episodeId, characters, scenes, props, shotVideoSupportMap, effectiveSettings, ttiSelection, itvSelection, ttsSelection, aspectRatio, styleSnapshot, message, refreshShotsFromStore, flushQueuedShotSaves, shotsRef, setSubmittingRenderShots, setShotVideoProgress]);
 
+  // 最新 runBatchImages 引用：批量失败后"重试失败项"递归调用复用同一入口
+  const runBatchImagesRef = useRef<(force: boolean, targetShotIds?: string[], skipReadinessCheck?: boolean) => Promise<void>>(async () => {});
   /** 批量图片生成（force=true 重新生成已有图片的） */
-  const runBatchImages = useCallback(async (force: boolean, targetShotIds?: string[]) => {
+  const runBatchImages = useCallback(async (force: boolean, targetShotIds?: string[], skipReadinessCheck = false) => {
     if (!episodeId) {
       message.warning('未选择剧集');
       return;
@@ -228,17 +230,20 @@ export function useStoryboardMediaGeneration(deps: StoryboardMediaGenerationDeps
     }
     // 资产就绪检查：被引用但还没有定妆照/场景图/道具图的资产列出来，
     // 让用户选择"仍然生成"还是先去补图（缺参考图是角色不一致的最大来源）
-    const missingAssets = findShotAssetsMissingImages(targetShots, characters, scenes, props ?? []);
-    if (missingAssets.length > 0) {
-      const proceed = await modal.confirm({
-        title: '部分被引用的资产还没有图片',
-        content: `${formatMissingAssetWarning(missingAssets)}。`
-          + '没有资产图时生成将缺少参考图，角色/场景外观容易前后不一致。'
-          + '建议先在资产面板生成定妆照与场景图。',
-        okText: '仍然生成',
-        cancelText: '去补图',
-      });
-      if (!proceed) return;
+    // 批量失败重试（skipReadinessCheck=true）跳过：用户刚看过一次确认
+    if (!skipReadinessCheck) {
+      const missingAssets = findShotAssetsMissingImages(targetShots, characters, scenes, props ?? []);
+      if (missingAssets.length > 0) {
+        const proceed = await modal.confirm({
+          title: '部分被引用的资产还没有图片',
+          content: `${formatMissingAssetWarning(missingAssets)}。`
+            + '没有资产图时生成将缺少参考图，角色/场景外观容易前后不一致。'
+            + '建议先在资产面板生成定妆照与场景图。',
+          okText: '仍然生成',
+          cancelText: '去补图',
+        });
+        if (!proceed) return;
+      }
     }
     const shotIds = targetShots.map(s => s.id);
     setSubmittingShots(new Set(shotIds));
@@ -279,6 +284,16 @@ export function useStoryboardMediaGeneration(deps: StoryboardMediaGenerationDeps
         message.success(`批量${action}完成：成功 ${successCount}/${results.length}`);
       } else {
         message.warning(`批量${action}完成：成功 ${successCount}/${results.length}，失败 ${failed.length}`);
+        const failedShotIds = failed.map(r => r.shotId).filter(Boolean);
+        const retry = await modal.confirm({
+          title: `${failed.length} 个分镜${action}失败`,
+          content: '可立即重试失败分镜（成功的不会重复生成），或稍后在分镜卡上逐个重新生成。',
+          okText: '重试失败项',
+          cancelText: '稍后',
+        });
+        if (retry && failedShotIds.length > 0) {
+          await runBatchImagesRef.current?.(false, failedShotIds, true);
+        }
       }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : String(err);
@@ -288,6 +303,7 @@ export function useStoryboardMediaGeneration(deps: StoryboardMediaGenerationDeps
       setBatchProgress(undefined);
     }
   }, [projectId, episodeId, characters, scenes, props, ttiSelection, aspectRatio, styleSnapshot, queueRefreshShotsFromStore, ensureNoActiveBatch, message, modal, flushQueuedShotSaves, shotsRef, setSubmittingShots, setBatchProgress, getShotImageCount]);
+  runBatchImagesRef.current = runBatchImages;
 
   /** 批量视频渲染（force=true 重新渲染已有视频的） */
   // 最新 runBatchVideos 引用：批量失败后"重试失败项"递归调用复用同一入口
