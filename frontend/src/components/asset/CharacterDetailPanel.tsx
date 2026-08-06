@@ -32,6 +32,7 @@ import {
   LoadingOutlined,
   LinkOutlined,
   ExpandOutlined,
+  StarOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import type { Character, CharacterGender, ProjectStyleSnapshot } from '../../types';
@@ -41,13 +42,19 @@ import {
   generateCharacterPreviewVideo,
   extractAndBindCharacter,
 } from '../../workflow/characterAssetWorkflow';
-import { electronService, openFileDialog, fsCopy, fsMkdir, fsExists, fsRemove } from '../../services/electronService';
+import { electronService, openFileDialog, fsCopy, fsMkdir, fsExists, fsRemove, fsReadFileAsBase64 } from '../../services/electronService';
 import { getStorageConfig, initStorageConfig } from '../../store/storageConfig';
 import { saveCharacters, loadCharacters } from '../../store/projectStore';
 import { useActiveConfig } from '../../hooks/useActiveConfig';
 import { uploadLocalFileToImageHosting, isImageHostingEnabled } from '../../services/imageHostingService';
 import { createStoredMediaAsset, updateCharacterMedia } from '../../utils/mediaAssets';
 import { mergeEpisodeRefs } from './assetEpisodeRefs';
+import { saveActorFromCharacter } from '../../services/actorLibraryService';
+import {
+  createVoiceCategory,
+  createVoiceProfile,
+  loadVoiceLibrary,
+} from '../../services/voiceLibrary/voiceLibraryService';
 import {
   getCharacterCostumePhotoSource,
   getCharacterPreviewVideoSource,
@@ -103,6 +110,7 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
   const [progress, setProgress] = useState(0);
   const [progressStep, setProgressStep] = useState('');
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [voiceSelectKey, setVoiceSelectKey] = useState(0);
   const currentCharacterIdRef = useRef(character.id);
   currentCharacterIdRef.current = character.id;
 
@@ -173,6 +181,58 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
       message.error(err.message || t('asset.saveFailed'));
     }
   }, [editedCharacter, form, projectId, onUpdate, message, t]);
+
+  /** 把当前角色（含定妆照与绑定音色）收进全局演员库，供其他项目/剧集复用 */
+  const handleSaveAsActor = useCallback(async () => {
+    try {
+      const currentValues = await form.getFieldsValue();
+      const charToSave = { ...editedCharacter, ...currentValues };
+      await saveActorFromCharacter(charToSave);
+      message.success(`已把「${charToSave.name}」存为演员，新建角色时可从演员库选择`);
+    } catch (err: any) {
+      message.error(err.message || '存为演员失败');
+    }
+  }, [editedCharacter, form, message]);
+
+  /** 上传音色样本：入库为自定义音色并直接绑定到当前角色（仍需点保存落盘） */
+  const handleUploadVoice = useCallback(async () => {
+    try {
+      const result = await openFileDialog({
+        filters: [{ name: '音频', extensions: ['wav', 'mp3', 'm4a', 'ogg', 'flac', 'webm'] }],
+        title: '选择音色样本音频',
+      });
+      if (result.canceled || !result.filePaths[0]) return;
+
+      const filePath = result.filePaths[0];
+      const base64 = await fsReadFileAsBase64(filePath);
+      const ext = filePath.split('.').pop()?.toLowerCase() || 'wav';
+
+      let snapshot = await loadVoiceLibrary();
+      let category = snapshot.categories.find(c => c.source === 'custom');
+      if (!category) {
+        snapshot = await createVoiceCategory('我的音色', snapshot);
+        category = snapshot.categories.find(c => c.source === 'custom');
+      }
+      if (!category) throw new Error('未找到可用的自定义音色分类');
+
+      const charGender = form.getFieldValue('gender') as CharacterGender | undefined;
+      const next = await createVoiceProfile({
+        categoryId: category.id,
+        name: `${form.getFieldValue('name') || editedCharacter.name} 的音色`,
+        gender: charGender === 'male' || charGender === 'female' || charGender === 'neutral' ? charGender : undefined,
+        sampleDataBase64: base64,
+        sampleExt: ext,
+      }, snapshot);
+
+      const newProfile = next.profiles[next.profiles.length - 1];
+      form.setFieldsValue({ voiceId: newProfile.id });
+      // 音色选择器只在挂载时拉库，强制重挂载让它看到新音色
+      setVoiceSelectKey(k => k + 1);
+      message.success('音色已上传并绑定，点击右上角保存生效');
+    } catch (err: any) {
+      message.error(err.message || '音色上传失败');
+    }
+  }, [editedCharacter.name, form, message]);
 
   // 单张生成（已移除批量抽卡）：直接出正式三视图定妆照并覆盖保存；
   // 生成按角色 id 落盘，用户中途切换角色也会在后台完成写入。
@@ -508,6 +568,9 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
             <Text strong className="creatorSidebarTitle">{editedCharacter.name}</Text>
           </Space>
           <Space>
+            <Tooltip title="存为演员（收入演员库，新建角色时可复用定妆照与音色）">
+              <Button type="text" size="small" icon={<StarOutlined />} onClick={handleSaveAsActor} />
+            </Tooltip>
             <Tooltip title={t('common.save')}>
               <Button type="text" size="small" icon={<SaveOutlined />} onClick={handleSave} />
             </Tooltip>
@@ -560,11 +623,19 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
             </Form.Item>
 
             <Form.Item
-              name="voiceId"
               label="绑定音色"
               tooltip="留空时分镜出配音会回退到项目默认音色；编辑后请点击右上角保存。"
             >
-              <CharacterVoiceSelect />
+              <Space.Compact style={{ width: '100%' }}>
+                <Form.Item name="voiceId" noStyle>
+                  <CharacterVoiceSelect key={voiceSelectKey} />
+                </Form.Item>
+                <Tooltip title="上传音色样本音频，入库并绑定到当前角色">
+                  <Button icon={<UploadOutlined />} onClick={handleUploadVoice}>
+                    上传音色
+                  </Button>
+                </Tooltip>
+              </Space.Compact>
             </Form.Item>
           </Form>
 
