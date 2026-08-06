@@ -252,6 +252,8 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
   const promptStale = useMemo(() => isShotPromptStale(shot), [shot]);
   // 台词与配音的新鲜度：台词改了 → 配音待更新（只依赖可配音内容，画面改动不误报）
   const voiceStale = useMemo(() => isShotVoiceStale(shot), [shot]);
+
+
   // 时长合理性：台词朗读估算超过分镜时长 → 配音会溢出，建议加长/拆镜
   const speechOverDuration = useMemo(() => isShotSpeechOverDuration(shot), [shot]);
   // 摄影语言摘要：脚本里提取的景别/机位/光线（画面感可见性）
@@ -395,6 +397,16 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
     const idx = shot.media?.currentAudioIndex ?? audios.length - 1;
     return audios[idx] || audios[audios.length - 1];
   }, [shot.media?.audios, shot.media?.currentAudioIndex]);
+
+  // 实际配音时长 vs 分镜时长（音画同步可视化；超 1.3x 警示）
+  const audioDurationSec = useMemo(() => {
+    const ms = currentAudio?.durationMs;
+    return ms && ms > 0 ? ms / 1000 : undefined;
+  }, [currentAudio]);
+  const audioOverDuration = useMemo(
+    () => audioDurationSec !== undefined && Number(shot.duration) > 0 && audioDurationSec > Number(shot.duration) * 1.3,
+    [audioDurationSec, shot.duration],
+  );
 
   // 宫格切分逻辑已拆到 hooks/useShotGridSplit
   const {
@@ -627,14 +639,23 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
               </Tooltip>
             )}
             {currentAudio && (
-              <Tooltip title={isPlayingAudio ? '暂停试听' : '试听配音'} placement="right">
+              <Tooltip
+                title={audioOverDuration
+                  ? `配音 ${Math.round(audioDurationSec!)}s / 分镜 ${shot.duration}s，配音超时长（可加长分镜或裁剪配音）`
+                  : (isPlayingAudio ? '暂停试听' : `试听配音${audioDurationSec ? `（${Math.round(audioDurationSec)}s）` : ''}`)}
+                placement="right"
+              >
                 <Button
                   size="small"
                   type="text"
-                  className={actionBtnClass}
+                  className={`${actionBtnClass} relative`}
                   icon={isPlayingAudio ? <PauseCircleOutlined /> : <PlayCircleOutlined />}
                   onClick={handleToggleAudio}
-                />
+                >
+                  {audioOverDuration && (
+                    <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-status-warning" title="配音超时长" />
+                  )}
+                </Button>
               </Tooltip>
             )}
             <Popconfirm title="确定删除？" onConfirm={() => onDelete(shot.id)} placement="right">
