@@ -649,20 +649,31 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
           destroyOnClose
         >
           {currentPlayShot && (
-            <StagePlayer
-              key={currentPlayShot.id}
-              videoPath={getShotCurrentVideoSource(currentPlayShot)}
-              videoUrl={getShotCurrentVideoAsset(currentPlayShot)?.remoteUrl}
-              className="w-full aspect-video bg-black rounded"
-              autoPlay
-              onEnded={() => {
-                if (playIndex + 1 < playableShots.length) {
-                  setPlayIndex(i => i + 1);
-                } else {
-                  setEpisodePreviewOpen(false);
-                }
-              }}
-            />
+            <>
+              <StagePlayer
+                key={currentPlayShot.id}
+                videoPath={getShotCurrentVideoSource(currentPlayShot)}
+                videoUrl={getShotCurrentVideoAsset(currentPlayShot)?.remoteUrl}
+                className="w-full aspect-video bg-black rounded"
+                autoPlay
+                onEnded={() => {
+                  if (playIndex + 1 < playableShots.length) {
+                    setPlayIndex(i => i + 1);
+                  } else {
+                    setEpisodePreviewOpen(false);
+                  }
+                }}
+              />
+              <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
+                <Button size="small" onClick={() => {
+                  if (playIndex + 1 < playableShots.length) {
+                    setPlayIndex(i => i + 1);
+                  } else {
+                    setEpisodePreviewOpen(false);
+                  }
+                }}>跳过此镜（无法播放时）</Button>
+              </div>
+            </>
           )}
         </Modal>
 
