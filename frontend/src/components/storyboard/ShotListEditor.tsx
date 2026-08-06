@@ -3,7 +3,7 @@
  * 内联编辑模式，每行一个分镜
  */
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { App as AntApp, Button, Typography, Progress } from 'antd';
+import { App as AntApp, Button, Typography, Progress, Modal } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
 import { StoryboardLayout } from './StoryboardLayout';
@@ -12,6 +12,7 @@ import type { MentionItem } from '../../editor';
 import type { Shot, ShotImageMode, ShotScriptLine, Character, Scene, Prop, StoredMediaAsset } from '../../types';
 import { getMediaAssetDisplaySource } from '../../types';
 import { getPrimaryShotSize, extractShotPhotography, detectShotLightTone, isSameScene } from '../../services/photographyElements';
+import { getShotCurrentVideoSource } from '../../utils/mediaSelectors';
 import { isShotSpeechOverDuration, isShotPromptStale, isShotVoiceStale, detectInconsistentCharacterVoices } from '../../services/shotFreshness';
 import { findDialogueCharactersMissingVoice } from '../../services/shotReference/readiness';
 import { buildProductionReport, formatProductionReport } from '../../services/productionReport';
@@ -266,6 +267,15 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
       behavior: 'smooth',
     });
   }, [activeShotId]);
+
+  // 成片预览：连续播放所有有视频的分镜（顺序播放）
+  const [episodePreviewOpen, setEpisodePreviewOpen] = useState(false);
+  const [playIndex, setPlayIndex] = useState(0);
+  const playableVideos = useMemo(
+    () => shots.map(s => ({ shotId: s.id, src: getShotCurrentVideoSource(s) })).filter(v => Boolean(v.src)),
+    [shots],
+  );
+  const currentPlaySrc = playIndex < playableVideos.length ? playableVideos[playIndex].src : undefined;
 
   // 批量操作已用时长（秒）：batchProgress 活跃时每秒递增，结束归零
   const [batchElapsedSec, setBatchElapsedSec] = useState(0);
@@ -525,6 +535,15 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
             <span className="text-text-tertiary">
               视频 {readinessStats.videoCount}/{shots.length} · 配音 {readinessStats.audioCount}/{shots.length}
             </span>
+            {playableVideos.length > 0 && (
+              <button
+                className="text-text-secondary hover:opacity-80 cursor-pointer"
+                title="连续播放所有已渲染视频，预览成片效果"
+                onClick={() => { setPlayIndex(0); setEpisodePreviewOpen(true); }}
+              >
+                播放整集
+              </button>
+            )}
             <button
               className="text-text-secondary hover:opacity-80 cursor-pointer ml-auto"
               title="复制生产状态报告到剪贴板"
@@ -542,6 +561,33 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
             </button>
           </div>
         )}
+
+        {/* 成片预览 modal */}
+        <Modal
+          open={episodePreviewOpen}
+          onCancel={() => setEpisodePreviewOpen(false)}
+          footer={null}
+          width={800}
+          title={`成片预览 · 第 ${playIndex + 1}/${playableVideos.length} 镜`}
+          destroyOnClose
+        >
+          {currentPlaySrc && (
+            <video
+              key={currentPlaySrc}
+              src={currentPlaySrc}
+              controls
+              autoPlay
+              className="w-full aspect-video bg-black rounded"
+              onEnded={() => {
+                if (playIndex + 1 < playableVideos.length) {
+                  setPlayIndex(i => i + 1);
+                } else {
+                  setEpisodePreviewOpen(false);
+                }
+              }}
+            />
+          )}
+        </Modal>
 
         {/* 分镜列表 */}
         {shots.length === 0 ? (
