@@ -9,7 +9,7 @@ import { Track } from '../../types/editor';
 import { SimpleExportRenderer, SimpleExportConfig, SimpleExportProgress } from '../../services/simpleExportRenderer';
 import { saveFileDialog, openDirectoryDialog, isElectron, writeFile, createDirectory, fsCopy, fsExists, getStoragePath } from '../../services/electronService';
 import { exporterRegistry } from '../../services/draftExport';
-import { analyzeTimelineForFastConcat } from '../../services/export/fastConcat';
+import { analyzeTimelineForFastConcat, detectTimelineGaps } from '../../services/export/fastConcat';
 import { buildTextOverlaySpecs } from '../../services/export/textOverlays';
 import { ffmpegManager } from '../../services/ffmpegManager';
 import type { DraftExportOptions } from '../../services/draftExport';
@@ -102,6 +102,8 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
 
   // 快速拼接资格（无特效/转场/字幕/独立音轨时可跳过逐帧渲染，直接 ffmpeg 顺序拼接）
   const fastConcatAnalysis = useMemo(() => analyzeTimelineForFastConcat(tracks), [tracks]);
+  // 时间轴空缺（导出黑场预防）
+  const timelineGaps = useMemo(() => detectTimelineGaps(tracks, duration), [tracks, duration]);
   const [useFastConcat, setUseFastConcat] = useState(true);
 
   // 同步 canvasSize 到视频表单，并重置草稿表单
@@ -550,6 +552,17 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
                   ))}
                 </Radio.Group>
               </Form.Item>
+
+              {/* 时间轴空缺：导出会黑场 */}
+              {timelineGaps.length > 0 && (
+                <Alert
+                  type="warning"
+                  showIcon
+                  style={{ marginBottom: 12 }}
+                  message={`时间轴有 ${timelineGaps.length} 处空缺（视频未覆盖），导出会出现黑场`}
+                  description={timelineGaps.slice(0, 3).map(g => `${g.start}s–${g.end}s`).join('、') + (timelineGaps.length > 3 ? ' 等' : '')}
+                />
+              )}
 
               {/* 快速拼接：无特效时间轴可跳过逐帧渲染（合格时默认开） */}
               {fastConcatAnalysis.eligible ? (

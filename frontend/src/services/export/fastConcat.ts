@@ -139,3 +139,41 @@ export function analyzeTimelineForFastConcat(tracks: Track[]): FastConcatAnalysi
     textClips,
   };
 }
+
+// ---------------------------------------------------------------------------
+// 时间轴空缺检测（导出黑场预防）
+// ---------------------------------------------------------------------------
+
+export interface TimelineGap {
+  /** 空缺起点（秒） */
+  start: number;
+  /** 空缺终点（秒） */
+  end: number;
+}
+
+/**
+ * 检测主视频轨未覆盖的时间轴空缺——这些位置导出会是黑场。
+ * 合并 clip 覆盖区间后找 [0, duration] 内空隙；主轨无视频则整段空缺。
+ */
+export function detectTimelineGaps(tracks: Track[], duration: number): TimelineGap[] {
+  const main = tracks.find(t => t.type === 'video' && t.isMainTrack) ?? tracks.find(t => t.type === 'video');
+  const clips = main?.clips ?? [];
+  if (clips.length === 0) {
+    return duration > 0 ? [{ start: 0, end: duration }] : [];
+  }
+  const ranges = clips
+    .map(c => [c.start, c.start + c.duration] as const)
+    .sort((a, b) => a[0] - b[0]);
+  const gaps: TimelineGap[] = [];
+  let cursor = 0;
+  for (const [start, end] of ranges) {
+    if (start > cursor + 0.05) {
+      gaps.push({ start: Math.round(cursor * 10) / 10, end: Math.round(start * 10) / 10 });
+    }
+    cursor = Math.max(cursor, end);
+  }
+  if (cursor < duration - 0.05) {
+    gaps.push({ start: Math.round(cursor * 10) / 10, end: Math.round(duration * 10) / 10 });
+  }
+  return gaps;
+}

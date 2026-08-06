@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { analyzeTimelineForFastConcat, resolveClipLocalPath } from './fastConcat';
+import { analyzeTimelineForFastConcat, resolveClipLocalPath, detectTimelineGaps } from './fastConcat';
 import { MediaType, type Clip, type Track } from '../../types/editor';
 import { toKomaLocalUrl } from '../../utils/urlUtils';
 
@@ -140,5 +140,29 @@ describe('analyzeTimelineForFastConcat', () => {
     ];
     expect(analyzeTimelineForFastConcat(tracks).eligible).toBe(true);
     expect(analyzeTimelineForFastConcat([]).eligible).toBe(false);
+  });
+});
+
+describe('detectTimelineGaps', () => {
+  it('无空缺：clips 覆盖完整 [0, duration]', () => {
+    const tracks = [videoTrack([
+      clip({ start: 0, duration: 5 }),
+      clip({ start: 5, duration: 5 }),
+    ])];
+    expect(detectTimelineGaps(tracks, 10)).toEqual([]);
+  });
+
+  it('中间空缺：返回空隙区间', () => {
+    const tracks = [videoTrack([
+      clip({ start: 0, duration: 3 }),
+      clip({ start: 5, duration: 5 }),
+    ])];
+    const gaps = detectTimelineGaps(tracks, 12);
+    expect(gaps).toContainEqual({ start: 3, end: 5 });
+    expect(gaps).toContainEqual({ start: 10, end: 12 });
+  });
+
+  it('主轨无视频：整段空缺', () => {
+    expect(detectTimelineGaps([], 10)).toEqual([{ start: 0, end: 10 }]);
   });
 });
