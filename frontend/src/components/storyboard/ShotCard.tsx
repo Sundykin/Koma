@@ -738,6 +738,18 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
                     {upgrading ? '升级中...' : 'AI 补全摄影语言'}
                   </button>
                 )}
+                <button
+                  className="text-[10px] text-text-secondary hover:opacity-80 cursor-pointer shrink-0"
+                  onClick={() => {
+                    const text = (shot.scriptLines ?? []).map(l => l.text).join('\n');
+                    void navigator.clipboard?.writeText(text).then(() => {
+                      void message.success('分镜脚本已复制');
+                    }).catch(() => undefined);
+                  }}
+                  title="复制分镜脚本"
+                >
+                  复制
+                </button>
               </div>
             )}
             {narrativeMode === 'drama' ? (
