@@ -3,7 +3,7 @@
  * 操作按钮在左侧列直接显示，参考图使用引用样式
  */
 import React, { useMemo, useCallback, useEffect, useRef, useState } from 'react';
-import { isShotPromptStale, isShotVoiceStale, isShotSpeechOverDuration } from '../../services/shotFreshness';
+import { isShotPromptStale, isShotVoiceStale, isShotSpeechOverDuration, estimateShotSpeechDuration } from '../../services/shotFreshness';
 import { extractShotPhotography, isShotSizeJump, detectShotLightTone, isLightToneJump, checkPromptPhotographyRetention } from '../../services/photographyElements';
 import { useTranslation } from 'react-i18next';
 import {
@@ -262,6 +262,8 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
 
   // 时长合理性：台词朗读估算超过分镜时长 → 配音会溢出，建议加长/拆镜
   const speechOverDuration = useMemo(() => isShotSpeechOverDuration(shot), [shot]);
+  // 台词朗读估算时长（秒），让用户对每镜时长需求有数
+  const speechEstimateSec = useMemo(() => estimateShotSpeechDuration(shot), [shot]);
   // 摄影语言摘要：脚本里提取的景别/机位/光线（画面感可见性）
   const shotPhotography = useMemo(() => extractShotPhotography(shot), [shot]);
   // 与上一镜的景别跳变（专业剪辑避免直接跳两级以上）
@@ -614,6 +616,13 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
             />
           ) : (
             <Tag className="m-0 text-[9px] px-1" color="blue">{shot.duration}s</Tag>
+          )}
+          {speechEstimateSec > 0 && (
+            <Tooltip title="台词朗读估算时长（配音会读这么久）">
+              <span className={`text-[10px] ${speechOverDuration ? 'text-status-warning' : 'text-text-tertiary'}`}>
+                台词≈{Math.round(speechEstimateSec)}s
+              </span>
+            </Tooltip>
           )}
           {speechOverDuration && (
             <Tooltip title="台词量可能超出分镜时长，配音会溢出——建议加长时长或拆成两个镜头">
