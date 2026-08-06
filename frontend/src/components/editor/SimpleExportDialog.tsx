@@ -104,6 +104,13 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
   const fastConcatAnalysis = useMemo(() => analyzeTimelineForFastConcat(tracks), [tracks]);
   // 时间轴空缺（导出黑场预防）
   const timelineGaps = useMemo(() => detectTimelineGaps(tracks, duration), [tracks, duration]);
+  // 成片节奏概况：主视频轨镜头数 + 平均镜长
+  const rhythmInfo = useMemo(() => {
+    const main = tracks.find(t => t.type === 'video' && t.isMainTrack) ?? tracks.find(t => t.type === 'video');
+    const clips = main?.clips ?? [];
+    const avg = clips.length > 0 ? duration / clips.length : 0;
+    return { clipCount: clips.length, avgClipSec: avg };
+  }, [tracks, duration]);
   const [useFastConcat, setUseFastConcat] = useState(true);
 
   // 同步 canvasSize 到视频表单，并重置草稿表单
@@ -670,6 +677,7 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
               {/* 视频信息 */}
               <div className={styles.infoBox}>
                 <p>时长: {duration.toFixed(1)} 秒</p>
+                <p>镜头: {rhythmInfo.clipCount} 个 · 平均 {rhythmInfo.avgClipSec.toFixed(1)} 秒/镜</p>
                 <p>轨道: {tracks.length} 个</p>
                 <p>预计帧数: {Math.ceil(duration * fpsValue)} 帧</p>
               </div>
