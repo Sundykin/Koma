@@ -290,7 +290,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   const fullScriptText = useMemo(() => shots.map((s, i) => {
     const size = getPrimaryShotSize(s);
     const script = (s.scriptLines ?? []).map(l => l.text).join('\n');
-    return `【#${i + 1}${size ? ` · ${size}` : ''}】\n${script}`;
+    return `【#${i + 1}${size ? ` · ${size}` : ''} · ${s.duration || '?'}s】\n${script}`;
   }).join('\n\n'), [shots]);
 
   // 批量操作已用时长（秒）：batchProgress 活跃时每秒递增，结束归零
