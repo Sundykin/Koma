@@ -398,6 +398,14 @@ export function useStoryboardShotMutations(deps: StoryboardShotMutationsDeps) {
     saveAllShots(updatedShots);
   }, [shots, saveAllShots]);
 
+  /** 批量统一分镜时长（秒）：影响后续视频渲染时长与剪辑入轨，总时长统计即时反映 */
+  const handleBulkDurationChange = useCallback((duration: number) => {
+    const seconds = Math.max(1, Math.min(600, Math.round(duration) || 3));
+    if (!shots.length) return;
+    const updatedShots = shots.map(s => ({ ...s, duration: seconds }));
+    saveAllShots(updatedShots);
+  }, [shots, saveAllShots]);
+
   return {
     handleScriptLinesChange,
     handleScriptLineDragEnd,
@@ -423,5 +431,6 @@ export function useStoryboardShotMutations(deps: StoryboardShotMutationsDeps) {
     handleStoryboardInheritPreviousChange,
     handleShotVideoModeChange,
     handleBulkVideoModeChange,
+    handleBulkDurationChange,
   };
 }

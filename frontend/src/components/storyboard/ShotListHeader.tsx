@@ -47,6 +47,8 @@ interface ShotListHeaderProps {
   onBatchReAudios?: () => void;
   onBulkVideoModeChange?: (mode: 'multi-ref' | 'first-frame') => void;
   onBulkImageModeChange?: (mode: Exclude<ShotImageMode, 'grid'>) => void;
+  /** 批量统一分镜时长（秒） */
+  onBulkDurationChange?: (duration: number) => void;
   onAddShot: () => void;
   onBatchDelete: () => void;
 }
@@ -75,6 +77,7 @@ export const ShotListHeader: React.FC<ShotListHeaderProps> = ({
   onBatchReAudios,
   onBulkVideoModeChange,
   onBulkImageModeChange,
+  onBulkDurationChange,
   onAddShot,
   onBatchDelete,
 }) => {
@@ -112,7 +115,18 @@ export const ShotListHeader: React.FC<ShotListHeaderProps> = ({
   ];
 
   // 「更多」收 视频模式切换 + 图片模式切换（其它已上提）
+  const BULK_DURATION_OPTIONS = [3, 5, 6, 8, 10];
   const moreBatchItems: MenuProps['items'] = [
+    ...(onBulkDurationChange ? [{
+      key: 'bulk-duration',
+      label: '时长切换',
+      type: 'group' as const,
+      children: BULK_DURATION_OPTIONS.map(seconds => ({
+        key: `dur-${seconds}`,
+        label: `全部设为 ${seconds} 秒`,
+        onClick: () => onBulkDurationChange(seconds),
+      })),
+    }] : []),
     ...(onBulkImageModeChange ? [{
       key: 'image-mode',
       label: '图片模式切换',

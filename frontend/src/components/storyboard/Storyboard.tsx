@@ -547,6 +547,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     handleStoryboardInheritPreviousChange,
     handleShotVideoModeChange,
     handleBulkVideoModeChange,
+    handleBulkDurationChange,
   } = useStoryboardShotMutations({
     shots,
     shotsRef,
@@ -898,6 +899,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             onShotVideoModeChange={handleShotVideoModeChange}
             onBulkVideoModeChange={handleBulkVideoModeChange}
             onBulkImageModeChange={handleBulkImageModeChange}
+            onBulkDurationChange={handleBulkDurationChange}
             durationSpec={itvDurationSpec}
           />
           </DndContext>

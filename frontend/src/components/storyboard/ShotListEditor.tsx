@@ -76,6 +76,8 @@ export interface ShotListEditorProps {
   onStoryboardInheritPreviousChange?: (shotId: string, enabled: boolean) => void;
   onShotVideoModeChange?: (shotId: string, mode: 'multi-ref' | 'first-frame') => void;
   onBulkVideoModeChange?: (mode: 'multi-ref' | 'first-frame') => void;
+  /** 批量统一分镜时长（秒） */
+  onBulkDurationChange?: (duration: number) => void;
   onBulkImageModeChange?: (mode: Exclude<ShotImageMode, 'grid'>) => void;
   /** 当前项目选择的 ITV 渠道时长规格，透传给 ShotCard 决定时长控件渲染方式 */
   durationSpec?: import('../../providers/itv/durationSpec').VideoDurationSpec;
@@ -142,6 +144,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   onShotVideoModeChange,
   onBulkVideoModeChange,
   onBulkImageModeChange,
+  onBulkDurationChange,
   durationSpec,
   videoProgressMap,
 }) => {
@@ -400,6 +403,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
               onBatchReAudios={onBatchReGenerateAudios ? handleBatchReAudios : undefined}
               onBulkVideoModeChange={onBulkVideoModeChange}
               onBulkImageModeChange={onBulkImageModeChange}
+              onBulkDurationChange={onBulkDurationChange}
               onAddShot={onAddShot}
               onBatchDelete={handleBatchDelete}
             />
