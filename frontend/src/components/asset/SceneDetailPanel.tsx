@@ -17,6 +17,7 @@ import {
   Popconfirm,
   Modal,
   Tooltip,
+  Image,
 } from 'antd';
 import {
   EnvironmentOutlined,
@@ -36,6 +37,7 @@ import { getStorageConfig, initStorageConfig } from '../../store/storageConfig';
 import { saveScenes, loadScenes } from '../../store/projectStore';
 import { useActiveConfig } from '../../hooks/useActiveConfig';
 import { uploadLocalFileToImageHosting, isImageHostingEnabled } from '../../services/imageHostingService';
+import { ensureRemoteUrlForImageAsset } from '../../services/mediaRemoteUrlService';
 import { createStoredMediaAsset, updateSceneMedia } from '../../utils/mediaAssets';
 import { mergeEpisodeRefs } from './assetEpisodeRefs';
 import { getScenePreviewImageSource } from '../../utils/mediaSelectors';
@@ -133,6 +135,56 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
     }
   }, [editedScene, form, projectId, onUpdate, message, t]);
 
+  /** 上传场景参考图：生成场景图时作为空间/构图参考（与项目风格参考图相互独立） */
+  const handleUploadReference = useCallback(async () => {
+    try {
+      const result = await openFileDialog({
+        filters: [{ name: t('storyboard.image'), extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+        title: '选择场景参考图',
+      });
+      if (result.canceled || !result.filePaths[0]) return;
+
+      const destPath = await getAssetPath('reference.png');
+      await fsCopy(result.filePaths[0], destPath);
+
+      const updated = updateSceneMedia(editedScene, {
+        referenceImage: createStoredMediaAsset('image', { localPath: destPath }),
+      });
+      setEditedScene(updated);
+      onUpdate(updated);
+      const scenes = await loadScenes(projectId);
+      const index = scenes.findIndex(s => s.id === editedScene.id);
+      if (index !== -1) {
+        scenes[index] = updated;
+        await saveScenes(projectId, scenes);
+      }
+      message.success('参考图已上传，生成场景图时将作为空间参考');
+    } catch (err: any) {
+      message.error(err.message || '参考图上传失败');
+    }
+  }, [editedScene, getAssetPath, projectId, onUpdate, message, t]);
+
+  const handleRemoveReference = useCallback(async () => {
+    try {
+      const localPath = editedScene.media?.referenceImage?.localPath;
+      const updated = updateSceneMedia(editedScene, { referenceImage: undefined });
+      const scenes = await loadScenes(projectId);
+      const index = scenes.findIndex(s => s.id === editedScene.id);
+      if (index !== -1) {
+        scenes[index] = updated;
+        await saveScenes(projectId, scenes);
+      }
+      if (localPath && !isRemoteMediaUri(localPath) && (await fsExists(localPath))) {
+        await fsRemove(localPath);
+      }
+      setEditedScene(updated);
+      onUpdate(updated);
+      message.success('已移除参考图');
+    } catch (err: any) {
+      message.error(err.message || '移除失败');
+    }
+  }, [editedScene, projectId, onUpdate, message]);
+
   // 单张生成（已移除批量抽卡）：直接出正式场景图并覆盖保存；
   // 生成按场景 id 落盘，用户中途切换场景也会在后台完成写入。
   const handleGenerateImage = useCallback(async () => {
@@ -147,6 +199,21 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
       const currentValues = await form.getFieldsValue();
       const sceneWithPrompt = { ...editedScene, ...currentValues };
 
+      // 用户手动上传的场景参考图：归一化远端 URL 后作为空间参考传入
+      let userReference = sceneWithPrompt.media?.referenceImage;
+      if (userReference) {
+        try {
+          userReference = await ensureRemoteUrlForImageAsset({
+            projectId,
+            asset: userReference,
+            policy: 'best-effort',
+            filenameHint: `${ownerId}-reference.png`,
+          });
+        } catch (error) {
+          logger.warn('场景参考图 remoteUrl 归一化失败，将尝试使用本地引用', { error: error instanceof Error ? error.message : String(error) });
+        }
+      }
+
       const result = await generateSceneImage({
         projectId,
         scene: sceneWithPrompt,
@@ -158,6 +225,7 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
         destPath: await getAssetPath('scene.png'),
         bindOwner: false,
         normalizeRemoteUrl: true,
+        userReference,
         onProgress: (p, step) => {
           if (!isCurrent()) return;
           setProgress(p);
@@ -293,6 +361,12 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
   const sceneImageAsset = editedScene.media?.previewImage;
   const sceneImageSource = getScenePreviewImageSource(editedScene);
   const sceneImageDisplayUrl = appendImageVersion(toLocalUrl(sceneImageSource), sceneImageAsset?.createdAt);
+  const referenceImageAsset = editedScene.media?.referenceImage;
+  const referenceImageDisplayUrl = referenceImageAsset
+    ? (referenceImageAsset.localPath
+        ? appendImageVersion(toLocalUrl(referenceImageAsset.localPath), referenceImageAsset.createdAt)
+        : referenceImageAsset.remoteUrl || '')
+    : '';
 
   return (
     <div className="assetDetailPanel">
@@ -331,6 +405,35 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
                 autoSize={{ minRows: 12, maxRows: 20 }}
                 placeholder={t('asset.scenePromptPlaceholder')}
               />
+            </Form.Item>
+
+            <Form.Item
+              label="场景参考图（可选）"
+              tooltip="上传后生成场景图会以它为空间/构图参考；不上传则只按文字设定与项目风格生成。"
+            >
+              {referenceImageAsset ? (
+                <Space>
+                  <Image
+                    src={referenceImageDisplayUrl}
+                    width={56}
+                    height={56}
+                    style={{ objectFit: 'cover', borderRadius: 6 }}
+                    preview={{ mask: null }}
+                  />
+                  <Button size="small" icon={<UploadOutlined />} onClick={handleUploadReference}>
+                    更换
+                  </Button>
+                  <Popconfirm title="移除场景参考图？" onConfirm={handleRemoveReference} okButtonProps={{ danger: true }}>
+                    <Button size="small" danger icon={<DeleteOutlined />}>
+                      移除
+                    </Button>
+                  </Popconfirm>
+                </Space>
+              ) : (
+                <Button icon={<UploadOutlined />} onClick={handleUploadReference} block>
+                  上传参考图
+                </Button>
+              )}
             </Form.Item>
           </Form>
 

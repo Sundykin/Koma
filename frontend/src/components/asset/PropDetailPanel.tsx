@@ -19,6 +19,7 @@ import {
   Segmented,
   Tooltip,
   Tag,
+  Image,
 } from 'antd';
 import {
   InboxOutlined,
@@ -45,6 +46,7 @@ import { getStorageConfig, initStorageConfig } from '../../store/storageConfig';
 import { saveProps, loadProps } from '../../store/projectStore';
 import { useActiveConfig } from '../../hooks/useActiveConfig';
 import { uploadLocalFileToImageHosting, isImageHostingEnabled } from '../../services/imageHostingService';
+import { ensureRemoteUrlForImageAsset } from '../../services/mediaRemoteUrlService';
 import { createStoredMediaAsset, updatePropMedia } from '../../utils/mediaAssets';
 import { mergeEpisodeRefs } from './assetEpisodeRefs';
 import {
@@ -164,6 +166,56 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
     }
   }, [editedProp, form, projectId, onUpdate, message, t]);
 
+  /** 上传道具参考图：生成道具图时作为造型设计参考（与项目风格参考图相互独立） */
+  const handleUploadReference = useCallback(async () => {
+    try {
+      const result = await openFileDialog({
+        filters: [{ name: t('storyboard.image'), extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+        title: '选择道具参考图',
+      });
+      if (result.canceled || !result.filePaths[0]) return;
+
+      const destPath = await getAssetPath('user-reference.png');
+      await fsCopy(result.filePaths[0], destPath);
+
+      const updated = updatePropMedia(editedProp, {
+        referenceImage: createStoredMediaAsset('image', { localPath: destPath }),
+      });
+      setEditedProp(updated);
+      onUpdate(updated);
+      const props = await loadProps(projectId);
+      const index = props.findIndex(p => p.id === editedProp.id);
+      if (index !== -1) {
+        props[index] = updated;
+        await saveProps(projectId, props);
+      }
+      message.success('参考图已上传，生成道具图时将作为造型参考');
+    } catch (err: any) {
+      message.error(err.message || '参考图上传失败');
+    }
+  }, [editedProp, getAssetPath, projectId, onUpdate, message, t]);
+
+  const handleRemoveReference = useCallback(async () => {
+    try {
+      const localPath = editedProp.media?.referenceImage?.localPath;
+      const updated = updatePropMedia(editedProp, { referenceImage: undefined });
+      const props = await loadProps(projectId);
+      const index = props.findIndex(p => p.id === editedProp.id);
+      if (index !== -1) {
+        props[index] = updated;
+        await saveProps(projectId, props);
+      }
+      if (localPath && !isRemoteMediaUri(localPath) && (await fsExists(localPath))) {
+        await fsRemove(localPath);
+      }
+      setEditedProp(updated);
+      onUpdate(updated);
+      message.success('已移除参考图');
+    } catch (err: any) {
+      message.error(err.message || '移除失败');
+    }
+  }, [editedProp, projectId, onUpdate, message]);
+
   // 单张生成（已移除批量抽卡）：直接出正式道具参考图并覆盖保存；
   // 生成按道具 id 落盘，用户中途切换道具也会在后台完成写入。
   const handleGenerateImage = useCallback(async () => {
@@ -178,6 +230,21 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
       const currentValues = await form.getFieldsValue();
       const propWithPrompt = { ...editedProp, ...currentValues };
 
+      // 用户手动上传的道具参考图：归一化远端 URL 后作为造型参考传入
+      let userReference = propWithPrompt.media?.referenceImage;
+      if (userReference) {
+        try {
+          userReference = await ensureRemoteUrlForImageAsset({
+            projectId,
+            asset: userReference,
+            policy: 'best-effort',
+            filenameHint: `${ownerId}-reference.png`,
+          });
+        } catch (error) {
+          logger.warn('道具参考图 remoteUrl 归一化失败，将尝试使用本地引用', { error: error instanceof Error ? error.message : String(error) });
+        }
+      }
+
       const result = await generatePropImage({
         projectId,
         prop: propWithPrompt,
@@ -189,6 +256,7 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
         destPath: await getAssetPath('reference.png'),
         bindOwner: false,
         normalizeRemoteUrl: true,
+        userReference,
         onProgress: (p, step) => {
           if (!isCurrent()) return;
           setProgress(p);
@@ -447,6 +515,12 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
   const propImageAsset = editedProp.media?.previewImage;
   const propImageSource = getPropPreviewImageSource(editedProp);
   const propImageDisplayUrl = appendImageVersion(toLocalUrl(propImageSource), propImageAsset?.createdAt);
+  const referenceImageAsset = editedProp.media?.referenceImage;
+  const referenceImageDisplayUrl = referenceImageAsset
+    ? (referenceImageAsset.localPath
+        ? appendImageVersion(toLocalUrl(referenceImageAsset.localPath), referenceImageAsset.createdAt)
+        : referenceImageAsset.remoteUrl || '')
+    : '';
 
   return (
     <div className="assetDetailPanel">
@@ -485,6 +559,35 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
                 autoSize={{ minRows: 10, maxRows: 18 }}
                 placeholder={t('asset.propPromptPlaceholder')}
               />
+            </Form.Item>
+
+            <Form.Item
+              label="道具参考图（可选）"
+              tooltip="上传后生成道具图会以它为造型设计参考；不上传则只按文字设定与项目风格生成。"
+            >
+              {referenceImageAsset ? (
+                <Space>
+                  <Image
+                    src={referenceImageDisplayUrl}
+                    width={56}
+                    height={56}
+                    style={{ objectFit: 'cover', borderRadius: 6 }}
+                    preview={{ mask: null }}
+                  />
+                  <Button size="small" icon={<UploadOutlined />} onClick={handleUploadReference}>
+                    更换
+                  </Button>
+                  <Popconfirm title="移除道具参考图？" onConfirm={handleRemoveReference} okButtonProps={{ danger: true }}>
+                    <Button size="small" danger icon={<DeleteOutlined />}>
+                      移除
+                    </Button>
+                  </Popconfirm>
+                </Space>
+              ) : (
+                <Button icon={<UploadOutlined />} onClick={handleUploadReference} block>
+                  上传参考图
+                </Button>
+              )}
             </Form.Item>
           </Form>
 

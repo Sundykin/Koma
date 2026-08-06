@@ -4,6 +4,8 @@
 import {
   getMediaAssetDisplaySource,
   getMediaAssetSource,
+  type MediaAssetSource,
+  type ProviderAssetInput,
   type Scene,
   type Prop,
   type StoredMediaAsset,
@@ -128,8 +130,26 @@ interface GenerateOptions {
   destPath?: string;
   bindOwner?: boolean;
   normalizeRemoteUrl?: boolean;
+  /**
+   * 用户手动上传的参考图：作为内容参考传入（references 中位于风格锚定图之后），
+   * 场景=空间/构图锚定，道具=造型设计锚定，而不是只依赖项目风格参考图。
+   */
+  userReference?: MediaAssetSource | ProviderAssetInput;
   onProgress?: (progress: number, step: string) => void;
 }
+
+const USER_REFERENCE_GUARDLINES: Record<'scene' | 'prop', string> = {
+  scene: [
+    '',
+    'User-provided scene reference instructions:',
+    'A user-uploaded scene reference image is included in the references AFTER the optional style anchor. Treat it as the binding spatial/composition anchor for this scene: inherit its space layout, key furnishings, openings and material palette; only adapt into the required full-perspective coverage and the project art style. Do not redesign the space.',
+  ].join('\n'),
+  prop: [
+    '',
+    'User-provided prop reference instructions:',
+    'A user-uploaded prop reference image is included in the references AFTER the optional style anchor. Treat it as the binding design anchor for this prop: inherit its shape, structure, materials and colors; only adapt the presentation (clean reference plate, project art style). Do not redesign the object.',
+  ].join('\n'),
+};
 
 // ========== 场景图片生成 ==========
 
@@ -139,7 +159,7 @@ interface GenerateOptions {
 export async function generateSceneImage(
   options: GenerateOptions & { scene: Scene; disableTask?: boolean }
 ): Promise<{ success: boolean; path?: string; url?: string; error?: string }> {
-  const { projectId, scene, aspectRatio, theme, stylePrompt, styleSnapshot, project, ttiSelection, seed, variationPrompt, destPath, bindOwner, normalizeRemoteUrl, onProgress, disableTask } = options;
+  const { projectId, scene, aspectRatio, theme, stylePrompt, styleSnapshot, project, ttiSelection, seed, variationPrompt, destPath, bindOwner, normalizeRemoteUrl, userReference, onProgress, disableTask } = options;
   const finalAspectRatio = aspectRatio || project?.aspectRatio || '16:9';
 
   logger.info(`开始生成场景预览图: ${scene.name}`);
@@ -153,12 +173,16 @@ export async function generateSceneImage(
       buildScenePreviewTemplateVariables(scene, stylePrefix || '')
     );
     const basePrompt = appendCandidateVariationPrompt(resolvedPrompt.prompt, variationPrompt);
+    const scenePromptWithRef = userReference ? `${basePrompt}${USER_REFERENCE_GUARDLINES.scene}` : basePrompt;
     const styleAnchorAsset = await resolveActiveStyleReferenceAsset({
       project: { styleSnapshot: (styleSnapshot || project?.styleSnapshot) as ProjectStyleSnapshot | undefined },
       themeId: theme,
     });
-    const prompt = appendStyleAnchorGuard(basePrompt, Boolean(styleAnchorAsset));
-    const references = styleAnchorAsset ? [styleAnchorAsset] : [];
+    const prompt = appendStyleAnchorGuard(scenePromptWithRef, Boolean(styleAnchorAsset));
+    const references = [
+      ...(styleAnchorAsset ? [styleAnchorAsset] : []),
+      ...(userReference ? [userReference] : []),
+    ];
 
     onProgress?.(10, '调用 TTI 服务...');
 
@@ -312,7 +336,7 @@ export async function generateAllSceneImages(
 export async function generatePropImage(
   options: GenerateOptions & { prop: Prop; disableTask?: boolean }
 ): Promise<{ success: boolean; path?: string; url?: string; error?: string }> {
-  const { projectId, prop, aspectRatio, theme, stylePrompt, styleSnapshot, project, ttiSelection, seed, variationPrompt, destPath, bindOwner, normalizeRemoteUrl, onProgress, disableTask } = options;
+  const { projectId, prop, aspectRatio, theme, stylePrompt, styleSnapshot, project, ttiSelection, seed, variationPrompt, destPath, bindOwner, normalizeRemoteUrl, userReference, onProgress, disableTask } = options;
   // 道具参考图必须与项目比例一致 — 否则下游分镜走 image-to-image 时输出比例会跟着参考图走，不会跟项目走。
   const finalAspectRatio = aspectRatio || project?.aspectRatio || '16:9';
 
@@ -327,12 +351,16 @@ export async function generatePropImage(
       buildPropReferenceTemplateVariables(prop, stylePrefix || '')
     );
     const basePrompt = appendCandidateVariationPrompt(resolvedPrompt.prompt, variationPrompt);
+    const propPromptWithRef = userReference ? `${basePrompt}${USER_REFERENCE_GUARDLINES.prop}` : basePrompt;
     const styleAnchorAsset = await resolveActiveStyleReferenceAsset({
       project: { styleSnapshot: (styleSnapshot || project?.styleSnapshot) as ProjectStyleSnapshot | undefined },
       themeId: theme,
     });
-    const prompt = appendStyleAnchorGuard(basePrompt, Boolean(styleAnchorAsset));
-    const references = styleAnchorAsset ? [styleAnchorAsset] : [];
+    const prompt = appendStyleAnchorGuard(propPromptWithRef, Boolean(styleAnchorAsset));
+    const references = [
+      ...(styleAnchorAsset ? [styleAnchorAsset] : []),
+      ...(userReference ? [userReference] : []),
+    ];
 
     onProgress?.(10, '调用 TTI 服务...');
 
