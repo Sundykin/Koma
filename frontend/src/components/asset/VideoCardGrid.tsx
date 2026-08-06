@@ -16,6 +16,7 @@ import {
   LoadingOutlined,
   LeftOutlined,
   RightOutlined,
+  ColumnWidthOutlined,
 } from '@ant-design/icons';
 import type { ShotVideo } from '../../types';
 import { electronService } from '../../services/electronService';
@@ -51,6 +52,15 @@ export const VideoCardGrid: React.FC<VideoCardGridProps> = ({
 }) => {
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewUrl, setPreviewUrl] = useState('');
+  // 版本并排对比（两个视频同屏播放，各自可切版本）
+  const [compareVisible, setCompareVisible] = useState(false);
+  const [compareLeft, setCompareLeft] = useState(0);
+  const [compareRight, setCompareRight] = useState(1);
+
+  const videoUrlOf = useCallback((video: ShotVideo): string => {
+    const source = video.path || video.url || '';
+    return electronService.fs.toLocalUrl(source);
+  }, []);
   const [generatedThumbnails, setGeneratedThumbnails] = useState<Record<string, string>>({});
 
   // ===== compact 模式翻页状态 =====
@@ -201,6 +211,20 @@ export const VideoCardGrid: React.FC<VideoCardGridProps> = ({
 
         {totalPages > 1 && (
           <div className="compactFooter">
+            {videos.length >= 2 && (
+              <Button
+                type="text"
+                size="small"
+                icon={<ColumnWidthOutlined />}
+                className="pagerBtn"
+                title="并排对比两个版本"
+                onClick={() => {
+                  setCompareLeft(selectedIndex ?? 0);
+                  setCompareRight(Math.min(videos.length - 1, (selectedIndex ?? 0) + 1));
+                  setCompareVisible(true);
+                }}
+              />
+            )}
             <div className="compactPager">
               <Button type="text" size="small" icon={<LeftOutlined />} className="pagerBtn"
                 disabled={currentPage === 0}
@@ -229,6 +253,37 @@ export const VideoCardGrid: React.FC<VideoCardGridProps> = ({
             autoPlay
             className="videoPreviewPlayer"
           />
+        </Modal>
+
+        {/* 版本并排对比 */}
+        <Modal
+          open={compareVisible}
+          onCancel={() => setCompareVisible(false)}
+          footer={null}
+          width={960}
+          title="视频版本对比"
+          destroyOnHidden
+        >
+          {videos.length >= 2 && (
+            <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+              {[compareLeft, compareRight].map((idx, side) => (
+                <div key={side} style={{ flex: 1, textAlign: 'center' }}>
+                  <video
+                    src={videoUrlOf(videos[idx])}
+                    controls
+                    autoPlay
+                    className="videoPreviewPlayer"
+                    style={{ maxHeight: 420, width: '100%' }}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 6 }}>
+                    <Button size="small" icon={<LeftOutlined />} disabled={idx === 0} onClick={() => (side === 0 ? setCompareLeft(i => Math.max(0, i - 1)) : setCompareRight(i => Math.max(0, i - 1)))} />
+                    <span style={{ fontSize: 12, lineHeight: '24px' }}>v{idx + 1}</span>
+                    <Button size="small" icon={<RightOutlined />} disabled={idx >= videos.length - 1} onClick={() => (side === 0 ? setCompareLeft(i => Math.min(videos.length - 1, i + 1)) : setCompareRight(i => Math.min(videos.length - 1, i + 1)))} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </Modal>
       </div>
     );
