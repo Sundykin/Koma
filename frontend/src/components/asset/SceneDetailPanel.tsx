@@ -402,7 +402,7 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
 
             <Form.Item name="prompt" label={t('asset.visualPrompt')}>
               <TextArea
-                autoSize={{ minRows: 12, maxRows: 20 }}
+                autoSize={{ minRows: 6, maxRows: 14 }}
                 placeholder={t('asset.scenePromptPlaceholder')}
               />
             </Form.Item>

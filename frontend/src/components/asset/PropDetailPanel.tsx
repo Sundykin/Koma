@@ -556,7 +556,7 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
 
             <Form.Item name="prompt" label={t('asset.visualPrompt')}>
               <TextArea
-                autoSize={{ minRows: 10, maxRows: 18 }}
+                autoSize={{ minRows: 6, maxRows: 14 }}
                 placeholder={t('asset.propPromptPlaceholder')}
               />
             </Form.Item>
