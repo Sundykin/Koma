@@ -4,7 +4,7 @@
  */
 import React, { useMemo, useCallback, useEffect, useRef, useState } from 'react';
 import { isShotPromptStale, isShotVoiceStale, isShotSpeechOverDuration } from '../../services/shotFreshness';
-import { extractShotPhotography } from '../../services/photographyElements';
+import { extractShotPhotography, isShotSizeJump } from '../../services/photographyElements';
 import { useTranslation } from 'react-i18next';
 import {
   Tag,
@@ -112,6 +112,8 @@ export interface ShotCardProps {
   onUpgradeShotScript?: (shotId: string) => void;
   /** 脚本升级进行中 */
   upgrading?: boolean;
+  /** 上一镜主景别（用于跳变提示） */
+  prevShotSize?: string;
   onImagePromptChange: (shotId: string, imagePrompt: string) => void;
   onVideoPromptChange: (shotId: string, videoPrompt: string) => void;
   onDurationChange?: (shotId: string, duration: number) => void;
@@ -178,6 +180,7 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
   onScriptLinesChange,
   onUpgradeShotScript,
   upgrading,
+  prevShotSize,
   onImagePromptChange,
   onVideoPromptChange,
   onDurationChange,
@@ -247,6 +250,9 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
   const speechOverDuration = useMemo(() => isShotSpeechOverDuration(shot), [shot]);
   // 摄影语言摘要：脚本里提取的景别/机位/光线（画面感可见性）
   const shotPhotography = useMemo(() => extractShotPhotography(shot), [shot]);
+  // 与上一镜的景别跳变（专业剪辑避免直接跳两级以上）
+  const primaryShotSize = shotPhotography.shotSizes[0];
+  const shotSizeJump = isShotSizeJump(prevShotSize, primaryShotSize);
   const photographyTags: Array<{ label: string; cls: string }> = [];
   if (shotPhotography.shotSizes.length) photographyTags.push({ label: shotPhotography.shotSizes.join('/'), cls: 'text-status-info' });
   if (shotPhotography.cameraAngles.length) photographyTags.push({ label: shotPhotography.cameraAngles.join('/'), cls: 'text-status-info' });
@@ -654,6 +660,9 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
                   ))
                 ) : (
                   <span className="text-[10px] text-text-tertiary">缺摄影语言</span>
+                )}
+                {shotSizeJump && (
+                  <span className="text-[10px] text-status-warning" title={`与上一镜景别跳变（${prevShotSize} → ${primaryShotSize}），建议中间加过渡镜头`}>景别跳</span>
                 )}
                 {narrativeMode === 'drama' && onUpgradeShotScript && (
                   <button

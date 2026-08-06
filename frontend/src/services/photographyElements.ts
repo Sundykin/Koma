@@ -56,3 +56,35 @@ export function extractShotPhotography(shot: { scriptLines?: ShotScriptLine[] })
     lightings: Array.from(lights),
   };
 }
+
+// ---------------------------------------------------------------------------
+// 景别连贯性
+// ---------------------------------------------------------------------------
+
+/** 景别远近梯度（越大越远；用于判定相邻镜头景别跳变） */
+const SHOT_SIZE_RANK: Record<string, number> = {
+  '特写': 1,
+  '近景': 2,
+  '中景': 3,
+  '全景': 4,
+  '大全景': 5,
+  '远景': 5,
+};
+
+/** 取分镜的主景别（第一个出现的景别）；无景别返回 undefined */
+export function getPrimaryShotSize(shot: { scriptLines?: ShotScriptLine[] }): string | undefined {
+  const elements = extractShotPhotography(shot);
+  return elements.shotSizes[0];
+}
+
+/**
+ * 相邻两镜景别是否跳变（远近差 ≥ 2 级，如特写↔大全景直接跳）。
+ * 专业剪辑一般用景别递进/匹配，直接跳两级以上除非有意的冲击，否则观感跳。
+ */
+export function isShotSizeJump(sizeA: string | undefined, sizeB: string | undefined): boolean {
+  if (!sizeA || !sizeB) return false;
+  const a = SHOT_SIZE_RANK[sizeA];
+  const b = SHOT_SIZE_RANK[sizeB];
+  if (!a || !b) return false;
+  return Math.abs(a - b) >= 2;
+}

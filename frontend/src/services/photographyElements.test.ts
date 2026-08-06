@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { extractPhotographyElements, extractShotPhotography } from './photographyElements';
+import { extractPhotographyElements, extractShotPhotography, getPrimaryShotSize, isShotSizeJump } from './photographyElements';
 import type { ShotScriptLine } from '../types/scene-character';
 
 const desc = (text: string): ShotScriptLine => ({
@@ -49,5 +49,24 @@ describe('extractShotPhotography', () => {
     expect(extractShotPhotography({ scriptLines: [] })).toEqual({
       shotSizes: [], cameraAngles: [], lightings: [],
     });
+  });
+});
+
+describe('景别连贯性', () => {
+  it('主景别取第一个出现的', () => {
+    expect(getPrimaryShotSize({ scriptLines: [desc('全景，平视。'), desc('近景。')] })).toBe('全景');
+    expect(getPrimaryShotSize({ scriptLines: [desc('两人激战')] })).toBeUndefined();
+  });
+
+  it('景别跳变判定：差 ≥2 级判跳变', () => {
+    expect(isShotSizeJump('特写', '大全景')).toBe(true);
+    expect(isShotSizeJump('全景', '特写')).toBe(true);
+    expect(isShotSizeJump('特写', '近景')).toBe(false);
+    expect(isShotSizeJump('中景', '全景')).toBe(false);
+  });
+
+  it('缺景别不判跳变', () => {
+    expect(isShotSizeJump(undefined, '全景')).toBe(false);
+    expect(isShotSizeJump('特写', undefined)).toBe(false);
   });
 });

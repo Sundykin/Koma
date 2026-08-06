@@ -11,6 +11,7 @@ import { ShotListHeader } from './ShotListHeader';
 import type { MentionItem } from '../../editor';
 import type { Shot, ShotImageMode, ShotScriptLine, Character, Scene, Prop, StoredMediaAsset } from '../../types';
 import { getMediaAssetDisplaySource } from '../../types';
+import { getPrimaryShotSize } from '../../services/photographyElements';
 import { ShotCard } from './ShotCard';
 
 const { Text } = Typography;
@@ -258,6 +259,9 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
     (index: number, shot: Shot) => {
       const latestShots = shotsForScrollRef.current;
       const previousStoryboardMention = buildPreviousStoryboardMention(latestShots, index);
+      // 上一镜主景别（用于跳变提示）
+      const prevShot = latestShots[index - 1];
+      const prevShotSize = prevShot ? getPrimaryShotSize(prevShot) : undefined;
       return (
         <ShotCard
           projectId={projectId}
@@ -267,6 +271,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
           narrativeMode={narrativeMode}
           onUpgradeShotScript={onUpgradeShotScript}
           upgrading={upgradingShots?.has(shot.id)}
+          prevShotSize={prevShotSize}
           characters={characters}
           scenes={scenes}
           props={props}
