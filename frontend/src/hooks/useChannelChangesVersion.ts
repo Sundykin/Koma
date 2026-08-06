@@ -41,10 +41,9 @@ export function useChannelChangesVersion(): number {
   useEffect(() => {
     ensureIpcSubscription();
     listeners.add(setVersion);
-    // 同步当前 version（处理"先发生事件、后挂载组件"场景）
-    if (version !== globalVersion) {
-      setVersion(globalVersion);
-    }
+    // 同步当前 version（处理"先发生事件、后挂载组件"场景）。
+    // 用函数式更新避免把 version 读进 effect 闭包（否则每次变更都要重订阅）。
+    setVersion(prev => (prev !== globalVersion ? globalVersion : prev));
     return () => {
       listeners.delete(setVersion);
       // 全部消费组件 unmount 时回收 IPC listener，避免热重载场景下重复注册

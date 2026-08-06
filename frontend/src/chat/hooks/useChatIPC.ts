@@ -109,6 +109,8 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
       unsubscribersRef.current.forEach(unsub => unsub());
       unsubscribersRef.current = [];
     };
+  // 刻意按字段粒度列依赖：config 对象是内联新建的，整对象列入会导致每次 render 重建会话。
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [options.config?.llmProfileId, options.config?.apiKey]);
 
   // 当配置变化时更新会话配置
@@ -119,6 +121,8 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     chatIPC.updateSessionConfig(sessionId, options.config).catch(err => {
       logger.error('Failed to update session config', err);
     });
+  // 同上：按实际消费的字段列依赖，避免 config 对象 identity 抖动。
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady, sessionId, options.config?.modelProvider, options.config?.modelName, options.config?.apiKey, options.config?.baseUrl, options.config?.systemPrompt]);
 
   // 监听流式事件
@@ -181,6 +185,8 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
       unsub3();
       unsub4();
     };
+  // 按回调字段粒度列依赖（options 是内联对象，整对象列入会反复重订阅）。
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [options.onError, options.onStreamEnd, options.onToolCall]);
 
   const send = useCallback(async (content: string | ContentPart[]) => {
@@ -210,6 +216,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     } finally {
       setIsLoading(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, isReady, options.onError]);
 
   const sendStream = useCallback(async (
@@ -247,6 +254,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
       setIsStreaming(false);
       options.onStreamEnd?.();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, isReady, options.onError, options.onStreamStart, options.onStreamEnd]);
 
   const retry = useCallback(async (messageId: string) => {

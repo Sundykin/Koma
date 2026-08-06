@@ -33,11 +33,14 @@ function useTasksSnapshot(): ReadonlyArray<TaskRecord> {
 export function useTasks(filter: TasksFilter): ReadonlyArray<TaskRecord> {
   const all = useTasksSnapshot();
   // filter 通常是内联对象，每次 render 都新建；这里靠 JSON 字符串签名稳住记忆
-  const filterKey = useMemo(() => stableFilterKey(filter), [filter]);
+  const filterKey = stableFilterKey(filter); // 纯函数、非 hook，内容签名稳定即可，无需 memo 包装
 
   return useMemo(() => {
     if (!all.length) return EMPTY;
     return all.filter(t => matchesFilter(t, filter));
+    // filterKey 是 filter 的内容签名（stableFilterKey 纯函数），用它稳定 memo；
+    // 若把 filter 本体列入依赖，内联对象每次 render 都会击穿缓存。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [all, filterKey]);
 }
 
@@ -100,10 +103,8 @@ export function useTaskTransitions(
   const callbackRef = useRef(callback);
   callbackRef.current = callback;
 
-  const filterKey = useMemo(
-    () => stableFilterKey(filter) + '|' + (filter.from?.join(',') ?? '') + '|' + (filter.to?.join(',') ?? '') + '|' + (filter.includeInitial ? '1' : '0'),
-    [stableFilterKey(filter), filter.from, filter.to, filter.includeInitial]
-  );
+  // 纯函数非 hook，直接算内容签名；useEffect 依赖它而不是 filter 本体（避免内联对象击穿订阅）。
+  const filterKey = stableFilterKey(filter) + '|' + (filter.from?.join(',') ?? '') + '|' + (filter.to?.join(',') ?? '') + '|' + (filter.includeInitial ? '1' : '0');
 
   useEffect(() => {
     const unsub = subscribeTaskTransitions((event) => {
@@ -116,6 +117,8 @@ export function useTaskTransitions(
       callbackRef.current(event);
     });
     return unsub;
+    // filterKey 是 filter 的内容签名，覆盖 filter/from/to/includeInitial 全部消费面。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterKey]);
 }
 
