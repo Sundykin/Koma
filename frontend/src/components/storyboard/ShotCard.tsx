@@ -211,6 +211,18 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
 
+  // 视频渲染等待时长（秒）：让用户对"还要等多久"有基本感知，卡死时也能判断。
+  // isGeneratingVideo=true 时每秒递增，结束/取消归零。
+  const [videoWaitSeconds, setVideoWaitSeconds] = useState(0);
+  useEffect(() => {
+    if (!isGeneratingVideo) {
+      setVideoWaitSeconds(0);
+      return;
+    }
+    const timer = setInterval(() => setVideoWaitSeconds(s => s + 1), 1000);
+    return () => clearInterval(timer);
+  }, [isGeneratingVideo]);
+
   // 使用 useMemo 缓存计算值，避免不必要的重渲染
   const hasImagePrompt = useMemo(
     () => !!shot.imagePrompt?.trim(),
@@ -880,6 +892,10 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
                     <div className="shot-video-progress-meta">
                       <span className="truncate flex-1" title={videoProgress.step}>
                         {videoProgress.step || '处理中...'}
+                      </span>
+                      <span className="tabular-nums shrink-0 text-[10px] text-text-tertiary" title="已等待时长">
+                        {String(Math.floor(videoWaitSeconds / 60)).padStart(1, '0')}:
+                        {String(videoWaitSeconds % 60).padStart(2, '0')}
                       </span>
                       <span className="tabular-nums shrink-0">
                         {Math.round(videoProgress.progress)}%
