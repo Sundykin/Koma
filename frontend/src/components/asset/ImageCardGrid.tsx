@@ -7,7 +7,7 @@
  *   多版本数据模型已支持（StoredMediaAsset[] + currentImageIndex）
  */
 import React, { useEffect, useRef, useState } from 'react';
-import { Button, Dropdown, Image, Tooltip, Typography, App } from 'antd';
+import { Button, Dropdown, Image, Modal, Tooltip, Typography, App } from 'antd';
 import {
   PlusOutlined,
   CheckCircleFilled,
@@ -18,6 +18,7 @@ import {
   LoadingOutlined,
   LeftOutlined,
   RightOutlined,
+  ColumnWidthOutlined,
 } from '@ant-design/icons';
 import type { Character, Scene, Prop } from '../../types';
 import { electronService } from '../../services/electronService';
@@ -69,6 +70,10 @@ export const ImageCardGrid: React.FC<ImageCardGridProps> = ({
   const { message } = App.useApp();
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewIndex, setPreviewIndex] = useState(0);
+  // 版本并排对比（两张图同屏，各自可切版本）
+  const [compareVisible, setCompareVisible] = useState(false);
+  const [compareLeft, setCompareLeft] = useState(0);
+  const [compareRight, setCompareRight] = useState(1);
 
   // ====== compact 模式翻页状态 ======
   const totalPages = Math.max(1, Math.ceil(images.length / COMPACT_PAGE_SIZE));
@@ -177,6 +182,20 @@ export const ImageCardGrid: React.FC<ImageCardGridProps> = ({
 
         {totalPages > 1 && (
           <div className="compactFooter">
+            {images.length >= 2 && (
+              <Button
+                type="text"
+                size="small"
+                icon={<ColumnWidthOutlined />}
+                className="pagerBtn"
+                title="并排对比两个版本"
+                onClick={() => {
+                  setCompareLeft(selectedIndex ?? 0);
+                  setCompareRight(Math.min(images.length - 1, (selectedIndex ?? 0) + 1));
+                  setCompareVisible(true);
+                }}
+              />
+            )}
             <div className="compactPager">
               <Button
                 type="text"
@@ -213,6 +232,47 @@ export const ImageCardGrid: React.FC<ImageCardGridProps> = ({
             ))}
           </div>
         </Image.PreviewGroup>
+
+        {/* 版本并排对比 */}
+        <Modal
+          open={compareVisible}
+          onCancel={() => setCompareVisible(false)}
+          footer={null}
+          width={900}
+          title="版本对比"
+          destroyOnClose
+        >
+          {images.length >= 2 && (
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+              {/* 左图 */}
+              <div style={{ flex: 1, textAlign: 'center' }}>
+                <Image
+                  src={toDisplayUrl(images[compareLeft])}
+                  style={{ maxHeight: 420, objectFit: 'contain' }}
+                  alt={`v${compareLeft + 1}`}
+                />
+                <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 6 }}>
+                  <Button size="small" icon={<LeftOutlined />} disabled={compareLeft === 0} onClick={() => setCompareLeft(i => Math.max(0, i - 1))} />
+                  <span style={{ fontSize: 12, lineHeight: '24px' }}>v{compareLeft + 1}</span>
+                  <Button size="small" icon={<RightOutlined />} disabled={compareLeft >= images.length - 1} onClick={() => setCompareLeft(i => Math.min(images.length - 1, i + 1))} />
+                </div>
+              </div>
+              {/* 右图 */}
+              <div style={{ flex: 1, textAlign: 'center' }}>
+                <Image
+                  src={toDisplayUrl(images[compareRight])}
+                  style={{ maxHeight: 420, objectFit: 'contain' }}
+                  alt={`v${compareRight + 1}`}
+                />
+                <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 6 }}>
+                  <Button size="small" icon={<LeftOutlined />} disabled={compareRight === 0} onClick={() => setCompareRight(i => Math.max(0, i - 1))} />
+                  <span style={{ fontSize: 12, lineHeight: '24px' }}>v{compareRight + 1}</span>
+                  <Button size="small" icon={<RightOutlined />} disabled={compareRight >= images.length - 1} onClick={() => setCompareRight(i => Math.min(images.length - 1, i + 1))} />
+                </div>
+              </div>
+            </div>
+          )}
+        </Modal>
       </div>
     );
   }
