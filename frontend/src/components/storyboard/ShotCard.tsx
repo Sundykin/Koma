@@ -108,6 +108,10 @@ export interface ShotCardProps {
   onActivate?: (shotId: string | null) => void;
   /** 单分镜内字幕行变更（编辑 / 添加 / 删除 / 同分镜内排序 / 任意位置插入） */
   onScriptLinesChange: (shotId: string, lines: ShotScriptLine[]) => void;
+  /** 升级分镜脚本（补摄影语言） */
+  onUpgradeShotScript?: (shotId: string) => void;
+  /** 脚本升级进行中 */
+  upgrading?: boolean;
   onImagePromptChange: (shotId: string, imagePrompt: string) => void;
   onVideoPromptChange: (shotId: string, videoPrompt: string) => void;
   onDurationChange?: (shotId: string, duration: number) => void;
@@ -172,6 +176,8 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
   onSelectChange,
   onActivate,
   onScriptLinesChange,
+  onUpgradeShotScript,
+  upgrading,
   onImagePromptChange,
   onVideoPromptChange,
   onDurationChange,
@@ -647,7 +653,17 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
                     <span key={i} className={`text-[10px] ${tag.cls} bg-bg-surface/50 px-1.5 py-0.5 rounded`}>{tag.label}</span>
                   ))
                 ) : (
-                  <span className="text-[10px] text-text-tertiary">缺摄影语言（建议写明景别/机位/光线）</span>
+                  <span className="text-[10px] text-text-tertiary">缺摄影语言</span>
+                )}
+                {narrativeMode === 'drama' && onUpgradeShotScript && (
+                  <button
+                    className="text-[10px] text-status-info hover:opacity-80 cursor-pointer ml-auto shrink-0 disabled:opacity-50"
+                    onClick={() => onUpgradeShotScript(shot.id)}
+                    disabled={upgrading}
+                    title="用 AI 补全景别/机位/光线（保留剧情与台词）"
+                  >
+                    {upgrading ? '升级中...' : 'AI 补全摄影语言'}
+                  </button>
                 )}
               </div>
             )}

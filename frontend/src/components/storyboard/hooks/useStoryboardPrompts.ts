@@ -5,7 +5,8 @@
  *   - 单镜：flush 队列保存 → 取最新 shot 快照 → generateShotPrompt → 回写
  *   - 批量：活跃任务去重守门 → batchGenerateShotPrompts → 逐条回写 + 聚合进度
  */
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
+import { upgradeShotScript } from '../../../services/shotScriptUpgrade';
 import { computeShotScriptHash } from '../../../services/shotFreshness';
 import type { Shot, ProjectStyleSnapshot } from '../../../types';
 import { generateShotPrompt, batchGenerateShotPrompts } from '../../../services/ShotPromptService';
@@ -221,8 +222,50 @@ export function useStoryboardPrompts(deps: StoryboardPromptsDeps) {
     [runBatchPrompts],
   );
 
+  // 分镜脚本升级（补摄影语言）的进行态
+  const [upgradingShots, setUpgradingShots] = useState<Set<string>>(new Set());
+
+  /** 升级单个分镜脚本为专业描述（保留剧情/台词，补景别/机位/光线） */
+  const handleUpgradeShotScript = useCallback(async (shotId: string) => {
+    if (!episodeId) {
+      message.warning('未选择剧集');
+      return;
+    }
+    const shot = shotsRef.current.find(s => s.id === shotId);
+    if (!shot) return;
+    setUpgradingShots(prev => new Set(prev).add(shotId));
+    try {
+      await flushQueuedShotSaves();
+      const result = await upgradeShotScript(projectId, episodeId, shot, llmSelection);
+      if (result.success && result.scriptLines) {
+        const updatedShots = shotsRef.current.map(s => s.id === shotId ? {
+          ...s,
+          scriptLines: result.scriptLines!,
+          // 脚本变了 → 提示词/配音新鲜度标记清掉（等待重新生成）
+          promptScriptHash: undefined,
+          voiceScriptHash: undefined,
+        } : s);
+        shotsRef.current = updatedShots;
+        setShots(updatedShots);
+        message.success('分镜脚本已升级（补全景别/机位/光线）');
+      } else {
+        message.error(result.error || '脚本升级失败');
+      }
+    } catch (err: unknown) {
+      message.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setUpgradingShots(prev => {
+        const next = new Set(prev);
+        next.delete(shotId);
+        return next;
+      });
+    }
+  }, [projectId, episodeId, llmSelection, flushQueuedShotSaves, message, setShots, shotsRef]);
+
   return {
     ensureNoActiveBatch,
+    upgradingShots,
+    handleUpgradeShotScript,
     handleGenerateImagePrompt,
     handleGenerateVideoPrompt,
     handleOptimizeImagePrompt,

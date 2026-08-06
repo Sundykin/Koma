@@ -80,6 +80,10 @@ export interface ShotListEditorProps {
   onBulkDurationChange?: (duration: number) => void;
   /** 批量校准台词超时长的分镜 */
   onBulkCalibrateDurations?: () => void;
+  /** 升级分镜脚本（补摄影语言） */
+  onUpgradeShotScript?: (shotId: string) => void;
+  /** 脚本升级进行中的分镜集合 */
+  upgradingShots?: Set<string>;
   onBulkImageModeChange?: (mode: Exclude<ShotImageMode, 'grid'>) => void;
   /** 当前项目选择的 ITV 渠道时长规格，透传给 ShotCard 决定时长控件渲染方式 */
   durationSpec?: import('../../providers/itv/durationSpec').VideoDurationSpec;
@@ -148,6 +152,8 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   onBulkImageModeChange,
   onBulkDurationChange,
   onBulkCalibrateDurations,
+  onUpgradeShotScript,
+  upgradingShots,
   durationSpec,
   videoProgressMap,
 }) => {
@@ -256,6 +262,8 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
           index={index}
           totalCount={latestShots.length}
           narrativeMode={narrativeMode}
+          onUpgradeShotScript={onUpgradeShotScript}
+          upgrading={upgradingShots?.has(shot.id)}
           characters={characters}
           scenes={scenes}
           props={props}
@@ -335,6 +343,8 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
       onGenerateVideoPrompt,
       onOptimizeImagePrompt,
       onOptimizeVideoPrompt,
+      onUpgradeShotScript,
+      upgradingShots,
       onGenerateImage,
       onGenerateVideo,
       onGenerateAudio,
