@@ -4,6 +4,7 @@
  */
 import React, { useMemo, useCallback, useEffect, useRef, useState } from 'react';
 import { isShotPromptStale, isShotVoiceStale, isShotSpeechOverDuration } from '../../services/shotFreshness';
+import { extractShotPhotography } from '../../services/photographyElements';
 import { useTranslation } from 'react-i18next';
 import {
   Tag,
@@ -238,6 +239,12 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
   const voiceStale = useMemo(() => isShotVoiceStale(shot), [shot]);
   // 时长合理性：台词朗读估算超过分镜时长 → 配音会溢出，建议加长/拆镜
   const speechOverDuration = useMemo(() => isShotSpeechOverDuration(shot), [shot]);
+  // 摄影语言摘要：脚本里提取的景别/机位/光线（画面感可见性）
+  const shotPhotography = useMemo(() => extractShotPhotography(shot), [shot]);
+  const photographyTags: Array<{ label: string; cls: string }> = [];
+  if (shotPhotography.shotSizes.length) photographyTags.push({ label: shotPhotography.shotSizes.join('/'), cls: 'text-status-info' });
+  if (shotPhotography.cameraAngles.length) photographyTags.push({ label: shotPhotography.cameraAngles.join('/'), cls: 'text-status-info' });
+  if (shotPhotography.lightings.length) photographyTags.push({ label: shotPhotography.lightings.join('/'), cls: 'text-status-warning' });
   const isFirst = index === 0;
   const isLast = index === totalCount - 1;
 
@@ -633,6 +640,17 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
             解说模式：逐行字幕块（可拖拽/逐行编辑） */}
         <div className={`${SHOT_LAYOUT.colScript} border-r border-border-subtle flex flex-col min-h-0`}>
           <div className="flex-1 min-h-0 p-1">
+            {narrativeMode === 'drama' && (
+              <div className="pb-1 flex flex-wrap gap-1 items-center border-b border-border-subtle/40 mb-1">
+                {photographyTags.length > 0 ? (
+                  photographyTags.map((tag, i) => (
+                    <span key={i} className={`text-[10px] ${tag.cls} bg-bg-surface/50 px-1.5 py-0.5 rounded`}>{tag.label}</span>
+                  ))
+                ) : (
+                  <span className="text-[10px] text-text-tertiary">缺摄影语言（建议写明景别/机位/光线）</span>
+                )}
+              </div>
+            )}
             {narrativeMode === 'drama' ? (
               <ShotScriptParagraph
                 shotId={shot.id}
