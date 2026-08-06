@@ -3,6 +3,9 @@
  * 管理用户自定义视觉风格预设
  */
 import React, { useState, useEffect, useCallback } from 'react';
+import { createLogger } from '../../store/logger';
+
+const logger = createLogger('VisualStyleManager');
 import {
   Card,
   Row,
@@ -249,7 +252,7 @@ export const VisualStyleManager: React.FC<VisualStyleManagerProps> = ({ onStyleC
     } catch (err: any) {
       // 主进程未实现等场景下静默回退（电池模式 / 早期版本）
        
-      console.warn('[VisualStyleManager] refreshStyleImage failed', preset.id, err?.message);
+      logger.warn('refreshStyleImage failed', { presetId: preset.id, error: err?.message });
       setStyleImages(prev => ({ ...prev, [preset.id]: null }));
       setStyleImageHasOverride(prev => ({ ...prev, [preset.id]: false }));
     } finally {

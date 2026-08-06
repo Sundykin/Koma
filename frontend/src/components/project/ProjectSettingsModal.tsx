@@ -4,6 +4,9 @@
  * 通过抽屉形式从右侧滑出，作为项目工作台的统一配置入口
  */
 import React, { useState, useEffect, useCallback } from 'react';
+import { createLogger } from '../../store/logger';
+
+const logger = createLogger('TTSPreview');
 import {
   Drawer, Form, Input, Tabs, Select, Button, Space, Checkbox, Tooltip,
   Upload, Spin, Typography, Popconfirm, App as AntApp, Image as AntImage,
@@ -572,7 +575,7 @@ const TTSPreferenceTab: React.FC<TTSPreferenceTabProps> = ({ voiceId, speed, onV
     const url = await getKomaTTSVoiceSampleUrl(sampleFile);
     if (!url) {
        
-      console.warn('[TTSPreview] 无法解析音色样本路径', { sampleFile, id });
+      logger.warn('无法解析音色样本路径', { sampleFile, id });
       return;
     }
     // 切换试听对象：标记 pending → 写新 src → audio 重新 load → onCanPlay 里 play
@@ -586,7 +589,7 @@ const TTSPreferenceTab: React.FC<TTSPreferenceTabProps> = ({ voiceId, speed, onV
           .then(() => setPreviewingId(id))
           .catch((err) => {
              
-            console.warn('[TTSPreview] play() 失败', err);
+            logger.warn('play() 失败', err);
             setPreviewingId(null);
           })
           .finally(() => setPendingPlayId(null));
@@ -606,7 +609,7 @@ const TTSPreferenceTab: React.FC<TTSPreferenceTabProps> = ({ voiceId, speed, onV
       .then(() => setPreviewingId(targetId))
       .catch((err) => {
          
-        console.warn('[TTSPreview] canplay 后 play() 失败', err);
+        logger.warn('canplay 后 play() 失败', err);
         setPreviewingId(null);
       })
       .finally(() => setPendingPlayId(null));

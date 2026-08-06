@@ -99,7 +99,8 @@ describe('project manju transition boundary', () => {
     );
     expect(exportToManjuDSLMock.mock.calls[0]).toHaveLength(4);
     expect(warnSpy).toHaveBeenCalledWith(
-      '[manju] Timeline round-trip is not supported for TimelineData-based transition projects yet. Timeline payload will be omitted.'
+      expect.stringContaining('Timeline round-trip is not supported for TimelineData-based transition projects yet. Timeline payload will be omitted.'),
+      expect.anything(),
     );
   });
 
@@ -132,7 +133,8 @@ describe('project manju transition boundary', () => {
 
     expect(fsWriteFileMock.mock.calls.map((call) => call[0])).not.toContain('/tmp/project-1/timeline.json');
     expect(warnSpy).toHaveBeenCalledWith(
-      '[manju] Timeline round-trip is not supported for TimelineData-based transition projects yet. Timeline payload will be omitted.'
+      expect.stringContaining('Timeline round-trip is not supported for TimelineData-based transition projects yet. Timeline payload will be omitted.'),
+      expect.anything(),
     );
   });
 });

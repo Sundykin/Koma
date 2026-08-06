@@ -1,4 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { createLogger } from '../../store/logger';
+
+const logger = createLogger('AssetImageDrawModal');
 import { Button, Empty, Modal, Progress, Spin, Tag, Typography } from 'antd';
 import { CheckCircleFilled, ReloadOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
@@ -439,7 +442,7 @@ export async function cleanupImageDrawCandidates(
       try {
         await fsRemove(candidate.localPath!);
       } catch (error) {
-        console.warn('Failed to remove unused image draw candidate', candidate.localPath, error);
+        logger.warn('Failed to remove unused image draw candidate', { localPath: candidate.localPath, error });
       }
     })
   );

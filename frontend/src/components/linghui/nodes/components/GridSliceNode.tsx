@@ -1,4 +1,7 @@
 import React, { memo, useCallback, useMemo, useState } from 'react';
+import { createLogger } from '../../../../store/logger';
+
+const logger = createLogger('GridSliceNode');
 import { type NodeProps } from '@xyflow/react';
 import { Grid3X3, ImageOff, LoaderCircle, Scissors, Trash2 } from 'lucide-react';
 import type {
@@ -228,7 +231,7 @@ function GridSliceNodeInner({ id, data, selected }: NodeProps) {
         label: `${nodeData.label || '宫格切分'} 合成图`,
       }]);
     } catch (error) {
-      console.warn('[GridSliceNode] compose grid failed', error);
+      logger.warn('compose grid failed', error);
     } finally {
       setIsComposing(false);
     }

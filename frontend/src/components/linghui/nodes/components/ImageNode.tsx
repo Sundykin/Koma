@@ -1,4 +1,7 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createLogger } from '../../../../store/logger';
+
+const logger = createLogger('ImageNode');
 import { App } from 'antd';
 import { type NodeProps, useStore, useUpdateNodeInternals } from '@xyflow/react';
 import { Image as ImageIcon } from 'lucide-react';
@@ -137,7 +140,7 @@ function ImageNodeInner({ id, data, selected }: NodeProps) {
       }]);
     } catch (err) {
        
-      console.warn('[Panorama] 抽取视角失败', err);
+      logger.warn('Panorama 抽取视角失败', err);
     }
   }, [editorApi, id, isPanoramaNode, nodeData.label, panoramaProjectionMode, primaryDisplayItem?.preview]);
 

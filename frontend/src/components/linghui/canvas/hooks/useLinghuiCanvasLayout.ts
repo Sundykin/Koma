@@ -1,4 +1,7 @@
 import { useCallback, useState } from 'react';
+import { createLogger } from '../../../../store/logger';
+
+const logger = createLogger('LinghuiCanvas');
 import type { ReactFlowInstance } from '@xyflow/react';
 import type { MessageInstance } from 'antd/es/message/interface';
 import { computeLinghuiCanvasElkLayout, type LinghuiCanvasOutlierNode } from '../state/linghuiCanvasLayout';
@@ -69,7 +72,7 @@ export function useLinghuiCanvasLayout({
         focusContent();
       });
     } catch (error) {
-      console.error('[LinghuiCanvas] format layout failed', error);
+      logger.error('format layout failed', error);
       message.error('整理画布失败，请稍后重试');
     } finally {
       setIsLayouting(false);

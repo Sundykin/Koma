@@ -11,6 +11,9 @@
 import { nanoid } from 'nanoid';
 import { electronService, isElectron } from '../electronService';
 import { toFileSystemDisplayUrl } from '../fileSystemPort';
+import { createLogger } from '../../store/logger';
+
+const logger = createLogger('voiceLibrary');
 import {
   buildBuiltinVoiceCategories,
   buildBuiltinVoiceProfiles,
@@ -89,7 +92,7 @@ export async function loadVoiceLibrary(): Promise<VoiceLibrarySnapshot> {
     const manifest = (await electronService.ipc.invoke('controller/app/getVoiceLibrary', {})) as CustomVoiceLibraryManifest;
     return mergeCustomIntoSnapshot(manifest);
   } catch (err) {
-    console.warn('[voiceLibrary] load failed, returning builtin only', err);
+    logger.warn('load failed, returning builtin only', err);
     return emptySnapshot();
   }
 }

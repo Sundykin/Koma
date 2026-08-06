@@ -5,6 +5,9 @@
  * - "@" 按钮弹出 Popover 列出所有可引用图（含历史对话生成的）
  */
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import { createLogger } from '../../store/logger';
+
+const logger = createLogger('ChatComposer');
 import { Button, Tooltip, message, Dropdown, Popover, Spin } from 'antd';
 import type { MenuProps } from 'antd';
 import { ChatPromptEditor, type ChatPromptEditorRef } from './ChatPromptEditor';
@@ -256,7 +259,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
       count: mode === 'image' ? count : undefined,
     };
     // 诊断：把组件实际派发的参数打到 console，便于排查"参数被吃掉"问题
-    console.info('[ChatComposer] send', {
+    logger.info('send', {
       composerMode: mode,
       videoSubMode,
       chatMediaMode,

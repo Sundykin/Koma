@@ -1,4 +1,7 @@
 import { useCallback } from 'react';
+import { createLogger } from '../../../../store/logger';
+
+const logger = createLogger('Director3D');
 import type { MessageInstance } from 'antd/es/message/interface';
 import type {
   LinghuiDirector3DNodeProperties,
@@ -54,7 +57,7 @@ export function useDirector3DLineartExport({
     } catch (error) {
       message.warning('线稿落盘失败，下游可能无法直接引用，请尝试运行节点');
        
-      console.warn('[Director3D] 线稿落盘失败', error);
+      logger.warn('线稿落盘失败', error);
     }
 
     updateNodeData(nodeId, prev => {

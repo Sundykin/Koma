@@ -1,4 +1,7 @@
 import type { Clip, Track, Transition } from '../../../types/editor';
+import { createLogger } from '../../../store/logger';
+
+const logger = createLogger('TransitionResolver');
 import { DEFAULT_TRANSITION_DURATION, MIN_VISIBLE_DURATION, SUPPORTED_TRANSITION_TYPES, TIME_EPSILON, TRANSITION_TYPE_FADE } from './constants';
 import type { NormalizedTransitionPlan, ResolvedClipWindow, ResolvedTrackTimeline } from './types';
 
@@ -322,8 +325,8 @@ export function resolveTrackTimeline(track: Track): ResolvedTrackTimeline {
     if (!fromWindow || !toWindow) {
       droppedTransitionIds.push(transition.id);
       if (process.env.NODE_ENV !== 'production') {
-        console.warn(
-          `[TransitionResolver] Transition ${transition.id} dropped: missing clip window (from=${transition.fromClipId}, to=${transition.toClipId})`,
+        logger.warn(
+          `Transition ${transition.id} dropped: missing clip window (from=${transition.fromClipId}, to=${transition.toClipId})`,
         );
       }
       continue;

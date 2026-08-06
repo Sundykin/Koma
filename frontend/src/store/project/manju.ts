@@ -18,10 +18,13 @@ import {
 } from '../../manju-dsl/protocol';
 import { addRecentProject } from '../globalStore';
 import { loadProject, getProjectPath } from './core';
+import { createLogger } from '../logger';
+
+const logger = createLogger('manju');
 import { loadTimeline } from './timeline';
 
 function warnDroppedTimelineBoundary() {
-  console.warn('[manju] Timeline round-trip is not supported for TimelineData-based transition projects yet. Timeline payload will be omitted.');
+  logger.warn('Timeline round-trip is not supported for TimelineData-based transition projects yet. Timeline payload will be omitted.');
 }
 
 export function saveProjectAsManju(

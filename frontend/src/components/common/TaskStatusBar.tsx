@@ -4,6 +4,9 @@
  * 没有顶部指示器（删了），所有交互都从 Sidebar 进。
  */
 import React, { useState, useMemo } from 'react';
+import { createLogger } from '../../store/logger';
+
+const logger = createLogger('TaskStatusBar');
 import { Progress, Typography, Tag, Button, Empty, Tooltip, Drawer } from 'antd';
 import { ReloadOutlined, StopOutlined } from '@ant-design/icons';
 import { Loader2, CheckCircle2, XCircle, FileText, Video, Cpu, Box, Download, Trash2 } from 'lucide-react';
@@ -581,7 +584,7 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
                   // 留个日志便于调试（不弹 toast 避免噪音）
                   if (removedManager + removedAsync > 0) {
                      
-                    console.info(`[TaskStatusBar] 清空已完成任务：${removedManager + removedAsync} 条`);
+                    logger.info(`清空已完成任务：${removedManager + removedAsync} 条`);
                   }
                 }}
               >
