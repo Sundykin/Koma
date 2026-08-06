@@ -12,7 +12,7 @@ import type { MentionItem } from '../../editor';
 import type { Shot, ShotImageMode, ShotScriptLine, Character, Scene, Prop, StoredMediaAsset } from '../../types';
 import { getMediaAssetDisplaySource } from '../../types';
 import { getPrimaryShotSize, extractShotPhotography, detectShotLightTone, isSameScene } from '../../services/photographyElements';
-import { isShotSpeechOverDuration, isShotPromptStale } from '../../services/shotFreshness';
+import { isShotSpeechOverDuration, isShotPromptStale, isShotVoiceStale } from '../../services/shotFreshness';
 import { findDialogueCharactersMissingVoice } from '../../services/shotReference/readiness';
 import { ShotCard } from './ShotCard';
 
@@ -272,12 +272,14 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
     }
     // 有台词但没绑音色的角色（视频渲染的音色参考缺失）
     const missingVoice = findDialogueCharactersMissingVoice(shots, characters).length;
-    // 提示词待更新（脚本已改，提示词基于旧脚本）
+    // 提示词/配音待更新（脚本已改，提示词/配音基于旧脚本）
     let promptStale = 0;
+    let voiceStale = 0;
     for (const s of shots) {
       if (isShotPromptStale(s)) promptStale += 1;
+      if (isShotVoiceStale(s)) voiceStale += 1;
     }
-    return { missingPhoto, overDuration, videoCount, audioCount, missingVoice, promptStale };
+    return { missingPhoto, overDuration, videoCount, audioCount, missingVoice, promptStale, voiceStale };
   }, [shots, characters]);
 
   const renderShotRow = useCallback(
@@ -448,6 +450,11 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
             {readinessStats.promptStale > 0 && (
               <span className="text-status-warning" title="脚本已改，提示词基于旧脚本——建议批量重新生成提示词">
                 提示词待更新 {readinessStats.promptStale} 镜
+              </span>
+            )}
+            {readinessStats.voiceStale > 0 && (
+              <span className="text-status-warning" title="台词已改，配音基于旧台词——建议重新生成配音">
+                配音待更新 {readinessStats.voiceStale} 镜
               </span>
             )}
             <span className="text-text-tertiary">
