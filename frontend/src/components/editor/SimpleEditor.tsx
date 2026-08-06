@@ -57,6 +57,11 @@ import { generateId } from '../../utils/generateId';
 //
 // 三条轨道时间轴对齐 currentTime（按 shot.duration 累加），保证视频 / 音频 / 字幕同步起点。
 // 音频 clip 时长优先用 asset.durationMs（实际 TTS 输出长度），缺失时回退 shot.duration。
+/** 收集"没有任何可用媒体（视频/图片都没有）"的分镜——入轨时会被静默跳过，需要显式提示 */
+export function collectShotsMissingMedia(shots: Shot[]): Shot[] {
+  return shots.filter(shot => !getShotCurrentVideoSource(shot) && !getShotCurrentImageSource(shot));
+}
+
 export function shotsToTracks(shots: Shot[]): Track[] {
   const videoTrack: Track = { id: 'video-main', type: 'video', clips: [], order: 0, isMainTrack: true };
   const audioTrack: Track = { id: 'audio-main', type: 'audio', clips: [], order: -1 };
@@ -224,6 +229,101 @@ export function syncShotSelectionsIntoTracks(tracks: Track[], shots: Shot[]): Tr
     return trackChanged ? { ...track, clips } : track;
   });
 
+  // 追加新获得媒体的分镜：此前因没有图片/视频被跳过的分镜，在分镜页生成后
+  // 回到剪辑时自动补齐到对应轨道末尾（保持分镜顺序；用户可再拖拽调整）。
+  const visualTrack = nextTracks.find(t => t.isMainTrack && t.type === 'video') ?? nextTracks.find(t => t.type === 'video');
+  if (visualTrack) {
+    const knownShotIds = new Set(
+      visualTrack.clips
+        .filter(clip => clip.id.startsWith('clip-'))
+        .map(clip => clip.id.slice('clip-'.length)),
+    );
+    const audioTrackForAppend = nextTracks.find(t => t.type === 'audio');
+    const textTrackForAppend = nextTracks.find(t => t.type === 'text');
+
+    const endOf = (track: Track): number =>
+      track.clips.reduce((max, clip) => Math.max(max, clip.start + clip.duration), 0);
+    let videoAppendAt = endOf(visualTrack);
+    let audioAppendAt = audioTrackForAppend ? endOf(audioTrackForAppend) : 0;
+    let textAppendAt = textTrackForAppend ? endOf(textTrackForAppend) : 0;
+
+    const appendedVideo: Clip[] = [];
+    const appendedAudio: Clip[] = [];
+    const appendedText: Clip[] = [];
+
+    for (const shot of shots) {
+      if (knownShotIds.has(shot.id)) continue;
+      const selection = resolveShotVisualSelection(shot);
+      if (!selection) continue; // 仍无媒体 → 仍跳过（进剪辑时的提示覆盖这种情况）
+      const shotDuration = shot.duration || 3;
+      appendedVideo.push({
+        id: `clip-${shot.id}`,
+        assetId: `asset-${shot.id}`,
+        trackId: visualTrack.id,
+        start: videoAppendAt,
+        duration: shotDuration,
+        offset: 0,
+        sourceDuration: selection.duration,
+        name: selection.name,
+        type: selection.type,
+        src: selection.src,
+        x: 0, y: 0, scale: 1, rotation: 0, opacity: 1,
+      });
+      videoAppendAt += shotDuration;
+
+      const audioSelection = audioTrackForAppend ? resolveShotAudioSelection(shot) : null;
+      if (audioTrackForAppend && audioSelection) {
+        appendedAudio.push({
+          id: `audio-clip-${shot.id}`,
+          assetId: `audio-asset-${shot.id}`,
+          trackId: audioTrackForAppend.id,
+          start: audioAppendAt,
+          duration: audioSelection.duration,
+          offset: 0,
+          sourceDuration: audioSelection.duration,
+          name: audioSelection.name,
+          type: MediaType.AUDIO,
+          src: audioSelection.src,
+          x: 0, y: 0, scale: 1, rotation: 0, opacity: 1,
+        });
+      }
+      audioAppendAt += shotDuration;
+
+      const subtitleText = (shot.scriptLines ?? [])
+        .filter(line => line.role !== 'description')
+        .map(line => line.text)
+        .join('\n')
+        .trim();
+      if (textTrackForAppend && subtitleText) {
+        appendedText.push({
+          id: `text-${shot.id}`,
+          assetId: `text-asset-${shot.id}`,
+          trackId: textTrackForAppend.id,
+          start: textAppendAt,
+          duration: shotDuration,
+          offset: 0,
+          name: subtitleText.slice(0, 10),
+          type: MediaType.TEXT,
+          src: subtitleText,
+          x: 0, y: 0, scale: 1, rotation: 0, opacity: 1,
+        });
+      }
+      textAppendAt += shotDuration;
+    }
+
+    if (appendedVideo.length > 0) {
+      changed = true;
+      const applyAppend = (track: Track, extra: Clip[]): Track =>
+        extra.length ? { ...track, clips: [...track.clips, ...extra] } : track;
+      for (let i = 0; i < nextTracks.length; i += 1) {
+        const track = nextTracks[i];
+        if (track.id === visualTrack.id) nextTracks[i] = applyAppend(track, appendedVideo);
+        else if (audioTrackForAppend && track.id === audioTrackForAppend.id) nextTracks[i] = applyAppend(track, appendedAudio);
+        else if (textTrackForAppend && track.id === textTrackForAppend.id) nextTracks[i] = applyAppend(track, appendedText);
+      }
+    }
+  }
+
   return changed ? nextTracks : tracks;
 }
 
@@ -383,6 +483,16 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
         }
         setIsLoadingTimeline(false);
         return;
+      }
+
+      // 部分分镜没有图片/视频时会被静默跳过——进剪辑就告诉用户缺了几镜（全部缺则不提示，空时间轴本身就明显）
+      const missingMediaShots = collectShotsMissingMedia(shots);
+      if (missingMediaShots.length > 0 && missingMediaShots.length < shots.length) {
+        message.warning({
+          content: `${missingMediaShots.length} 个分镜还没有图片/视频，未加入时间轴。回分镜页生成后会自动补齐。`,
+          key: 'shots-missing-media',
+          duration: 5,
+        });
       }
 
       setIsLoadingTimeline(true);

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { shotsToTracks } from './SimpleEditor';
-import type { Shot } from '../../types';
+import { shotsToTracks, syncShotSelectionsIntoTracks, collectShotsMissingMedia } from './SimpleEditor';
+import type { Shot, StoredMediaAsset } from '../../types';
+import type { Track } from '../../types/editor';
 
 function makeShot(scriptLines: Shot['scriptLines'], overrides: Partial<Shot> = {}): Shot {
   return {
@@ -57,5 +58,45 @@ describe('shotsToTracks 字幕轨道（text-main）', () => {
     ]);
     const textTrack = tracks.find(t => t.id === 'text-main');
     expect(textTrack?.clips[0].src).toBe('旧格式字幕行');
+  });
+});
+
+describe('syncShotSelectionsIntoTracks 追加新分镜', () => {
+  const videoAsset = (p: string): StoredMediaAsset => ({ localPath: p } as StoredMediaAsset);
+  const shotWithVideo = (id: string, duration = 4): Shot => makeShot(
+    [{ id: '1', text: `${id} 的脚本`, role: 'narration' }],
+    { id, duration, media: { videos: [videoAsset(`/v/${id}.mp4`)], currentVideoIndex: 0 } as Shot['media'] },
+  );
+
+  it('分镜后补的视频在回剪辑时追加到主轨末尾', () => {
+    const s1 = shotWithVideo('s1', 4);
+    const s2 = shotWithVideo('s2', 6);
+    // 初始时间线只含 s1（s2 当时没有视频被跳过）
+    const initial = shotsToTracks([s1]);
+    const synced = syncShotSelectionsIntoTracks(initial, [s1, s2]);
+    const main = synced.find(t => t.isMainTrack)!;
+    expect(main.clips.map(cl => cl.id)).toEqual(['clip-s1', 'clip-s2']);
+    // 追加在末尾：s2 从 s1 结束处开始
+    expect(main.clips[1].start).toBe(4);
+    expect(main.clips[1].duration).toBe(6);
+    // 字幕轨同步补齐（s2 的旁白行）
+    const textTrack = synced.find(t => t.id === 'text-main');
+    expect(textTrack?.clips.map(cl => cl.id)).toEqual(['text-s1', 'text-s2']);
+  });
+
+  it('仍无媒体的分镜继续跳过；已有片段不受影响', () => {
+    const s1 = shotWithVideo('s1', 4);
+    const s2 = makeShot([{ id: '1', text: 'x', role: 'narration' }], { id: 's2', duration: 3 }); // 无媒体
+    const initial = shotsToTracks([s1]);
+    const synced = syncShotSelectionsIntoTracks(initial, [s1, s2]);
+    const main = synced.find(t => t.isMainTrack)!;
+    expect(main.clips).toHaveLength(1);
+  });
+
+  it('collectShotsMissingMedia 只收集无图无视频的分镜', () => {
+    const withVideo = shotWithVideo('s1');
+    const without = makeShot([{ id: '1', text: 'x', role: 'narration' }], { id: 's2' });
+    const missing = collectShotsMissingMedia([withVideo, without]);
+    expect(missing.map(s => s.id)).toEqual(['s2']);
   });
 });
