@@ -14,7 +14,7 @@ import { getMediaAssetDisplaySource } from '../../types';
 import { getPrimaryShotSize, extractShotPhotography, detectShotLightTone, isSameScene } from '../../services/photographyElements';
 import { getShotCurrentVideoSource } from '../../utils/mediaSelectors';
 import { isShotSpeechOverDuration, isShotPromptStale, isShotVoiceStale, detectInconsistentCharacterVoices } from '../../services/shotFreshness';
-import { findDialogueCharactersMissingVoice } from '../../services/shotReference/readiness';
+import { findDialogueCharactersMissingVoice, findCharactersNotInShots } from '../../services/shotReference/readiness';
 import { buildProductionReport, formatProductionReport } from '../../services/productionReport';
 import { ShotCard } from './ShotCard';
 
@@ -334,13 +334,17 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
     }
     // 角色音色跨镜不一致（同一角色不同镜用不同音色 → 声音跳）
     const voiceInconsistent = detectInconsistentCharacterVoices(shots).length;
+    // 主要角色未进任何分镜（主角/反派未出场通常是拆解漏分配）
+    const notInShots = findCharactersNotInShots(shots, characters)
+      .filter(c => c.role === 'protagonist' || c.role === 'antagonist')
+      .map(c => c.name);
     const allReady = missingPhoto === 0 && overDuration === 0 && missingVoice === 0
       && promptStale === 0 && voiceInconsistent === 0 && videoCount === shots.length;
     return {
       missingPhoto, overDuration, videoCount, audioCount,
       missingVoice, missingVoiceNames: missingVoiceChars.map(v => v.name),
       promptStale, promptStaleIds, voiceStale, voiceStaleIds,
-      voiceInconsistent, allReady,
+      voiceInconsistent, notInShots, allReady,
     };
   }, [shots, characters]);
 
@@ -531,6 +535,11 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
               >
                 提示词待更新 {readinessStats.promptStale} 镜（重生成）
               </button>
+            )}
+            {readinessStats.notInShots.length > 0 && (
+              <span className="text-status-warning" title="主要角色（主角/反派）未进任何分镜，通常是拆解漏分配——检查剧本拆解是否覆盖该角色戏份">
+                角色未出场：{readinessStats.notInShots.join('、')}
+              </span>
             )}
             {readinessStats.voiceInconsistent > 0 && (
               <span className="text-status-warning" title="同一角色在不同镜用了不同音色，声音会跳——检查角色音色绑定">

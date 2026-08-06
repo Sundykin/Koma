@@ -137,3 +137,22 @@ export function findDialogueCharactersMissingVoice(
   }
   return missing;
 }
+
+// ---------------------------------------------------------------------------
+// 拆解覆盖率：主要角色是否进了分镜
+// ---------------------------------------------------------------------------
+
+/**
+ * 找出没出现在任何分镜 characters 字段的角色。
+ * 主角/反派未进场通常是拆解漏分配（重要遗漏）；配角可能在下集出场（需用户判断）。
+ */
+export function findCharactersNotInShots(
+  shots: Array<{ characters?: string[] }>,
+  characters: Character[],
+): Character[] {
+  const appearing = new Set<string>();
+  for (const shot of shots) {
+    for (const id of shot.characters ?? []) appearing.add(id);
+  }
+  return characters.filter(char => !appearing.has(char.id));
+}

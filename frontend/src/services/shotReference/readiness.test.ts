@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findShotAssetsMissingImages, findDialogueCharactersMissingVoice, formatMissingAssetWarning } from './readiness';
+import { findShotAssetsMissingImages, findDialogueCharactersMissingVoice, findCharactersNotInShots, formatMissingAssetWarning } from './readiness';
 import type { Character, Prop, Scene, Shot, StoredMediaAsset } from '../../types';
 
 function asset(localPath?: string, remoteUrl?: string): StoredMediaAsset {
@@ -119,5 +119,25 @@ describe('findDialogueCharactersMissingVoice', () => {
     }] as unknown as Shot[];
     const characters = [charWithVoice('c1', '叶赎')];
     expect(findDialogueCharactersMissingVoice(shots, characters)).toEqual([]);
+  });
+});
+
+describe('findCharactersNotInShots', () => {
+  const makeChar = (id: string, name: string): Character => ({ id, name, prompt: '', role: 'supporting' } as Character);
+
+  it('找出没进任何分镜的角色', () => {
+    const chars = [
+      makeChar('c1', '叶赎'),
+      makeChar('c2', '苏晓'),
+    ];
+    const shots = [{ id: 's1', characters: ['c1'] }] as unknown as Shot[];
+    const result = findCharactersNotInShots(shots, chars);
+    expect(result.map(c => c.id)).toEqual(['c2']);
+  });
+
+  it('全出场返回空', () => {
+    const chars = [makeChar('c1', '叶赎')];
+    const shots = [{ id: 's1', characters: ['c1'] }] as unknown as Shot[];
+    expect(findCharactersNotInShots(shots, chars)).toEqual([]);
   });
 });
