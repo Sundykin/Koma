@@ -290,7 +290,8 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
       if ((s.media?.audios?.length || 0) > 0) audioCount += 1;
     }
     // 有台词但没绑音色的角色（视频渲染的音色参考缺失）
-    const missingVoice = findDialogueCharactersMissingVoice(shots, characters).length;
+    const missingVoiceChars = findDialogueCharactersMissingVoice(shots, characters);
+    const missingVoice = missingVoiceChars.length;
     // 提示词/配音待更新（脚本已改，提示词/配音基于旧脚本）
     let promptStale = 0;
     let voiceStale = 0;
@@ -310,7 +311,12 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
     const voiceInconsistent = detectInconsistentCharacterVoices(shots).length;
     const allReady = missingPhoto === 0 && overDuration === 0 && missingVoice === 0
       && promptStale === 0 && voiceInconsistent === 0 && videoCount === shots.length;
-    return { missingPhoto, overDuration, videoCount, audioCount, missingVoice, promptStale, promptStaleIds, voiceStale, voiceStaleIds, voiceInconsistent, allReady };
+    return {
+      missingPhoto, overDuration, videoCount, audioCount,
+      missingVoice, missingVoiceNames: missingVoiceChars.map(v => v.name),
+      promptStale, promptStaleIds, voiceStale, voiceStaleIds,
+      voiceInconsistent, allReady,
+    };
   }, [shots, characters]);
 
   const renderShotRow = useCallback(
@@ -485,8 +491,8 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
               </button>
             )}
             {readinessStats.missingVoice > 0 && (
-              <span className="text-status-warning" title="有台词但没绑音色的角色，视频渲染时声音参考缺失（到角色详情绑定音色）">
-                缺音色 {readinessStats.missingVoice} 角色
+              <span className="text-status-warning" title="到角色详情绑定音色（视频渲染时声音参考依赖它）">
+                缺音色：{readinessStats.missingVoiceNames.join('、')}
               </span>
             )}
             {readinessStats.promptStale > 0 && (
