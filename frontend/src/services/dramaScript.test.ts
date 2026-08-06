@@ -32,6 +32,11 @@ describe('parseDramaScript', () => {
     expect(lines[0]).toEqual({ type: 'dialogue', speaker: undefined, text: '有人吗' });
   });
 
+  it('treats [画外音] as a narration alias (prompt-format side vocabulary)', () => {
+    const lines = parseDramaScript('[画外音] 雨声渐弱');
+    expect(lines[0]).toEqual({ type: 'narration', text: '雨声渐弱' });
+  });
+
   it('round-trips through serializeDramaScript', () => {
     const original = '[旁白] 天黑了\n[台词·宁卓] 走吧\n[场景] 山里';
     expect(serializeDramaScript(parseDramaScript(original))).toBe(original);
