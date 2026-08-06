@@ -5,7 +5,7 @@
  * 图片批量与视频批量共享 type='shot-generation' 的活跃任务去重（ensureNoActiveBatch），
  * 避免 LLM/上游 provider 互相挤压。
  */
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { App as AntApp } from 'antd';
 import type {
   Shot, Character, Scene, Prop, AppSettings, ProjectStyleSnapshot,
@@ -290,7 +290,9 @@ export function useStoryboardMediaGeneration(deps: StoryboardMediaGenerationDeps
   }, [projectId, episodeId, characters, scenes, props, ttiSelection, aspectRatio, styleSnapshot, queueRefreshShotsFromStore, ensureNoActiveBatch, message, modal, flushQueuedShotSaves, shotsRef, setSubmittingShots, setBatchProgress, getShotImageCount]);
 
   /** 批量视频渲染（force=true 重新渲染已有视频的） */
-  const runBatchVideos = useCallback(async (force: boolean, targetShotIds?: string[]) => {
+  // 最新 runBatchVideos 引用：批量失败后"重试失败项"递归调用复用同一入口
+  const runBatchVideosRef = useRef<(force: boolean, targetShotIds?: string[], skipReadinessCheck?: boolean) => Promise<void>>(async () => {});
+  const runBatchVideos = useCallback(async (force: boolean, targetShotIds?: string[], skipReadinessCheck = false) => {
     if (!episodeId) {
       message.warning('未选择剧集');
       return;
@@ -317,23 +319,26 @@ export function useStoryboardMediaGeneration(deps: StoryboardMediaGenerationDeps
     // 视频生成前的就绪确认（视频代价比图片高一个量级，强确认）：
     // 1) 缺资产图——多参考模式的角色/场景一致性全靠它们
     // 2) 台词角色缺音色——音画同出模型的声音参考，缺了各镜声音不一致
-    const missingAssetsForVideo = findShotAssetsMissingImages(targetShots, characters, scenes, props ?? []);
-    const missingVoices = findDialogueCharactersMissingVoice(targetShots, characters);
-    if (missingAssetsForVideo.length > 0 || missingVoices.length > 0) {
-      const parts: string[] = [];
-      if (missingAssetsForVideo.length > 0) {
-        parts.push(`缺资产图：${formatMissingAssetWarning(missingAssetsForVideo)}`);
+    // 批量失败重试（skipReadinessCheck=true）跳过：用户刚看过一次确认
+    if (!skipReadinessCheck) {
+      const missingAssetsForVideo = findShotAssetsMissingImages(targetShots, characters, scenes, props ?? []);
+      const missingVoices = findDialogueCharactersMissingVoice(targetShots, characters);
+      if (missingAssetsForVideo.length > 0 || missingVoices.length > 0) {
+        const parts: string[] = [];
+        if (missingAssetsForVideo.length > 0) {
+          parts.push(`缺资产图：${formatMissingAssetWarning(missingAssetsForVideo)}`);
+        }
+        if (missingVoices.length > 0) {
+          parts.push(`台词角色未绑音色：${missingVoices.map(v => v.name).join('、')}`);
+        }
+        const proceed = await modal.confirm({
+          title: '视频生成前提醒',
+          content: `${parts.join('；')}。继续生成将缺少对应参考，角色外观/声音容易前后不一致。`,
+          okText: '仍然生成',
+          cancelText: '去补齐',
+        });
+        if (!proceed) return;
       }
-      if (missingVoices.length > 0) {
-        parts.push(`台词角色未绑音色：${missingVoices.map(v => v.name).join('、')}`);
-      }
-      const proceed = await modal.confirm({
-        title: '视频生成前提醒',
-        content: `${parts.join('；')}。继续生成将缺少对应参考，角色外观/声音容易前后不一致。`,
-        okText: '仍然生成',
-        cancelText: '去补齐',
-      });
-      if (!proceed) return;
     }
     const shotIds = targetShots.map(s => s.id);
     setSubmittingRenderShots(new Set(shotIds));
@@ -383,7 +388,26 @@ export function useStoryboardMediaGeneration(deps: StoryboardMediaGenerationDeps
         ),
       });
       await queueRefreshShotsFromStore();
-      message.success(`批量${action}完成: ${result.success} 成功, ${result.failed} 失败`);
+      if (result.failed > 0) {
+        // 批量失败：给"仅重试失败项"入口（成功的不动，避免重复花钱/花时间）
+        const failedShotIds = (result.results ?? [])
+          .filter(r => !r.success)
+          .map(r => r.shotId);
+        message.success(`批量${action}完成: ${result.success} 成功, ${result.failed} 失败`);
+        const retry = await modal.confirm({
+          title: `${result.failed} 个分镜${action}失败`,
+          content: failedShotIds.length > 0
+            ? '可立即重试失败分镜，或稍后在分镜卡上逐个重新渲染。'
+            : '失败原因见任务面板或分镜卡。',
+          okText: '重试失败项',
+          cancelText: '稍后',
+        });
+        if (retry && failedShotIds.length > 0) {
+          await runBatchVideosRef.current?.(false, failedShotIds, true);
+        }
+      } else {
+        message.success(`批量${action}完成: ${result.success} 成功`);
+      }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       message.error(errorMessage || `批量${action}失败`);
@@ -392,6 +416,7 @@ export function useStoryboardMediaGeneration(deps: StoryboardMediaGenerationDeps
       setBatchProgress(undefined);
     }
   }, [projectId, episodeId, characters, scenes, props, modal, effectiveSettings, ttiSelection, itvSelection, ttsSelection, aspectRatio, styleSnapshot, buildUnsupportedShotVideoMessage, message, queueRefreshShotsFromStore, ensureNoActiveBatch, flushQueuedShotSaves, shotsRef, setSubmittingRenderShots, setBatchProgress, getShotVideoCount]);
+  runBatchVideosRef.current = runBatchVideos;
 
   const handleBatchGenerate = useCallback(
     (targetShotIds?: string[]) => runBatchImages(false, targetShotIds),
