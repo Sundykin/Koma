@@ -6,6 +6,7 @@
  *   - 批量：活跃任务去重守门 → batchGenerateShotPrompts → 逐条回写 + 聚合进度
  */
 import { useCallback } from 'react';
+import { computeShotScriptHash } from '../../../services/shotFreshness';
 import type { Shot, ProjectStyleSnapshot } from '../../../types';
 import { generateShotPrompt, batchGenerateShotPrompts } from '../../../services/ShotPromptService';
 import { findActiveTask } from '../../../services/tasksIPC';
@@ -104,6 +105,8 @@ export function useStoryboardPrompts(deps: StoryboardPromptsDeps) {
         const updatedShots = shotsRef.current.map(s => s.id === shotId ? {
           ...s,
           [promptField]: kind === 'image' ? result.imagePrompt : result.videoPrompt,
+          // 记录生成时的脚本指纹：之后脚本被改动 → ShotCard 提示"提示词已滞后"
+          promptScriptHash: computeShotScriptHash(s.scriptLines),
         } : s);
         shotsRef.current = updatedShots;
         setShots(updatedShots);
@@ -160,6 +163,7 @@ export function useStoryboardPrompts(deps: StoryboardPromptsDeps) {
             setShots(prev => prev.map(s => s.id === result.shotId ? {
               ...s,
               [promptField]: kind === 'image' ? result.imagePrompt : result.videoPrompt,
+              promptScriptHash: computeShotScriptHash(s.scriptLines),
             } : s));
           }
         },

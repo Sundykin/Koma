@@ -3,6 +3,7 @@
  * 操作按钮在左侧列直接显示，参考图使用引用样式
  */
 import React, { useMemo, useCallback, useEffect, useRef, useState } from 'react';
+import { isShotPromptStale } from '../../services/shotFreshness';
 import { useTranslation } from 'react-i18next';
 import {
   Tag,
@@ -219,6 +220,8 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
     () => !!shot.videoPrompt?.trim(),
     [shot.videoPrompt]
   );
+  // 脚本与提示词的新鲜度：编辑分镜脚本后指纹变化 → 提示词标滞后（轻提示，不阻断）
+  const promptStale = useMemo(() => isShotPromptStale(shot), [shot]);
   const isFirst = index === 0;
   const isLast = index === totalCount - 1;
 
@@ -688,6 +691,11 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
                 )}
               </div>
               <div className="flex items-center gap-2">
+                {promptStale && (
+                  <Tooltip title="分镜脚本在生成提示词后被修改过，建议重新生成提示词再出图/出视频">
+                    <span className="text-status-warning text-[10px] cursor-help">脚本已改·提示词待更新</span>
+                  </Tooltip>
+                )}
                 <button
                   className="text-status-info hover:opacity-80 text-[11px] font-medium cursor-pointer transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
                   onClick={handleImagePromptClick}

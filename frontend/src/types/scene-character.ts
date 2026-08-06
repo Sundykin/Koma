@@ -136,6 +136,8 @@ export interface Shot {
   duration: number;      // 持续时长(秒)
   imagePrompt?: string;  // 图片生成提示词
   videoPrompt?: string;  // 视频生成提示词
+  /** 生成提示词时的脚本内容指纹（shotFreshness.computeShotScriptHash）——脚本改动后置为滞后提示 */
+  promptScriptHash?: string;
   /**
    * 图片生成模式（默认 normal）：
    *  - 'normal'   普通单图模式

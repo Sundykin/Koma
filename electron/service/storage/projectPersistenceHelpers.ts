@@ -183,6 +183,7 @@ function intToBool(value?: number | null): boolean {
 
 interface ShotRowMetadata {
   inheritPreviousStoryboard?: boolean;
+  promptScriptHash?: string;
 }
 
 function parseShotRowMetadata(raw?: string | null): ShotRowMetadata {
@@ -195,6 +196,9 @@ function parseShotRowMetadata(raw?: string | null): ShotRowMetadata {
       inheritPreviousStoryboard: typeof meta.inheritPreviousStoryboard === 'boolean'
         ? meta.inheritPreviousStoryboard
         : undefined,
+      promptScriptHash: typeof meta.promptScriptHash === 'string' && meta.promptScriptHash
+        ? meta.promptScriptHash
+        : undefined,
     };
   } catch {
     return {};
@@ -205,6 +209,9 @@ function buildShotRowMetadata(shot: Shot): string | undefined {
   const meta: ShotRowMetadata = {};
   if (typeof shot.inheritPreviousStoryboard === 'boolean') {
     meta.inheritPreviousStoryboard = shot.inheritPreviousStoryboard;
+  }
+  if (typeof shot.promptScriptHash === 'string' && shot.promptScriptHash) {
+    meta.promptScriptHash = shot.promptScriptHash;
   }
   return Object.keys(meta).length ? JSON.stringify(meta) : undefined;
 }
@@ -635,6 +642,7 @@ export function shotRowToEntity(
     videoPrompt: row.video_prompt ?? undefined,
     imageMode: (row.image_mode as Shot['imageMode']) ?? undefined,
     inheritPreviousStoryboard: metadata.inheritPreviousStoryboard,
+    promptScriptHash: metadata.promptScriptHash,
     dialogue: row.dialogue ?? undefined,
     emotion: row.emotion ?? undefined,
     confirmed: intToBool(row.confirmed),
