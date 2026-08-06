@@ -605,13 +605,20 @@ describe('shotRenderWorkflow video chain', () => {
     vi.mocked(projectStore.loadShotMeta).mockResolvedValue({
       versions: [{ version: 1 }, { version: 2 }],
     } as any);
+    // 并发下调用顺序不保证，按 shotId 分发：shot-1 失败、shot-2 成功
     vi.mocked(mediaGenerationService.generateVideo)
-      .mockRejectedValueOnce(new Error('第一个视频失败'))
-      .mockResolvedValueOnce({
-        kind: 'video',
-        localPath: '/tmp/shot-2.mp4',
-        createdAt: 2,
-      } as any);
+      .mockImplementation(async (params: { ownerRef?: { ownerId?: string } }) => {
+        // ownerRef.ownerId 是分镜 id（shot-version 场景）
+        const ownerId = params?.ownerRef?.ownerId ?? '';
+        if (ownerId.startsWith('shot-1')) {
+          throw new Error('第一个视频失败');
+        }
+        return {
+          kind: 'video',
+          localPath: '/tmp/shot-2.mp4',
+          createdAt: 2,
+        } as any;
+      });
 
     const onShotComplete = vi.fn();
     const result = await batchRenderShots(

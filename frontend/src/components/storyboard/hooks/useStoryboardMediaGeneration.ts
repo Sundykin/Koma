@@ -381,6 +381,8 @@ export function useStoryboardMediaGeneration(deps: StoryboardMediaGenerationDeps
             mediaSelections: { ttiSelection, itvSelection, ttsSelection },
             styleSnapshot,
             allShots: currentShots,
+            // 并发 2：准备阶段（提示词编译/上传/提交）重叠，GPU 渲染由 ComfyUI 队列串行
+            concurrency: 2,
             onShotComplete: async (item) => {
               setSubmittingRenderShots(prev => {
                 const next = new Set(prev);

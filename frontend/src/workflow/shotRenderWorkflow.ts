@@ -2,6 +2,7 @@
  * 分镜视频生成工作流
  * 纯 ITV 调用：使用已有参考图片（可选）生成视频
  */
+import { runWithConcurrency } from '../utils/concurrency';
 import {
   getMediaAssetDisplaySource,
   getShotScriptText,
@@ -426,46 +427,63 @@ export async function batchRenderShots(
 
   logger.info(`开始批量生成 ${shots.length} 个分镜视频`);
 
-  const results: ShotRenderResult[] = [];
+  // 并发提交（受 concurrency 控制）：准备阶段（提示词编译/上传/提交）可重叠，
+  // GPU 渲染阶段由 ComfyUI 队列自动串行 —— 长批量显著缩短总等待。
+  // results 保持输入顺序（runWithConcurrency 按序返回）。
+  // completed 必须在并发回调前声明（回调里引用它，避免 TDZ）
   let completed = 0;
-
-  for (let i = 0; i < shots.length; i++) {
-    const shot = shots[i];
-
-    let result: ShotRenderResult;
-    try {
-      result = await shotRenderWorkflow(
-        { projectId, episodeId, shot, settings, aspectRatio, mediaSelections, theme, stylePrompt, styleSnapshot, allShots, project },
-        (progress, step) => {
-          const overall = Math.round(((completed + progress / 100) / shots.length) * 100);
-          onProgress(overall, { shotId: shot.id, progress, step });
-        }
-      );
-    } catch (err) {
-      const error = err instanceof Error ? err.message : String(err);
-      logger.error('批量分镜视频单项异常，继续后续分镜', {
-        shotId: shot.id,
-        error,
-      });
-      result = {
-        shotId: shot.id,
+  const results = (await runWithConcurrency(
+    shots.map((shot) => async () => {
+      let result: ShotRenderResult;
+      try {
+        result = await shotRenderWorkflow(
+          { projectId, episodeId, shot, settings, aspectRatio, mediaSelections, theme, stylePrompt, styleSnapshot, allShots, project },
+          (progress, step) => {
+            // completed 在单线程 JS 中按序递增；onProgress 只做展示，无需精确同步
+            const overall = Math.round(((completed + progress / 100) / shots.length) * 100);
+            onProgress(overall, { shotId: shot.id, progress, step });
+          }
+        );
+      } catch (err) {
+        const error = err instanceof Error ? err.message : String(err);
+        logger.error('批量分镜视频单项异常，继续后续分镜', {
+          shotId: shot.id,
+          error,
+        });
+        result = {
+          shotId: shot.id,
+          version: {} as ShotVersion,
+          success: false,
+          error,
+        };
+      }
+      return result;
+    }),
+    Math.max(1, Math.min(_concurrency, shots.length)),
+  )).map((settled, index) => {
+    const shotId = shots[index]?.id ?? '';
+    if (settled.status === 'rejected') {
+      return {
+        shotId,
         version: {} as ShotVersion,
         success: false,
-        error,
+        error: settled.reason instanceof Error ? settled.reason.message : String(settled.reason),
       };
     }
+    return settled.value;
+  });
 
-    results.push(result);
+  // 逐项完成回调（顺序执行，避免 onShotComplete 里的 setState 竞态）
+  for (const result of results) {
     completed++;
-
     const overall = Math.round((completed / shots.length) * 100);
-    onProgress(overall, { shotId: shot.id, progress: 100, step: result.success ? '完成' : '失败' });
+    onProgress(overall, { shotId: result.shotId, progress: 100, step: result.success ? '完成' : '失败' });
     if (onShotComplete) {
       try {
         await onShotComplete(result);
       } catch (err) {
         logger.warn('批量分镜视频单项完成回调失败', {
-          shotId: shot.id,
+          shotId: result.shotId,
           success: result.success,
           error: err instanceof Error ? err.message : String(err),
         });
