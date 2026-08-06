@@ -348,6 +348,19 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
     };
   }, [shots, characters]);
 
+  // 推荐下一步（按生产优先级：拆解覆盖 → 音色 → 脚本 → 提示词 → 时长 → 渲染）
+  const nextStep = useMemo(() => {
+    if (readinessStats.notInShots.length > 0) {
+      return `检查角色未出场：${readinessStats.notInShots.join('、')}`;
+    }
+    if (readinessStats.missingVoice > 0) return '先为缺音色的角色绑定音色';
+    if (readinessStats.missingPhoto > 0) return '先升级缺摄影语言的分镜脚本';
+    if (readinessStats.promptStale > 0) return '重新生成提示词待更新的分镜';
+    if (readinessStats.overDuration > 0) return '校准台词超时长的分镜时长';
+    if (readinessStats.videoCount < shots.length) return `渲染剩余 ${shots.length - readinessStats.videoCount} 个分镜视频`;
+    return undefined;
+  }, [readinessStats, shots.length]);
+
   const renderShotRow = useCallback(
     (index: number, shot: Shot) => {
       const latestShots = shotsForScrollRef.current;
@@ -503,6 +516,11 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
               </span>
             ) : (
               <span className="text-text-secondary font-medium">生产就绪</span>
+            )}
+            {!readinessStats.allReady && nextStep && (
+              <span className="text-status-info" title="按生产优先级推荐的下一步">
+                建议下一步：{nextStep}
+              </span>
             )}
             {!readinessStats.allReady && readinessStats.missingPhoto > 0 && onBulkUpgradeScripts && (
               <button
