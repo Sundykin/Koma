@@ -155,9 +155,9 @@ export interface Shot {
   dialogue?: string;     // 台词（用于 TTS）
   /**
    * 上次出配音时编译出的音色绑定快照（dialogue 里的 @voice_xxx / @char_xxx-音色 解析结果）。
-   * 仅作展示和缓存用，下次再出配音会重新编译覆盖。结构与 AudioMentionCompiler 输出对齐：
-   *   - 单 voice：bindings[0] 的 voice 整段合成，目前的 KomaTTS 一请求一 voice
-   *   - 多 voice：TODO 等支持「按段切 voice + 合并 audio」时再消费 bindings[1..]
+   * 仅作展示和缓存用，下次再出配音会重新编译覆盖。结构与 AudioMentionCompiler 输出对齐。
+   * 注：多音色分段合成已由 scriptLines 角色行 + generateShotAudioWithSegments
+   * （MediaGenerationService）+ concatAudioClips 实现，不消费此处的 bindings[1..]。
    */
   audioBindings?: ShotAudioBinding[];
   emotion?: string;      // 情绪标签
