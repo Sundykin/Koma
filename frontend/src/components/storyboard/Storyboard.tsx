@@ -761,6 +761,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     episodeId,
     characters,
     scenes,
+    props,
     ttiSelection,
     itvSelection,
     ttsSelection,

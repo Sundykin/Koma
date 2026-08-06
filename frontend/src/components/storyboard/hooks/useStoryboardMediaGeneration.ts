@@ -6,10 +6,12 @@
  * 避免 LLM/上游 provider 互相挤压。
  */
 import { useCallback } from 'react';
+import { App as AntApp } from 'antd';
 import type {
-  Shot, Character, Scene, AppSettings, ProjectStyleSnapshot,
+  Shot, Character, Scene, Prop, AppSettings, ProjectStyleSnapshot,
 } from '../../../types';
 import { generateShotImage, batchGenerateShotImages } from '../../../services/ShotGenerationService';
+import { findShotAssetsMissingImages, formatMissingAssetWarning } from '../../../services/shotReference/readiness';
 import { shotRenderWorkflow, batchRenderShots } from '../../../workflow/shotRenderWorkflow';
 import { runWithTask } from '../../../services/taskRunner';
 
@@ -22,6 +24,7 @@ export interface StoryboardMediaGenerationDeps {
   episodeId?: string;
   characters: Character[];
   scenes: Scene[];
+  props?: Prop[];
   ttiSelection?: string;
   itvSelection?: string;
   ttsSelection?: string;
@@ -51,8 +54,9 @@ export interface StoryboardMediaGenerationDeps {
 }
 
 export function useStoryboardMediaGeneration(deps: StoryboardMediaGenerationDeps) {
+  const { modal } = AntApp.useApp();
   const {
-    projectId, episodeId, characters, scenes,
+    projectId, episodeId, characters, scenes, props,
     ttiSelection, itvSelection, ttsSelection, aspectRatio, styleSnapshot, effectiveSettings,
     shotsRef, setShots,
     setSubmittingShots, setSubmittingRenderShots, setShotVideoProgress, setBatchProgress,
@@ -208,6 +212,20 @@ export function useStoryboardMediaGeneration(deps: StoryboardMediaGenerationDeps
         : '所选分镜都已有图片，或没有可用图片提示词');
       return;
     }
+    // 资产就绪检查：被引用但还没有定妆照/场景图/道具图的资产列出来，
+    // 让用户选择"仍然生成"还是先去补图（缺参考图是角色不一致的最大来源）
+    const missingAssets = findShotAssetsMissingImages(targetShots, characters, scenes, props ?? []);
+    if (missingAssets.length > 0) {
+      const proceed = await modal.confirm({
+        title: '部分被引用的资产还没有图片',
+        content: `${formatMissingAssetWarning(missingAssets)}。`
+          + '没有资产图时生成将缺少参考图，角色/场景外观容易前后不一致。'
+          + '建议先在资产面板生成定妆照与场景图。',
+        okText: '仍然生成',
+        cancelText: '去补图',
+      });
+      if (!proceed) return;
+    }
     const shotIds = targetShots.map(s => s.id);
     setSubmittingShots(new Set(shotIds));
     const action = force ? '重新生成' : '生成';
@@ -255,7 +273,7 @@ export function useStoryboardMediaGeneration(deps: StoryboardMediaGenerationDeps
       setSubmittingShots(new Set());
       setBatchProgress(undefined);
     }
-  }, [projectId, episodeId, characters, scenes, ttiSelection, aspectRatio, styleSnapshot, queueRefreshShotsFromStore, ensureNoActiveBatch, message, flushQueuedShotSaves, shotsRef, setSubmittingShots, setBatchProgress, getShotImageCount]);
+  }, [projectId, episodeId, characters, scenes, props, ttiSelection, aspectRatio, styleSnapshot, queueRefreshShotsFromStore, ensureNoActiveBatch, message, modal, flushQueuedShotSaves, shotsRef, setSubmittingShots, setBatchProgress, getShotImageCount]);
 
   /** 批量视频渲染（force=true 重新渲染已有视频的） */
   const runBatchVideos = useCallback(async (force: boolean, targetShotIds?: string[]) => {
