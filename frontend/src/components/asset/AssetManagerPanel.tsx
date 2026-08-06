@@ -683,6 +683,9 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
           onBindExistingScene={handleBindExistingScene}
           onBindExistingProp={handleBindExistingProp}
           generatingIds={generatingIds}
+          canExtract={!!episodeId && !!script}
+          extracting={isExtractingAssets}
+          onExtractAssets={handleExtractAssets}
           projectId={projectId}
         />
         {/* 筛选开关 */}

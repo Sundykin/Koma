@@ -44,6 +44,10 @@ interface AssetListPanelProps {
   onBindExistingProp?: (prop: Prop) => Promise<void> | void;
   /** 正在批量生成图片的资产 id — 卡片显示「生成中」遮罩 */
   generatingIds?: Set<string>;
+  /** 提供时空列表里显示「从剧本提取资产」按钮（需要当前剧集已有剧本） */
+  canExtract?: boolean;
+  extracting?: boolean;
+  onExtractAssets?: () => void;
   projectId: string;
 }
 
@@ -65,6 +69,9 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
   onBindExistingScene,
   onBindExistingProp,
   generatingIds,
+  canExtract = false,
+  extracting = false,
+  onExtractAssets,
   projectId,
 }) => {
   const { t } = useTranslation();
@@ -461,6 +468,25 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
     );
   };
 
+  // 空态：可提取时给出直接动作，而不是只显示一句"暂无"
+  const renderEmptyState = (emptyText: string) => (
+    <div className="h-full flex items-center justify-center">
+      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={emptyText}>
+        {canExtract && onExtractAssets && (
+          <Button
+            type="primary"
+            ghost
+            size="small"
+            loading={extracting}
+            onClick={onExtractAssets}
+          >
+            {extracting ? t('asset.extractingAssets') : t('asset.extractAssetsFromScript')}
+          </Button>
+        )}
+      </Empty>
+    </div>
+  );
+
   // 角色列表 - 网格布局
   const renderCharacters = () => (
     <div className="h-full flex flex-col">
@@ -482,9 +508,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
             ))}
           </div>
         ) : (
-          <div className="h-full flex items-center justify-center">
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('asset.noCharacters')} />
-          </div>
+          renderEmptyState(t('asset.noCharacters'))
         )}
       </div>
     </div>
@@ -510,9 +534,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
             ))}
           </div>
         ) : (
-          <div className="h-full flex items-center justify-center">
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('asset.noScenes')} />
-          </div>
+          renderEmptyState(t('asset.noScenes'))
         )}
       </div>
     </div>
@@ -538,9 +560,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
             ))}
           </div>
         ) : (
-          <div className="h-full flex items-center justify-center">
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('asset.noProps')} />
-          </div>
+          renderEmptyState(t('asset.noProps'))
         )}
       </div>
     </div>
