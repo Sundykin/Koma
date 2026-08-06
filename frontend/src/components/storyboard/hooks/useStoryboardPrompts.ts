@@ -9,7 +9,7 @@ import { useCallback, useState } from 'react';
 import { upgradeShotScript } from '../../../services/shotScriptUpgrade';
 import { extractShotPhotography, shotSizeToShotType } from '../../../services/photographyElements';
 import { runWithConcurrency } from '../../../utils/concurrency';
-import { computeShotScriptHash } from '../../../services/shotFreshness';
+import { computeShotScriptHash, computeShotVoiceHash } from '../../../services/shotFreshness';
 import type { Shot, ProjectStyleSnapshot, ShotScriptLine } from '../../../types';
 import { generateShotPrompt, batchGenerateShotPrompts } from '../../../services/ShotPromptService';
 import { findActiveTask } from '../../../services/tasksIPC';
@@ -246,9 +246,10 @@ export function useStoryboardPrompts(deps: StoryboardPromptsDeps) {
           ...s,
           scriptLines: result.scriptLines!,
           ...(mappedShotType ? { shotType: mappedShotType } : {}),
-          // 脚本变了 → 提示词/配音新鲜度标记清掉（等待重新生成）
-          promptScriptHash: undefined,
-          voiceScriptHash: undefined,
+          // 记录升级前的脚本/台词指纹：升级后指纹不同 → 立即判提示词/配音"待更新"
+          // （清空指纹会因 isXxxStale 的"无指纹不算滞后"而不显示待更新——那是 bug）
+          promptScriptHash: computeShotScriptHash(s.scriptLines),
+          voiceScriptHash: computeShotVoiceHash(s),
         } : s);
         shotsRef.current = updatedShots;
         setShots(updatedShots);
@@ -316,8 +317,8 @@ export function useStoryboardPrompts(deps: StoryboardPromptsDeps) {
           ...s,
           scriptLines: upgradeById.get(s.id)!,
           ...(shotSizeToShotType({ scriptLines: upgradeById.get(s.id)! }) ? { shotType: shotSizeToShotType({ scriptLines: upgradeById.get(s.id)! })! } : {}),
-          promptScriptHash: undefined,
-          voiceScriptHash: undefined,
+          promptScriptHash: computeShotScriptHash(s.scriptLines),
+          voiceScriptHash: computeShotVoiceHash(s),
         } : s);
         shotsRef.current = updatedShots;
         setShots(updatedShots);
