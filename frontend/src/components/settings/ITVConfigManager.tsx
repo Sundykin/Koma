@@ -252,7 +252,7 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
       });
     }
     setModalVisible(true);
-  }, [channelDefinitions, configs, form, setEditingChannel, setModalVisible]);
+  }, [channelDefinitions, form, setEditingChannel, setModalVisible]);
 
   const handleProviderChange = useCallback((providerType: string) => {
     const definition = definitionMap.get(providerType);
@@ -388,7 +388,7 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
       if (err?.errorFields) return;
       message.error(`${t('common.saveFailed')}: ${err?.message || String(err)}`);
     }
-  }, [definitionMap, editingChannel, form, loadConfigs, message, onConfigChange, setModalVisible, settings?.mediaDefaults?.itv, t]);
+  }, [definitionMap, editingChannel, form, loadConfigs, message, normalizeModels, onConfigChange, setModalVisible, settings?.mediaDefaults?.itv, t]);
 
   const handleDelete = useCallback(async (id: string) => {
     try {

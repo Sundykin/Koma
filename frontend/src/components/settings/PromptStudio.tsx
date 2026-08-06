@@ -8,7 +8,7 @@
  * - 新建自定义模板（id 全新，分类受控选择）
  * - 删除自定义模板（仅自定义可删，默认不可删）
  */
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   App,
   Alert,
@@ -78,19 +78,19 @@ export const PromptStudio: React.FC = () => {
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createForm] = Form.useForm<NewTemplateFormValues>();
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     const data = await loadPromptTemplates();
     setTemplates(data);
-    if (!selectedId && Object.keys(data).length > 0) {
-      // 默认选中第一个有内容的分组的第一个模板
-      const firstId = Object.keys(data)[0];
-      setSelectedId(firstId);
-    }
-  };
+    // 默认选中第一个模板（仅在尚未选中时；用函数式更新避免闭包读取 selectedId）
+    setSelectedId(prev => {
+      if (prev || Object.keys(data).length === 0) return prev;
+      return Object.keys(data)[0];
+    });
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   // 切换模板时同步编辑内容 + 校验
   useEffect(() => {

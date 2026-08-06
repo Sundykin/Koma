@@ -91,8 +91,8 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
   const [videoOutputPath, setVideoOutputPath] = useState('');
   const [draftOutputPath, setDraftOutputPath] = useState('');
 
-  // 获取可用的草稿导出器
-  const draftExporters = exporterRegistry.getAll();
+  // 获取可用的草稿导出器（registry 为静态注册表，memo 避免每轮渲染新数组触发下游 effect）
+  const draftExporters = useMemo(() => exporterRegistry.getAll(), []);
 
   // 检测高级特性兼容性
   const compatibilityReport = useMemo(() => checkExportCompatibility(tracks), [tracks]);
@@ -119,7 +119,9 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
       setVideoOutputPath('');
       setDraftOutputPath('');
     }
-  }, [open]);
+    // 依赖画布宽高原始值而非 canvasSize 对象（父组件每轮渲染新建对象）：
+    // 仅当比例真实变化时才同步重置表单
+  }, [open, canvasSize.width, canvasSize.height, draftExporters, draftForm, videoForm]);
 
   // 选择视频输出路径
   const handleSelectVideoOutput = useCallback(async () => {
@@ -210,7 +212,7 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
       exporterRef.current?.dispose();
       exporterRef.current = null;
     }
-  }, [duration, message, onClose, tracks, videoForm]);
+  }, [duration, message, modal, onClose, tracks, videoForm]);
 
   // 草稿导出
   const handleDraftExport = useCallback(async () => {
@@ -384,7 +386,7 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
     } finally {
       setExporting(false);
     }
-  }, [draftForm, tracks, canvasSize, onClose]);
+  }, [draftForm, tracks, canvasSize, onClose, message, modal]);
 
   const handleExport = useCallback(() => {
     if (exportType === 'video') {

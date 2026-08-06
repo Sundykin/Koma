@@ -71,6 +71,9 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
   useEffect(() => {
     setLocalScript(episode?.scriptText || '');
     lastSavedRef.current = episode?.scriptText || '';
+    // 故意不依赖 episode?.scriptText：保存回写会更新父级 episode 对象，
+    // 若依赖它会用磁盘文本覆盖用户正在输入的本地草稿
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [episode?.id]);
 
   // 解析任务的 loading 来自任务表投影 —— 切走再回来无需重新同步
@@ -202,6 +205,9 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
         }
       }
     };
+    // 故意不依赖 episode?.id：剧集切换的保存由 flushSave 负责，
+    // 若依赖它 cleanup 会在每次切集时与 flushSave 重复保存
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project.id]);
 
   // AI 随机生成

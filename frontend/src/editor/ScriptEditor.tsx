@@ -31,6 +31,7 @@ export interface ScriptEditorProps {
   enableCameraCommands?: boolean;
   // 样式选项
   showLineNumbers?: boolean;
+  /** @deprecated 编辑器样式已全量走 CSS 变量自动适配明暗主题，此参数不再生效 */
   darkTheme?: boolean;
   // 样式
   className?: string;
@@ -50,7 +51,6 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
   onMentionClick,
   enableCameraCommands = true,
   showLineNumbers = true,
-  darkTheme = false,
   className,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -59,6 +59,8 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
   const rootClassName = ['scriptEditorHost', className].filter(Boolean).join(' ');
   // 用于动态更新 mention 相关扩展的 Compartment
   const mentionCompartmentRef = useRef(new Compartment());
+  // 用于动态更新基础扩展（readOnly/placeholder/行号等）的 Compartment
+  const baseCompartmentRef = useRef(new Compartment());
   // 记录最后一次从编辑器输出的值，用于避免循环更新
   const lastOutputRef = useRef(value);
   // 标记正在进行外部 value 同步，此时不应触发 onChange（避免反向覆盖数据）
@@ -214,20 +216,21 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
     }
 
     return exts;
-  }, [minHeight, maxHeight, placeholder, readOnly, showLineNumbers, darkTheme]);
+  }, [minHeight, maxHeight, placeholder, readOnly, showLineNumbers]);
 
   // 初始化编辑器
   useEffect(() => {
     if (!containerRef.current) return;
 
-    const extensionCompartment = mentionCompartmentRef.current;
+    const mentionCompartment = mentionCompartmentRef.current;
+    const baseCompartment = baseCompartmentRef.current;
 
     // 创建编辑器
     const state = EditorState.create({
       doc: value,
       extensions: [
-        ...baseExtensions,
-        extensionCompartment.of(editorExtensions),
+        baseCompartment.of(baseExtensions),
+        mentionCompartment.of(editorExtensions),
       ],
     });
 
@@ -242,7 +245,20 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
       view.destroy();
       viewRef.current = null;
     };
-  }, []); // 只在挂载时创建
+    // 编辑器仅挂载时创建一次：value 的后续变更由 doc 同步 effect 处理，
+    // baseExtensions/editorExtensions 的变更由下方 compartment reconfigure 处理；
+    // 若加入依赖会每次输入都销毁重建整个 EditorView
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // baseExtensions 变化（readOnly/placeholder/行号/高度等）→ compartment 热替换
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    view.dispatch({
+      effects: baseCompartmentRef.current.reconfigure(baseExtensions),
+    });
+  }, [baseExtensions]);
 
   // 同步外部 value 变化（仅处理外部控制的更新，如撤销/重置）
   useEffect(() => {

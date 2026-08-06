@@ -191,7 +191,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
     if (seed.duration) setDuration(seed.duration);
     if (seed.count) setCount(seed.count);
     textareaRef.current?.focus();
-  }, [seed?.seedAt]); // 仅在 seedAt 变化时应用
+  }, [seed]); // seed 由 ChatPage setComposerSeed 整体替换（必带新 seedAt），对象变化即应用
 
   // 切换模型导致 duration 不在 spec 内 → 自动 clamp 到合法值
   useEffect(() => {

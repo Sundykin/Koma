@@ -117,6 +117,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
         fetchBalance(undefined, info.defaultChannelIds.llm);
       }
     });
+    // 仅挂载时初始化一次：fetchBalance 每轮渲染重建、onActivationChange 为父级回调，
+    // 加入依赖会导致每次渲染都重复拉取激活状态/余额（setState → 再渲染 → 死循环）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleActivate = async () => {

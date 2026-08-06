@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Button,
   App,
@@ -57,6 +57,14 @@ interface SectionDef {
   group: string;
 }
 
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
 export const SettingsPage: React.FC<SettingsPageProps> = ({
   settings,
   onSave,
@@ -71,7 +79,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const isClickScrolling = useRef(false);
 
-  const sections: SectionDef[] = [
+  const sections = useMemo<SectionDef[]>(() => [
     { key: 'appearance-theme', icon: <SkinOutlined />, label: '外观/主题', group: '外观' },
     { key: 'models-llm', icon: <ExperimentOutlined />, label: t('settings.llm'), group: t('settings.modelConfig') },
     { key: 'models-tti', icon: <PictureOutlined />, label: t('settings.tti'), group: t('settings.modelConfig') },
@@ -87,7 +95,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     // { key: 'system-plugin-market', icon: <BlockOutlined />, label: '插件市场', group: t('settings.system') },
     { key: 'system-mcp', icon: <ApiOutlined />, label: t('settings.mcpTools'), group: t('settings.system') },
     { key: 'system-about', icon: <FileTextOutlined />, label: '关于', group: t('settings.system') },
-  ];
+  ], [t]);
 
   // Group sections for anchor display
   const groups = sections.reduce<{ group: string; items: SectionDef[] }[]>((acc, s) => {
@@ -100,7 +108,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     return acc;
   }, []);
 
-  const calcStorageSize = async (path?: string) => {
+  const calcStorageSize = useCallback(async (path?: string) => {
     const targetPath = path || getStorageConfig()?.rootPath;
     if (!targetPath || !electronService.isElectron()) {
       setStorageSize('N/A');
@@ -113,7 +121,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     } catch {
       setStorageSize(t('common.calcFailed'));
     }
-  };
+  }, [t]);
 
   useEffect(() => {
     const config = getStorageConfig();
@@ -121,15 +129,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
       setStoragePath(normalizePath(config.rootPath) || '~/.koma');
     }
     calcStorageSize();
-  }, []);
-
-  const formatBytes = (bytes: number): string => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
+  }, [calcStorageSize]);
 
   const handleChangeStoragePath = async () => {
     if (!electronService.isElectron()) {

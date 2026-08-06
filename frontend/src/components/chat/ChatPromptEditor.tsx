@@ -350,6 +350,9 @@ export const ChatPromptEditor = forwardRef<ChatPromptEditorRef, ChatPromptEditor
       view.destroy();
       viewRef.current = null;
     };
+    // 编辑器仅挂载时创建一次：value/disabled/placeholder 的后续变更由下方专用同步 effect
+    // （doc 替换 / compartment reconfigure）处理；若加入依赖会每次击键都重建整个 EditorView
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 外部 value 变化（如"重新编辑"灌入）时同步进编辑器

@@ -342,7 +342,7 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
       logger.error('上传出错', err);
       message.error({ content: '上传出错', key: 'upload' });
     }
-  }, [projectId, episodeId, addUploadedAsset]);
+  }, [projectId, episodeId, addUploadedAsset, message]);
 
   // 获取选中的 Clip
   const selectedClip = useMemo(() => {
@@ -420,6 +420,9 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
     };
 
     loadTimeline();
+    // 故意不依赖 message：App.useApp() 在无 <App> 包裹的环境（如单测）每轮渲染返回新实例，
+    // 加入依赖会让本 effect 每次渲染都重跑 loadTimeline、用存储数据覆盖本地编辑
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, episodeId, shots, shotSelectionSignature]); // 分镜当前版本变更时同步自动生成的 clip 源
 
   // 自动保存（防抖 1 秒）

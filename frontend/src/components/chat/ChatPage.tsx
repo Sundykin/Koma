@@ -535,7 +535,7 @@ export const ChatPage: React.FC = () => {
       message.error(t('chat.sendFailed', { error: errorMessage }));
       logger.error('发送消息失败', err);
     }
-  }, [appendAssistantMessage, appendUserMessage, chatImageRefs, isReady, itvSelectionKey, selectedConfig, sendStream, t, ttiSelectionKey, updateMessage, ttiModelOptions, itvModelOptions, startPollingForMessage]);
+  }, [appendAssistantMessage, appendUserMessage, chatImageRefs, isReady, itvSelectionKey, selectedConfig, sendStream, t, ttiSelectionKey, updateMessage, ttiModelOptions, itvModelOptions, startPollingForMessage, createHistorySession, currentSessionId]);
 
   // 把 handleSend 暴露到 ref 给前面定义的 handleMediaRegenerate 使用
   useEffect(() => {

@@ -213,7 +213,7 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
       setWorkflowData({});
     }
     setModalVisible(true);
-  }, [channelDefinitions, configs, form, setEditingChannel, setModalVisible]);
+  }, [channelDefinitions, form, setEditingChannel, setModalVisible]);
 
   const handleProviderChange = useCallback((providerType: string) => {
     const definition = definitionMap.get(providerType);
@@ -335,7 +335,7 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
       if (err?.errorFields) return;
       message.error(`${t('common.saveFailed')}: ${err?.message || String(err)}`);
     }
-  }, [definitionMap, editingChannel, form, loadConfigs, message, onConfigChange, setModalVisible, settings?.mediaDefaults?.tti, t, workflowData]);
+  }, [definitionMap, editingChannel, form, loadConfigs, message, normalizeModels, onConfigChange, setModalVisible, settings?.mediaDefaults?.tti, t, workflowData]);
 
   const handleDelete = useCallback(async (id: string) => {
     try {
@@ -391,7 +391,7 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
     } finally {
       setTestingId(null);
     }
-  }, [configs, message, setTestingId, t]);
+  }, [message, setTestingId, t]);
 
   const renderModelTags = useCallback((models: ChannelModelDefinition[], defaultModelId?: string) => (
     <Space wrap size={[6, 6]}>

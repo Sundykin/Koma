@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Select, Space, Tag, Typography, Alert } from 'antd';
 import { RobotOutlined, StarFilled } from '@ant-design/icons';
 import { loadSettings } from '../../store/globalStore';
@@ -36,10 +36,6 @@ export const ProjectLLMSelector: React.FC<ProjectLLMSelectorProps> = ({
     loadConfigs();
   }, []);
 
-  useEffect(() => {
-    updateSelectedConfig();
-  }, [currentSelection, configs, settings]);
-
   const loadConfigs = async () => {
     setLoading(true);
     try {
@@ -51,7 +47,7 @@ export const ProjectLLMSelector: React.FC<ProjectLLMSelectorProps> = ({
     }
   };
 
-  const updateSelectedConfig = async () => {
+  const updateSelectedConfig = useCallback(async () => {
     if (!settings) return;
 
     const selectionKey = currentSelection || (() => {
@@ -70,7 +66,11 @@ export const ProjectLLMSelector: React.FC<ProjectLLMSelectorProps> = ({
       setSelectedConfig(null);
       setConfigDeleted(true);
     }
-  };
+  }, [settings, currentSelection, configs]);
+
+  useEffect(() => {
+    updateSelectedConfig();
+  }, [updateSelectedConfig]);
 
   const handleChange = (value: string) => {
     if (value === '__default__') {

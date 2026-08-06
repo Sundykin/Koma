@@ -181,7 +181,7 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
       });
     }
     setModalVisible(true);
-  }, [channelDefinitions, configs, form, setEditingChannel, setModalVisible]);
+  }, [channelDefinitions, form, setEditingChannel, setModalVisible]);
 
   const handleProviderChange = useCallback((providerType: string) => {
     const definition = definitionMap.get(providerType);
@@ -293,7 +293,7 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
       if (err?.errorFields) return;
       message.error(`保存失败: ${formatChannelError(err, t)}`);
     }
-  }, [definitionMap, editingChannel, form, loadConfigs, message, onConfigChange, setModalVisible, settings?.mediaDefaults?.llm]);
+  }, [definitionMap, editingChannel, form, loadConfigs, message, normalizeModels, onConfigChange, setModalVisible, settings?.mediaDefaults?.llm, t]);
 
   const handleDelete = useCallback(async (id: string) => {
     try {
@@ -304,7 +304,7 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
     } catch (err: any) {
       message.error(`删除失败: ${formatChannelError(err, t)}`);
     }
-  }, [loadConfigs, message, onConfigChange]);
+  }, [loadConfigs, message, onConfigChange, t]);
 
   const handleSetDefault = useCallback(async (channelId: string, modelId?: string) => {
     if (!modelId) {
@@ -347,7 +347,7 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
     } finally {
       setTestingId(null);
     }
-  }, [message, setTestingId]);
+  }, [message, setTestingId, t]);
 
   const renderModelTags = useCallback((models: ChannelModelDefinition[], defaultModelId?: string) => (
     <Space wrap size={[6, 6]}>

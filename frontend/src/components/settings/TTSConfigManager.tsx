@@ -171,7 +171,7 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
       });
     }
     setModalVisible(true);
-  }, [channelDefinitions, configs, form, setEditingChannel, setModalVisible]);
+  }, [channelDefinitions, form, setEditingChannel, setModalVisible]);
 
   const handleProviderChange = useCallback((providerType: string) => {
     const definition = definitionMap.get(providerType);
@@ -272,7 +272,7 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
       if (err?.errorFields) return;
       message.error(`${t('common.saveFailed')}: ${err?.message || String(err)}`);
     }
-  }, [definitionMap, editingChannel, form, loadConfigs, message, onConfigChange, setModalVisible, settings?.mediaDefaults?.tts, t]);
+  }, [definitionMap, editingChannel, form, loadConfigs, message, normalizeModels, onConfigChange, setModalVisible, settings?.mediaDefaults?.tts, t]);
 
   const handleDelete = useCallback(async (id: string) => {
     try {

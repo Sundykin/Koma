@@ -57,6 +57,15 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
   // 当前选中的剧集（用于中间区域剧本编辑）
   const [selectedEpisode, setSelectedEpisode] = useState<Episode | null>(null);
 
+  // 最新值 refs：让"按 project.id 触发一次"的初始化 effect 读到当前回调与选中态，
+  // 避免把每轮渲染都重建的父级回调加进依赖导致重复拉取剧集列表
+  const selectedEpisodeRef = useRef<Episode | null>(null);
+  selectedEpisodeRef.current = selectedEpisode;
+  const onEnterEpisodeRef = useRef(onEnterEpisode);
+  onEnterEpisodeRef.current = onEnterEpisode;
+  const onScriptChangeRef = useRef(onScriptChange);
+  onScriptChangeRef.current = onScriptChange;
+
   // 触发当前剧本解析（按钮在右侧资产面板顶部，逻辑由 ScriptWorkbench 通过 ref 暴露）
   const handleAnalyzeClick = useCallback(() => {
     if (!selectedEpisode) {
@@ -68,20 +77,23 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
 
   // 初始加载时自动选中第一集
   useEffect(() => {
+    let cancelled = false;
     const loadFirstEpisode = async () => {
       try {
         const episodes = await listEpisodes(project.id);
-        if (episodes.length > 0 && !selectedEpisode) {
-          setSelectedEpisode(episodes[0]);
-          // 同步到外层，让后续步骤的 ctx.activeEpisode 对齐
-          onEnterEpisode(episodes[0]);
-          onScriptChange?.(episodes[0].scriptText || '');
-        }
+        if (cancelled || episodes.length === 0 || selectedEpisodeRef.current) return;
+        setSelectedEpisode(episodes[0]);
+        // 同步到外层，让后续步骤的 ctx.activeEpisode 对齐
+        onEnterEpisodeRef.current(episodes[0]);
+        onScriptChangeRef.current?.(episodes[0].scriptText || '');
       } catch (err) {
         logger.error('加载剧集失败:', err);
       }
     };
     loadFirstEpisode();
+    return () => {
+      cancelled = true;
+    };
   }, [project.id]);
 
   // 点击剧集：先保存当前内容，再从磁盘加载最新数据后切换

@@ -96,7 +96,7 @@ export const EpisodeSplitWizard: React.FC<EpisodeSplitWizardProps> = ({
       message.error(`分析失败: ${errorMessage}`);
       setStep('config');
     }
-  }, [script, targetCount, splitStrategy, message]);
+  }, [script, targetCount, splitStrategy, message, projectId]);
 
   // 创建剧集
   const handleCreateEpisodes = useCallback(async () => {

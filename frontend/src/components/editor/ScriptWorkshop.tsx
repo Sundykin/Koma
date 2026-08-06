@@ -87,17 +87,7 @@ export const ScriptWorkshop: React.FC<ScriptWorkshopProps> = ({
   const [style, setStyle] = useState('治愈');
   const [duration, setDuration] = useState('3');
 
-  // 加载剧本版本历史
-  useEffect(() => {
-    loadVersions();
-  }, [projectId]);
-
-  // 同步初始剧本
-  useEffect(() => {
-    setScript(initialScript);
-  }, [initialScript]);
-
-  const loadVersions = async () => {
+  const loadVersions = useCallback(async () => {
     if (!electronService.isElectron()) {
       const data = localStorage.getItem(getScriptVersionsKey(projectId));
       if (data) {
@@ -119,7 +109,17 @@ export const ScriptWorkshop: React.FC<ScriptWorkshopProps> = ({
     } catch {
       // ignore
     }
-  };
+  }, [projectId]);
+
+  // 加载剧本版本历史
+  useEffect(() => {
+    loadVersions();
+  }, [loadVersions]);
+
+  // 同步初始剧本
+  useEffect(() => {
+    setScript(initialScript);
+  }, [initialScript]);
 
   const saveVersion = async (content: string, description?: string) => {
     const newVersion: ScriptVersion = {

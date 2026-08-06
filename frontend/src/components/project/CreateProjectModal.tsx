@@ -63,9 +63,13 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
         if (cancelled) return;
 
         setThemePresets(presets);
-        if (!presets.some((preset) => preset.id === selectedTheme)) {
-          setSelectedTheme(presets[0]?.id || DEFAULT_THEME_PRESET_ID);
-        }
+        // 用函数式更新校验当前选中主题，避免闭包读取 selectedTheme
+        // （否则 effect 依赖它会在每次切换主题时重拉 presets + 风格图）
+        setSelectedTheme((prev) => (
+          presets.some((preset) => preset.id === prev)
+            ? prev
+            : (presets[0]?.id || DEFAULT_THEME_PRESET_ID)
+        ));
 
         // 拉取每个 preset 的当前生效风格图（与设置面板逻辑一致）
         const imageEntries = await Promise.all(presets.map(async (preset) => {

@@ -157,6 +157,9 @@ export const SimplePlayer: React.FC<PlayerProps> = ({
       rendererRef.current = null;
       audioRef.current = null;
     };
+    // 引擎仅挂载时创建一次：duration 的后续变更由下方专用同步 effect
+    // （engineRef.current.duration = duration）处理；若加入依赖会销毁重建整个引擎
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 更新画布尺寸（同时同步给 renderer，避免 renderer 内部 width/height 与 DOM 失配）

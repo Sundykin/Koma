@@ -592,7 +592,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
         window.removeEventListener('mouseup', handleResizeUp);
       };
     }
-  }, [dragState, resizeState, onUpdateClip, onMoveClip, pixelsPerSecond, snapEnabled, findSnapPoint, tracks]);
+  }, [dragState, resizeState, onUpdateClip, onMoveClip, pixelsPerSecond, snapEnabled, findSnapPoint, tracks, onDragStateChange]);
 
   const handleClipMouseDown = (e: React.MouseEvent, clip: Clip) => {
     if (e.button !== 0) return;
