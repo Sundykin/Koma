@@ -77,7 +77,7 @@ function ScriptNodeInner({ id, data, selected }: NodeProps) {
   const availableShotIds = useMemo(() => new Set(shots.map(shot => shot.id)), [shots]);
   const effectiveSelectedShotIds = useMemo(() => {
     return selectedShotIds.filter(shotId => availableShotIds.has(shotId));
-  }, [availableShotIds, selectedShotIds, shots]);
+  }, [availableShotIds, selectedShotIds]);
   const previewLine = shots[0]?.description
     || shots[0]?.title
     || (runState?.result?.kind === 'storyboard' ? String(runState.result.text ?? '').trim() : '')

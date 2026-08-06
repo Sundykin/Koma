@@ -173,7 +173,7 @@ export function useImageNodeEditorLibTVTools({
       ...previous,
       ...patch,
     }));
-  }, []);
+  }, [setRelightValues]);
 
   const applyRelightPreset = useCallback((preset: LinghuiImageToolPresetDef) => {
     const relight = normalizeLinghuiImageRelightConfig(preset.properties?.relight ?? DEFAULT_LINGHUI_IMAGE_RELIGHT_CONFIG);
@@ -184,7 +184,7 @@ export function useImageNodeEditorLibTVTools({
     setRelightSceneActive(Boolean(preset.properties?.relight?.direction));
     setRelightBrightnessActive(typeof preset.properties?.relight?.brightness === 'number');
     setRelightColorActive(Boolean(preset.properties?.relight?.lightColor && preset.properties.relight.lightColor !== DEFAULT_LINGHUI_IMAGE_RELIGHT_CONFIG.lightColor));
-  }, []);
+  }, [setRelightPresetLabel, setRelightValues, setRelightPrompt, setRelightReferenceImage, setRelightSceneActive, setRelightBrightnessActive, setRelightColorActive]);
 
   useEffect(() => {
     if (multiAngleTTISelection || multiAngleProviders.length === 0) {
@@ -284,7 +284,7 @@ export function useImageNodeEditorLibTVTools({
     setOutpaintPresetLabel(preset.label);
     setOutpaintAspectRatio(String(preset.properties?.aspectRatio ?? aspectRatio));
     setOutpaintResolution(String(preset.properties?.resolution ?? resolution));
-  }, [aspectRatio, resolution]);
+  }, [aspectRatio, resolution, setOutpaintPresetLabel, setOutpaintAspectRatio, setOutpaintResolution]);
 
   const handleSelectGenericPreset = useCallback((preset: LinghuiImageToolPresetDef) => {
     setGenericPresetLabel(preset.label);
@@ -295,7 +295,7 @@ export function useImageNodeEditorLibTVTools({
     if (preset.properties?.resolution) {
       setGenericResolution(String(preset.properties.resolution));
     }
-  }, []);
+  }, [setGenericPresetLabel, setGenericAspectRatio, setGenericResolution]);
 
   const handleApplyOutpaintPreset = useCallback(() => {
     const preset = outpaintPresets.find(item => item.label === outpaintPresetLabel) ?? outpaintPresets[0];

@@ -166,7 +166,7 @@ export const LinghuiPromptEditor: React.FC<LinghuiPromptEditorProps> = ({
       view.destroy();
       editorRef.current = null;
     };
-  }, []);
+  }, [baseExtensions, referenceExtension, value]);
 
   useEffect(() => {
     const view = editorRef.current;

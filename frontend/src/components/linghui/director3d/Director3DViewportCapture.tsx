@@ -245,7 +245,7 @@ export const CaptureRenderer: React.FC<CaptureRendererProps> = ({ scene, texture
     disposeSceneGraph(offscreenScene);
     offscreenScene.clear();
     return dataUrl;
-  }, [cameraStateRef, scene, texture]);
+  }, [cameraStateRef, texture]);
 
   useEffect(() => {
     registerCapture(capture);

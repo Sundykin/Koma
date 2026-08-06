@@ -166,7 +166,7 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
     };
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
-  }, [flushWorkspaceSave]);
+  }, [flushWorkspaceSave, pendingSaveRef]);
 
   const updateWorkspaceExecution = useCallback((
     nextRuns: Record<string, LinghuiNodeRunState>,

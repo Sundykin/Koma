@@ -60,7 +60,7 @@ function VideoClipNodeInner({ id, data, selected }: NodeProps) {
   const { updateNodeData } = useLinghuiNodeMutation();
   const isConnectTarget = useLinghuiConnectTarget(id);
   const status = runState?.status ?? 'idle';
-  const clips = props.clips ?? [];
+  const clips = useMemo(() => props.clips ?? [], [props.clips]);
   const primaryVideo = getLinghuiResultPrimaryMedia(runState?.result);
   const resultSource = String(primaryVideo?.source ?? props.source ?? '').trim();
   const resultPosterSource = String(primaryVideo?.posterSource ?? props.posterSource ?? '').trim();

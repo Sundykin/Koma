@@ -60,7 +60,7 @@ function HookProbe({
   useEffect(() => {
     if (!openOnMount) return;
     interactions.openNodeEditor(node.id);
-  }, [node.id, openOnMount]);
+  }, [node.id, openOnMount, interactions]);
 
   useEffect(() => {
     onSelection(selection);

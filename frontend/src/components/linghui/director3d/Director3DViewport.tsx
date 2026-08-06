@@ -208,6 +208,8 @@ export const Director3DViewport = forwardRef<Director3DViewportHandle, Director3
     ref,
   ) {
     const cameraModeRef = useRef<'output' | 'editor'>(cameraMode);
+    // 刻意只取初值：初始视角只读一次；scene.camera 后续变化由下面的 mode effect 重置视角。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     const initialOrbit = useMemo(() => resolveOrbitCameraState(scene.camera), []);
     const yawTargetRef = useRef(initialOrbit.yaw);
     const pitchTargetRef = useRef(initialOrbit.pitch);

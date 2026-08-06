@@ -36,7 +36,7 @@ export const LinghuiGridSplitStoryComposer: React.FC<LinghuiGridSplitStoryCompos
   // 切换 preset 时清空草稿
   useEffect(() => {
     if (preset) setDraft('');
-  }, [preset?.scene]);
+  }, [preset]);
 
   const handleConfirm = () => {
     if (!preset) return;

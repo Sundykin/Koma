@@ -59,10 +59,13 @@ export function useLinghuiPageBootstrap(params: {
 
     bootstrap();
 
+    // ref 对象本身稳定；cleanup 时通过它读 latest timer（而不是在 effect 创建时固化 .current）
+    const timerRef = saveTimerRef;
     return () => {
       mounted = false;
-      if (saveTimerRef.current) {
-        window.clearTimeout(saveTimerRef.current);
+      const pendingTimer = timerRef.current;
+      if (pendingTimer) {
+        window.clearTimeout(pendingTimer);
       }
       onCleanup();
     };

@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import type { Dispatch, RefObject, SetStateAction } from 'react';
-import type { Node, ReactFlowInstance, Viewport } from '@xyflow/react';
+import type { Node, ReactFlowInstance } from '@xyflow/react';
 import {
   type LinghuiCanvasMenuState,
   type LinghuiPendingGroupFrame,
@@ -15,10 +15,11 @@ interface UseLinghuiCanvasOverlayStateParams {
   hostRef: RefObject<HTMLDivElement | null>;
   reactFlow: ReactFlowInstance;
   nodes: Node[];
+  /** 调用方会传入；本 hook 不消费（历史遗留参数，保留接口兼容） */
+  viewport?: unknown;
   selectedNodeIds: string[];
   pendingGroupFrame: LinghuiPendingGroupFrame | null;
   canvasRect: DOMRect | null;
-  viewport: Viewport;
 }
 
 function resolveSetterValue<T>(value: SetStateAction<T>, currentValue: T): T {
@@ -34,7 +35,6 @@ export function useLinghuiCanvasOverlayState({
   selectedNodeIds,
   pendingGroupFrame,
   canvasRect,
-  viewport,
 }: UseLinghuiCanvasOverlayStateParams) {
   const contextMenu = useLinghuiCanvasStore(state => state.contextMenu);
   const quickCreate = useLinghuiCanvasStore(state => state.quickCreate);
@@ -75,7 +75,7 @@ export function useLinghuiCanvasOverlayState({
       return pendingGroupFrame.selectionIds;
     }
     return selectedNodeIds;
-  }, [contextMenu?.nodeId, contextMenu?.selectionIds, pendingGroupFrame?.selectionIds, selectedNodeIds]);
+  }, [contextMenu?.kind, contextMenu?.nodeId, contextMenu?.selectionIds, pendingGroupFrame?.selectionIds, selectedNodeIds]);
 
   const quickCreateCatalog = useMemo(() => {
     return resolveLinghuiQuickCreateCatalog(quickCreate?.sourceConnection?.sourceDataType);
@@ -91,7 +91,7 @@ export function useLinghuiCanvasOverlayState({
       '--linghui-pending-group-width': `${Math.max(0, bottomRight.x - topLeft.x)}px`,
       '--linghui-pending-group-height': `${Math.max(0, bottomRight.y - topLeft.y)}px`,
     } satisfies CssVarStyle;
-  }, [canvasRect, pendingGroupFrame, reactFlow, viewport]);
+  }, [canvasRect, pendingGroupFrame, reactFlow]);
 
   const pendingGroupCreatableIds = useMemo(() => {
     if (!pendingGroupFrame) return [];
@@ -118,7 +118,7 @@ export function useLinghuiCanvasOverlayState({
       '--linghui-pending-actions-left': `${left}px`,
       '--linghui-pending-actions-top': `${top}px`,
     } satisfies CssVarStyle;
-  }, [canvasRect, pendingGroupFrame, reactFlow, viewport]);
+  }, [canvasRect, pendingGroupFrame, reactFlow]);
 
   const closeContextMenu = useCallback(() => {
     storeCloseContextMenu();

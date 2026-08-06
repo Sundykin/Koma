@@ -73,7 +73,7 @@ export function useLinghuiCanvasMediaImport({
     setEditorSelection(null);
     clearPendingGroupFrame();
     scheduleSnapshot();
-  }, [clearPendingGroupFrame, createUploadedImageNode, reactFlow, scheduleSnapshot, setEditorSelection, setNodes]);
+  }, [clearPendingGroupFrame, reactFlow, scheduleSnapshot, setEditorSelection, setNodes]);
 
   const addVideoNodesAtScreenPosition = useCallback((
     items: Array<{ source: string; filename: string }>,
@@ -97,7 +97,7 @@ export function useLinghuiCanvasMediaImport({
     setEditorSelection(null);
     clearPendingGroupFrame();
     scheduleSnapshot();
-  }, [clearPendingGroupFrame, createUploadedVideoNode, reactFlow, scheduleSnapshot, setEditorSelection, setNodes]);
+  }, [clearPendingGroupFrame, reactFlow, scheduleSnapshot, setEditorSelection, setNodes]);
 
   const addAudioNodesAtScreenPosition = useCallback((
     items: Array<{ source: string; filename: string }>,
@@ -121,7 +121,7 @@ export function useLinghuiCanvasMediaImport({
     setEditorSelection(null);
     clearPendingGroupFrame();
     scheduleSnapshot();
-  }, [clearPendingGroupFrame, createUploadedAudioNode, reactFlow, scheduleSnapshot, setEditorSelection, setNodes]);
+  }, [clearPendingGroupFrame, reactFlow, scheduleSnapshot, setEditorSelection, setNodes]);
 
   const handleUploadImagesToCanvas = useCallback(async (screenX?: number, screenY?: number) => {
     try {
@@ -233,7 +233,6 @@ export function useLinghuiCanvasMediaImport({
     }
   }, [
     clearPendingGroupFrame,
-    createUploadedImageNode,
     hostRef,
     message,
     reactFlow,
@@ -342,7 +341,6 @@ export function useLinghuiCanvasMediaImport({
     }
   }, [
     clearPendingGroupFrame,
-    createUploadedVideoNode,
     hostRef,
     message,
     reactFlow,
