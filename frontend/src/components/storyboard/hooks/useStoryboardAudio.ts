@@ -51,7 +51,13 @@ async function synthesizeShotAudio(params: {
     projectId, episodeId, shot, characters, voiceLibrary, ttsSelection, ttsVoiceId, taskName,
   } = params;
   const rate = typeof params.ttsSpeed === 'number' ? params.ttsSpeed : 1.2;
-  const voiceSegments = buildShotVoiceSegments(shot);
+  // speaker 名 → characterId：从 description 提取的引号台词能按说话人角色选音色
+  const speakerToCharacterId = (speaker: string): string | undefined =>
+    characters.find(char => char.name === speaker)?.id;
+  const voiceSegments = buildShotVoiceSegments(shot, {
+    speakerToCharacterId,
+    knownSpeakers: characters.map(char => char.name).filter(Boolean),
+  });
 
   // 剧情模式的分镜脚本是 description 行（画面/动作文本），不属于可配音内容；
   // 没有任何旁白/台词行时直接失败，而不是把整段分镜脚本拿去 TTS 朗读。
