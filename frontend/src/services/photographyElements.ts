@@ -157,3 +157,49 @@ export function isSameScene(a: { scenes?: string[] }, b: { scenes?: string[] }):
   const setA = new Set(a.scenes ?? []);
   return (b.scenes ?? []).some(id => setA.has(id));
 }
+
+// ---------------------------------------------------------------------------
+// 提示词摄影语言保留校验（传导兜底）
+// ---------------------------------------------------------------------------
+
+/** 景别中英文词表（提示词里出现任一即视为已传达景别） */
+const SHOT_SIZE_PROMPT_WORDS = [
+  '特写', '近景', '中景', '全景', '大全景', '远景',
+  'close-up', 'closeup', 'close up', 'medium', 'wide', 'full shot', 'extreme wide', 'establishing',
+];
+
+/** 机位中英文词表 */
+const CAMERA_ANGLE_PROMPT_WORDS = [
+  '平视', '俯视', '仰视', '低机位', '高机位', '低角度', '高角度', '过肩', '越肩', '侧拍', '正面', '背面',
+  'eye-level', 'overhead', "bird's eye", 'low angle', 'high angle', 'over-shoulder', 'ots', 'side profile', 'frontal',
+];
+
+export interface PromptPhotographyRetention {
+  /** 脚本有景别但提示词无任何景别词 */
+  missingShotSize: boolean;
+  /** 脚本有机位但提示词无任何机位词 */
+  missingCameraAngle: boolean;
+}
+
+function promptHasAny(prompt: string, words: string[]): boolean {
+  const lower = prompt.toLowerCase();
+  return words.some(word => lower.includes(word));
+}
+
+/**
+ * 校验提示词是否保留了脚本的摄影语言（景别/机位）。
+ * 提示性兜底：脚本明确写了景别/机位，但提示词里完全没有对应词（中英文）
+ * → 可能 LLM 生成时没保留，标记提示。用描述性表达（如"人物面部占据画面"）
+ * 的提示词可能误报——做成轻提示，不阻断。
+ */
+export function checkPromptPhotographyRetention(
+  script: { scriptLines?: ShotScriptLine[] },
+  prompt: string | undefined,
+): PromptPhotographyRetention {
+  const elements = extractShotPhotography(script);
+  const text = String(prompt || '');
+  return {
+    missingShotSize: elements.shotSizes.length > 0 && !promptHasAny(text, SHOT_SIZE_PROMPT_WORDS),
+    missingCameraAngle: elements.cameraAngles.length > 0 && !promptHasAny(text, CAMERA_ANGLE_PROMPT_WORDS),
+  };
+}

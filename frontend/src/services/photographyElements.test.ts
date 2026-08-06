@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { extractPhotographyElements, extractShotPhotography, getPrimaryShotSize, isShotSizeJump, shotSizeToShotType, detectLightTone, detectShotLightTone, isLightToneJump, isSameScene } from './photographyElements';
+import { extractPhotographyElements, extractShotPhotography, getPrimaryShotSize, isShotSizeJump, shotSizeToShotType, detectLightTone, detectShotLightTone, isLightToneJump, isSameScene, checkPromptPhotographyRetention } from './photographyElements';
 import type { ShotScriptLine } from '../types/scene-character';
 
 const desc = (text: string): ShotScriptLine => ({
@@ -108,5 +108,31 @@ describe('光线冷暖检测', () => {
   it('同场景判定：scenes 有交集', () => {
     expect(isSameScene({ scenes: ['s1'] }, { scenes: ['s1', 's2'] })).toBe(true);
     expect(isSameScene({ scenes: ['s1'] }, { scenes: ['s2'] })).toBe(false);
+  });
+});
+
+describe('提示词摄影语言保留校验', () => {
+  const script = { scriptLines: [desc('特写，平视，昏暗山洞。')] };
+
+  it('提示词保留景别/机位 → 不报', () => {
+    const r = checkPromptPhotographyRetention(script, '特写，平视构图，人物面部特写，冷白光');
+    expect(r.missingShotSize).toBe(false);
+    expect(r.missingCameraAngle).toBe(false);
+  });
+
+  it('脚本有景别但提示词无 → 报缺景别', () => {
+    const r = checkPromptPhotographyRetention(script, '人物在洞内，暖黄灯光');
+    expect(r.missingShotSize).toBe(true);
+  });
+
+  it('脚本无景别/机位 → 不校验', () => {
+    const r = checkPromptPhotographyRetention({ scriptLines: [desc('两人对峙')] }, '两人对峙，剑光闪');
+    expect(r.missingShotSize).toBe(false);
+    expect(r.missingCameraAngle).toBe(false);
+  });
+
+  it('英文景别词命中', () => {
+    const r = checkPromptPhotographyRetention(script, 'close-up shot of the face');
+    expect(r.missingShotSize).toBe(false);
   });
 });

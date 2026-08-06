@@ -4,7 +4,7 @@
  */
 import React, { useMemo, useCallback, useEffect, useRef, useState } from 'react';
 import { isShotPromptStale, isShotVoiceStale, isShotSpeechOverDuration } from '../../services/shotFreshness';
-import { extractShotPhotography, isShotSizeJump, detectShotLightTone, isLightToneJump } from '../../services/photographyElements';
+import { extractShotPhotography, isShotSizeJump, detectShotLightTone, isLightToneJump, checkPromptPhotographyRetention } from '../../services/photographyElements';
 import { useTranslation } from 'react-i18next';
 import {
   Tag,
@@ -251,6 +251,11 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
   );
   // 脚本与提示词的新鲜度：编辑分镜脚本后指纹变化 → 提示词标滞后（轻提示，不阻断）
   const promptStale = useMemo(() => isShotPromptStale(shot), [shot]);
+  // 提示词摄影语言保留校验：脚本有景别/机位但提示词没有 → 兜底提示（传导可能丢失）
+  const promptRetention = useMemo(
+    () => checkPromptPhotographyRetention(shot, shot.imagePrompt || shot.videoPrompt),
+    [shot],
+  );
   // 台词与配音的新鲜度：台词改了 → 配音待更新（只依赖可配音内容，画面改动不误报）
   const voiceStale = useMemo(() => isShotVoiceStale(shot), [shot]);
 
@@ -812,6 +817,11 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
                 {promptStale && (
                   <Tooltip title="分镜脚本在生成提示词后被修改过，建议重新生成提示词再出图/出视频">
                     <span className="text-status-warning text-[10px] cursor-help">脚本已改·提示词待更新</span>
+                  </Tooltip>
+                )}
+                {!promptStale && promptRetention.missingShotSize && (
+                  <Tooltip title="脚本有景别，但提示词里没有景别描述——建议优化提示词确保镜头语言不丢失">
+                    <span className="text-status-warning text-[10px] cursor-help">提示词缺景别</span>
                   </Tooltip>
                 )}
                 <button
