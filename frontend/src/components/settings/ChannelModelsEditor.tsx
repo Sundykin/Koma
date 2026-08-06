@@ -3,6 +3,7 @@ import { Button, Card, Checkbox, Form, Input, InputNumber, Space, Tag, Typograph
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import type { ModelCapability } from '../../providers/channel/types';
 import { generateId } from '../../store/globalStore';
+import { ComfyWorkflowSection } from './ComfyWorkflowSection';
 
 export interface CapabilityOption {
   value: ModelCapability;
@@ -44,6 +45,11 @@ export interface ChannelModelsEditorProps {
    * 仅对 OpenAI 兼容 ITV 渠道有意义。
    */
   showVideosPath?: boolean;
+  /**
+   * ComfyUI 工作流导入（写入 model.defaults.workflowJson / defaults.nodeBindings）。
+   * 仅对 comfyui-tti / comfyui-itv 渠道显示。
+   */
+  showComfyWorkflow?: boolean;
 }
 
 export const ChannelModelsEditor: React.FC<ChannelModelsEditorProps> = ({
@@ -56,6 +62,7 @@ export const ChannelModelsEditor: React.FC<ChannelModelsEditorProps> = ({
   helpText,
   showDurationRange,
   showVideosPath,
+  showComfyWorkflow,
 }) => (
   <div className="settings-models-editor">
     {helpText && (
@@ -199,6 +206,10 @@ export const ChannelModelsEditor: React.FC<ChannelModelsEditorProps> = ({
                       <Input placeholder="/v1/videos" />
                     </Form.Item>
                   </div>
+                ) : null}
+
+                {showComfyWorkflow ? (
+                  <ComfyWorkflowSection listName={name} fieldName={field.name} />
                 ) : null}
               </div>
             </Card>

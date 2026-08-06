@@ -5,10 +5,15 @@
  *   POST /upload/image（参考图原文件直传）→ POST /prompt → GET /history/{id} 轮询
  *   → SaveImage 输出 → /view 取图。
  *
- * 内置两套工作流（comfyui/workflows.ts），按 modelDefaults.workflowId 或模型名选择：
- *   - krea2（参考风格生图）：提示词 → TextGenerate 反推/润色 → Krea2 采样；
- *     参考图可选，没有时自动摘除 LoadImage 节点与 TextGenerate.image 连线。
- *   - z-image（文生图）：Z-Image Turbo 纯文生图，不支持参考图。
+ * 工作流来源（优先级从高到低）：
+ *   1. 模型 defaults.workflowJson —— 用户在渠道配置里粘贴的任意「API 格式」工作流，
+ *      由 workflowImport.ts 自动识别节点角色（提示词/种子/尺寸/批量/参考图）并注入参数，
+ *      可用 defaults.nodeBindings 覆盖识别结果、defaults.negativePrompt 覆盖负面词、
+ *      defaults.steps 覆盖步数 —— 接新工作流不需要改代码。
+ *   2. 内置模板（comfyui/workflows.ts），按 modelDefaults.workflowId 或模型名选择：
+ *      - krea2（参考风格生图）：提示词 → TextGenerate 反推/润色 → Krea2 采样；
+ *        参考图可选，没有时自动摘除 LoadImage 节点与 TextGenerate.image 连线。
+ *      - z-image（文生图）：Z-Image Turbo 纯文生图，不支持参考图。
  *
  * ComfyUI 原生无鉴权 → 默认不带凭据 header；前置鉴权网关时设 defaults.authMode='bearer'。
  */
@@ -26,6 +31,12 @@ import {
   resolveComfyTTIWorkflowId,
   type ComfyTTIWorkflowId,
 } from './comfyui/workflows';
+import {
+  parseComfyWorkflowJson,
+  analyzeComfyWorkflow,
+  applyComfyImageParams,
+  type ComfyImageBindingOverrides,
+} from '../itv/comfyui/workflowImport';
 
 const logger = createLogger('ComfyUITTI');
 
@@ -201,6 +212,17 @@ export class ComfyUITTIProvider implements TTIProvider {
     return resolveComfyTTIWorkflowId(this.config.modelName, this.getModelDefaults().workflowId as string | undefined);
   }
 
+  /** 模型 defaults.workflowJson 存在时走通用导入工作流（无需改代码接新工作流） */
+  private getCustomWorkflow(): ComfyWorkflow | null {
+    const raw = this.getModelDefaults().workflowJson;
+    if (typeof raw !== 'string' || !raw.trim()) return null;
+    const parsed = parseComfyWorkflowJson(raw);
+    if (!parsed.ok || !parsed.workflow) {
+      throw new Error(`自定义 ComfyUI 工作流无效（模型 defaults.workflowJson）：${parsed.error}`);
+    }
+    return parsed.workflow;
+  }
+
   private getHeaders(extra?: Record<string, string>): Record<string, string> {
     const headers = { ...(extra ?? {}) };
     if (String(this.getModelDefaults().authMode || '').toLowerCase() !== 'bearer') {
@@ -267,48 +289,85 @@ export class ComfyUITTIProvider implements TTIProvider {
     if (!this.validate()) {
       throw new Error('ComfyUI 服务地址未配置');
     }
-    const workflowId = this.getWorkflowId();
     const options: TTIOptions | undefined = request.options;
     const count = Math.max(1, Math.min(MAX_BATCH_IMAGES, Math.floor(Number(request.count) || 1)));
     const references = (request.references ?? []).filter(ref => ref?.value);
-
-    if (workflowId === 'z-image' && references.length > 0) {
-      throw new Error('Z-Image 文生图工作流不支持参考图，请改用 krea2 参考风格生图或去掉参考图');
-    }
-
-    // krea2 参考图只取第一张（工作流单 LoadImage 输入）
-    let uploadedReference: string | undefined;
-    if (workflowId === 'krea2' && references.length > 0) {
-      if (references.length > 1) {
-        logger.warn('krea2 工作流只支持单张参考图，已忽略多余参考图', { refsCount: references.length });
-      }
-      uploadedReference = await this.uploadReferenceImage(references[0]);
-    }
-
     const seed = options?.seed ?? Math.floor(Math.random() * 1_000_000_000_000);
-    const template = createComfyTTIWorkflow(workflowId);
-    const workflow = workflowId === 'z-image'
-      ? applyZImageParams(template, {
-          prompt: request.prompt,
-          aspectRatio: options?.aspectRatio,
-          imageSize: options?.imageSize,
-          seed,
-          count,
-        })
-      : applyKrea2Params(template, {
-          prompt: request.prompt,
-          referenceImage: uploadedReference,
-          aspectRatio: options?.aspectRatio,
-          imageSize: options?.imageSize,
-          seed,
-          count,
-        });
+
+    // 自定义导入工作流优先；缺省走内置 krea2/z-image 模板
+    const customWorkflow = this.getCustomWorkflow();
+    let workflow: ComfyWorkflow;
+    let workflowLabel: string;
+
+    if (customWorkflow) {
+      workflowLabel = 'custom';
+      const analysis = analyzeComfyWorkflow(customWorkflow);
+      if (!analysis.prompt) {
+        throw new Error('自定义工作流中未识别到提示词节点，请在模型 defaults.nodeBindings 里指定 promptNodeId');
+      }
+      const maxSlots = analysis.referenceImages.length;
+      const refsToUpload = references.slice(0, Math.max(maxSlots, 0));
+      if (references.length > maxSlots && maxSlots > 0) {
+        logger.warn('自定义工作流参考图槽位不足，已忽略多余参考图', { refs: references.length, slots: maxSlots });
+      }
+      const uploadedRefs: string[] = [];
+      for (const ref of refsToUpload) {
+        uploadedRefs.push(await this.uploadReferenceImage(ref));
+      }
+      workflow = applyComfyImageParams(customWorkflow, analysis, {
+        prompt: request.prompt,
+        negativePrompt: typeof this.getModelDefaults().negativePrompt === 'string'
+          ? this.getModelDefaults().negativePrompt as string
+          : undefined,
+        referenceImages: uploadedRefs,
+        seed,
+        count,
+        aspectRatio: options?.aspectRatio,
+        imageSize: options?.imageSize,
+        steps: typeof this.getModelDefaults().steps === 'number'
+          ? this.getModelDefaults().steps as number
+          : undefined,
+      }, (this.getModelDefaults().nodeBindings || undefined) as ComfyImageBindingOverrides | undefined);
+    } else {
+      const workflowId = this.getWorkflowId();
+      workflowLabel = workflowId;
+      if (workflowId === 'z-image' && references.length > 0) {
+        throw new Error('Z-Image 文生图工作流不支持参考图，请改用 krea2 参考风格生图或去掉参考图');
+      }
+
+      // krea2 参考图只取第一张（工作流单 LoadImage 输入）
+      let uploadedReference: string | undefined;
+      if (workflowId === 'krea2' && references.length > 0) {
+        if (references.length > 1) {
+          logger.warn('krea2 工作流只支持单张参考图，已忽略多余参考图', { refsCount: references.length });
+        }
+        uploadedReference = await this.uploadReferenceImage(references[0]);
+      }
+
+      const template = createComfyTTIWorkflow(workflowId);
+      workflow = workflowId === 'z-image'
+        ? applyZImageParams(template, {
+            prompt: request.prompt,
+            aspectRatio: options?.aspectRatio,
+            imageSize: options?.imageSize,
+            seed,
+            count,
+          })
+        : applyKrea2Params(template, {
+            prompt: request.prompt,
+            referenceImage: uploadedReference,
+            aspectRatio: options?.aspectRatio,
+            imageSize: options?.imageSize,
+            seed,
+            count,
+          });
+    }
 
     logger.info('ComfyUI TTI start request', {
       provider: this.config.provider,
-      workflowId,
+      workflowId: workflowLabel,
       count,
-      hasReference: Boolean(uploadedReference),
+      hasReference: references.length > 0,
       aspectRatio: options?.aspectRatio,
       imageSize: options?.imageSize,
       promptPreview: request.prompt.slice(0, 80),

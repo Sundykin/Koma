@@ -181,6 +181,10 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
         label,
         providerModelName,
         capabilities,
+        // 保留 defaults（ComfyUI 工作流 JSON / 节点绑定覆盖、defaultSize 等均存于此）
+        defaults: item.defaults && typeof item.defaults === 'object' && !Array.isArray(item.defaults)
+          ? { ...(item.defaults as Record<string, unknown>) }
+          : undefined,
       };
     });
   }, []);
@@ -660,6 +664,7 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
                 defaultCapabilities={['image.text-to-image']}
                 helpText="模型列表为手动维护。请为每个模型勾选真实支持的能力，系统会按能力自动过滤可选项。"
                 modelNamePlaceholder="填写模型名称，如: sd_xl_base_1.0.safetensors / gemini-3-pro-image-preview"
+                showComfyWorkflow={currentProviderType === 'comfyui-tti'}
               />
             </Form.Item>
           </div>

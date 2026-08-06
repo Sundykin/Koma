@@ -716,6 +716,7 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
                 modelNamePlaceholder="填写模型名称，如: viduq2-pro / gen-3 / kling-v1-5 / sora-2"
                 showDurationRange
                 showVideosPath={currentProviderType === 'openai-video'}
+                showComfyWorkflow={currentProviderType === 'comfyui-itv'}
               />
             </Form.Item>
           </div>

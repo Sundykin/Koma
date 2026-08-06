@@ -195,4 +195,84 @@ describe('ComfyUITTIProvider', () => {
     await expect(provider.testConnection()).resolves.toBe(true);
     expect((safeFetch as any).mock.calls[0][0]).toBe(`${BASE}/system_stats`);
   });
+
+  describe('自定义 workflowJson 导入路径', () => {
+    // 用一个简化但合法的自定义工作流验证通用注入（与内置模板不同的节点 id）
+    const customWorkflow = {
+      '100': { class_type: 'CLIPTextEncode', inputs: { text: '', clip: ['101', 0] } },
+      '101': { class_type: 'CLIPLoader', inputs: { clip_name: 'x.safetensors', type: 'sd3' } },
+      '102': { class_type: 'KSampler', inputs: { seed: 1, steps: 8, cfg: 1, sampler_name: 'euler', scheduler: 'simple', denoise: 1, model: ['103', 0], positive: ['100', 0], negative: ['106', 0], latent_image: ['104', 0] } },
+      '103': { class_type: 'UNETLoader', inputs: { unet_name: 'm.safetensors', weight_dtype: 'default' } },
+      '104': { class_type: 'EmptySD3LatentImage', inputs: { width: 1024, height: 1024, batch_size: 1 } },
+      '105': { class_type: 'SaveImage', inputs: { filename_prefix: 'custom', images: ['107', 0] } },
+      '106': { class_type: 'CLIPTextEncode', inputs: { text: 'bad', clip: ['101', 0] } },
+      '107': { class_type: 'VAEDecode', inputs: { samples: ['102', 0], vae: ['108', 0] } },
+      '108': { class_type: 'VAELoader', inputs: { vae_name: 'v.safetensors' } },
+      '109': { class_type: 'LoadImage', inputs: { image: '' } },
+    };
+
+    it('defaults.workflowJson 走通用分析注入：提示词/种子/尺寸/批量', async () => {
+      mockAccepted('custom-1');
+      const provider = new ComfyUITTIProvider(createConfig({
+        modelName: '任意名字',
+        modelDefaults: { workflowJson: JSON.stringify(customWorkflow) },
+      } as any));
+
+      const result = await provider.start({
+        prompt: '自定义工作流的提示词',
+        references: [],
+        options: { aspectRatio: '16:9', imageSize: '2K', seed: 777 } as any,
+        count: 2,
+      });
+
+      const wf = submittedWorkflow(0);
+      expect(wf['100'].inputs.text).toBe('自定义工作流的提示词');
+      expect(wf['102'].inputs.seed).toBe(777);
+      expect(wf['104'].inputs.width).toBe(1344);
+      expect(wf['104'].inputs.height).toBe(768);
+      expect(wf['104'].inputs.batch_size).toBe(2);
+      // 无参考图 → LoadImage 摘除
+      expect(wf['109']).toBeUndefined();
+      expect(result).toEqual({ mode: 'async', taskId: 'custom-1' });
+    });
+
+    it('自定义工作流带参考图：上传后填入 LoadImage', async () => {
+      mockUpload('up.png');
+      mockAccepted();
+      const provider = new ComfyUITTIProvider(createConfig({
+        modelDefaults: { workflowJson: JSON.stringify(customWorkflow) },
+      } as any));
+
+      await provider.start({
+        prompt: 'x',
+        references: [{ transport: 'data-url', value: DATA_URL_IMG, mimeType: 'image/png' }],
+      });
+
+      const wf = submittedWorkflow(1);
+      expect(wf['109'].inputs.image).toBe('up.png');
+    });
+
+    it('nodeBindings 覆盖：promptNodeId 指向其他节点', async () => {
+      mockAccepted();
+      const provider = new ComfyUITTIProvider(createConfig({
+        modelDefaults: {
+          workflowJson: JSON.stringify(customWorkflow),
+          nodeBindings: { promptNodeId: '106' },
+        },
+      } as any));
+
+      await provider.start({ prompt: '覆盖到106', references: [] });
+      const wf = submittedWorkflow(0);
+      expect(wf['106'].inputs.text).toBe('覆盖到106');
+      expect(wf['100'].inputs.text).toBe('');
+    });
+
+    it('workflowJson 非法时报错指明原因', async () => {
+      const provider = new ComfyUITTIProvider(createConfig({
+        modelDefaults: { workflowJson: '{"a": {"type": "no-class"}}' },
+      } as any));
+      await expect(provider.start({ prompt: 'x', references: [] }))
+        .rejects.toThrow(/defaults\.workflowJson/);
+    });
+  });
 });
