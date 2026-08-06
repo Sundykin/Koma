@@ -124,6 +124,12 @@ export interface ConcatMediaClipOptions {
   height: number;
   fps: 24 | 30 | 60;
   imageDurationSec?: number;
+  /**
+   * 文字叠加层（PNG 透明图 + 起止时间）：存在时最终合成阶段按序 overlay 烧录
+   * （视频轨需重编码一次）。用 PNG 叠加而非 subtitles 滤镜是因为捆绑/系统
+   * ffmpeg 不保证带 libass/freetype。
+   */
+  subtitleOverlays?: Array<{ imagePath: string; startSec: number; endSec: number }>;
 }
 
 /** 纯音频顺序拼接（多段配音合成等场景），与 concatMediaClips（视频轨 + 混音轨）互补 */
@@ -1236,7 +1242,12 @@ export class FFmpegService {
         .join('\n');
       await fs.promises.writeFile(listPath, listContent, 'utf8');
 
-      const mergedVideoPath = audioClips.length > 0 ? path.join(workDir, 'merged-video.mp4') : outputPath;
+      const subtitleOverlays = (options.subtitleOverlays ?? [])
+        .filter(overlay => overlay && String(overlay.imagePath || '').trim());
+      const needsAudioMix = audioClips.length > 0;
+      const needsSubtitleBurn = subtitleOverlays.length > 0;
+      const needsPostProcess = needsAudioMix || needsSubtitleBurn;
+      const mergedVideoPath = needsPostProcess ? path.join(workDir, 'merged-video.mp4') : outputPath;
       await this.runFFmpeg([
         '-f', 'concat',
         '-safe', '0',
@@ -1247,42 +1258,72 @@ export class FFmpegService {
         mergedVideoPath,
       ]);
 
-      if (audioClips.length > 0) {
+      if (needsPostProcess) {
         const args: string[] = ['-i', mergedVideoPath];
         for (const audioClip of audioClips) {
           args.push('-i', audioClip.source);
         }
-        const filterParts: string[] = [];
-        const audioInputs = ['[0:a]'];
-        for (let index = 0; index < audioClips.length; index += 1) {
-          const inputIndex = index + 1;
-          const audioClip = audioClips[index];
-          // 先按源内偏移/时长截取，再按时间轴位置延时（adelay 双声道各一份）
-          const chain: string[] = [];
-          if (audioClip.offsetSec > 0 || audioClip.durationSec > 0) {
-            const trimStart = audioClip.offsetSec;
-            const trimEnd = audioClip.durationSec > 0
-              ? audioClip.offsetSec + audioClip.durationSec
-              : undefined;
-            chain.push(`atrim=start=${trimStart}${trimEnd !== undefined ? `:end=${trimEnd}` : ''}`);
-            chain.push('asetpts=PTS-STARTPTS');
-          }
-          chain.push('aresample=44100');
-          if (audioClip.startSec > 0) {
-            const delayMs = Math.round(audioClip.startSec * 1000);
-            chain.push(`adelay=${delayMs}|${delayMs}`);
-          } else {
-            chain.push('asetpts=PTS-STARTPTS');
-          }
-          filterParts.push(`[${inputIndex}:a]${chain.join(',')}[a${index}]`);
-          audioInputs.push(`[a${index}]`);
+        // 叠加层图片跟随音频输入之后（-loop 1 让单帧图片可持续被取用）
+        for (const overlay of subtitleOverlays) {
+          args.push('-loop', '1', '-i', overlay.imagePath);
         }
-        filterParts.push(`${audioInputs.join('')}amix=inputs=${audioInputs.length}:duration=first:dropout_transition=0[aout]`);
+        const filterParts: string[] = [];
+        const overlayInputOffset = 1 + audioClips.length;
+        const videoMap = needsSubtitleBurn ? `[vout${subtitleOverlays.length - 1}]` : '0:v:0';
+        if (needsSubtitleBurn) {
+          // 逐层叠加：每层只在 [startSec, endSec] 区间可见
+          let previousLabel = '0:v';
+          subtitleOverlays.forEach((overlay, index) => {
+            const inputIndex = overlayInputOffset + index;
+            const outputLabel = `vout${index}`;
+            const start = Math.max(0, overlay.startSec);
+            const end = Math.max(start, overlay.endSec);
+            filterParts.push(
+              `[${previousLabel}][${inputIndex}:v]overlay=0:0:enable='between(t,${start},${end})'[${outputLabel}]`
+            );
+            previousLabel = outputLabel;
+          });
+        }
+        if (needsAudioMix) {
+          const audioInputs = ['[0:a]'];
+          for (let index = 0; index < audioClips.length; index += 1) {
+            const inputIndex = index + 1;
+            const audioClip = audioClips[index];
+            // 先按源内偏移/时长截取，再按时间轴位置延时（adelay 双声道各一份）
+            const chain: string[] = [];
+            if (audioClip.offsetSec > 0 || audioClip.durationSec > 0) {
+              const trimStart = audioClip.offsetSec;
+              const trimEnd = audioClip.durationSec > 0
+                ? audioClip.offsetSec + audioClip.durationSec
+                : undefined;
+              chain.push(`atrim=start=${trimStart}${trimEnd !== undefined ? `:end=${trimEnd}` : ''}`);
+              chain.push('asetpts=PTS-STARTPTS');
+            }
+            chain.push('aresample=44100');
+            if (audioClip.startSec > 0) {
+              const delayMs = Math.round(audioClip.startSec * 1000);
+              chain.push(`adelay=${delayMs}|${delayMs}`);
+            } else {
+              chain.push('asetpts=PTS-STARTPTS');
+            }
+            filterParts.push(`[${inputIndex}:a]${chain.join(',')}[a${index}]`);
+            audioInputs.push(`[a${index}]`);
+          }
+          filterParts.push(`${audioInputs.join('')}amix=inputs=${audioInputs.length}:duration=first:dropout_transition=0[aout]`);
+        }
+        args.push('-filter_complex', filterParts.join(';'));
+        if (needsAudioMix) {
+          args.push('-map', videoMap, '-map', '[aout]');
+        } else {
+          // 无混音只有烧录：保留原音轨（-map 0:a? 允许缺席）
+          args.push('-map', videoMap, '-map', '0:a?');
+        }
+        if (needsSubtitleBurn) {
+          args.push('-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p');
+        } else {
+          args.push('-c:v', 'copy');
+        }
         args.push(
-          '-filter_complex', filterParts.join(';'),
-          '-map', '0:v:0',
-          '-map', '[aout]',
-          '-c:v', 'copy',
           '-c:a', 'aac',
           '-b:a', '128k',
           '-shortest',

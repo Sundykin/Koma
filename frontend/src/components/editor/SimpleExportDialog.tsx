@@ -7,9 +7,10 @@ import { Modal, Form, Select, InputNumber, Input, Button, Progress, Space, Radio
 import { ExportOutlined, FolderOutlined, WarningOutlined } from '@ant-design/icons';
 import { Track } from '../../types/editor';
 import { SimpleExportRenderer, SimpleExportConfig, SimpleExportProgress } from '../../services/simpleExportRenderer';
-import { saveFileDialog, openDirectoryDialog, isElectron, writeFile, createDirectory, fsCopy, fsExists } from '../../services/electronService';
+import { saveFileDialog, openDirectoryDialog, isElectron, writeFile, createDirectory, fsCopy, fsExists, getStoragePath } from '../../services/electronService';
 import { exporterRegistry } from '../../services/draftExport';
 import { analyzeTimelineForFastConcat } from '../../services/export/fastConcat';
+import { buildTextOverlaySpecs } from '../../services/export/textOverlays';
 import { ffmpegManager } from '../../services/ffmpegManager';
 import type { DraftExportOptions } from '../../services/draftExport';
 import { checkExportCompatibility } from '../../services/draftExport/exportCapabilityChecker';
@@ -193,12 +194,33 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
       // 快速拼接：无特效时间轴直接 ffmpeg 顺序拼接（秒级），跳过 canvas 逐帧渲染
       if (useFastConcat && fastConcatAnalysis.eligible) {
         const concatFps = ([24, 30, 60].includes(values.fps) ? values.fps : 30) as 24 | 30 | 60;
+        // 有文字片段时先 canvas 渲染成全幅透明 PNG（系统字体原生支持中文，
+        // 不依赖 ffmpeg 的 libass/freetype），最终合成阶段按时间区间叠加烧录
+        let subtitleOverlays: Array<{ imagePath: string; startSec: number; endSec: number }> | undefined;
+        if (fastConcatAnalysis.textClips.length > 0) {
+          const storagePath = await getStoragePath();
+          const overlayDir = `${storagePath || ''}/temp/export-subtitles-${Date.now()}`;
+          await createDirectory(overlayDir);
+          const specs = await buildTextOverlaySpecs(
+            fastConcatAnalysis.textClips,
+            values.width,
+            values.height,
+            canvasSize.width,
+            async (filename, base64) => {
+              const imagePath = `${overlayDir}/${filename}`;
+              await writeFile(imagePath, base64, true);
+              return imagePath;
+            },
+          );
+          if (specs.length > 0) subtitleOverlays = specs;
+        }
         await ffmpegManager.concatMediaClips({
           clips: fastConcatAnalysis.clips,
           outputPath: values.videoOutputPath,
           width: values.width,
           height: values.height,
           fps: concatFps,
+          subtitleOverlays,
           onProgress: (percent) => setProgress({
             stage: 'encoding',
             progress: percent / 100,
@@ -243,7 +265,7 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
       exporterRef.current?.dispose();
       exporterRef.current = null;
     }
-  }, [duration, message, modal, onClose, tracks, videoForm, useFastConcat, fastConcatAnalysis]);
+  }, [duration, message, modal, onClose, tracks, videoForm, useFastConcat, fastConcatAnalysis, canvasSize.width]);
 
   // 草稿导出
   const handleDraftExport = useCallback(async () => {

@@ -65,14 +65,18 @@ describe('analyzeTimelineForFastConcat', () => {
     expect(result.clips[0].offsetSec).toBeUndefined();
   });
 
-  it('含字幕轨内容 → 不合格并说明原因', () => {
+  it('含字幕轨内容 → 合格并收集 textClips（v3 ASS 烧录）', () => {
     const tracks = [
       videoTrack([clip()]),
-      { id: 't2', type: 'text', clips: [clip({ type: MediaType.TEXT, text: '字幕' })], order: 1 } as Track,
+      { id: 't2', type: 'text', clips: [
+        clip({ type: MediaType.TEXT, text: '第一句台词', start: 0.5, duration: 2 }),
+        clip({ type: MediaType.TEXT, text: '  ' }), // 空白内容不收集
+      ], order: 1 } as Track,
     ];
     const result = analyzeTimelineForFastConcat(tracks);
-    expect(result.eligible).toBe(false);
-    expect(result.reasons.join()).toContain('字幕');
+    expect(result.eligible).toBe(true);
+    expect(result.textClips).toHaveLength(1);
+    expect(result.textClips[0].text).toBe('第一句台词');
   });
 
   it('本地音频片段按时间轴位置放行（v2 定位混入）', () => {

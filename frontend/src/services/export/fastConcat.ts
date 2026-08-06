@@ -21,10 +21,12 @@ export interface FastConcatAnalysis {
   eligible: boolean;
   /** 不合格原因（人读，给用户解释为什么不能快速导出） */
   reasons: string[];
-  /** 合格时的拼接片段（按时间轴顺序） */
+  /** 合格时的拼接片段（按时间轴顺序，音频段带定位信息在尾部） */
   clips: ConcatMediaClipOptions['clips'];
   /** 参与的视频片段数 */
   videoClipCount: number;
+  /** 文字片段（合格时用于构建 ASS 硬字幕烧录） */
+  textClips: Clip[];
 }
 
 /** 片段是否处于"原始呈现"状态（无变换/无特效/无动画） */
@@ -59,16 +61,17 @@ export function analyzeTimelineForFastConcat(tracks: Track[]): FastConcatAnalysi
 
   const activeTracks = tracks.filter(track => !track.hidden);
   const videoTracks = activeTracks.filter(track => track.type === 'video' && track.clips.length > 0);
-  const textClipCount = activeTracks
+  // 文字片段收集（有内容的才参与 ASS 烧录）
+  const textClips = activeTracks
     .filter(track => track.type === 'text')
-    .reduce((sum, track) => sum + track.clips.length, 0);
+    .flatMap(track => track.clips)
+    .filter(clip => String(clip.text || '').trim());
   const audioTrackClips = activeTracks
     .filter(track => track.type === 'audio')
     .flatMap(track => track.clips);
   const transitionCount = activeTracks
     .reduce((sum, track) => sum + (track.transitions?.length ?? 0), 0);
 
-  if (textClipCount > 0) reasons.push('含字幕/文字片段');
   if (transitionCount > 0) reasons.push('含转场');
   if (videoTracks.length === 0) reasons.push('没有视频片段');
   if (videoTracks.length > 1) reasons.push('多条视频轨叠加需要合成');
@@ -133,5 +136,6 @@ export function analyzeTimelineForFastConcat(tracks: Track[]): FastConcatAnalysi
     reasons: Array.from(new Set(reasons)),
     clips: [...clips, ...audioClipsOut],
     videoClipCount: clips.length,
+    textClips,
   };
 }

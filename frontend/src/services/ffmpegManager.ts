@@ -131,6 +131,8 @@ export interface ConcatMediaClipOptions {
   height: number;
   fps: 24 | 30 | 60;
   imageDurationSec?: number;
+  /** 文字叠加层（PNG 透明图 + 起止时间）：存在时最终合成阶段 overlay 烧录（视频轨重编码一次） */
+  subtitleOverlays?: Array<{ imagePath: string; startSec: number; endSec: number }>;
   onProgress?: (percent: number) => void;
 }
 
@@ -623,7 +625,13 @@ class FFmpegManager {
 
     const { onProgress: _onProgress, ...rest } = options;
     void _onProgress;
-    return await api.concatMediaClips(rest);
+    const result = await api.concatMediaClips(rest);
+    // ee-core 的 ipcMain.handle 会吞掉主进程异常并返回 undefined（只写主进程日志），
+    // 必须把"空返回"翻译回错误，否则调用方会把失败当成功
+    if (typeof result !== 'string' || !result) {
+      throw new Error('视频拼接失败：主进程未返回输出路径（详见主进程日志）');
+    }
+    return result;
   }
 
   /**
@@ -642,7 +650,11 @@ class FFmpegManager {
       throw new Error('FFmpeg 不可用');
     }
 
-    return await api.concatAudioClips({ sources, outputPath });
+    const result = await api.concatAudioClips({ sources, outputPath });
+    if (typeof result !== 'string' || !result) {
+      throw new Error('音频拼接失败：主进程未返回输出路径（详见主进程日志）');
+    }
+    return result;
   }
 
   /**
@@ -660,7 +672,11 @@ class FFmpegManager {
       throw new Error('FFmpeg 不可用');
     }
 
-    return await api.trimVideo(options);
+    const result = await api.trimVideo(options);
+    if (typeof result !== 'string' || !result) {
+      throw new Error('视频裁剪失败：主进程未返回输出路径（详见主进程日志）');
+    }
+    return result;
   }
 
   /**
