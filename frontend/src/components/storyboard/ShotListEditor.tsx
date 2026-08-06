@@ -257,6 +257,19 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
     });
   }, [activeShotId]);
 
+  // 批量操作已用时长（秒）：batchProgress 活跃时每秒递增，结束归零
+  const [batchElapsedSec, setBatchElapsedSec] = useState(0);
+  const batchActive = Boolean(batchProgress && batchProgress.total > 0);
+  useEffect(() => {
+    if (!batchActive) {
+      setBatchElapsedSec(0);
+      return;
+    }
+    setBatchElapsedSec(0);
+    const timer = setInterval(() => setBatchElapsedSec(s => s + 1), 1000);
+    return () => clearInterval(timer);
+  }, [batchActive]);
+
   // 生产就绪度：缺摄影语言 / 台词超时长 / 视频配音进度（供顶部就绪条展示）
   const readinessStats = useMemo(() => {
     let missingPhoto = 0;
@@ -416,6 +429,11 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
             />
             <Text type="secondary" className="batchProgressStep">
               {batchProgress.step || `${batchProgress.current}/${batchProgress.total}`}
+              {batchElapsedSec > 0 && (
+                <span className="ml-2 text-text-tertiary">
+                  已用 {Math.floor(batchElapsedSec / 60)}分{batchElapsedSec % 60}秒
+                </span>
+              )}
             </Text>
           </div>
         )}
