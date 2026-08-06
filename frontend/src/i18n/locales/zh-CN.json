@@ -273,7 +273,16 @@
     "selectPropImage": "选择道具图片",
     "extractAndBindProp": "提取并绑定道具",
     "extractingProp": "提取道具中...",
-    "propExtracted": "道具提取成功"
+    "propExtracted": "道具提取成功",
+    "extractAssetsFromScript": "从剧本提取资产",
+    "extractingAssets": "正在从剧本提取资产…",
+    "extractAssetsDone": "资产提取完成",
+    "generateMissingAssets": "生成缺失素材",
+    "generateMissingAssetsCount": "生成缺失素材（{{count}}）",
+    "generatingMissingAssets": "正在生成素材 {{done}}/{{total}}",
+    "generateMissingAssetsDone": "缺失素材已全部生成",
+    "generateMissingAssetsPartial": "素材生成完成：成功 {{success}} 个，失败 {{failed}} 个",
+    "generating": "生成中…"
   },
   "storyboard": {
     "title": "分镜",

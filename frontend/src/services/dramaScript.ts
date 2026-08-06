@@ -21,7 +21,8 @@ export interface DramaScriptLine {
   speaker?: string;
 }
 
-const MARKER_RE = /^\[(旁白|台词|台词·([^\]]+)|场景)\]\s*(.*)$/;
+// 画外音是 旁白 的别名（提示词格式化侧用 [画外音]，存储侧用 [旁白]），解析两者都按 narration
+const MARKER_RE = /^\[(旁白|画外音|台词|台词·([^\]]+)|场景)\]\s*(.*)$/;
 
 /** 解析整段结构化剧本为标记行数组；空行被丢弃。未标记行按「旁白」兜底（兼容手改/自由文本）。 */
 export function parseDramaScript(text: string | null | undefined): DramaScriptLine[] {

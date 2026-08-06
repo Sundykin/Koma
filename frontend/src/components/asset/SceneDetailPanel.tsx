@@ -17,6 +17,7 @@ import {
   Popconfirm,
   Modal,
   Tooltip,
+  Image,
 } from 'antd';
 import {
   EnvironmentOutlined,
@@ -40,15 +41,6 @@ import { ensureRemoteUrlForImageAsset } from '../../services/mediaRemoteUrlServi
 import { createStoredMediaAsset, updateSceneMedia } from '../../utils/mediaAssets';
 import { mergeEpisodeRefs } from './assetEpisodeRefs';
 import { getScenePreviewImageSource } from '../../utils/mediaSelectors';
-import AssetImageDrawModal, {
-  cleanupImageDrawCandidates,
-  createImageDrawSessionId,
-  generateImageDrawCandidates,
-  getImageDrawVariation,
-  isImageDrawCandidateForOwner,
-  IMAGE_DRAW_CANDIDATE_COUNT,
-  type AssetImageDrawCandidate,
-} from './AssetImageDrawModal';
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -89,19 +81,8 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
   const [progress, setProgress] = useState(0);
   const [progressStep, setProgressStep] = useState('');
   const [previewImage, setPreviewImage] = useState<string | null>(null);
-  const [imageDrawOpen, setImageDrawOpen] = useState(false);
-  const [imageDrawCandidates, setImageDrawCandidates] = useState<AssetImageDrawCandidate[]>([]);
-  const [imageDrawApplying, setImageDrawApplying] = useState(false);
-  const imageDrawCandidatesRef = useRef<AssetImageDrawCandidate[]>([]);
-  const activeImageDrawSessionRef = useRef<string | null>(null);
-  const runningImageDrawSessionRef = useRef<string | null>(null);
   const currentSceneIdRef = useRef(scene.id);
   currentSceneIdRef.current = scene.id;
-
-  const setImageDrawCandidateList = useCallback((candidates: AssetImageDrawCandidate[]) => {
-    imageDrawCandidatesRef.current = candidates;
-    setImageDrawCandidates(candidates);
-  }, []);
 
   // 初始化
   useEffect(() => {
@@ -112,29 +93,6 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
       prompt: initialPrompt,
     });
   }, [scene, form]);
-
-  useEffect(() => {
-    const staleCandidates = imageDrawCandidatesRef.current;
-    activeImageDrawSessionRef.current = null;
-    runningImageDrawSessionRef.current = null;
-    setImageDrawOpen(false);
-    setImageDrawCandidateList([]);
-    setImageDrawApplying(false);
-    setGenerating(false);
-    if (staleCandidates.length > 0) {
-      void cleanupImageDrawCandidates(staleCandidates);
-    }
-
-    return () => {
-      const unmountedCandidates = imageDrawCandidatesRef.current;
-      activeImageDrawSessionRef.current = null;
-      runningImageDrawSessionRef.current = null;
-      imageDrawCandidatesRef.current = [];
-      if (unmountedCandidates.length > 0) {
-        void cleanupImageDrawCandidates(unmountedCandidates);
-      }
-    };
-  }, [scene.id, setImageDrawCandidateList]);
 
   const getAssetPath = useCallback(async (subPath: string) => {
     const config = getStorageConfig() || (await initStorageConfig());
@@ -177,241 +135,115 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
     }
   }, [editedScene, form, projectId, onUpdate, message, t]);
 
-  const formatDrawProgressStep = useCallback((index: number, step?: string) => {
-    const drawStep = t('asset.drawGenerating', {
-      current: index + 1,
-      total: IMAGE_DRAW_CANDIDATE_COUNT,
-    });
-    return step ? `${drawStep} · ${step}` : drawStep;
-  }, [t]);
+  /** 上传场景参考图：生成场景图时作为空间/构图参考（与项目风格参考图相互独立） */
+  const handleUploadReference = useCallback(async () => {
+    try {
+      const result = await openFileDialog({
+        filters: [{ name: t('storyboard.image'), extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+        title: '选择场景参考图',
+      });
+      if (result.canceled || !result.filePaths[0]) return;
 
-  const runSceneImageDraw = useCallback(async (
-    previousCandidates: AssetImageDrawCandidate[] = imageDrawCandidatesRef.current,
-  ) => {
-    const ownerType = 'scene' as const;
+      const destPath = await getAssetPath('reference.png');
+      await fsCopy(result.filePaths[0], destPath);
+
+      const updated = updateSceneMedia(editedScene, {
+        referenceImage: createStoredMediaAsset('image', { localPath: destPath }),
+      });
+      setEditedScene(updated);
+      onUpdate(updated);
+      const scenes = await loadScenes(projectId);
+      const index = scenes.findIndex(s => s.id === editedScene.id);
+      if (index !== -1) {
+        scenes[index] = updated;
+        await saveScenes(projectId, scenes);
+      }
+      message.success('参考图已上传，生成场景图时将作为空间参考');
+    } catch (err: any) {
+      message.error(err.message || '参考图上传失败');
+    }
+  }, [editedScene, getAssetPath, projectId, onUpdate, message, t]);
+
+  const handleRemoveReference = useCallback(async () => {
+    try {
+      const localPath = editedScene.media?.referenceImage?.localPath;
+      const updated = updateSceneMedia(editedScene, { referenceImage: undefined });
+      const scenes = await loadScenes(projectId);
+      const index = scenes.findIndex(s => s.id === editedScene.id);
+      if (index !== -1) {
+        scenes[index] = updated;
+        await saveScenes(projectId, scenes);
+      }
+      if (localPath && !isRemoteMediaUri(localPath) && (await fsExists(localPath))) {
+        await fsRemove(localPath);
+      }
+      setEditedScene(updated);
+      onUpdate(updated);
+      message.success('已移除参考图');
+    } catch (err: any) {
+      message.error(err.message || '移除失败');
+    }
+  }, [editedScene, projectId, onUpdate, message]);
+
+  // 单张生成（已移除批量抽卡）：直接出正式场景图并覆盖保存；
+  // 生成按场景 id 落盘，用户中途切换场景也会在后台完成写入。
+  const handleGenerateImage = useCallback(async () => {
     const ownerId = editedScene.id;
-    const previousSessionId = activeImageDrawSessionRef.current;
-    const reusablePrevious = previousSessionId
-      ? previousCandidates.filter((candidate) => isImageDrawCandidateForOwner(candidate, {
-          projectId,
-          ownerType,
-          ownerId,
-          sessionId: previousSessionId,
-        }))
-      : [];
-    const reusableIds = new Set(reusablePrevious.map((candidate) => candidate.id));
-    const stalePrevious = previousCandidates.filter((candidate) => !reusableIds.has(candidate.id));
+    const isCurrent = () => currentSceneIdRef.current === ownerId;
 
-    if (stalePrevious.length > 0) {
-      await cleanupImageDrawCandidates(stalePrevious);
-    }
-
-    if (reusablePrevious.length > 0) {
-      setImageDrawCandidateList(reusablePrevious);
-      setImageDrawOpen(true);
-    } else {
-      activeImageDrawSessionRef.current = null;
-      setImageDrawCandidateList([]);
-      setImageDrawOpen(false);
-    }
-
-    const sessionId = createImageDrawSessionId({ ownerType, ownerId });
-    runningImageDrawSessionRef.current = sessionId;
     setGenerating(true);
     setProgress(0);
-    setProgressStep(formatDrawProgressStep(0));
-
-    const isCurrentSession = () => (
-      runningImageDrawSessionRef.current === sessionId &&
-      currentSceneIdRef.current === ownerId
-    );
+    setProgressStep('');
 
     try {
       const currentValues = await form.getFieldsValue();
       const sceneWithPrompt = { ...editedScene, ...currentValues };
 
-      const result = await generateImageDrawCandidates({
-        count: IMAGE_DRAW_CANDIDATE_COUNT,
-        sessionId,
+      // 用户手动上传的场景参考图：归一化远端 URL 后作为空间参考传入
+      let userReference = sceneWithPrompt.media?.referenceImage;
+      if (userReference) {
+        try {
+          userReference = await ensureRemoteUrlForImageAsset({
+            projectId,
+            asset: userReference,
+            policy: 'best-effort',
+            filenameHint: `${ownerId}-reference.png`,
+          });
+        } catch (error) {
+          logger.warn('场景参考图 remoteUrl 归一化失败，将尝试使用本地引用', { error: error instanceof Error ? error.message : String(error) });
+        }
+      }
+
+      const result = await generateSceneImage({
         projectId,
-        ownerType,
-        ownerId,
-        shouldContinue: isCurrentSession,
-        getVariation: (index) => getImageDrawVariation(ownerType, index),
-        getCandidatePath: (seed, index) => getAssetPath(`draw/scene-${sessionId}-${index + 1}-${seed}.png`),
-        generate: (seed, index, destPath, variation) => generateSceneImage({
-          projectId,
-          scene: sceneWithPrompt,
-          aspectRatio,
-          theme,
-          stylePrompt,
-          styleSnapshot,
-          ttiSelection,
-          seed,
-          ...(variation?.prompt ? { variationPrompt: variation.prompt } : {}),
-          destPath,
-          bindOwner: false,
-          normalizeRemoteUrl: false,
-          onProgress: (p, step) => {
-            if (!isCurrentSession()) return;
-            setProgress(((index + p / 100) / IMAGE_DRAW_CANDIDATE_COUNT) * 100);
-            setProgressStep(formatDrawProgressStep(index, step));
-          },
-        }),
-        onCandidateProgress: (p, index, step) => {
-          if (!isCurrentSession()) return;
+        scene: sceneWithPrompt,
+        aspectRatio,
+        theme,
+        stylePrompt,
+        styleSnapshot,
+        ttiSelection,
+        destPath: await getAssetPath('scene.png'),
+        bindOwner: false,
+        normalizeRemoteUrl: true,
+        userReference,
+        onProgress: (p, step) => {
+          if (!isCurrent()) return;
           setProgress(p);
-          setProgressStep(formatDrawProgressStep(index, step));
+          setProgressStep(step || '');
         },
       });
 
-      if (!isCurrentSession()) {
-        await cleanupImageDrawCandidates(result.candidates);
+      if (!result.success || (!result.path && !result.url)) {
+        if (isCurrent()) message.error(result.error || t('asset.generateFailed'));
         return;
       }
 
-      if (result.candidates.length > 0) {
-        if (reusablePrevious.length > 0) {
-          await cleanupImageDrawCandidates(reusablePrevious);
-        }
-        activeImageDrawSessionRef.current = sessionId;
-        setImageDrawCandidateList(result.candidates);
-        setImageDrawOpen(true);
-        if (result.failed > 0) {
-          message.warning(t('asset.imageDrawPartialFailed', {
-            failed: result.failed,
-            total: IMAGE_DRAW_CANDIDATE_COUNT,
-          }));
-        }
-      } else {
-        if (previousSessionId && reusablePrevious.length > 0) {
-          activeImageDrawSessionRef.current = previousSessionId;
-          setImageDrawCandidateList(reusablePrevious);
-          setImageDrawOpen(true);
-          message.error(result.errors[0] ? `${t('asset.imageDrawFailedKeepingPrevious')}: ${result.errors[0]}` : t('asset.imageDrawFailedKeepingPrevious'));
-        } else {
-          activeImageDrawSessionRef.current = null;
-          setImageDrawCandidateList([]);
-          setImageDrawOpen(false);
-          message.error(result.errors[0] || t('asset.generateFailed'));
-        }
-      }
-    } catch (err: any) {
-      if (!isCurrentSession()) return;
-      if (previousSessionId && reusablePrevious.length > 0) {
-        activeImageDrawSessionRef.current = previousSessionId;
-        setImageDrawCandidateList(reusablePrevious);
-        setImageDrawOpen(true);
-        message.error(err.message ? `${t('asset.imageDrawFailedKeepingPrevious')}: ${err.message}` : t('asset.imageDrawFailedKeepingPrevious'));
-      } else {
-        activeImageDrawSessionRef.current = null;
-        setImageDrawCandidateList([]);
-        setImageDrawOpen(false);
-        message.error(err.message || t('asset.generateFailed'));
-      }
-    } finally {
-      if (runningImageDrawSessionRef.current === sessionId) {
-        runningImageDrawSessionRef.current = null;
-        setGenerating(false);
-      }
-    }
-  }, [editedScene, form, formatDrawProgressStep, getAssetPath, message, projectId, setImageDrawCandidateList, stylePrompt, styleSnapshot, theme, t, ttiSelection, aspectRatio]);
-
-  const handleGenerateImage = useCallback(async () => {
-    await runSceneImageDraw(imageDrawCandidatesRef.current);
-  }, [runSceneImageDraw]);
-
-  const handleRedrawImageDraw = useCallback(async () => {
-    await runSceneImageDraw(imageDrawCandidatesRef.current);
-  }, [runSceneImageDraw]);
-
-  const handleCancelImageDraw = useCallback(async () => {
-    const staleCandidates = imageDrawCandidatesRef.current;
-    activeImageDrawSessionRef.current = null;
-    runningImageDrawSessionRef.current = null;
-    setImageDrawOpen(false);
-    setImageDrawCandidateList([]);
-    setImageDrawApplying(false);
-    await cleanupImageDrawCandidates(staleCandidates);
-    message.info(t('asset.imageCandidatesDiscarded'));
-  }, [message, setImageDrawCandidateList, t]);
-
-  const handleUseSelectedImageDraw = useCallback(async (candidate: AssetImageDrawCandidate) => {
-    if (imageDrawApplying) return;
-
-    const activeSessionId = activeImageDrawSessionRef.current;
-    const currentCandidates = imageDrawCandidatesRef.current;
-    const selectedCandidate = currentCandidates.find((item) => item.id === candidate.id);
-    const owner = {
-      projectId,
-      ownerType: 'scene' as const,
-      ownerId: currentSceneIdRef.current,
-      sessionId: activeSessionId,
-    };
-
-    if (
-      !activeSessionId ||
-      !selectedCandidate ||
-      !isImageDrawCandidateForOwner(selectedCandidate, owner)
-    ) {
-      activeImageDrawSessionRef.current = null;
-      setImageDrawOpen(false);
-      setImageDrawCandidateList([]);
-      await cleanupImageDrawCandidates(currentCandidates);
-      message.warning(t('asset.imageDrawCandidateExpired'));
-      return;
-    }
-
-    if (!selectedCandidate.localPath && !selectedCandidate.remoteUrl) {
-      message.warning(t('asset.pleaseSelectImageCandidate'));
-      return;
-    }
-
-    setImageDrawApplying(true);
-    try {
-      const currentValues = await form.getFieldsValue();
-      let selectedImage = createStoredMediaAsset('image', {
-        localPath: selectedCandidate.localPath,
-        remoteUrl: selectedCandidate.remoteUrl,
-        metadata: selectedCandidate.seed !== undefined ? { seed: selectedCandidate.seed } : undefined,
+      const updated = updateSceneMedia(sceneWithPrompt, {
+        previewImage: createStoredMediaAsset('image', {
+          localPath: result.path,
+          remoteUrl: result.url,
+        }),
       });
-      try {
-        selectedImage = await ensureRemoteUrlForImageAsset({
-          projectId,
-          asset: selectedImage,
-          policy: 'best-effort',
-        });
-      } catch (error) {
-        logger.warn('抽卡选中场景图 remoteUrl 归一化失败', { error: error instanceof Error ? error.message : String(error) });
-      }
-
-      if (
-        activeImageDrawSessionRef.current !== activeSessionId ||
-        currentSceneIdRef.current !== selectedCandidate.ownerId ||
-        !isImageDrawCandidateForOwner(selectedCandidate, {
-          projectId,
-          ownerType: 'scene',
-          ownerId: currentSceneIdRef.current,
-          sessionId: activeSessionId,
-        })
-      ) {
-        activeImageDrawSessionRef.current = null;
-        setImageDrawOpen(false);
-        setImageDrawCandidateList([]);
-        await cleanupImageDrawCandidates(currentCandidates);
-        message.warning(t('asset.imageDrawCandidateExpired'));
-        return;
-      }
-
-      const updated = updateSceneMedia(
-        {
-          ...editedScene,
-          ...currentValues,
-        },
-        { previewImage: selectedImage }
-      );
-      setEditedScene(updated);
-      onUpdate(updated);
       const scenes = await loadScenes(projectId);
       const index = scenes.findIndex(s => s.id === updated.id);
       if (index !== -1) {
@@ -419,17 +251,17 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
         await saveScenes(projectId, scenes);
       }
 
-      await cleanupImageDrawCandidates(currentCandidates, selectedCandidate.id);
-      activeImageDrawSessionRef.current = null;
-      setImageDrawCandidateList([]);
-      setImageDrawOpen(false);
-      message.success(t('asset.sceneImageGenerated'));
+      if (isCurrent()) {
+        setEditedScene(updated);
+        onUpdate(updated);
+        message.success(t('asset.sceneImageGenerated'));
+      }
     } catch (err: any) {
-      message.error(err.message || t('asset.generateFailed'));
+      if (isCurrent()) message.error(err.message || t('asset.generateFailed'));
     } finally {
-      setImageDrawApplying(false);
+      if (isCurrent()) setGenerating(false);
     }
-  }, [editedScene, form, imageDrawApplying, message, onUpdate, projectId, setImageDrawCandidateList, t]);
+  }, [editedScene, form, getAssetPath, message, onUpdate, projectId, stylePrompt, styleSnapshot, theme, t, ttiSelection, aspectRatio]);
 
   const handleUploadImage = useCallback(async () => {
     try {
@@ -521,6 +353,20 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
   }, [editedScene.id, onDelete]);
 
   const toLocalUrl = (path?: string) => path ? electronService.fs.toLocalUrl(path) : '';
+  // 重新生成会覆盖同路径文件，拼 createdAt 做缓存绕过，确保预览拉取新内容
+  const appendImageVersion = (url: string, version?: number) => {
+    if (!url || !version) return url;
+    return `${url}${url.includes('?') ? '&' : '?'}v=${version}`;
+  };
+  const sceneImageAsset = editedScene.media?.previewImage;
+  const sceneImageSource = getScenePreviewImageSource(editedScene);
+  const sceneImageDisplayUrl = appendImageVersion(toLocalUrl(sceneImageSource), sceneImageAsset?.createdAt);
+  const referenceImageAsset = editedScene.media?.referenceImage;
+  const referenceImageDisplayUrl = referenceImageAsset
+    ? (referenceImageAsset.localPath
+        ? appendImageVersion(toLocalUrl(referenceImageAsset.localPath), referenceImageAsset.createdAt)
+        : referenceImageAsset.remoteUrl || '')
+    : '';
 
   return (
     <div className="assetDetailPanel">
@@ -556,9 +402,38 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
 
             <Form.Item name="prompt" label={t('asset.visualPrompt')}>
               <TextArea
-                autoSize={{ minRows: 12, maxRows: 20 }}
+                autoSize={{ minRows: 6, maxRows: 14 }}
                 placeholder={t('asset.scenePromptPlaceholder')}
               />
+            </Form.Item>
+
+            <Form.Item
+              label="场景参考图（可选）"
+              tooltip="上传后生成场景图会以它为空间/构图参考；不上传则只按文字设定与项目风格生成。"
+            >
+              {referenceImageAsset ? (
+                <Space>
+                  <Image
+                    src={referenceImageDisplayUrl}
+                    width={56}
+                    height={56}
+                    style={{ objectFit: 'cover', borderRadius: 6 }}
+                    preview={{ mask: null }}
+                  />
+                  <Button size="small" icon={<UploadOutlined />} onClick={handleUploadReference}>
+                    更换
+                  </Button>
+                  <Popconfirm title="移除场景参考图？" onConfirm={handleRemoveReference} okButtonProps={{ danger: true }}>
+                    <Button size="small" danger icon={<DeleteOutlined />}>
+                      移除
+                    </Button>
+                  </Popconfirm>
+                </Space>
+              ) : (
+                <Button icon={<UploadOutlined />} onClick={handleUploadReference} block>
+                  上传参考图
+                </Button>
+              )}
             </Form.Item>
           </Form>
 
@@ -590,7 +465,7 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
                 loading={generating}
                 disabled={generating || !supportsTextToImage}
               >
-                {getScenePreviewImageSource(editedScene) ? t('asset.redrawSceneImageCandidates') : t('asset.drawSceneImageCandidates')}
+                {getScenePreviewImageSource(editedScene) ? t('asset.regenerateSceneImage') : t('asset.generateSceneImage')}
               </Button>
             </Tooltip>
           </div>
@@ -631,10 +506,9 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
                 type="text"
                 icon={<ExpandOutlined />}
                 onClick={() => {
-                  const source = getScenePreviewImageSource(editedScene);
-                  if (source) setPreviewImage(toLocalUrl(source));
+                  if (sceneImageDisplayUrl) setPreviewImage(sceneImageDisplayUrl);
                 }}
-                disabled={!getScenePreviewImageSource(editedScene)}
+                disabled={!sceneImageSource}
                 aria-label={t('asset.enlargePreview')}
               />
             </Tooltip>
@@ -643,12 +517,12 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
 
         <div className="creatorCanvasBody">
           <div className="creatorMediaViewer">
-            {getScenePreviewImageSource(editedScene) ? (
+            {sceneImageDisplayUrl ? (
               <img
-                  src={toLocalUrl(getScenePreviewImageSource(editedScene))}
+                  src={sceneImageDisplayUrl}
                   alt={t('asset.sceneImage')}
                   className="creatorMediaPreview"
-                  onDoubleClick={() => setPreviewImage(toLocalUrl(getScenePreviewImageSource(editedScene)))}
+                  onDoubleClick={() => setPreviewImage(sceneImageDisplayUrl)}
                 />
             ) : (
               <div className="creatorMediaPlaceholder">
@@ -659,18 +533,6 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
           </div>
         </div>
       </div>
-
-      <AssetImageDrawModal
-        open={imageDrawOpen}
-        candidates={imageDrawCandidates}
-        generating={generating}
-        progress={progress}
-        progressStep={progressStep}
-        applying={imageDrawApplying}
-        onCancel={handleCancelImageDraw}
-        onRedraw={handleRedrawImageDraw}
-        onUseSelected={handleUseSelectedImageDraw}
-      />
 
       {/* 大图预览 Modal */}
       <Modal

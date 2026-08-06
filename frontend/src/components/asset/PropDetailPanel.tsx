@@ -19,6 +19,7 @@ import {
   Segmented,
   Tooltip,
   Tag,
+  Image,
 } from 'antd';
 import {
   InboxOutlined,
@@ -52,15 +53,6 @@ import {
   getPropPreviewImageSource,
   getPropPreviewVideoSource,
 } from '../../utils/mediaSelectors';
-import AssetImageDrawModal, {
-  cleanupImageDrawCandidates,
-  createImageDrawSessionId,
-  generateImageDrawCandidates,
-  getImageDrawVariation,
-  isImageDrawCandidateForOwner,
-  IMAGE_DRAW_CANDIDATE_COUNT,
-  type AssetImageDrawCandidate,
-} from './AssetImageDrawModal';
 import type { ModelCapability } from '../../providers/channel/types';
 
 const { TextArea } = Input;
@@ -108,19 +100,8 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
   const [progress, setProgress] = useState(0);
   const [progressStep, setProgressStep] = useState('');
   const [previewImage, setPreviewImage] = useState<string | null>(null);
-  const [imageDrawOpen, setImageDrawOpen] = useState(false);
-  const [imageDrawCandidates, setImageDrawCandidates] = useState<AssetImageDrawCandidate[]>([]);
-  const [imageDrawApplying, setImageDrawApplying] = useState(false);
-  const imageDrawCandidatesRef = useRef<AssetImageDrawCandidate[]>([]);
-  const activeImageDrawSessionRef = useRef<string | null>(null);
-  const runningImageDrawSessionRef = useRef<string | null>(null);
   const currentPropIdRef = useRef(prop.id);
   currentPropIdRef.current = prop.id;
-
-  const setImageDrawCandidateList = useCallback((candidates: AssetImageDrawCandidate[]) => {
-    imageDrawCandidatesRef.current = candidates;
-    setImageDrawCandidates(candidates);
-  }, []);
 
   const supportsCapability = useCallback((capabilities: ModelCapability[] | undefined, capability: ModelCapability) => (
     capabilities?.includes(capability) ?? false
@@ -137,29 +118,6 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
       prompt: initialPrompt,
     });
   }, [prop, form]);
-
-  useEffect(() => {
-    const staleCandidates = imageDrawCandidatesRef.current;
-    activeImageDrawSessionRef.current = null;
-    runningImageDrawSessionRef.current = null;
-    setImageDrawOpen(false);
-    setImageDrawCandidateList([]);
-    setImageDrawApplying(false);
-    setGenerating((current) => (current === 'image' ? null : current));
-    if (staleCandidates.length > 0) {
-      void cleanupImageDrawCandidates(staleCandidates);
-    }
-
-    return () => {
-      const unmountedCandidates = imageDrawCandidatesRef.current;
-      activeImageDrawSessionRef.current = null;
-      runningImageDrawSessionRef.current = null;
-      imageDrawCandidatesRef.current = [];
-      if (unmountedCandidates.length > 0) {
-        void cleanupImageDrawCandidates(unmountedCandidates);
-      }
-    };
-  }, [prop.id, setImageDrawCandidateList]);
 
   // 自动切换视图模式
   useEffect(() => {
@@ -208,242 +166,115 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
     }
   }, [editedProp, form, projectId, onUpdate, message, t]);
 
-  const formatDrawProgressStep = useCallback((index: number, step?: string) => {
-    const drawStep = t('asset.drawGenerating', {
-      current: index + 1,
-      total: IMAGE_DRAW_CANDIDATE_COUNT,
-    });
-    return step ? `${drawStep} · ${step}` : drawStep;
-  }, [t]);
+  /** 上传道具参考图：生成道具图时作为造型设计参考（与项目风格参考图相互独立） */
+  const handleUploadReference = useCallback(async () => {
+    try {
+      const result = await openFileDialog({
+        filters: [{ name: t('storyboard.image'), extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+        title: '选择道具参考图',
+      });
+      if (result.canceled || !result.filePaths[0]) return;
 
-  const runPropImageDraw = useCallback(async (
-    previousCandidates: AssetImageDrawCandidate[] = imageDrawCandidatesRef.current,
-  ) => {
-    const ownerType = 'prop' as const;
+      const destPath = await getAssetPath('user-reference.png');
+      await fsCopy(result.filePaths[0], destPath);
+
+      const updated = updatePropMedia(editedProp, {
+        referenceImage: createStoredMediaAsset('image', { localPath: destPath }),
+      });
+      setEditedProp(updated);
+      onUpdate(updated);
+      const props = await loadProps(projectId);
+      const index = props.findIndex(p => p.id === editedProp.id);
+      if (index !== -1) {
+        props[index] = updated;
+        await saveProps(projectId, props);
+      }
+      message.success('参考图已上传，生成道具图时将作为造型参考');
+    } catch (err: any) {
+      message.error(err.message || '参考图上传失败');
+    }
+  }, [editedProp, getAssetPath, projectId, onUpdate, message, t]);
+
+  const handleRemoveReference = useCallback(async () => {
+    try {
+      const localPath = editedProp.media?.referenceImage?.localPath;
+      const updated = updatePropMedia(editedProp, { referenceImage: undefined });
+      const props = await loadProps(projectId);
+      const index = props.findIndex(p => p.id === editedProp.id);
+      if (index !== -1) {
+        props[index] = updated;
+        await saveProps(projectId, props);
+      }
+      if (localPath && !isRemoteMediaUri(localPath) && (await fsExists(localPath))) {
+        await fsRemove(localPath);
+      }
+      setEditedProp(updated);
+      onUpdate(updated);
+      message.success('已移除参考图');
+    } catch (err: any) {
+      message.error(err.message || '移除失败');
+    }
+  }, [editedProp, projectId, onUpdate, message]);
+
+  // 单张生成（已移除批量抽卡）：直接出正式道具参考图并覆盖保存；
+  // 生成按道具 id 落盘，用户中途切换道具也会在后台完成写入。
+  const handleGenerateImage = useCallback(async () => {
     const ownerId = editedProp.id;
-    const previousSessionId = activeImageDrawSessionRef.current;
-    const reusablePrevious = previousSessionId
-      ? previousCandidates.filter((candidate) => isImageDrawCandidateForOwner(candidate, {
-          projectId,
-          ownerType,
-          ownerId,
-          sessionId: previousSessionId,
-        }))
-      : [];
-    const reusableIds = new Set(reusablePrevious.map((candidate) => candidate.id));
-    const stalePrevious = previousCandidates.filter((candidate) => !reusableIds.has(candidate.id));
+    const isCurrent = () => currentPropIdRef.current === ownerId;
 
-    if (stalePrevious.length > 0) {
-      await cleanupImageDrawCandidates(stalePrevious);
-    }
-
-    if (reusablePrevious.length > 0) {
-      setImageDrawCandidateList(reusablePrevious);
-      setImageDrawOpen(true);
-    } else {
-      activeImageDrawSessionRef.current = null;
-      setImageDrawCandidateList([]);
-      setImageDrawOpen(false);
-    }
-
-    const sessionId = createImageDrawSessionId({ ownerType, ownerId });
-    runningImageDrawSessionRef.current = sessionId;
     setGenerating('image');
     setProgress(0);
-    setProgressStep(formatDrawProgressStep(0));
-
-    const isCurrentSession = () => (
-      runningImageDrawSessionRef.current === sessionId &&
-      currentPropIdRef.current === ownerId
-    );
+    setProgressStep('');
 
     try {
       const currentValues = await form.getFieldsValue();
       const propWithPrompt = { ...editedProp, ...currentValues };
 
-      const result = await generateImageDrawCandidates({
-        count: IMAGE_DRAW_CANDIDATE_COUNT,
-        sessionId,
+      // 用户手动上传的道具参考图：归一化远端 URL 后作为造型参考传入
+      let userReference = propWithPrompt.media?.referenceImage;
+      if (userReference) {
+        try {
+          userReference = await ensureRemoteUrlForImageAsset({
+            projectId,
+            asset: userReference,
+            policy: 'best-effort',
+            filenameHint: `${ownerId}-reference.png`,
+          });
+        } catch (error) {
+          logger.warn('道具参考图 remoteUrl 归一化失败，将尝试使用本地引用', { error: error instanceof Error ? error.message : String(error) });
+        }
+      }
+
+      const result = await generatePropImage({
         projectId,
-        ownerType,
-        ownerId,
-        shouldContinue: isCurrentSession,
-        getVariation: (index) => getImageDrawVariation(ownerType, index),
-        getCandidatePath: (seed, index) => getAssetPath(`draw/prop-${sessionId}-${index + 1}-${seed}.png`),
-        generate: (seed, index, destPath, variation) => generatePropImage({
-          projectId,
-          prop: propWithPrompt,
-          aspectRatio,
-          theme,
-          stylePrompt,
-          styleSnapshot,
-          ttiSelection,
-          seed,
-          ...(variation?.prompt ? { variationPrompt: variation.prompt } : {}),
-          destPath,
-          bindOwner: false,
-          normalizeRemoteUrl: false,
-          onProgress: (p, step) => {
-            if (!isCurrentSession()) return;
-            setProgress(((index + p / 100) / IMAGE_DRAW_CANDIDATE_COUNT) * 100);
-            setProgressStep(formatDrawProgressStep(index, step));
-          },
-        }),
-        onCandidateProgress: (p, index, step) => {
-          if (!isCurrentSession()) return;
+        prop: propWithPrompt,
+        aspectRatio,
+        theme,
+        stylePrompt,
+        styleSnapshot,
+        ttiSelection,
+        destPath: await getAssetPath('reference.png'),
+        bindOwner: false,
+        normalizeRemoteUrl: true,
+        userReference,
+        onProgress: (p, step) => {
+          if (!isCurrent()) return;
           setProgress(p);
-          setProgressStep(formatDrawProgressStep(index, step));
+          setProgressStep(step || '');
         },
       });
 
-      if (!isCurrentSession()) {
-        await cleanupImageDrawCandidates(result.candidates);
+      if (!result.success || (!result.path && !result.url)) {
+        if (isCurrent()) message.error(result.error || t('asset.generateFailed'));
         return;
       }
 
-      if (result.candidates.length > 0) {
-        if (reusablePrevious.length > 0) {
-          await cleanupImageDrawCandidates(reusablePrevious);
-        }
-        activeImageDrawSessionRef.current = sessionId;
-        setImageDrawCandidateList(result.candidates);
-        setImageDrawOpen(true);
-        if (result.failed > 0) {
-          message.warning(t('asset.imageDrawPartialFailed', {
-            failed: result.failed,
-            total: IMAGE_DRAW_CANDIDATE_COUNT,
-          }));
-        }
-      } else {
-        if (previousSessionId && reusablePrevious.length > 0) {
-          activeImageDrawSessionRef.current = previousSessionId;
-          setImageDrawCandidateList(reusablePrevious);
-          setImageDrawOpen(true);
-          message.error(result.errors[0] ? `${t('asset.imageDrawFailedKeepingPrevious')}: ${result.errors[0]}` : t('asset.imageDrawFailedKeepingPrevious'));
-        } else {
-          activeImageDrawSessionRef.current = null;
-          setImageDrawCandidateList([]);
-          setImageDrawOpen(false);
-          message.error(result.errors[0] || t('asset.generateFailed'));
-        }
-      }
-    } catch (err: any) {
-      if (!isCurrentSession()) return;
-      if (previousSessionId && reusablePrevious.length > 0) {
-        activeImageDrawSessionRef.current = previousSessionId;
-        setImageDrawCandidateList(reusablePrevious);
-        setImageDrawOpen(true);
-        message.error(err.message ? `${t('asset.imageDrawFailedKeepingPrevious')}: ${err.message}` : t('asset.imageDrawFailedKeepingPrevious'));
-      } else {
-        activeImageDrawSessionRef.current = null;
-        setImageDrawCandidateList([]);
-        setImageDrawOpen(false);
-        message.error(err.message || t('asset.generateFailed'));
-      }
-    } finally {
-      if (runningImageDrawSessionRef.current === sessionId) {
-        runningImageDrawSessionRef.current = null;
-        setGenerating(null);
-      }
-    }
-  }, [editedProp, form, formatDrawProgressStep, getAssetPath, message, projectId, setImageDrawCandidateList, stylePrompt, styleSnapshot, theme, t, ttiSelection, aspectRatio]);
-
-  const handleGenerateImage = useCallback(async () => {
-    await runPropImageDraw(imageDrawCandidatesRef.current);
-  }, [runPropImageDraw]);
-
-  const handleRedrawImageDraw = useCallback(async () => {
-    await runPropImageDraw(imageDrawCandidatesRef.current);
-  }, [runPropImageDraw]);
-
-  const handleCancelImageDraw = useCallback(async () => {
-    const staleCandidates = imageDrawCandidatesRef.current;
-    activeImageDrawSessionRef.current = null;
-    runningImageDrawSessionRef.current = null;
-    setImageDrawOpen(false);
-    setImageDrawCandidateList([]);
-    setImageDrawApplying(false);
-    await cleanupImageDrawCandidates(staleCandidates);
-    message.info(t('asset.imageCandidatesDiscarded'));
-  }, [message, setImageDrawCandidateList, t]);
-
-  const handleUseSelectedImageDraw = useCallback(async (candidate: AssetImageDrawCandidate) => {
-    if (imageDrawApplying) return;
-
-    const activeSessionId = activeImageDrawSessionRef.current;
-    const currentCandidates = imageDrawCandidatesRef.current;
-    const selectedCandidate = currentCandidates.find((item) => item.id === candidate.id);
-    const owner = {
-      projectId,
-      ownerType: 'prop' as const,
-      ownerId: currentPropIdRef.current,
-      sessionId: activeSessionId,
-    };
-
-    if (
-      !activeSessionId ||
-      !selectedCandidate ||
-      !isImageDrawCandidateForOwner(selectedCandidate, owner)
-    ) {
-      activeImageDrawSessionRef.current = null;
-      setImageDrawOpen(false);
-      setImageDrawCandidateList([]);
-      await cleanupImageDrawCandidates(currentCandidates);
-      message.warning(t('asset.imageDrawCandidateExpired'));
-      return;
-    }
-
-    if (!selectedCandidate.localPath && !selectedCandidate.remoteUrl) {
-      message.warning(t('asset.pleaseSelectImageCandidate'));
-      return;
-    }
-
-    setImageDrawApplying(true);
-    try {
-      const currentValues = await form.getFieldsValue();
-      let selectedImage = createStoredMediaAsset('image', {
-        localPath: selectedCandidate.localPath,
-        remoteUrl: selectedCandidate.remoteUrl,
-        metadata: selectedCandidate.seed !== undefined ? { seed: selectedCandidate.seed } : undefined,
+      const updated = updatePropMedia(propWithPrompt, {
+        previewImage: createStoredMediaAsset('image', {
+          localPath: result.path,
+          remoteUrl: result.url,
+        }),
       });
-      try {
-        selectedImage = await ensureRemoteUrlForImageAsset({
-          projectId,
-          asset: selectedImage,
-          policy: 'best-effort',
-        });
-      } catch (error) {
-        logger.warn('抽卡选中道具参考图 remoteUrl 归一化失败', { error: error instanceof Error ? error.message : String(error) });
-      }
-
-      if (
-        activeImageDrawSessionRef.current !== activeSessionId ||
-        currentPropIdRef.current !== selectedCandidate.ownerId ||
-        !isImageDrawCandidateForOwner(selectedCandidate, {
-          projectId,
-          ownerType: 'prop',
-          ownerId: currentPropIdRef.current,
-          sessionId: activeSessionId,
-        })
-      ) {
-        activeImageDrawSessionRef.current = null;
-        setImageDrawOpen(false);
-        setImageDrawCandidateList([]);
-        await cleanupImageDrawCandidates(currentCandidates);
-        message.warning(t('asset.imageDrawCandidateExpired'));
-        return;
-      }
-
-      const updated = updatePropMedia(
-        {
-          ...editedProp,
-          ...currentValues,
-        },
-        { previewImage: selectedImage }
-      );
-      setEditedProp(updated);
-      onUpdate(updated);
-
       const props = await loadProps(projectId);
       const index = props.findIndex(p => p.id === updated.id);
       if (index !== -1) {
@@ -451,17 +282,17 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
         await saveProps(projectId, props);
       }
 
-      await cleanupImageDrawCandidates(currentCandidates, selectedCandidate.id);
-      activeImageDrawSessionRef.current = null;
-      setImageDrawCandidateList([]);
-      setImageDrawOpen(false);
-      message.success(t('asset.propImageGenerated'));
+      if (isCurrent()) {
+        setEditedProp(updated);
+        onUpdate(updated);
+        message.success(t('asset.propImageGenerated'));
+      }
     } catch (err: any) {
-      message.error(err.message || t('asset.generateFailed'));
+      if (isCurrent()) message.error(err.message || t('asset.generateFailed'));
     } finally {
-      setImageDrawApplying(false);
+      if (isCurrent()) setGenerating(null);
     }
-  }, [editedProp, form, imageDrawApplying, message, onUpdate, projectId, setImageDrawCandidateList, t]);
+  }, [editedProp, form, getAssetPath, message, onUpdate, projectId, stylePrompt, styleSnapshot, theme, t, ttiSelection, aspectRatio]);
 
   const handleUploadImage = useCallback(async () => {
     try {
@@ -676,6 +507,20 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
   }, [editedProp.id, onDelete]);
 
   const toLocalUrl = (path?: string) => path ? electronService.fs.toLocalUrl(path) : '';
+  // 重新生成会覆盖同路径文件，拼 createdAt 做缓存绕过，确保预览拉取新内容
+  const appendImageVersion = (url: string, version?: number) => {
+    if (!url || !version) return url;
+    return `${url}${url.includes('?') ? '&' : '?'}v=${version}`;
+  };
+  const propImageAsset = editedProp.media?.previewImage;
+  const propImageSource = getPropPreviewImageSource(editedProp);
+  const propImageDisplayUrl = appendImageVersion(toLocalUrl(propImageSource), propImageAsset?.createdAt);
+  const referenceImageAsset = editedProp.media?.referenceImage;
+  const referenceImageDisplayUrl = referenceImageAsset
+    ? (referenceImageAsset.localPath
+        ? appendImageVersion(toLocalUrl(referenceImageAsset.localPath), referenceImageAsset.createdAt)
+        : referenceImageAsset.remoteUrl || '')
+    : '';
 
   return (
     <div className="assetDetailPanel">
@@ -711,9 +556,38 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
 
             <Form.Item name="prompt" label={t('asset.visualPrompt')}>
               <TextArea
-                autoSize={{ minRows: 10, maxRows: 18 }}
+                autoSize={{ minRows: 6, maxRows: 14 }}
                 placeholder={t('asset.propPromptPlaceholder')}
               />
+            </Form.Item>
+
+            <Form.Item
+              label="道具参考图（可选）"
+              tooltip="上传后生成道具图会以它为造型设计参考；不上传则只按文字设定与项目风格生成。"
+            >
+              {referenceImageAsset ? (
+                <Space>
+                  <Image
+                    src={referenceImageDisplayUrl}
+                    width={56}
+                    height={56}
+                    style={{ objectFit: 'cover', borderRadius: 6 }}
+                    preview={{ mask: null }}
+                  />
+                  <Button size="small" icon={<UploadOutlined />} onClick={handleUploadReference}>
+                    更换
+                  </Button>
+                  <Popconfirm title="移除道具参考图？" onConfirm={handleRemoveReference} okButtonProps={{ danger: true }}>
+                    <Button size="small" danger icon={<DeleteOutlined />}>
+                      移除
+                    </Button>
+                  </Popconfirm>
+                </Space>
+              ) : (
+                <Button icon={<UploadOutlined />} onClick={handleUploadReference} block>
+                  上传参考图
+                </Button>
+              )}
             </Form.Item>
           </Form>
 
@@ -745,7 +619,7 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
                 loading={generating === 'image'}
                 disabled={generating !== null || !supportsTextToImage}
               >
-                {getPropPreviewImageSource(editedProp) ? t('asset.redrawReferenceImageCandidates') : t('asset.drawReferenceImageCandidates')}
+                {getPropPreviewImageSource(editedProp) ? t('asset.regenerateReferenceImage') : t('asset.generateReferenceImage')}
               </Button>
             </Tooltip>
 
@@ -834,12 +708,11 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
                 type="text"
                 icon={<ExpandOutlined />}
                 onClick={() => {
-                  const previewImageSource = getPropPreviewImageSource(editedProp);
-                  if (viewMode === 'image' && previewImageSource) {
-                    setPreviewImage(toLocalUrl(previewImageSource));
+                  if (viewMode === 'image' && propImageDisplayUrl) {
+                    setPreviewImage(propImageDisplayUrl);
                   }
                 }}
-                disabled={viewMode === 'video' || !getPropPreviewImageSource(editedProp)}
+                disabled={viewMode === 'video' || !propImageSource}
                 aria-label={t('asset.enlargePreview')}
               />
             </Tooltip>
@@ -849,12 +722,12 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
         <div className="creatorCanvasBody">
           {viewMode === 'image' ? (
             <div className="creatorMediaViewer">
-              {getPropPreviewImageSource(editedProp) ? (
+              {propImageDisplayUrl ? (
                 <img
-                  src={toLocalUrl(getPropPreviewImageSource(editedProp))}
+                  src={propImageDisplayUrl}
                   alt={t('asset.propImage')}
                   className="creatorMediaPreview"
-                  onDoubleClick={() => setPreviewImage(toLocalUrl(getPropPreviewImageSource(editedProp)))}
+                  onDoubleClick={() => setPreviewImage(propImageDisplayUrl)}
                 />
               ) : (
                 <div className="creatorMediaPlaceholder">
@@ -877,18 +750,6 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
           )}
         </div>
       </div>
-
-      <AssetImageDrawModal
-        open={imageDrawOpen}
-        candidates={imageDrawCandidates}
-        generating={generating === 'image'}
-        progress={progress}
-        progressStep={progressStep}
-        applying={imageDrawApplying}
-        onCancel={handleCancelImageDraw}
-        onRedraw={handleRedrawImageDraw}
-        onUseSelected={handleUseSelectedImageDraw}
-      />
 
       {/* 大图预览 Modal */}
       <Modal

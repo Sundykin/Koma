@@ -108,15 +108,21 @@ export interface TTSRequest<TOptions = Record<string, unknown>> {
 export interface CharacterMediaSlots {
   costumePhoto?: StoredMediaAsset;
   previewVideo?: StoredMediaAsset;
+  /** 用户手动上传的形象参考图：生成定妆照时作为人物身份参考（区别于项目风格参考图） */
+  referenceImage?: StoredMediaAsset;
 }
 
 export interface SceneMediaSlots {
   previewImage?: StoredMediaAsset;
+  /** 用户手动上传的场景参考图：生成场景图时作为空间/构图参考（区别于项目风格参考图） */
+  referenceImage?: StoredMediaAsset;
 }
 
 export interface PropMediaSlots {
   previewImage?: StoredMediaAsset;
   previewVideo?: StoredMediaAsset;
+  /** 用户手动上传的道具参考图：生成道具图时作为造型设计参考（区别于项目风格参考图） */
+  referenceImage?: StoredMediaAsset;
 }
 
 export interface ShotMediaState {

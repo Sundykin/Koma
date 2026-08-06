@@ -273,7 +273,16 @@
     "selectPropImage": "Select prop image",
     "extractAndBindProp": "Extract & Bind Prop",
     "extractingProp": "Extracting prop...",
-    "propExtracted": "Prop extracted successfully"
+    "propExtracted": "Prop extracted successfully",
+    "extractAssetsFromScript": "Extract assets from script",
+    "extractingAssets": "Extracting assets from script…",
+    "extractAssetsDone": "Asset extraction finished",
+    "generateMissingAssets": "Generate missing assets",
+    "generateMissingAssetsCount": "Generate missing assets ({{count}})",
+    "generatingMissingAssets": "Generating assets {{done}}/{{total}}",
+    "generateMissingAssetsDone": "All missing assets generated",
+    "generateMissingAssetsPartial": "Generation done: {{success}} succeeded, {{failed}} failed",
+    "generating": "Generating…"
   },
   "storyboard": {
     "title": "Storyboard",

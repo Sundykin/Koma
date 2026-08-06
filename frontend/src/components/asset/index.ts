@@ -7,5 +7,4 @@ export { ReferenceImagePicker } from './ReferenceImagePicker';
 export { ImageCardGrid } from './ImageCardGrid';
 export { VideoCardGrid } from './VideoCardGrid';
 export { VideoVersionList } from './VideoVersionList';
-export { AssetGenerationWizard } from './AssetGenerationWizard';
 export { AssetMatchConfirm } from './AssetMatchConfirm';

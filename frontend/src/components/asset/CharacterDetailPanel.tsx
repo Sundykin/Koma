@@ -20,6 +20,7 @@ import {
   Segmented,
   Tooltip,
   Tag,
+  Image,
 } from 'antd';
 import {
   UserOutlined,
@@ -32,18 +33,17 @@ import {
   LoadingOutlined,
   LinkOutlined,
   ExpandOutlined,
+  StarOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import type { Character, CharacterGender, ProjectStyleSnapshot } from '../../types';
 import { isRemoteMediaUri } from '../../types';
 import {
   generateCostumePhoto,
-  generateCharacterFaceCandidate,
-  generateCharacterFaceCandidatesBatch,
   generateCharacterPreviewVideo,
   extractAndBindCharacter,
 } from '../../workflow/characterAssetWorkflow';
-import { electronService, openFileDialog, fsCopy, fsMkdir, fsExists, fsRemove } from '../../services/electronService';
+import { electronService, openFileDialog, fsCopy, fsMkdir, fsExists, fsRemove, fsReadFileAsBase64 } from '../../services/electronService';
 import { getStorageConfig, initStorageConfig } from '../../store/storageConfig';
 import { saveCharacters, loadCharacters } from '../../store/projectStore';
 import { useActiveConfig } from '../../hooks/useActiveConfig';
@@ -51,19 +51,16 @@ import { uploadLocalFileToImageHosting, isImageHostingEnabled } from '../../serv
 import { ensureRemoteUrlForImageAsset } from '../../services/mediaRemoteUrlService';
 import { createStoredMediaAsset, updateCharacterMedia } from '../../utils/mediaAssets';
 import { mergeEpisodeRefs } from './assetEpisodeRefs';
+import { saveActorFromCharacter } from '../../services/actorLibraryService';
+import {
+  createVoiceCategory,
+  createVoiceProfile,
+  loadVoiceLibrary,
+} from '../../services/voiceLibrary/voiceLibraryService';
 import {
   getCharacterCostumePhotoSource,
   getCharacterPreviewVideoSource,
 } from '../../utils/mediaSelectors';
-import AssetImageDrawModal, {
-  cleanupImageDrawCandidates,
-  createImageDrawSessionId,
-  generateImageDrawCandidates,
-  getImageDrawVariation,
-  isImageDrawCandidateForOwner,
-  IMAGE_DRAW_CANDIDATE_COUNT,
-  type AssetImageDrawCandidate,
-} from './AssetImageDrawModal';
 import type { ModelCapability } from '../../providers/channel/types';
 import { CharacterVoiceSelect } from '../voiceLibrary/CharacterVoiceSelect';
 
@@ -75,8 +72,8 @@ const { Text } = Typography;
 interface CharacterDetailPanelProps {
   character: Character;
   projectId: string;
-  /** 项目全局比例 — 透传给 generateCostumePhoto / generateCharacterFaceCandidate(s)
-   *  让定妆照与人脸候选都落在项目比例上，否则下游分镜走 image-to-image 时输出会跟着参考图比例。 */
+  /** 项目全局比例 — 透传给 generateCostumePhoto，让定妆照与项目比例一致，
+   *  否则下游分镜走 image-to-image 时输出会跟着参考图比例。 */
   aspectRatio?: '16:9' | '9:16';
   theme?: string;
   stylePrompt?: string;
@@ -89,11 +86,6 @@ interface CharacterDetailPanelProps {
 
 type GeneratingType = 'costume' | 'video' | 'extract' | null;
 type ViewMode = 'costume' | 'video';
-
-import {
-  buildSelectedFaceCandidateMetadata,
-  validateCharacterDrawCandidateImage,
-} from './characterDrawValidation';
 
 export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
   character,
@@ -120,19 +112,9 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
   const [progress, setProgress] = useState(0);
   const [progressStep, setProgressStep] = useState('');
   const [previewImage, setPreviewImage] = useState<string | null>(null);
-  const [imageDrawOpen, setImageDrawOpen] = useState(false);
-  const [imageDrawCandidates, setImageDrawCandidates] = useState<AssetImageDrawCandidate[]>([]);
-  const [imageDrawApplying, setImageDrawApplying] = useState(false);
-  const imageDrawCandidatesRef = useRef<AssetImageDrawCandidate[]>([]);
-  const activeImageDrawSessionRef = useRef<string | null>(null);
-  const runningImageDrawSessionRef = useRef<string | null>(null);
+  const [voiceSelectKey, setVoiceSelectKey] = useState(0);
   const currentCharacterIdRef = useRef(character.id);
   currentCharacterIdRef.current = character.id;
-
-  const setImageDrawCandidateList = useCallback((candidates: AssetImageDrawCandidate[]) => {
-    imageDrawCandidatesRef.current = candidates;
-    setImageDrawCandidates(candidates);
-  }, []);
 
   const supportsCapability = useCallback((capabilities: ModelCapability[] | undefined, capability: ModelCapability) => (
     capabilities?.includes(capability) ?? false
@@ -153,29 +135,6 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
       voiceId: character.voiceId,
     });
   }, [character, form]);
-
-  useEffect(() => {
-    const staleCandidates = imageDrawCandidatesRef.current;
-    activeImageDrawSessionRef.current = null;
-    runningImageDrawSessionRef.current = null;
-    setImageDrawOpen(false);
-    setImageDrawCandidateList([]);
-    setImageDrawApplying(false);
-    setGenerating((current) => (current === 'costume' ? null : current));
-    if (staleCandidates.length > 0) {
-      void cleanupImageDrawCandidates(staleCandidates);
-    }
-
-    return () => {
-      const unmountedCandidates = imageDrawCandidatesRef.current;
-      activeImageDrawSessionRef.current = null;
-      runningImageDrawSessionRef.current = null;
-      imageDrawCandidatesRef.current = [];
-      if (unmountedCandidates.length > 0) {
-        void cleanupImageDrawCandidates(unmountedCandidates);
-      }
-    };
-  }, [character.id, setImageDrawCandidateList]);
 
   // 自动切换视图模式
   useEffect(() => {
@@ -225,270 +184,135 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
     }
   }, [editedCharacter, form, projectId, onUpdate, message, t]);
 
-  const formatDrawProgressStep = useCallback((index: number, step?: string) => {
-    const drawStep = t('asset.drawGenerating', {
-      current: index + 1,
-      total: IMAGE_DRAW_CANDIDATE_COUNT,
-    });
-    return step ? `${drawStep} · ${step}` : drawStep;
-  }, [t]);
+  /** 上传形象参考图：生成定妆照时作为人物身份参考（与项目风格参考图相互独立） */
+  const handleUploadReference = useCallback(async () => {
+    try {
+      const result = await openFileDialog({
+        filters: [{ name: t('storyboard.image'), extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+        title: '选择形象参考图',
+      });
+      if (result.canceled || !result.filePaths[0]) return;
 
-  const runCostumeImageDraw = useCallback(async (
-    previousCandidates: AssetImageDrawCandidate[] = imageDrawCandidatesRef.current,
-  ) => {
-    const ownerType = 'character' as const;
+      const destPath = await getAssetPath('reference.png');
+      await fsCopy(result.filePaths[0], destPath);
+
+      const updated = updateCharacterMedia(editedCharacter, {
+        referenceImage: createStoredMediaAsset('image', { localPath: destPath }),
+      });
+      setEditedCharacter(updated);
+      onUpdate(updated);
+      const characters = await loadCharacters(projectId);
+      const index = characters.findIndex(c => c.id === editedCharacter.id);
+      if (index !== -1) {
+        characters[index] = updated;
+        await saveCharacters(projectId, characters);
+      }
+      message.success('参考图已上传，生成定妆照时将作为人物参考');
+    } catch (err: any) {
+      message.error(err.message || '参考图上传失败');
+    }
+  }, [editedCharacter, getAssetPath, projectId, onUpdate, message, t]);
+
+  const handleRemoveReference = useCallback(async () => {
+    try {
+      const localPath = editedCharacter.media?.referenceImage?.localPath;
+      const updated = updateCharacterMedia(editedCharacter, { referenceImage: undefined });
+      const characters = await loadCharacters(projectId);
+      const index = characters.findIndex(c => c.id === editedCharacter.id);
+      if (index !== -1) {
+        characters[index] = updated;
+        await saveCharacters(projectId, characters);
+      }
+      if (localPath && !isRemoteMediaUri(localPath) && (await fsExists(localPath))) {
+        await fsRemove(localPath);
+      }
+      setEditedCharacter(updated);
+      onUpdate(updated);
+      message.success('已移除参考图');
+    } catch (err: any) {
+      message.error(err.message || '移除失败');
+    }
+  }, [editedCharacter, projectId, onUpdate, message]);
+
+  /** 把当前角色（含定妆照与绑定音色）收进全局演员库，供其他项目/剧集复用 */
+  const handleSaveAsActor = useCallback(async () => {
+    try {
+      const currentValues = await form.getFieldsValue();
+      const charToSave = { ...editedCharacter, ...currentValues };
+      await saveActorFromCharacter(charToSave);
+      message.success(`已把「${charToSave.name}」存为演员，新建角色时可从演员库选择`);
+    } catch (err: any) {
+      message.error(err.message || '存为演员失败');
+    }
+  }, [editedCharacter, form, message]);
+
+  /** 上传音色样本：入库为自定义音色并直接绑定到当前角色（仍需点保存落盘） */
+  const handleUploadVoice = useCallback(async () => {
+    try {
+      const result = await openFileDialog({
+        filters: [{ name: '音频', extensions: ['wav', 'mp3', 'm4a', 'ogg', 'flac', 'webm'] }],
+        title: '选择音色样本音频',
+      });
+      if (result.canceled || !result.filePaths[0]) return;
+
+      const filePath = result.filePaths[0];
+      const base64 = await fsReadFileAsBase64(filePath);
+      const ext = filePath.split('.').pop()?.toLowerCase() || 'wav';
+
+      let snapshot = await loadVoiceLibrary();
+      let category = snapshot.categories.find(c => c.source === 'custom');
+      if (!category) {
+        snapshot = await createVoiceCategory('我的音色', snapshot);
+        category = snapshot.categories.find(c => c.source === 'custom');
+      }
+      if (!category) throw new Error('未找到可用的自定义音色分类');
+
+      const charGender = form.getFieldValue('gender') as CharacterGender | undefined;
+      const next = await createVoiceProfile({
+        categoryId: category.id,
+        name: `${form.getFieldValue('name') || editedCharacter.name} 的音色`,
+        gender: charGender === 'male' || charGender === 'female' || charGender === 'neutral' ? charGender : undefined,
+        sampleDataBase64: base64,
+        sampleExt: ext,
+      }, snapshot);
+
+      const newProfile = next.profiles[next.profiles.length - 1];
+      form.setFieldsValue({ voiceId: newProfile.id });
+      // 音色选择器只在挂载时拉库，强制重挂载让它看到新音色
+      setVoiceSelectKey(k => k + 1);
+      message.success('音色已上传并绑定，点击右上角保存生效');
+    } catch (err: any) {
+      message.error(err.message || '音色上传失败');
+    }
+  }, [editedCharacter.name, form, message]);
+
+  // 单张生成（已移除批量抽卡）：直接出正式三视图定妆照并覆盖保存；
+  // 生成按角色 id 落盘，用户中途切换角色也会在后台完成写入。
+  const handleGenerateCostume = useCallback(async () => {
     const ownerId = editedCharacter.id;
-    const previousSessionId = activeImageDrawSessionRef.current;
-    const reusablePrevious = previousSessionId
-      ? previousCandidates.filter((candidate) => isImageDrawCandidateForOwner(candidate, {
-          projectId,
-          ownerType,
-          ownerId,
-          sessionId: previousSessionId,
-        }))
-      : [];
-    const reusableIds = new Set(reusablePrevious.map((candidate) => candidate.id));
-    const stalePrevious = previousCandidates.filter((candidate) => !reusableIds.has(candidate.id));
+    const isCurrent = () => currentCharacterIdRef.current === ownerId;
 
-    if (stalePrevious.length > 0) {
-      await cleanupImageDrawCandidates(stalePrevious);
-    }
-
-    if (reusablePrevious.length > 0) {
-      setImageDrawCandidateList(reusablePrevious);
-      setImageDrawOpen(true);
-    } else {
-      activeImageDrawSessionRef.current = null;
-      setImageDrawCandidateList([]);
-      setImageDrawOpen(false);
-    }
-
-    const sessionId = createImageDrawSessionId({ ownerType, ownerId });
-    runningImageDrawSessionRef.current = sessionId;
     setGenerating('costume');
     setProgress(0);
-    setProgressStep(formatDrawProgressStep(0));
-
-    const isCurrentSession = () => (
-      runningImageDrawSessionRef.current === sessionId &&
-      currentCharacterIdRef.current === ownerId
-    );
+    setProgressStep('');
 
     try {
       const currentValues = await form.getFieldsValue();
       const charWithPrompt = { ...editedCharacter, ...currentValues };
 
-      const result = await generateImageDrawCandidates({
-        count: IMAGE_DRAW_CANDIDATE_COUNT,
-        sessionId,
-        projectId,
-        ownerType,
-        ownerId,
-        shouldContinue: isCurrentSession,
-        getVariation: (index) => getImageDrawVariation(ownerType, index),
-        getCandidatePath: (seed, index) => getAssetPath(`draw/face-${sessionId}-${index + 1}-${seed}.png`),
-        generateBatch: async ({ startIndex, batchSize, seeds, destPaths, variations }) => {
-          const requestedBatchCount = Math.max(batchSize, seeds.length, destPaths.length, variations.length);
-          const batchResults = await generateCharacterFaceCandidatesBatch({
+      // 用户手动上传的形象参考图：归一化远端 URL 后作为人物身份参考传入
+      let userReference = charWithPrompt.media?.referenceImage;
+      if (userReference) {
+        try {
+          userReference = await ensureRemoteUrlForImageAsset({
             projectId,
-            character: charWithPrompt,
-            aspectRatio,
-            theme,
-            stylePrompt,
-            styleSnapshot,
-            ttiSelection,
-            batchCount: requestedBatchCount,
-            seeds,
-            destPaths,
-            variations,
-            bindOwner: false,
-            normalizeRemoteUrl: false,
-            onProgress: (p, step) => {
-              if (!isCurrentSession()) return;
-              setProgress(((startIndex + (p / 100) * requestedBatchCount) / IMAGE_DRAW_CANDIDATE_COUNT) * 100);
-              setProgressStep(formatDrawProgressStep(startIndex + requestedBatchCount - 1, step));
-            },
+            asset: userReference,
+            policy: 'best-effort',
+            filenameHint: `${ownerId}-reference.png`,
           });
-          return batchResults.map((result, offset) => ({
-            ...result,
-            index: startIndex + offset,
-            seed: result.seed ?? seeds[offset],
-          }));
-        },
-        generate: (seed, index, destPath, variation) => generateCharacterFaceCandidate({
-          projectId,
-          character: charWithPrompt,
-          aspectRatio,
-          theme,
-          stylePrompt,
-          styleSnapshot,
-          ttiSelection,
-          seed,
-          ...(variation?.prompt ? { variationPrompt: variation.prompt } : {}),
-          destPath,
-          bindOwner: false,
-          normalizeRemoteUrl: false,
-          onProgress: (p, step) => {
-            if (!isCurrentSession()) return;
-            setProgress(((index + p / 100) / IMAGE_DRAW_CANDIDATE_COUNT) * 100);
-            setProgressStep(formatDrawProgressStep(index, step));
-          },
-        }),
-        validateCandidateResult: ({ candidate }) => validateCharacterDrawCandidateImage(candidate),
-        onCandidateProgress: (p, index, step) => {
-          if (!isCurrentSession()) return;
-          setProgress(p);
-          setProgressStep(formatDrawProgressStep(index, step));
-        },
-      });
-
-      if (!isCurrentSession()) {
-        await cleanupImageDrawCandidates(result.candidates);
-        return;
-      }
-
-      if (result.candidates.length > 0) {
-        if (reusablePrevious.length > 0) {
-          await cleanupImageDrawCandidates(reusablePrevious);
+        } catch (error) {
+          logger.warn('形象参考图 remoteUrl 归一化失败，将尝试使用本地引用', { error: error instanceof Error ? error.message : String(error) });
         }
-        activeImageDrawSessionRef.current = sessionId;
-        setImageDrawCandidateList(result.candidates);
-        setImageDrawOpen(true);
-        if (result.failed > 0) {
-          message.warning(t('asset.imageDrawPartialFailed', {
-            failed: result.failed,
-            total: IMAGE_DRAW_CANDIDATE_COUNT,
-          }));
-        }
-      } else {
-        if (previousSessionId && reusablePrevious.length > 0) {
-          activeImageDrawSessionRef.current = previousSessionId;
-          setImageDrawCandidateList(reusablePrevious);
-          setImageDrawOpen(true);
-          message.error(result.errors[0] ? `${t('asset.imageDrawFailedKeepingPrevious')}: ${result.errors[0]}` : t('asset.imageDrawFailedKeepingPrevious'));
-        } else {
-          activeImageDrawSessionRef.current = null;
-          setImageDrawCandidateList([]);
-          setImageDrawOpen(false);
-          message.error(result.errors[0] || t('asset.generateFailed'));
-        }
-      }
-    } catch (err: any) {
-      if (!isCurrentSession()) return;
-      if (previousSessionId && reusablePrevious.length > 0) {
-        activeImageDrawSessionRef.current = previousSessionId;
-        setImageDrawCandidateList(reusablePrevious);
-        setImageDrawOpen(true);
-        message.error(err.message ? `${t('asset.imageDrawFailedKeepingPrevious')}: ${err.message}` : t('asset.imageDrawFailedKeepingPrevious'));
-      } else {
-        activeImageDrawSessionRef.current = null;
-        setImageDrawCandidateList([]);
-        setImageDrawOpen(false);
-        message.error(err.message || t('asset.generateFailed'));
-      }
-    } finally {
-      if (runningImageDrawSessionRef.current === sessionId) {
-        runningImageDrawSessionRef.current = null;
-        setGenerating(null);
-      }
-    }
-  }, [editedCharacter, form, formatDrawProgressStep, getAssetPath, message, projectId, setImageDrawCandidateList, stylePrompt, styleSnapshot, theme, t, ttiSelection, aspectRatio]);
-
-  const handleGenerateCostume = useCallback(async () => {
-    await runCostumeImageDraw(imageDrawCandidatesRef.current);
-  }, [runCostumeImageDraw]);
-
-  const handleRedrawImageDraw = useCallback(async () => {
-    await runCostumeImageDraw(imageDrawCandidatesRef.current);
-  }, [runCostumeImageDraw]);
-
-  const handleCancelImageDraw = useCallback(async () => {
-    const staleCandidates = imageDrawCandidatesRef.current;
-    activeImageDrawSessionRef.current = null;
-    runningImageDrawSessionRef.current = null;
-    setImageDrawOpen(false);
-    setImageDrawCandidateList([]);
-    setImageDrawApplying(false);
-    await cleanupImageDrawCandidates(staleCandidates);
-    message.info(t('asset.imageCandidatesDiscarded'));
-  }, [message, setImageDrawCandidateList, t]);
-
-  const handleUseSelectedImageDraw = useCallback(async (candidate: AssetImageDrawCandidate) => {
-    if (imageDrawApplying) return;
-
-    const activeSessionId = activeImageDrawSessionRef.current;
-    const currentCandidates = imageDrawCandidatesRef.current;
-    const selectedCandidate = currentCandidates.find((item) => item.id === candidate.id);
-    const owner = {
-      projectId,
-      ownerType: 'character' as const,
-      ownerId: currentCharacterIdRef.current,
-      sessionId: activeSessionId,
-    };
-    const isSelectedCandidateStillValid = () => Boolean(
-      activeSessionId &&
-      selectedCandidate &&
-      activeImageDrawSessionRef.current === activeSessionId &&
-      currentCharacterIdRef.current === selectedCandidate.ownerId &&
-      isImageDrawCandidateForOwner(selectedCandidate, {
-        projectId,
-        ownerType: 'character',
-        ownerId: currentCharacterIdRef.current,
-        sessionId: activeSessionId,
-      })
-    );
-
-    if (
-      !activeSessionId ||
-      !selectedCandidate ||
-      !isImageDrawCandidateForOwner(selectedCandidate, owner)
-    ) {
-      activeImageDrawSessionRef.current = null;
-      setImageDrawOpen(false);
-      setImageDrawCandidateList([]);
-      await cleanupImageDrawCandidates(currentCandidates);
-      message.warning(t('asset.imageDrawCandidateExpired'));
-      return;
-    }
-
-    if (!selectedCandidate.localPath && !selectedCandidate.remoteUrl) {
-      message.warning(t('asset.pleaseSelectImageCandidate'));
-      return;
-    }
-
-    setImageDrawApplying(true);
-    setGenerating('costume');
-    setProgress(0);
-    setProgressStep(t('asset.generatingCostumeFromSelectedFace'));
-    try {
-      const currentValues = await form.getFieldsValue();
-      const charWithPrompt = {
-        ...editedCharacter,
-        ...currentValues,
-      };
-      let faceReference = createStoredMediaAsset('image', {
-        localPath: selectedCandidate.localPath,
-        remoteUrl: selectedCandidate.remoteUrl,
-        metadata: buildSelectedFaceCandidateMetadata(selectedCandidate, 'faceReference'),
-      });
-      try {
-        faceReference = await ensureRemoteUrlForImageAsset({
-          projectId,
-          asset: faceReference,
-          policy: 'best-effort',
-          filenameHint: `${charWithPrompt.id}-selected-face.png`,
-        });
-      } catch (error) {
-        logger.warn('抽卡选中角色方向 remoteUrl 归一化失败，将尝试使用本地引用', { error: error instanceof Error ? error.message : String(error) });
-      }
-
-      if (!isSelectedCandidateStillValid()) {
-        activeImageDrawSessionRef.current = null;
-        setImageDrawOpen(false);
-        setImageDrawCandidateList([]);
-        await cleanupImageDrawCandidates(currentCandidates);
-        message.warning(t('asset.imageDrawCandidateExpired'));
-        return;
       }
 
       const result = await generateCostumePhoto({
@@ -502,36 +326,25 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
         destPath: await getAssetPath('costume.png'),
         bindOwner: false,
         normalizeRemoteUrl: true,
-        faceReference,
+        userReference,
         onProgress: (p, step) => {
-          if (!isSelectedCandidateStillValid()) return;
+          if (!isCurrent()) return;
           setProgress(p);
-          setProgressStep(step ? `${t('asset.generatingCostumeFromSelectedFace')} · ${step}` : t('asset.generatingCostumeFromSelectedFace'));
+          setProgressStep(step || '');
         },
       });
 
       if (!result.success || (!result.path && !result.url)) {
-        message.error(result.error || t('asset.generateFailed'));
+        if (isCurrent()) message.error(result.error || t('asset.generateFailed'));
         return;
       }
 
-      if (!isSelectedCandidateStillValid()) {
-        activeImageDrawSessionRef.current = null;
-        setImageDrawOpen(false);
-        setImageDrawCandidateList([]);
-        await cleanupImageDrawCandidates(currentCandidates);
-        message.warning(t('asset.imageDrawCandidateExpired'));
-        return;
-      }
-
-      const costumePhoto = createStoredMediaAsset('image', {
-        localPath: result.path,
-        remoteUrl: result.url,
-        metadata: buildSelectedFaceCandidateMetadata(selectedCandidate, 'costumePhoto'),
+      const updated = updateCharacterMedia(charWithPrompt, {
+        costumePhoto: createStoredMediaAsset('image', {
+          localPath: result.path,
+          remoteUrl: result.url,
+        }),
       });
-      const updated = updateCharacterMedia(charWithPrompt, { costumePhoto });
-      setEditedCharacter(updated);
-      onUpdate(updated);
       const characters = await loadCharacters(projectId);
       const index = characters.findIndex(c => c.id === updated.id);
       if (index !== -1) {
@@ -539,18 +352,17 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
         await saveCharacters(projectId, characters);
       }
 
-      await cleanupImageDrawCandidates(currentCandidates);
-      activeImageDrawSessionRef.current = null;
-      setImageDrawCandidateList([]);
-      setImageDrawOpen(false);
-      message.success(t('asset.costumeGenerated'));
+      if (isCurrent()) {
+        setEditedCharacter(updated);
+        onUpdate(updated);
+        message.success(t('asset.costumeGenerated'));
+      }
     } catch (err: any) {
-      message.error(err.message || t('asset.generateFailed'));
+      if (isCurrent()) message.error(err.message || t('asset.generateFailed'));
     } finally {
-      setImageDrawApplying(false);
-      setGenerating(null);
+      if (isCurrent()) setGenerating(null);
     }
-  }, [editedCharacter, form, getAssetPath, imageDrawApplying, message, onUpdate, projectId, setImageDrawCandidateList, stylePrompt, styleSnapshot, theme, t, ttiSelection, aspectRatio]);
+  }, [editedCharacter, form, getAssetPath, message, onUpdate, projectId, stylePrompt, styleSnapshot, theme, t, ttiSelection, aspectRatio]);
 
   const handleUploadCostume = useCallback(async () => {
     try {
@@ -802,6 +614,13 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
   const costumePhotoVersion = getMediaVersion(costumePhotoAsset?.createdAt, costumePhotoAsset?.metadata);
   const costumePhotoDisplayUrl = toVersionedImageUrl(costumePhotoSource, costumePhotoVersion);
 
+  const referenceImageAsset = editedCharacter.media?.referenceImage;
+  const referenceImageDisplayUrl = referenceImageAsset
+    ? (referenceImageAsset.localPath
+        ? toVersionedImageUrl(referenceImageAsset.localPath, referenceImageAsset.createdAt)
+        : referenceImageAsset.remoteUrl || '')
+    : '';
+
   const roleOptions = [
     { value: 'protagonist', label: t('asset.protagonist') },
     { value: 'antagonist', label: t('asset.antagonist') },
@@ -824,6 +643,9 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
             <Text strong className="creatorSidebarTitle">{editedCharacter.name}</Text>
           </Space>
           <Space>
+            <Tooltip title="存为演员（收入演员库，新建角色时可复用定妆照与音色）">
+              <Button type="text" size="small" icon={<StarOutlined />} onClick={handleSaveAsActor} />
+            </Tooltip>
             <Tooltip title={t('common.save')}>
               <Button type="text" size="small" icon={<SaveOutlined />} onClick={handleSave} />
             </Tooltip>
@@ -870,17 +692,54 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
 
             <Form.Item name="prompt" label={t('asset.visualPrompt')}>
               <TextArea
-                autoSize={{ minRows: 10, maxRows: 18 }}
+                autoSize={{ minRows: 6, maxRows: 14 }}
                 placeholder={t('asset.characterPromptPlaceholder')}
               />
             </Form.Item>
 
             <Form.Item
-              name="voiceId"
+              label="形象参考图（可选）"
+              tooltip="上传后生成定妆照会以它为人物身份参考（脸/发型/服装）；不上传则只按文字设定与项目风格生成。"
+            >
+              {referenceImageAsset ? (
+                <Space>
+                  <Image
+                    src={referenceImageDisplayUrl}
+                    width={56}
+                    height={56}
+                    style={{ objectFit: 'cover', borderRadius: 6 }}
+                    preview={{ mask: null }}
+                  />
+                  <Button size="small" icon={<UploadOutlined />} onClick={handleUploadReference}>
+                    更换
+                  </Button>
+                  <Popconfirm title="移除形象参考图？" onConfirm={handleRemoveReference} okButtonProps={{ danger: true }}>
+                    <Button size="small" danger icon={<DeleteOutlined />}>
+                      移除
+                    </Button>
+                  </Popconfirm>
+                </Space>
+              ) : (
+                <Button icon={<UploadOutlined />} onClick={handleUploadReference} block>
+                  上传参考图
+                </Button>
+              )}
+            </Form.Item>
+
+            <Form.Item
               label="绑定音色"
               tooltip="留空时分镜出配音会回退到项目默认音色；编辑后请点击右上角保存。"
             >
-              <CharacterVoiceSelect />
+              <Space.Compact style={{ width: '100%' }}>
+                <Form.Item name="voiceId" noStyle>
+                  <CharacterVoiceSelect key={voiceSelectKey} />
+                </Form.Item>
+                <Tooltip title="上传音色样本音频，入库并绑定到当前角色">
+                  <Button icon={<UploadOutlined />} onClick={handleUploadVoice}>
+                    上传音色
+                  </Button>
+                </Tooltip>
+              </Space.Compact>
             </Form.Item>
           </Form>
 
@@ -913,7 +772,7 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
                 loading={generating === 'costume'}
                 disabled={generating !== null || !supportsTextToImage}
               >
-                {getCharacterCostumePhotoSource(editedCharacter) ? t('asset.redrawCostumePhotoCandidates') : t('asset.drawCostumePhotoCandidates')}
+                {getCharacterCostumePhotoSource(editedCharacter) ? t('asset.regenerateCostumePhoto') : t('asset.generateCostumePhoto')}
               </Button>
             </Tooltip>
 
@@ -1056,24 +915,6 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
           )}
         </div>
       </div>
-
-      <AssetImageDrawModal
-        open={imageDrawOpen}
-        title={t('asset.faceImageDrawTitle')}
-        hint={t('asset.faceImageDrawHint')}
-        useLabel={t('asset.useFaceForCostume')}
-        redrawLabel={t('asset.redrawFaceCandidates')}
-        applyingLabel={t('asset.generatingCostumeFromSelectedFace')}
-        candidates={imageDrawCandidates}
-        ownerType="character"
-        generating={generating === 'costume'}
-        progress={progress}
-        progressStep={progressStep}
-        applying={imageDrawApplying}
-        onCancel={handleCancelImageDraw}
-        onRedraw={handleRedrawImageDraw}
-        onUseSelected={handleUseSelectedImageDraw}
-      />
 
       {/* 大图预览 Modal */}
       <Modal

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Tabs, Button, Typography, Empty, Tooltip, Modal, Checkbox, List, Avatar, Space, Input } from 'antd';
+import { Tabs, Button, Typography, Empty, Tooltip, Modal, Checkbox, List, Avatar, Space, Input, Spin } from 'antd';
 import {
   UserOutlined,
   EnvironmentOutlined,
@@ -42,6 +42,12 @@ interface AssetListPanelProps {
   onBindExistingCharacter?: (character: Character) => Promise<void> | void;
   onBindExistingScene?: (scene: Scene) => Promise<void> | void;
   onBindExistingProp?: (prop: Prop) => Promise<void> | void;
+  /** 正在批量生成图片的资产 id — 卡片显示「生成中」遮罩 */
+  generatingIds?: Set<string>;
+  /** 提供时空列表里显示「从剧本提取资产」按钮（需要当前剧集已有剧本） */
+  canExtract?: boolean;
+  extracting?: boolean;
+  onExtractAssets?: () => void;
   projectId: string;
 }
 
@@ -62,6 +68,10 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
   onBindExistingCharacter,
   onBindExistingScene,
   onBindExistingProp,
+  generatingIds,
+  canExtract = false,
+  extracting = false,
+  onExtractAssets,
   projectId,
 }) => {
   const { t } = useTranslation();
@@ -391,6 +401,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
     imageVersion?: string | number,
   ) => {
     const isSelected = selectedId === id;
+    const isGenerating = generatingIds?.has(id) ?? false;
     return (
       <div
         key={id}
@@ -412,6 +423,14 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
               {selectedType === 'character' && <UserOutlined className={styles.emptyAssetIcon} />}
               {selectedType === 'scene' && <EnvironmentOutlined className={styles.emptyAssetIcon} />}
               {selectedType === 'prop' && <InboxOutlined className={styles.emptyAssetIcon} />}
+            </div>
+          )}
+
+          {/* 生成中遮罩 */}
+          {isGenerating && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/60 z-10">
+              <Spin size="small" />
+              <span className="text-xs text-white/90">{t('asset.generating')}</span>
             </div>
           )}
           
@@ -474,6 +493,26 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
     );
   };
 
+  // 空态：可提取时给出直接动作，而不是只显示一句"暂无"
+  const renderEmptyState = (emptyText: string) => (
+    <div className="h-full flex items-center justify-center">
+      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={emptyText}>
+        {canExtract && onExtractAssets && (
+          <Button
+            type="primary"
+            ghost
+            size="small"
+            loading={extracting}
+            onClick={onExtractAssets}
+          >
+            {extracting ? t('asset.extractingAssets') : t('asset.extractAssetsFromScript')}
+          </Button>
+        )}
+      </Empty>
+    </div>
+  );
+
+
   // 角色列表 - 网格布局
   const renderCharacters = () => (
     <div className="h-full flex flex-col">
@@ -496,9 +535,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
             ))}
           </div>
         ) : (
-          <div className="h-full flex items-center justify-center">
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('asset.noCharacters')} />
-          </div>
+          renderEmptyState(t('asset.noCharacters'))
         )}
       </div>
     </div>
@@ -525,9 +562,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
             ))}
           </div>
         ) : (
-          <div className="h-full flex items-center justify-center">
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('asset.noScenes')} />
-          </div>
+          renderEmptyState(t('asset.noScenes'))
         )}
       </div>
     </div>
@@ -554,9 +589,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
             ))}
           </div>
         ) : (
-          <div className="h-full flex items-center justify-center">
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('asset.noProps')} />
-          </div>
+          renderEmptyState(t('asset.noProps'))
         )}
       </div>
     </div>
