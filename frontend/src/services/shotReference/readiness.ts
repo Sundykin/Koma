@@ -11,6 +11,7 @@
  * 角色一致性问题大多源于此（剪映/CapCut 在导出前拦缺素材同理）。
  */
 import type { Character, Prop, Scene, Shot, StoredMediaAsset } from '../../types';
+import type { ShotScriptLine } from '../../types/scene-character';
 
 export type MissingAssetKind = 'character' | 'scene' | 'prop';
 
@@ -83,4 +84,38 @@ export function formatMissingAssetWarning(missing: MissingAssetImage[]): string 
     })
     .filter(Boolean);
   return parts.join('；');
+}
+
+// ---------------------------------------------------------------------------
+// 音色就绪（剧情模式：台词角色的音色作为音画同出模型的全能参考）
+// ---------------------------------------------------------------------------
+
+export interface MissingVoiceBinding {
+  characterId: string;
+  name: string;
+}
+
+/**
+ * 找出"在目标分镜里有台词、但没绑定音色"的角色。
+ * 台词行 = scriptLines 里 role='dialogue' 且带 characterId 的行。
+ * 缺音色时视频模型只能即兴发挥，同一角色各镜声音不一致。
+ */
+export function findDialogueCharactersMissingVoice(
+  shots: Shot[],
+  characters: Character[],
+): MissingVoiceBinding[] {
+  const missing: MissingVoiceBinding[] = [];
+  const seen = new Set<string>();
+
+  for (const shot of shots) {
+    for (const line of (shot.scriptLines ?? []) as ShotScriptLine[]) {
+      if (line.role !== 'dialogue' || !line.characterId) continue;
+      if (seen.has(line.characterId)) continue;
+      seen.add(line.characterId);
+      const character = characters.find(c => c.id === line.characterId);
+      if (!character || character.voiceId) continue;
+      missing.push({ characterId: character.id, name: character.name || '未命名' });
+    }
+  }
+  return missing;
 }

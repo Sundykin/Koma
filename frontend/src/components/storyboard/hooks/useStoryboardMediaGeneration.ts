@@ -11,7 +11,7 @@ import type {
   Shot, Character, Scene, Prop, AppSettings, ProjectStyleSnapshot,
 } from '../../../types';
 import { generateShotImage, batchGenerateShotImages } from '../../../services/ShotGenerationService';
-import { findShotAssetsMissingImages, formatMissingAssetWarning } from '../../../services/shotReference/readiness';
+import { findShotAssetsMissingImages, findDialogueCharactersMissingVoice, formatMissingAssetWarning } from '../../../services/shotReference/readiness';
 import { shotRenderWorkflow, batchRenderShots } from '../../../workflow/shotRenderWorkflow';
 import { runWithTask } from '../../../services/taskRunner';
 
@@ -135,6 +135,15 @@ export function useStoryboardMediaGeneration(deps: StoryboardMediaGenerationDeps
       message.error(support.disabledReason);
       return;
     }
+    // 单镜视频：缺资产图/缺音色只轻提示不打断（批量入口有强确认）
+    const missingAssetsForVideo = findShotAssetsMissingImages([shot], characters, scenes, props ?? []);
+    const missingVoices = findDialogueCharactersMissingVoice([shot], characters);
+    const hints: string[] = [];
+    if (missingAssetsForVideo.length > 0) hints.push(`缺资产图（${formatMissingAssetWarning(missingAssetsForVideo)}）`);
+    if (missingVoices.length > 0) hints.push(`未绑音色（${missingVoices.map(v => v.name).join('、')}）`);
+    if (hints.length > 0) {
+      message.warning(`该分镜${hints.join('、')}，生成将缺少对应参考`);
+    }
     setSubmittingRenderShots(prev => new Set(prev).add(shotId));
     setShotVideoProgress(prev => {
       const next = new Map(prev);
@@ -193,7 +202,7 @@ export function useStoryboardMediaGeneration(deps: StoryboardMediaGenerationDeps
         return next;
       });
     }
-  }, [projectId, episodeId, shotVideoSupportMap, effectiveSettings, ttiSelection, itvSelection, ttsSelection, aspectRatio, styleSnapshot, message, refreshShotsFromStore, flushQueuedShotSaves, shotsRef, setSubmittingRenderShots, setShotVideoProgress]);
+  }, [projectId, episodeId, characters, scenes, props, shotVideoSupportMap, effectiveSettings, ttiSelection, itvSelection, ttsSelection, aspectRatio, styleSnapshot, message, refreshShotsFromStore, flushQueuedShotSaves, shotsRef, setSubmittingRenderShots, setShotVideoProgress]);
 
   /** 批量图片生成（force=true 重新生成已有图片的） */
   const runBatchImages = useCallback(async (force: boolean, targetShotIds?: string[]) => {
@@ -305,6 +314,27 @@ export function useStoryboardMediaGeneration(deps: StoryboardMediaGenerationDeps
       message.error(unsupportedMessage);
       return;
     }
+    // 视频生成前的就绪确认（视频代价比图片高一个量级，强确认）：
+    // 1) 缺资产图——多参考模式的角色/场景一致性全靠它们
+    // 2) 台词角色缺音色——音画同出模型的声音参考，缺了各镜声音不一致
+    const missingAssetsForVideo = findShotAssetsMissingImages(targetShots, characters, scenes, props ?? []);
+    const missingVoices = findDialogueCharactersMissingVoice(targetShots, characters);
+    if (missingAssetsForVideo.length > 0 || missingVoices.length > 0) {
+      const parts: string[] = [];
+      if (missingAssetsForVideo.length > 0) {
+        parts.push(`缺资产图：${formatMissingAssetWarning(missingAssetsForVideo)}`);
+      }
+      if (missingVoices.length > 0) {
+        parts.push(`台词角色未绑音色：${missingVoices.map(v => v.name).join('、')}`);
+      }
+      const proceed = await modal.confirm({
+        title: '视频生成前提醒',
+        content: `${parts.join('；')}。继续生成将缺少对应参考，角色外观/声音容易前后不一致。`,
+        okText: '仍然生成',
+        cancelText: '去补齐',
+      });
+      if (!proceed) return;
+    }
     const shotIds = targetShots.map(s => s.id);
     setSubmittingRenderShots(new Set(shotIds));
     const action = force ? '重新渲染' : '渲染';
@@ -361,7 +391,7 @@ export function useStoryboardMediaGeneration(deps: StoryboardMediaGenerationDeps
       setSubmittingRenderShots(new Set());
       setBatchProgress(undefined);
     }
-  }, [projectId, episodeId, effectiveSettings, ttiSelection, itvSelection, ttsSelection, aspectRatio, styleSnapshot, buildUnsupportedShotVideoMessage, message, queueRefreshShotsFromStore, ensureNoActiveBatch, flushQueuedShotSaves, shotsRef, setSubmittingRenderShots, setBatchProgress, getShotVideoCount]);
+  }, [projectId, episodeId, characters, scenes, props, modal, effectiveSettings, ttiSelection, itvSelection, ttsSelection, aspectRatio, styleSnapshot, buildUnsupportedShotVideoMessage, message, queueRefreshShotsFromStore, ensureNoActiveBatch, flushQueuedShotSaves, shotsRef, setSubmittingRenderShots, setBatchProgress, getShotVideoCount]);
 
   const handleBatchGenerate = useCallback(
     (targetShotIds?: string[]) => runBatchImages(false, targetShotIds),

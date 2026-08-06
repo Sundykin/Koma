@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findShotAssetsMissingImages, formatMissingAssetWarning } from './readiness';
+import { findShotAssetsMissingImages, findDialogueCharactersMissingVoice, formatMissingAssetWarning } from './readiness';
 import type { Character, Prop, Scene, Shot, StoredMediaAsset } from '../../types';
 
 function asset(localPath?: string, remoteUrl?: string): StoredMediaAsset {
@@ -68,5 +68,34 @@ describe('formatMissingAssetWarning', () => {
 
   it('空列表返回空串', () => {
     expect(formatMissingAssetWarning([])).toBe('');
+  });
+});
+
+describe('findDialogueCharactersMissingVoice', () => {
+  const dlg = (characterId: string): Shot['scriptLines'][number] => ({
+    id: Math.random().toString(36), text: '台词', role: 'dialogue', characterId,
+  });
+  const nar = (): Shot['scriptLines'][number] => ({
+    id: Math.random().toString(36), text: '旁白', role: 'narration',
+  });
+  const charWithVoice = (id: string, name: string, voiceId?: string): Character =>
+    ({ id, name, voiceId } as Character);
+
+  it('有台词但没绑音色的角色被找出；绑了的跳过', () => {
+    const shots = [
+      { id: 's1', scriptLines: [dlg('c1'), dlg('c2')] },
+      { id: 's2', scriptLines: [nar(), dlg('c1')] },
+    ] as Shot[];
+    const characters = [
+      charWithVoice('c1', '叶赎'),
+      charWithVoice('c2', '小白', 'voice-profile-1'),
+    ];
+    const missing = findDialogueCharactersMissingVoice(shots, characters);
+    expect(missing).toEqual([{ characterId: 'c1', name: '叶赎' }]);
+  });
+
+  it('旁白/描述行不参与；引用已删除角色不报错', () => {
+    const shots = [{ id: 's1', scriptLines: [nar(), dlg('ghost')] }] as unknown as Shot[];
+    expect(findDialogueCharactersMissingVoice(shots, [])).toEqual([]);
   });
 });
