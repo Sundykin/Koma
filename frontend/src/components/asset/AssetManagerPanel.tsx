@@ -6,12 +6,13 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { createLogger } from '../../store/logger';
 
 const logger = createLogger('AssetManagerPanel');
-import { App, Spin, Button, Space, Switch, Tooltip } from 'antd';
+import { App, Spin, Button, Space, Switch, Tooltip, Progress } from 'antd';
 import {
   ArrowRightOutlined,
   LoadingOutlined,
   ThunderboltOutlined,
   FilterOutlined,
+  FileSearchOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import type { Character, Scene, Prop, EpisodeAnalysis, ProjectStyleSnapshot } from '../../types';
@@ -30,12 +31,21 @@ import {
   removeSceneEpisodeRef,
   removePropEpisodeRef,
 } from '../../store/projectStore';
-import { submitShotAnalysisTask } from '../../services/analysisTaskClient';
+import { submitShotAnalysisTask, submitScriptAnalysisTask } from '../../services/analysisTaskClient';
+import { listTaskRecords } from '../../services/tasksIPC';
+import { runWithTask } from '../../services/taskRunner';
+import { runBatchWithConcurrency } from '../../utils/batchRunner';
+import { generateCostumePhoto } from '../../workflow/characterAssetWorkflow';
+import { generateSceneImage, generatePropImage } from '../../workflow/scenePropAssetWorkflow';
+import {
+  getCharacterCostumePhotoSource,
+  getScenePreviewImageSource,
+  getPropPreviewImageSource,
+} from '../../utils/mediaSelectors';
 import { AssetListPanel, AssetType } from './AssetListPanel';
 import { CharacterDetailPanel } from './CharacterDetailPanel';
 import { SceneDetailPanel } from './SceneDetailPanel';
 import { PropDetailPanel } from './PropDetailPanel';
-import { AssetGenerationWizard } from './AssetGenerationWizard';
 import {
   addAssetIdToEpisodeAnalysisRefs,
   filterAssetsForEpisode,
@@ -44,8 +54,6 @@ import {
   withoutEpisodeRef,
 } from './assetEpisodeRefs';
 import type { EpisodeRefsKey } from './assetEpisodeRefs';
-import { parseMediaSelectionKey } from '../../providers/channel/resolver';
-import type { Project } from '../../types';
 import './AssetManager.scss';
 
 
@@ -104,8 +112,14 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
 
   // 分镜生成状态
   const [isGeneratingShots, setIsGeneratingShots] = useState(false);
-  // 批量生成向导
-  const [wizardOpen, setWizardOpen] = useState(false);
+  // 剧本资产提取状态（提取在 main-side 任务里跑，这里轮询剧集分析落盘情况）
+  const [isExtractingAssets, setIsExtractingAssets] = useState(false);
+  // 缺失素材一键生成状态
+  const [isBatchGenerating, setIsBatchGenerating] = useState(false);
+  const [batchDoneCount, setBatchDoneCount] = useState(0);
+  const [batchTotalCount, setBatchTotalCount] = useState(0);
+  /** 正在生成图片的资产 id 集合 — 列表卡片据此显示生成中遮罩 */
+  const [generatingIds, setGeneratingIds] = useState<Set<string>>(new Set());
   const stylePrompt = useMemo(
     () => styleSnapshot?.ttiStylePrefix?.trim() || legacyStylePrompt?.trim() || '',
     [styleSnapshot, legacyStylePrompt]
@@ -430,6 +444,157 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
     setSelectedId(id);
   }, []);
 
+  // 缺失图片的资产（以当前列表视图为准：只看用户看到的这些）
+  const missingImageAssets = useMemo(() => ({
+    characters: filteredCharacters.filter(c => !getCharacterCostumePhotoSource(c)),
+    scenes: filteredScenes.filter(s => !getScenePreviewImageSource(s)),
+    props: filteredProps.filter(p => !getPropPreviewImageSource(p)),
+  }), [filteredCharacters, filteredScenes, filteredProps]);
+  const missingImageCount = missingImageAssets.characters.length
+    + missingImageAssets.scenes.length
+    + missingImageAssets.props.length;
+
+  // 从剧本提取资产：提交 main-side 分析任务后轮询落盘，中途逐步刷新列表
+  const handleExtractAssets = useCallback(async () => {
+    if (!episodeId || !script) {
+      message.warning(t('asset.missingEpisodeOrScript'));
+      return;
+    }
+    setIsExtractingAssets(true);
+    try {
+      const { deduped } = await submitScriptAnalysisTask({
+        projectId,
+        episodeId,
+        episodeName: episodeName || `${t('editor.episode')} ${episodeId}`,
+        script,
+        llmSelection,
+        styleSnapshot,
+      });
+      if (deduped) {
+        message.info('当前剧集已有提取任务在进行中');
+      }
+
+      // 轮询直到没有活跃的 script-analysis 任务；阶段结果落盘即可见
+      const maxPolls = 200; // 3s × 200 ≈ 10 分钟兜底
+      for (let i = 0; i < maxPolls; i++) {
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        await loadAssets();
+        const active = await listTaskRecords({
+          scope: `project:${projectId}`,
+          type: 'script-analysis',
+          targetKind: 'episode',
+          targetId: episodeId,
+          status: ['pending', 'running', 'processing'],
+        });
+        if (active.length === 0) break;
+      }
+      await loadAssets();
+      message.success(t('asset.extractAssetsDone'));
+    } catch (err: any) {
+      message.error(err.message || t('asset.saveFailed'));
+    } finally {
+      setIsExtractingAssets(false);
+    }
+  }, [episodeId, script, projectId, episodeName, llmSelection, styleSnapshot, loadAssets, message, t]);
+
+  // 一键生成全部缺失素材：角色定妆照 → 场景图 → 道具图，并发 3、失败自动重试
+  const handleGenerateMissingAssets = useCallback(async () => {
+    const items: Array<{ type: AssetType; asset: Character | Scene | Prop; name: string }> = [
+      ...missingImageAssets.characters.map(a => ({ type: 'character' as const, asset: a, name: a.name })),
+      ...missingImageAssets.scenes.map(a => ({ type: 'scene' as const, asset: a, name: a.name })),
+      ...missingImageAssets.props.map(a => ({ type: 'prop' as const, asset: a, name: a.name })),
+    ];
+    if (items.length === 0) return;
+
+    setIsBatchGenerating(true);
+    setBatchDoneCount(0);
+    setBatchTotalCount(items.length);
+
+    let successCount = 0;
+    let failedCount = 0;
+    try {
+      await runWithTask({
+        projectId,
+        category: 'asset',
+        subType: 'asset-generation',
+        targetType: 'character',
+        targetId: items[0].asset.id,
+        targetName: `生成缺失素材（${items.length} 个）`,
+        type: 'asset-generation',
+        metadata: { batchCount: items.length },
+        execute: async (taskCtx) => {
+          const doneProgress = new Map<string, number>();
+          const syncOverall = (label: string) => {
+            let acc = 0;
+            items.forEach(it => { acc += doneProgress.get(it.asset.id) ?? 0; });
+            taskCtx.progress(acc / items.length, label);
+          };
+          await runBatchWithConcurrency({
+            items,
+            concurrency: 3,
+            maxRetries: 2,
+            retryBaseDelayMs: 800,
+            onAttemptStart: (item) => {
+              setGeneratingIds(prev => new Set(prev).add(item.asset.id));
+              syncOverall(item.name);
+            },
+            worker: async (item) => {
+              const onProgress = () => {
+                // 单图生成没有细粒度进度回传需求，这里只保证总条在动
+                syncOverall(item.name);
+              };
+              const common = {
+                projectId,
+                aspectRatio,
+                theme,
+                stylePrompt,
+                styleSnapshot,
+                ttiSelection,
+                onProgress,
+                disableTask: true,
+              };
+              let result: { success: boolean; error?: string };
+              if (item.type === 'character') {
+                result = await generateCostumePhoto({ ...common, character: item.asset as Character });
+              } else if (item.type === 'scene') {
+                result = await generateSceneImage({ ...common, scene: item.asset as Scene });
+              } else {
+                result = await generatePropImage({ ...common, prop: item.asset as Prop });
+              }
+              if (!result.success) throw new Error(result.error || '生成失败');
+              return result;
+            },
+          }).then(results => {
+            results.forEach(({ item, result }) => {
+              const ok = Boolean(result?.success);
+              doneProgress.set(item.asset.id, ok ? 100 : 0);
+              if (ok) successCount += 1;
+              else failedCount += 1;
+              setGeneratingIds(prev => {
+                const next = new Set(prev);
+                next.delete(item.asset.id);
+                return next;
+              });
+              setBatchDoneCount(prev => prev + 1);
+            });
+          });
+        },
+      });
+      if (failedCount === 0) {
+        message.success(t('asset.generateMissingAssetsDone'));
+      } else {
+        message.warning(t('asset.generateMissingAssetsPartial', { success: successCount, failed: failedCount }));
+      }
+    } catch (err: any) {
+      message.error(err.message || t('asset.generateFailed'));
+    } finally {
+      setIsBatchGenerating(false);
+      setGeneratingIds(new Set());
+      // bindOwner 默认开启，图片已写回资产记录；重读列表刷新缩略图
+      await loadAssets();
+    }
+  }, [missingImageAssets, projectId, aspectRatio, theme, stylePrompt, styleSnapshot, ttiSelection, loadAssets, message, t]);
+
   // 下一步
   const handleNextAndGenerateShots = async () => {
     if (!episodeId || !script) {
@@ -501,6 +666,7 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
           onBindExistingCharacter={handleBindExistingCharacter}
           onBindExistingScene={handleBindExistingScene}
           onBindExistingProp={handleBindExistingProp}
+          generatingIds={generatingIds}
           projectId={projectId}
         />
         {/* 筛选开关 */}
@@ -575,12 +741,39 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
         )}
       </div>
 
-      {/* 底部操作栏 */}
+      {/* 底部操作栏：提取 → 生成 → 下一步，同一界面闭环 */}
       <div className="assetFooter">
-        <Space>
-          <Tooltip title={t('asset.batchGenerateMaterials')}>
-            <Button icon={<ThunderboltOutlined />} onClick={() => setWizardOpen(true)}>{t('asset.batchGenerate')}</Button>
+        <Space size="middle">
+          {episodeId && script && (
+            <Tooltip title={t('asset.extractAssetsFromScript')}>
+              <Button
+                icon={isExtractingAssets ? <LoadingOutlined /> : <FileSearchOutlined />}
+                onClick={handleExtractAssets}
+                loading={isExtractingAssets}
+                disabled={isBatchGenerating || isGeneratingShots}
+              >
+                {isExtractingAssets ? t('asset.extractingAssets') : t('asset.extractAssetsFromScript')}
+              </Button>
+            </Tooltip>
+          )}
+          <Tooltip title={missingImageCount === 0 ? t('asset.batchGenerateMaterials') : ''}>
+            <Button
+              type={missingImageCount > 0 ? 'primary' : 'default'}
+              icon={<ThunderboltOutlined />}
+              onClick={handleGenerateMissingAssets}
+              disabled={missingImageCount === 0 || isBatchGenerating || isExtractingAssets || isGeneratingShots}
+            >
+              {t('asset.generateMissingAssetsCount', { count: missingImageCount })}
+            </Button>
           </Tooltip>
+          {isBatchGenerating && (
+            <Progress
+              percent={batchTotalCount > 0 ? Math.round((batchDoneCount / batchTotalCount) * 100) : 0}
+              size="small"
+              style={{ width: 180 }}
+              format={() => t('asset.generatingMissingAssets', { done: batchDoneCount, total: batchTotalCount })}
+            />
+          )}
         </Space>
         <Button
           type="primary"
@@ -592,30 +785,6 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
           {isGeneratingShots ? t('asset.generatingAIShots') : t('asset.nextGenerateShots')}
         </Button>
       </div>
-
-      {/* 批量生成向导 */}
-      <AssetGenerationWizard
-        project={{
-          id: projectId,
-          title: '',
-          genre: '',
-          episodes: 0,
-          lastEdited: '',
-          thumbnail: '',
-          status: 'script',
-          aspectRatio,
-          mediaSelections: {
-            ...(ttiSelection ? { tti: parseMediaSelectionKey(ttiSelection) } : undefined),
-            ...(itvSelection ? { itv: parseMediaSelectionKey(itvSelection) } : undefined),
-          },
-          styleSnapshot,
-        } as Project}
-        open={wizardOpen}
-        // 关闭时无条件重载父级资产 — wizard.onComplete 只在用户点完最后一步才触发，
-        // 期间用户中途关掉（X / 取消 / ESC）会导致左侧资产列表停留在旧数据。
-        onClose={() => { setWizardOpen(false); loadAssets(); }}
-        onComplete={loadAssets}
-      />
     </div>
   );
 };

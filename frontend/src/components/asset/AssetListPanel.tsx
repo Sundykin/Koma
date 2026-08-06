@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Tabs, Button, Typography, Empty, Tooltip, Modal, Checkbox, List, Avatar, Space, Input } from 'antd';
+import { Tabs, Button, Typography, Empty, Tooltip, Modal, Checkbox, List, Avatar, Space, Input, Spin } from 'antd';
 import {
   UserOutlined,
   EnvironmentOutlined,
@@ -42,6 +42,8 @@ interface AssetListPanelProps {
   onBindExistingCharacter?: (character: Character) => Promise<void> | void;
   onBindExistingScene?: (scene: Scene) => Promise<void> | void;
   onBindExistingProp?: (prop: Prop) => Promise<void> | void;
+  /** 正在批量生成图片的资产 id — 卡片显示「生成中」遮罩 */
+  generatingIds?: Set<string>;
   projectId: string;
 }
 
@@ -62,6 +64,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
   onBindExistingCharacter,
   onBindExistingScene,
   onBindExistingProp,
+  generatingIds,
   projectId,
 }) => {
   const { t } = useTranslation();
@@ -391,6 +394,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
     imageVersion?: string | number,
   ) => {
     const isSelected = selectedId === id;
+    const isGenerating = generatingIds?.has(id) ?? false;
     return (
       <div
         key={id}
@@ -412,6 +416,14 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
               {selectedType === 'character' && <UserOutlined className={styles.emptyAssetIcon} />}
               {selectedType === 'scene' && <EnvironmentOutlined className={styles.emptyAssetIcon} />}
               {selectedType === 'prop' && <InboxOutlined className={styles.emptyAssetIcon} />}
+            </div>
+          )}
+
+          {/* 生成中遮罩 */}
+          {isGenerating && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/60 z-10">
+              <Spin size="small" />
+              <span className="text-xs text-white/90">{t('asset.generating')}</span>
             </div>
           )}
           
