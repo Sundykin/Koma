@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildProductionReport, formatProductionReport } from './productionReport';
+import { buildProductionReport, formatProductionReport, buildProductionSuggestions } from './productionReport';
 import type { Shot, Character } from '../types';
 
 const shot = (overrides: Partial<Shot> = {}): Shot => ({
@@ -58,5 +58,20 @@ describe('formatProductionReport', () => {
     expect(text).toContain('镜数：1');
     expect(text).toContain('#1');
     expect(text).toContain('缺摄影语言');
+  });
+});
+
+describe('buildProductionSuggestions', () => {
+  it('按缺口生成建议', () => {
+    const shots = [
+      shot({ id: 's1', scriptLines: [{ id: 'l', text: '叶赎："你们来了。"', role: 'description' }] }),
+    ];
+    const chars = [char('c1', '叶赎')];
+    const report = buildProductionReport(shots, chars);
+    const suggestions = buildProductionSuggestions(report);
+    // 缺摄影语言 + 缺音色叶赎 + 缺视频
+    expect(suggestions.join()).toContain('摄影语言');
+    expect(suggestions.join()).toContain('叶赎');
+    expect(suggestions.join()).toContain('视频');
   });
 });

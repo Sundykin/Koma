@@ -91,6 +91,30 @@ export function buildProductionReport(
   };
 }
 
+/** 根据缺口生成建议下一步（按生产优先级排序） */
+export function buildProductionSuggestions(report: ProductionReport): string[] {
+  const suggestions: string[] = [];
+  if (report.missingVoiceNames.length > 0) {
+    suggestions.push(`为角色绑定音色（${report.missingVoiceNames.join('、')}）——视频音色参考依赖它`);
+  }
+  if (report.missingPhotography > 0) {
+    suggestions.push(`升级缺摄影语言的分镜脚本（${report.missingPhotography} 镜）`);
+  }
+  if (report.promptStale > 0) {
+    suggestions.push(`重新生成提示词待更新的分镜（${report.promptStale} 镜）`);
+  }
+  if (report.overDuration > 0) {
+    suggestions.push(`校准台词超时长的分镜时长（${report.overDuration} 镜）`);
+  }
+  if (report.videoReady < report.shotCount) {
+    suggestions.push(`渲染剩余 ${report.shotCount - report.videoReady} 个分镜视频`);
+  }
+  if (report.voiceStale > 0) {
+    suggestions.push(`重新生成配音待更新的分镜（${report.voiceStale} 镜）`);
+  }
+  return suggestions;
+}
+
 /** 生成人读的报告文本 */
 export function formatProductionReport(report: ProductionReport, title = '分镜生产报告'): string {
   const lines: string[] = [
@@ -119,6 +143,9 @@ export function formatProductionReport(report: ProductionReport, title = '分镜
       const size = item.primaryShotSize ? ` · ${item.primaryShotSize}` : '';
       return `#${item.index}${size} ${flags}`;
     }),
+    '',
+    '建议下一步：',
+    ...(buildProductionSuggestions(report).map(s => `- ${s}`) || ['- 生产就绪 ✓，可进剪辑']),
   ];
   return lines.join('\n');
 }
