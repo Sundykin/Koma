@@ -81,6 +81,11 @@ export function useStoryboardMediaGeneration(deps: StoryboardMediaGenerationDeps
       message.warning('请先填写图片提示词');
       return;
     }
+    // 单镜出图：缺资产图不打断，仅轻提示（批量入口有强确认）
+    const missingForShot = findShotAssetsMissingImages([shot], characters, scenes, props ?? []);
+    if (missingForShot.length > 0) {
+      message.warning(`该分镜引用的资产还没有图片（${formatMissingAssetWarning(missingForShot)}），生成将缺少对应参考图`);
+    }
     setSubmittingShots(prev => new Set(prev).add(shotId));
     try {
       await flushQueuedShotSaves();
@@ -115,7 +120,7 @@ export function useStoryboardMediaGeneration(deps: StoryboardMediaGenerationDeps
         return next;
       });
     }
-  }, [projectId, episodeId, characters, scenes, ttiSelection, aspectRatio, styleSnapshot, message, flushQueuedShotSaves, shotsRef, setShots, setSubmittingShots]);
+  }, [projectId, episodeId, characters, scenes, props, ttiSelection, aspectRatio, styleSnapshot, message, flushQueuedShotSaves, shotsRef, setShots, setSubmittingShots]);
 
   /** 单镜视频渲染 */
   const handleRenderShotVideo = useCallback(async (shotId: string) => {
