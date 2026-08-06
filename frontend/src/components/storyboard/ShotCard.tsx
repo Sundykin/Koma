@@ -4,7 +4,7 @@
  */
 import React, { useMemo, useCallback, useEffect, useRef, useState } from 'react';
 import { isShotPromptStale, isShotVoiceStale, isShotSpeechOverDuration } from '../../services/shotFreshness';
-import { extractShotPhotography, isShotSizeJump } from '../../services/photographyElements';
+import { extractShotPhotography, isShotSizeJump, detectShotLightTone, isLightToneJump } from '../../services/photographyElements';
 import { useTranslation } from 'react-i18next';
 import {
   Tag,
@@ -114,6 +114,10 @@ export interface ShotCardProps {
   upgrading?: boolean;
   /** 上一镜主景别（用于跳变提示） */
   prevShotSize?: string;
+  /** 上一镜光线色调（用于光线跳变提示） */
+  prevLightTone?: 'warm' | 'cold' | 'mixed' | 'none';
+  /** 与上一镜是否同场景（光线跳变只在同场景内才可疑） */
+  prevSameScene?: boolean;
   onImagePromptChange: (shotId: string, imagePrompt: string) => void;
   onVideoPromptChange: (shotId: string, videoPrompt: string) => void;
   onDurationChange?: (shotId: string, duration: number) => void;
@@ -181,6 +185,8 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
   onUpgradeShotScript,
   upgrading,
   prevShotSize,
+  prevLightTone,
+  prevSameScene,
   onImagePromptChange,
   onVideoPromptChange,
   onDurationChange,
@@ -253,6 +259,9 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
   // 与上一镜的景别跳变（专业剪辑避免直接跳两级以上）
   const primaryShotSize = shotPhotography.shotSizes[0];
   const shotSizeJump = isShotSizeJump(prevShotSize, primaryShotSize);
+  // 光线跳变：同场景相邻镜头暖↔冷直接跳（仅提示，剧情需要可能合理）
+  const currentLightTone = detectShotLightTone(shot);
+  const lightToneJump = Boolean(prevSameScene) && isLightToneJump(prevLightTone, currentLightTone);
   const photographyTags: Array<{ label: string; cls: string }> = [];
   if (shotPhotography.shotSizes.length) photographyTags.push({ label: shotPhotography.shotSizes.join('/'), cls: 'text-status-info' });
   if (shotPhotography.cameraAngles.length) photographyTags.push({ label: shotPhotography.cameraAngles.join('/'), cls: 'text-status-info' });
@@ -663,6 +672,9 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
                 )}
                 {shotSizeJump && (
                   <span className="text-[10px] text-status-warning" title={`与上一镜景别跳变（${prevShotSize} → ${primaryShotSize}），建议中间加过渡镜头`}>景别跳</span>
+                )}
+                {lightToneJump && (
+                  <span className="text-[10px] text-status-warning" title={`同场景光线冷暖突变（${prevLightTone} → ${currentLightTone}），确认是否有意的光效变化`}>光线跳</span>
                 )}
                 {narrativeMode === 'drama' && onUpgradeShotScript && (
                   <button

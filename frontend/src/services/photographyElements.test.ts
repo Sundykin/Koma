@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { extractPhotographyElements, extractShotPhotography, getPrimaryShotSize, isShotSizeJump, shotSizeToShotType } from './photographyElements';
+import { extractPhotographyElements, extractShotPhotography, getPrimaryShotSize, isShotSizeJump, shotSizeToShotType, detectLightTone, detectShotLightTone, isLightToneJump, isSameScene } from './photographyElements';
 import type { ShotScriptLine } from '../types/scene-character';
 
 const desc = (text: string): ShotScriptLine => ({
@@ -78,5 +78,35 @@ describe('景别 → shotType 映射', () => {
     expect(shotSizeToShotType({ scriptLines: [desc('大全景。')] })).toBe('extreme-wide');
     expect(shotSizeToShotType({ scriptLines: [desc('近景。')] })).toBe('medium');
     expect(shotSizeToShotType({ scriptLines: [desc('两人激战')] })).toBeUndefined();
+  });
+});
+
+describe('光线冷暖检测', () => {
+  it('识别暖/冷主色调', () => {
+    expect(detectLightTone('暖黄烛光映亮桌面')).toBe('warm');
+    expect(detectLightTone('冷白月光从窗缝斜入')).toBe('cold');
+    expect(detectLightTone('两人在夜色中对视')).toBe('none');
+  });
+
+  it('暖冷共存返回 mixed', () => {
+    expect(detectLightTone('油灯暖黄，窗外冷白月光')).toBe('mixed');
+  });
+
+  it('聚合分镜 description 行的色调', () => {
+    expect(detectShotLightTone({ scriptLines: [desc('暖黄烛光摇曳。')] })).toBe('warm');
+    expect(detectShotLightTone({ scriptLines: [desc('冷白月光。')] })).toBe('cold');
+  });
+
+  it('突变判定：暖↔冷直接跳', () => {
+    expect(isLightToneJump('warm', 'cold')).toBe(true);
+    expect(isLightToneJump('cold', 'warm')).toBe(true);
+    expect(isLightToneJump('warm', 'mixed')).toBe(false);
+    expect(isLightToneJump('warm', 'none')).toBe(false);
+    expect(isLightToneJump(undefined, 'cold')).toBe(false);
+  });
+
+  it('同场景判定：scenes 有交集', () => {
+    expect(isSameScene({ scenes: ['s1'] }, { scenes: ['s1', 's2'] })).toBe(true);
+    expect(isSameScene({ scenes: ['s1'] }, { scenes: ['s2'] })).toBe(false);
   });
 });

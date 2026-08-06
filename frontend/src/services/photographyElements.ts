@@ -108,3 +108,52 @@ export function shotSizeToShotType(shot: { scriptLines?: ShotScriptLine[] }): Sh
   const primary = getPrimaryShotSize(shot);
   return primary ? SIZE_TO_SHOT_TYPE[primary] : undefined;
 }
+
+// ---------------------------------------------------------------------------
+// 光线冷暖（同场景相邻镜头光线连贯性）
+// ---------------------------------------------------------------------------
+
+const WARM_LIGHT_WORDS = ['暖黄', '暖光', '烛光', '油灯', '火光', '日光', '朝阳', '夕阳', '晚霞', '金色', '橙黄', '昏黄'];
+const COLD_LIGHT_WORDS = ['冷白', '月光', '荧光', '冷光', '寒光', '蓝', '青灰', '雪光', '苍白', '清冷'];
+
+export type LightTone = 'warm' | 'cold' | 'mixed' | 'none';
+
+/** 判定一段描述的主光线冷暖（出现次数多的类型；都无返回 none，都有返回 mixed） */
+export function detectLightTone(text: string | undefined): LightTone {
+  const t = String(text || '');
+  let warm = 0;
+  let cold = 0;
+  for (const w of WARM_LIGHT_WORDS) {
+    if (t.includes(w)) warm += 1;
+  }
+  for (const w of COLD_LIGHT_WORDS) {
+    if (t.includes(w)) cold += 1;
+  }
+  if (warm === 0 && cold === 0) return 'none';
+  if (warm > 0 && cold > 0) return 'mixed';
+  return warm > 0 ? 'warm' : 'cold';
+}
+
+/** 聚合分镜全部 description 行的光线冷暖 */
+export function detectShotLightTone(shot: { scriptLines?: ShotScriptLine[] }): LightTone {
+  const text = (shot.scriptLines ?? [])
+    .filter(line => line.role === 'description')
+    .map(line => line.text)
+    .join('\n');
+  return detectLightTone(text);
+}
+
+/**
+ * 相邻两镜光线冷暖是否"突变"：一个有明确暖、一个有明确冷（非 mixed/none）。
+ * 仅提示性——剧情需要（进门换光/闪电）可能合理，由用户判断。
+ */
+export function isLightToneJump(toneA: LightTone | undefined, toneB: LightTone | undefined): boolean {
+  if (!toneA || !toneB) return false;
+  return (toneA === 'warm' && toneB === 'cold') || (toneA === 'cold' && toneB === 'warm');
+}
+
+/** 相邻两镜是否同场景（scenes 有交集）——光线跳变只在同场景内才可疑 */
+export function isSameScene(a: { scenes?: string[] }, b: { scenes?: string[] }): boolean {
+  const setA = new Set(a.scenes ?? []);
+  return (b.scenes ?? []).some(id => setA.has(id));
+}

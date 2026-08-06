@@ -11,7 +11,7 @@ import { ShotListHeader } from './ShotListHeader';
 import type { MentionItem } from '../../editor';
 import type { Shot, ShotImageMode, ShotScriptLine, Character, Scene, Prop, StoredMediaAsset } from '../../types';
 import { getMediaAssetDisplaySource } from '../../types';
-import { getPrimaryShotSize, extractShotPhotography } from '../../services/photographyElements';
+import { getPrimaryShotSize, extractShotPhotography, detectShotLightTone, isSameScene } from '../../services/photographyElements';
 import { isShotSpeechOverDuration } from '../../services/shotFreshness';
 import { findDialogueCharactersMissingVoice } from '../../services/shotReference/readiness';
 import { ShotCard } from './ShotCard';
@@ -279,9 +279,11 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
     (index: number, shot: Shot) => {
       const latestShots = shotsForScrollRef.current;
       const previousStoryboardMention = buildPreviousStoryboardMention(latestShots, index);
-      // 上一镜主景别（用于跳变提示）
+      // 上一镜主景别 + 光线色调（用于景别/光线跳变提示）
       const prevShot = latestShots[index - 1];
       const prevShotSize = prevShot ? getPrimaryShotSize(prevShot) : undefined;
+      const prevLightTone = prevShot ? detectShotLightTone(prevShot) : undefined;
+      const prevSameScene = prevShot ? isSameScene(shot, prevShot) : false;
       return (
         <ShotCard
           projectId={projectId}
@@ -292,6 +294,8 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
           onUpgradeShotScript={onUpgradeShotScript}
           upgrading={upgradingShots?.has(shot.id)}
           prevShotSize={prevShotSize}
+          prevLightTone={prevLightTone}
+          prevSameScene={prevSameScene}
           characters={characters}
           scenes={scenes}
           props={props}
