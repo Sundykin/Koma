@@ -3,7 +3,7 @@
  * 内联编辑模式，每行一个分镜
  */
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { Button, Typography, Progress } from 'antd';
+import { App as AntApp, Button, Typography, Progress } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
 import { StoryboardLayout } from './StoryboardLayout';
@@ -14,6 +14,7 @@ import { getMediaAssetDisplaySource } from '../../types';
 import { getPrimaryShotSize, extractShotPhotography, detectShotLightTone, isSameScene } from '../../services/photographyElements';
 import { isShotSpeechOverDuration, isShotPromptStale, isShotVoiceStale, detectInconsistentCharacterVoices } from '../../services/shotFreshness';
 import { findDialogueCharactersMissingVoice } from '../../services/shotReference/readiness';
+import { buildProductionReport, formatProductionReport } from '../../services/productionReport';
 import { ShotCard } from './ShotCard';
 
 const { Text } = Typography;
@@ -184,7 +185,10 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
     } else {
       setSelectedIds(new Set());
     }
+
   }, [shots]);
+
+  const { message } = AntApp.useApp();
 
   // 单选
   const handleSelectChange = useCallback((shotId: string, selected: boolean) => {
@@ -521,6 +525,21 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
             <span className="text-text-tertiary">
               视频 {readinessStats.videoCount}/{shots.length} · 配音 {readinessStats.audioCount}/{shots.length}
             </span>
+            <button
+              className="text-text-secondary hover:opacity-80 cursor-pointer ml-auto"
+              title="复制生产状态报告到剪贴板"
+              onClick={() => {
+                const report = buildProductionReport(shots, characters);
+                const text = formatProductionReport(report);
+                void navigator.clipboard?.writeText(text).then(() => {
+                  message.success('生产报告已复制到剪贴板');
+                }).catch(() => {
+                  message.error('复制失败');
+                });
+              }}
+            >
+              导出报告
+            </button>
           </div>
         )}
 
