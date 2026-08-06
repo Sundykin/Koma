@@ -1165,6 +1165,20 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
             poster={currentImage ? getDisplaySrc(currentImage) : undefined}
           />
         </div>
+        {currentAudioSrc && (
+          <div className="mt-2 flex items-center gap-2">
+            <Button
+              size="small"
+              icon={isPlayingAudio ? <PauseCircleOutlined /> : <PlayCircleOutlined />}
+              onClick={handleToggleAudio}
+            >
+              {isPlayingAudio ? '暂停配音' : `试听配音${audioDurationSec ? `（${Math.round(audioDurationSec)}s）` : ''}`}
+            </Button>
+            <span className="text-text-secondary text-[11px]">
+              配音与视频不同步，如需精确检查请进剪辑
+            </span>
+          </div>
+        )}
       </Modal>
     </div>
   );
