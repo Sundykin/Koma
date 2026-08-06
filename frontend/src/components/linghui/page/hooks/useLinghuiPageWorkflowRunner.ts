@@ -1,4 +1,5 @@
 import { useCallback, type RefObject } from 'react';
+import { preflightLinghuiTargetNodes } from '../../execution/state/linghuiExecutionPreflight';
 import type { MessageInstance } from 'antd/es/message/interface';
 import { createLinghuiWorkspaceHistoryRecord } from '../../../../store/linghuiStorage';
 import { loadSettings } from '../../../../store/settings/core';
@@ -188,6 +189,32 @@ export function useLinghuiPageWorkflowRunner({
       nextLogs = [...patchedRuntime.executionLogs];
       message.warning(content);
       canvasRef.current?.focusNodes([firstRunning.nodeId], { select: true });
+      return;
+    }
+
+    // 执行前预检：把"确定会失败"的输入缺失一次性列出（不触发 LLM/网络）。
+    // 有阻塞问题时不启动执行，聚焦到第一个问题节点，让用户先补齐。
+    const preflightTargets = runnableTargetNodeIds ?? targetNodeIds;
+    const preflightIssues = preflightLinghuiTargetNodes(context, preflightTargets);
+    if (preflightIssues.length > 0) {
+      const first = preflightIssues[0];
+      const list = preflightIssues
+        .slice(0, 4)
+        .map(issue => `· ${issue.nodeTitle}：${issue.message}`)
+        .join('\n');
+      const more = preflightIssues.length > 4 ? `\n… 还有 ${preflightIssues.length - 4} 个问题` : '';
+      const content = `以下节点缺少必要输入，无法执行：\n${list}${more}`;
+      workflowLogger.warn('灵绘执行前预检发现阻塞问题', {
+        targetNodeIds: preflightTargets,
+        issues: preflightIssues.map(i => ({ nodeId: i.nodeId, message: i.message })),
+      });
+      const patchedRuntime = patchWorkspaceExecution(undefined, [
+        createLinghuiPageExecutionLog('warn', `执行前预检：${first.nodeTitle} - ${first.message}`, first.nodeId),
+      ]);
+      nextRuns = { ...patchedRuntime.nodeRuns };
+      nextLogs = [...patchedRuntime.executionLogs];
+      message.warning(content);
+      canvasRef.current?.focusNodes([first.nodeId], { select: true });
       return;
     }
 
