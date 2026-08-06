@@ -909,6 +909,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             onBulkCalibrateDurations={handleBulkCalibrateDurations}
             onBulkUpgradeScripts={() => handleBatchUpgradeShotScripts()}
             onReGenerateStaleImagePrompts={(ids) => handleBatchReGenerateImagePrompts(ids)}
+            onReGenerateStaleAudios={(ids) => handleBatchReGenerateAudios(ids)}
             durationSpec={itvDurationSpec}
           />
           </DndContext>

@@ -91,6 +91,8 @@ export interface ShotListEditorProps {
   onBulkUpgradeScripts?: () => void;
   /** 批量重新生成'提示词待更新'分镜的图片提示词 */
   onReGenerateStaleImagePrompts?: (shotIds: string[]) => void;
+  /** 批量重新配音'配音待更新'分镜 */
+  onReGenerateStaleAudios?: (shotIds: string[]) => void;
   onBulkImageModeChange?: (mode: Exclude<ShotImageMode, 'grid'>) => void;
   /** 当前项目选择的 ITV 渠道时长规格，透传给 ShotCard 决定时长控件渲染方式 */
   durationSpec?: import('../../providers/itv/durationSpec').VideoDurationSpec;
@@ -163,6 +165,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   upgradingShots,
   onBulkUpgradeScripts,
   onReGenerateStaleImagePrompts,
+  onReGenerateStaleAudios,
   durationSpec,
   videoProgressMap,
 }) => {
@@ -292,14 +295,18 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
     let promptStale = 0;
     let voiceStale = 0;
     const promptStaleIds: string[] = [];
+    const voiceStaleIds: string[] = [];
     for (const s of shots) {
       if (isShotPromptStale(s)) {
         promptStale += 1;
         promptStaleIds.push(s.id);
       }
-      if (isShotVoiceStale(s)) voiceStale += 1;
+      if (isShotVoiceStale(s)) {
+        voiceStale += 1;
+        voiceStaleIds.push(s.id);
+      }
     }
-    return { missingPhoto, overDuration, videoCount, audioCount, missingVoice, promptStale, promptStaleIds, voiceStale };
+    return { missingPhoto, overDuration, videoCount, audioCount, missingVoice, promptStale, promptStaleIds, voiceStale, voiceStaleIds };
   }, [shots, characters]);
 
   const renderShotRow = useCallback(
@@ -482,9 +489,13 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
               </button>
             )}
             {readinessStats.voiceStale > 0 && (
-              <span className="text-status-warning" title="台词已改，配音基于旧台词——建议重新生成配音">
-                配音待更新 {readinessStats.voiceStale} 镜
-              </span>
+              <button
+                className="text-status-warning hover:opacity-80 cursor-pointer"
+                onClick={() => onReGenerateStaleAudios?.(readinessStats.voiceStaleIds)}
+                title="台词已改，配音基于旧台词——点击重新生成这些镜的配音"
+              >
+                配音待更新 {readinessStats.voiceStale} 镜（重配音）
+              </button>
             )}
             <span className="text-text-tertiary">
               视频 {readinessStats.videoCount}/{shots.length} · 配音 {readinessStats.audioCount}/{shots.length}
