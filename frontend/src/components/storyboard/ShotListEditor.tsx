@@ -89,6 +89,8 @@ export interface ShotListEditorProps {
   upgradingShots?: Set<string>;
   /** 批量补全摄影语言 */
   onBulkUpgradeScripts?: () => void;
+  /** 批量重新生成'提示词待更新'分镜的图片提示词 */
+  onReGenerateStaleImagePrompts?: (shotIds: string[]) => void;
   onBulkImageModeChange?: (mode: Exclude<ShotImageMode, 'grid'>) => void;
   /** 当前项目选择的 ITV 渠道时长规格，透传给 ShotCard 决定时长控件渲染方式 */
   durationSpec?: import('../../providers/itv/durationSpec').VideoDurationSpec;
@@ -160,6 +162,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   onUpgradeShotScript,
   upgradingShots,
   onBulkUpgradeScripts,
+  onReGenerateStaleImagePrompts,
   durationSpec,
   videoProgressMap,
 }) => {
@@ -288,11 +291,15 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
     // 提示词/配音待更新（脚本已改，提示词/配音基于旧脚本）
     let promptStale = 0;
     let voiceStale = 0;
+    const promptStaleIds: string[] = [];
     for (const s of shots) {
-      if (isShotPromptStale(s)) promptStale += 1;
+      if (isShotPromptStale(s)) {
+        promptStale += 1;
+        promptStaleIds.push(s.id);
+      }
       if (isShotVoiceStale(s)) voiceStale += 1;
     }
-    return { missingPhoto, overDuration, videoCount, audioCount, missingVoice, promptStale, voiceStale };
+    return { missingPhoto, overDuration, videoCount, audioCount, missingVoice, promptStale, promptStaleIds, voiceStale };
   }, [shots, characters]);
 
   const renderShotRow = useCallback(
@@ -466,9 +473,13 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
               </span>
             )}
             {readinessStats.promptStale > 0 && (
-              <span className="text-status-warning" title="脚本已改，提示词基于旧脚本——建议批量重新生成提示词">
-                提示词待更新 {readinessStats.promptStale} 镜
-              </span>
+              <button
+                className="text-status-warning hover:opacity-80 cursor-pointer"
+                onClick={() => onReGenerateStaleImagePrompts?.(readinessStats.promptStaleIds)}
+                title="脚本已改，提示词基于旧脚本——点击重新生成这些镜的图片提示词"
+              >
+                提示词待更新 {readinessStats.promptStale} 镜（重生成）
+              </button>
             )}
             {readinessStats.voiceStale > 0 && (
               <span className="text-status-warning" title="台词已改，配音基于旧台词——建议重新生成配音">
