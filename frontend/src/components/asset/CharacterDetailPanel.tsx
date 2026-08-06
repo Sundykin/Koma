@@ -630,7 +630,7 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
         setGenerating(null);
       }
     }
-  }, [editedCharacter, form, formatDrawProgressStep, getAssetPath, message, projectId, setImageDrawCandidateList, stylePrompt, styleSnapshot, theme, t, ttiSelection]);
+  }, [editedCharacter, form, formatDrawProgressStep, getAssetPath, message, projectId, setImageDrawCandidateList, stylePrompt, styleSnapshot, theme, t, ttiSelection, aspectRatio]);
 
   const handleGenerateCostume = useCallback(async () => {
     await runCostumeImageDraw(imageDrawCandidatesRef.current);
@@ -788,7 +788,7 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
       setImageDrawApplying(false);
       setGenerating(null);
     }
-  }, [editedCharacter, form, getAssetPath, imageDrawApplying, message, onUpdate, projectId, setImageDrawCandidateList, stylePrompt, styleSnapshot, theme, t, ttiSelection]);
+  }, [editedCharacter, form, getAssetPath, imageDrawApplying, message, onUpdate, projectId, setImageDrawCandidateList, stylePrompt, styleSnapshot, theme, t, ttiSelection, aspectRatio]);
 
   const handleUploadCostume = useCallback(async () => {
     try {

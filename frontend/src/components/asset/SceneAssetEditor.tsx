@@ -110,7 +110,7 @@ export const SceneAssetEditor: React.FC<SceneAssetEditorProps> = ({
     } catch (err: any) {
       message.error(`上传失败: ${err.message}`);
     }
-  }, [projectId, scene.id, onUpdate, message]);
+  }, [projectId, scene.id, scene.media, onUpdate, message]);
 
   const handleSavePrompt = () => {
     onUpdate({ prompt: currentPrompt });

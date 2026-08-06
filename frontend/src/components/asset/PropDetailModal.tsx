@@ -116,6 +116,8 @@ export const PropDetailModal: React.FC<PropDetailModalProps> = ({
       await fsMkdir(dir);
     }
     return fullPath;
+    // 路径只随道具 id 变，同角色面板。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, editedProp?.id]);
 
   // 保存道具信息

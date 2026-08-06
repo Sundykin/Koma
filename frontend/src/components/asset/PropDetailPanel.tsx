@@ -346,7 +346,7 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
         setGenerating(null);
       }
     }
-  }, [editedProp, form, formatDrawProgressStep, getAssetPath, message, projectId, setImageDrawCandidateList, stylePrompt, styleSnapshot, theme, t, ttiSelection]);
+  }, [editedProp, form, formatDrawProgressStep, getAssetPath, message, projectId, setImageDrawCandidateList, stylePrompt, styleSnapshot, theme, t, ttiSelection, aspectRatio]);
 
   const handleGenerateImage = useCallback(async () => {
     await runPropImageDraw(imageDrawCandidatesRef.current);

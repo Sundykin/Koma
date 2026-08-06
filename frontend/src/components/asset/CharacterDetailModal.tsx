@@ -118,6 +118,8 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
       await fsMkdir(dir);
     }
     return fullPath;
+    // 路径只随角色 id 变；编辑内容变化不应触发目录重建。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, editedCharacter?.id]);
 
   // 保存角色信息

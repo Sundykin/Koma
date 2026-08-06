@@ -60,7 +60,7 @@ export const VideoCardGrid: React.FC<VideoCardGridProps> = ({
     if (!compact) return;
     const target = Math.floor((selectedIndex || 0) / COMPACT_PAGE_SIZE);
     if (target !== currentPage) setCurrentPage(target);
-  }, [selectedIndex, compact]);
+  }, [selectedIndex, compact, currentPage]);
   const prevVideosLenRef = useRef(videos.length);
   useEffect(() => {
     if (!compact) return;

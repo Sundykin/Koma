@@ -249,6 +249,8 @@ const AppContent: React.FC = () => {
       TaskManager.dispose();
       setCurrentProject(null);
     };
+    // 按 id 粒度依赖：项目对象本身每轮 render 可能重建，整对象列入会反复触发。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeProject?.id]);
 
   // 启动/激活项目时检查未完成媒体任务，由用户决定是否恢复
@@ -275,6 +277,8 @@ const AppContent: React.FC = () => {
     return () => {
       disposed = true;
     };
+    // 按 id 粒度依赖：项目对象本身每轮 render 可能重建，整对象列入会反复触发。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeProject?.id, activationLocked]);
 
   // 从存储加载分析数据
@@ -328,6 +332,8 @@ const AppContent: React.FC = () => {
     }
 
     return items;
+    // 按字段粒度依赖：analysisData 对象 identity 每轮可能变，字段内容才是真实消费面。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [analysisData?.characters, analysisData?.scenes, analysisData?.props]);
 
   // 监听任务完成（edge-triggered 转换事件，避免 hydrate 时已 completed 的旧任务再次触发）
@@ -349,6 +355,8 @@ const AppContent: React.FC = () => {
     if (view === 'editor' && activeProject && !isVideoDevMode) {
       loadAnalysisData(activeProject.id);
     }
+  // 按 id 粒度依赖，同上。
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, activeProject?.id, isVideoDevMode, loadAnalysisData]);
 
   useEffect(() => {
@@ -379,6 +387,8 @@ const AppContent: React.FC = () => {
         logger.error('加载剧集镜头失败', err);
       });
     }
+  // 按 id 粒度依赖，同上。
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editorStep, activeProject?.id, activeEpisode?.id, isVideoDevMode]);
 
   // 转换项目显示格式

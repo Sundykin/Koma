@@ -110,7 +110,7 @@ export const PropAssetEditor: React.FC<PropAssetEditorProps> = ({
     } catch {
       message.error('上传失败，请检查文件格式后重试');
     }
-  }, [projectId, prop.id, onUpdate, message]);
+  }, [projectId, prop.id, prop.media, onUpdate, message]);
 
   const handleSavePrompt = () => {
     onUpdate({ prompt: currentPrompt });

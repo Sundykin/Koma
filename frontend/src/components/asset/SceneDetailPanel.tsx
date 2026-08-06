@@ -315,7 +315,7 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
         setGenerating(false);
       }
     }
-  }, [editedScene, form, formatDrawProgressStep, getAssetPath, message, projectId, setImageDrawCandidateList, stylePrompt, styleSnapshot, theme, t, ttiSelection]);
+  }, [editedScene, form, formatDrawProgressStep, getAssetPath, message, projectId, setImageDrawCandidateList, stylePrompt, styleSnapshot, theme, t, ttiSelection, aspectRatio]);
 
   const handleGenerateImage = useCallback(async () => {
     await runSceneImageDraw(imageDrawCandidatesRef.current);

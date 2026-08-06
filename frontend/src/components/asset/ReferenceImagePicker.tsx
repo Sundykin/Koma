@@ -76,7 +76,7 @@ export const ReferenceImagePicker: React.FC<ReferenceImagePickerProps> = ({
     } else {
       message.warning('该资产没有图片');
     }
-  }, [characters, scenes, props, onChange]);
+  }, [characters, scenes, props, onChange, message]);
 
   // 处理本地上传
   const handleLocalUpload = useCallback(async () => {
@@ -95,7 +95,7 @@ export const ReferenceImagePicker: React.FC<ReferenceImagePickerProps> = ({
     } catch {
       message.error('选择文件失败');
     }
-  }, [onChange]);
+  }, [onChange, message]);
 
   // 拖拽处理
   const handleDragEnter = useCallback((e: React.DragEvent) => {
@@ -146,7 +146,7 @@ export const ReferenceImagePicker: React.FC<ReferenceImagePickerProps> = ({
         reader.readAsDataURL(file);
       }
     }
-  }, [disabled, onChange]);
+  }, [disabled, onChange, message]);
 
   // 清除图片
   const handleClear = useCallback((e: React.MouseEvent) => {
