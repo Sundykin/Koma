@@ -9,6 +9,7 @@
  * shot.promptScriptHash；渲染时对比当前指纹，不一致即提示"脚本已改"。
  */
 import type { ShotScriptLine } from '../types/scene-character';
+import { extractDialoguesFromDescription } from '../types/shot-script';
 
 /** FNV-1a 32 位：够用的内容指纹（非加密用途） */
 function fnv1a(input: string): string {
@@ -42,4 +43,47 @@ export function isShotPromptStale(shot: {
   const hasPrompt = Boolean(shot.imagePrompt?.trim() || shot.videoPrompt?.trim());
   if (!hasPrompt || !shot.promptScriptHash) return false;
   return computeShotScriptHash(shot.scriptLines) !== shot.promptScriptHash;
+}
+
+// ---------------------------------------------------------------------------
+// 台词 → 配音新鲜度
+// ---------------------------------------------------------------------------
+
+/**
+ * 计算分镜"可配音内容"的指纹（对话/旁白 + description 里的引号台词）。
+ * 只依赖台词部分：画面描述改动不影响配音，指纹不变 → 不误报"配音待更新"。
+ */
+export function computeShotVoiceHash(shot: { scriptLines?: ShotScriptLine[] }): string {
+  const parts: string[] = [];
+  for (const line of shot.scriptLines ?? []) {
+    const text = line.text?.trim();
+    if (!text) continue;
+    if (line.role === 'dialogue') {
+      parts.push(`D|${line.characterId ?? ''}|${text}`);
+      continue;
+    }
+    if (line.role === 'narration') {
+      parts.push(`N|${text}`);
+      continue;
+    }
+    // description：只取引号台词（画面文本不入配音）
+    for (const d of extractDialoguesFromDescription(text)) {
+      parts.push(`D|${d.speaker ?? ''}|${d.text}`);
+    }
+  }
+  return fnv1a(parts.join('\n'));
+}
+
+/**
+ * 配音是否滞后于当前台词（脚本台词被改后，旧配音与新台词不匹配）。
+ * 仅当"有配音 + 有生成时的台词指纹 + 与当前不一致"才判滞后。
+ */
+export function isShotVoiceStale(shot: {
+  media?: { audios?: unknown[] };
+  voiceScriptHash?: string;
+  scriptLines?: ShotScriptLine[];
+}): boolean {
+  const hasAudio = Boolean(shot.media?.audios?.length);
+  if (!hasAudio || !shot.voiceScriptHash) return false;
+  return computeShotVoiceHash(shot) !== shot.voiceScriptHash;
 }

@@ -3,7 +3,7 @@
  * 操作按钮在左侧列直接显示，参考图使用引用样式
  */
 import React, { useMemo, useCallback, useEffect, useRef, useState } from 'react';
-import { isShotPromptStale } from '../../services/shotFreshness';
+import { isShotPromptStale, isShotVoiceStale } from '../../services/shotFreshness';
 import { useTranslation } from 'react-i18next';
 import {
   Tag,
@@ -234,6 +234,8 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
   );
   // 脚本与提示词的新鲜度：编辑分镜脚本后指纹变化 → 提示词标滞后（轻提示，不阻断）
   const promptStale = useMemo(() => isShotPromptStale(shot), [shot]);
+  // 台词与配音的新鲜度：台词改了 → 配音待更新（只依赖可配音内容，画面改动不误报）
+  const voiceStale = useMemo(() => isShotVoiceStale(shot), [shot]);
   const isFirst = index === 0;
   const isLast = index === totalCount - 1;
 
@@ -575,14 +577,18 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
               <Button size="small" type="text" className={actionBtnClass} icon={<MergeCellsOutlined />} disabled={isFirst} onClick={() => onMergeUp(shot.id)} />
             </Tooltip>
             {onGenerateAudio && (
-              <Tooltip title={currentAudio ? '重新生成配音 (TTS)' : '生成配音 (TTS)'} placement="right">
+              <Tooltip title={voiceStale ? '台词已改，建议重新生成配音' : (currentAudio ? '重新生成配音 (TTS)' : '生成配音 (TTS)')} placement="right">
                 <Button
                   size="small"
                   type="text"
-                  className={actionBtnClass}
+                  className={`${actionBtnClass} relative`}
                   icon={<AudioOutlined />}
                   onClick={() => onGenerateAudio(shot.id)}
-                />
+                >
+                  {voiceStale && (
+                    <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-status-warning" title="台词已改，配音待更新" />
+                  )}
+                </Button>
               </Tooltip>
             )}
             {currentAudio && (

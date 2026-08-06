@@ -9,6 +9,7 @@
 import { useCallback } from 'react';
 import type { Shot, ShotAudioBinding, Character, StoredMediaAsset } from '../../../types';
 import { buildShotVoiceSegments, getShotScriptText } from '../../../types';
+import { computeShotVoiceHash } from '../../../services/shotFreshness';
 import type { VoiceLibrarySnapshot } from '../../../types/voice-library';
 import { mediaGenerationService } from '../../../services/MediaGenerationService';
 import { prepareShotAudio } from '../../../services/voiceLibrary/shotVoiceCompile';
@@ -158,6 +159,8 @@ export function useStoryboardAudio(deps: StoryboardAudioDeps) {
         return {
           ...s,
           ...(audioBindings ? { audioBindings } : {}),
+          // 记录配音时的台词指纹：台词被改后 ShotCard 提示"配音待更新"
+          voiceScriptHash: computeShotVoiceHash(s),
           media: {
             ...(s.media || {}),
             audios: [...existing, asset],
@@ -250,6 +253,8 @@ export function useStoryboardAudio(deps: StoryboardAudioDeps) {
         return {
           ...s,
           ...(hit.audioBindings ? { audioBindings: hit.audioBindings } : {}),
+          // 记录配音时的台词指纹（批量与单镜一致）
+          voiceScriptHash: computeShotVoiceHash(s),
           media: {
             ...(s.media || {}),
             audios: [...existing, hit.asset],
