@@ -33,6 +33,12 @@ const GENDER_LABEL: Record<string, string> = {
   unknown: '未知',
 };
 
+const ROLE_LABEL: Record<string, string> = {
+  protagonist: '主角',
+  antagonist: '反派',
+  supporting: '配角',
+};
+
 export const CreateCharacterModal: React.FC<CreateCharacterModalProps> = ({
   open,
   projectId,
@@ -154,6 +160,7 @@ export const CreateCharacterModal: React.FC<CreateCharacterModalProps> = ({
         <div className={styles.actorMeta}>
           <div className={styles.actorName}>{actor.name}</div>
           <div className={styles.actorTags}>
+            {actor.role && <Tag color="purple">{ROLE_LABEL[actor.role] ?? actor.role}</Tag>}
             {actor.gender && <Tag>{GENDER_LABEL[actor.gender] ?? actor.gender}</Tag>}
             {actor.age && <Tag>{actor.age}</Tag>}
             {actor.voiceId && <Tag color="blue">已绑音色</Tag>}

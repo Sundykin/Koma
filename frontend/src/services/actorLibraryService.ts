@@ -89,6 +89,7 @@ export async function saveActorFromCharacter(
   const profile: ActorProfile = {
     id: existing?.id ?? character.id,
     name: character.name,
+    role: character.role,
     gender: character.gender,
     age: character.age,
     prompt: character.prompt || '',
@@ -117,7 +118,7 @@ export async function createCharacterFromActor(
   const character: Character = {
     id: characterId,
     name: actor.name,
-    role: 'supporting',
+    role: actor.role || 'supporting',
     age: actor.age,
     gender: actor.gender || 'unknown',
     prompt: actor.prompt,

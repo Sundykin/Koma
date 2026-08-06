@@ -7,6 +7,8 @@ import type { CharacterGender } from '../types';
 export interface ActorProfile {
   id: string;
   name: string;
+  /** 角色定位（主角/反派/配角），选入项目时恢复 */
+  role?: 'protagonist' | 'antagonist' | 'supporting';
   gender?: CharacterGender;
   age?: string;
   /** 视觉提示词（外貌/服装/体态等客观可见设定） */
