@@ -15,28 +15,6 @@ interface HistorySidebarProps {
   onNewChat: () => void;
 }
 
-// 格式化时间
-function _useFormatTime() {
-  const { t } = useTranslation();
-
-  return (timestamp: number): string => {
-    const now = Date.now();
-    const diff = now - timestamp;
-    const day = 24 * 60 * 60 * 1000;
-
-    if (diff < day) {
-      return t('chat.today');
-    } else if (diff < 2 * day) {
-      return t('chat.yesterday');
-    } else if (diff < 7 * day) {
-      return `${Math.floor(diff / day)} ${t('chat.daysAgo')}`;
-    } else {
-      const date = new Date(timestamp);
-      return `${date.getMonth() + 1}/${date.getDate()}`;
-    }
-  };
-}
-
 // 按时间分组（纯函数；i18n label 由调用方注入，避免依赖不稳定的 t 引用）
 function groupSessionsByTime(
   sessions: SessionMeta[],
