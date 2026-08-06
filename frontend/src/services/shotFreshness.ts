@@ -142,14 +142,32 @@ export function isShotSpeechUnderused(shot: {
 export const MAX_SINGLE_SHOT_SECONDS = 20;
 
 /**
- * 台词超时长分镜的建议时长（秒）：补足到估算朗读时长，但不超过单镜上限。
- * 未超配返回 undefined（无需校准）。超过上限的保持警示（提示拆镜）。
+ * 台词超时长分镜的建议时长（秒）：补足到估算朗读时长，若已有实际配音则优先
+ * 用配音真实时长（更准），但不超过单镜上限。未超时返回 undefined（无需校准）。
+ * 超过上限的保持警示（提示拆镜）。
  */
 export function suggestCalibratedDuration(shot: {
   duration?: number;
   scriptLines?: ShotScriptLine[];
+  media?: { audios?: Array<{ durationMs?: number }>; currentAudioIndex?: number };
 }): number | undefined {
-  if (!isShotSpeechOverDuration(shot)) return undefined;
   const estimated = Math.ceil(estimateShotSpeechDuration(shot));
-  return Math.min(MAX_SINGLE_SHOT_SECONDS, Math.max(Number(shot.duration) || 0, estimated));
+  const audioSec = getShotAudioDurationSec(shot);
+  const need = Math.max(estimated, audioSec ?? 0);
+  const current = Number(shot.duration) || 0;
+  // 目标不超过当前时长 × 1.3 视为可容忍（估算有缓冲；实际配音用同样口径）
+  if (need <= current * 1.3) return undefined;
+  return Math.min(MAX_SINGLE_SHOT_SECONDS, Math.max(current, need));
+}
+
+/** 当前选中配音的实际时长（秒）；无配音或时长缺失返回 undefined */
+export function getShotAudioDurationSec(shot: {
+  media?: { audios?: Array<{ durationMs?: number }>; currentAudioIndex?: number };
+}): number | undefined {
+  const audios = shot.media?.audios;
+  if (!audios?.length) return undefined;
+  const idx = shot.media?.currentAudioIndex ?? audios.length - 1;
+  const audio = audios[idx] ?? audios[audios.length - 1];
+  const ms = audio?.durationMs;
+  return ms && ms > 0 ? ms / 1000 : undefined;
 }

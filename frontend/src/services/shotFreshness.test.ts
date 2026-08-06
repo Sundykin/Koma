@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeShotScriptHash, isShotPromptStale, computeShotVoiceHash, isShotVoiceStale, estimateShotSpeechDuration, isShotSpeechOverDuration, isShotSpeechUnderused, suggestCalibratedDuration } from './shotFreshness';
+import { computeShotScriptHash, isShotPromptStale, computeShotVoiceHash, isShotVoiceStale, estimateShotSpeechDuration, isShotSpeechOverDuration, isShotSpeechUnderused, suggestCalibratedDuration, getShotAudioDurationSec } from './shotFreshness';
 import type { ShotScriptLine } from '../types/scene-character';
 
 const line = (text: string, role?: ShotScriptLine['role'], characterId?: string): ShotScriptLine => ({
@@ -138,5 +138,39 @@ describe('suggestCalibratedDuration', () => {
     expect(suggestCalibratedDuration(mild)).toBeGreaterThan(8);
     // 30 秒镜放 100 字台词，不超配
     expect(suggestCalibratedDuration({ duration: 30, scriptLines: [dlg('字'.repeat(100))] })).toBeUndefined();
+  });
+});
+
+describe('实际配音时长参与校准', () => {
+  const dlg = (text: string): ShotScriptLine => ({
+    id: Math.random().toString(36), text, role: 'dialogue',
+  });
+  const audio = (ms: number) => ({ durationMs: ms });
+
+  it('getShotAudioDurationSec 取当前选中音频秒数', () => {
+    expect(getShotAudioDurationSec({ media: { audios: [audio(20000)], currentAudioIndex: 0 } })).toBe(20);
+    expect(getShotAudioDurationSec({ media: { audios: [] } })).toBeUndefined();
+    expect(getShotAudioDurationSec({})).toBeUndefined();
+  });
+
+  it('实际配音超时长：估算不超但配音长 → 仍建议加长', () => {
+    // 台词 40 字 ≈ 9 秒估算，但实际配音 18 秒（语速慢/停顿多）→ 配音超 12s 镜
+    const shot = {
+      duration: 12,
+      scriptLines: [dlg('字'.repeat(40))],
+      media: { audios: [audio(18000)], currentAudioIndex: 0 },
+    };
+    const suggested = suggestCalibratedDuration(shot);
+    expect(suggested).toBeGreaterThan(12);
+    expect(suggested).toBe(18); // 补到实际配音时长
+  });
+
+  it('实际配音不超时不建议加长', () => {
+    const shot = {
+      duration: 20,
+      scriptLines: [dlg('字'.repeat(40))],
+      media: { audios: [audio(10000)], currentAudioIndex: 0 },
+    };
+    expect(suggestCalibratedDuration(shot)).toBeUndefined();
   });
 });
