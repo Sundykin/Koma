@@ -8,6 +8,7 @@
  *   - gemini-native-tti      → Koma官方Nano banana（Gemini 原生 generateContent）
  *   - doubao-seedream-tti    → 火山引擎 Ark Seedream（/api/v3/images/generations，不启用 Koma 协议）
  *   - suihe-tti              → 穗禾直连生图（multipart 直传 + /v1/tasks 轮询，不启用 Koma 协议）
+ *   - comfyui-tti            → ComfyUI 直连生图（内置 krea2 参考风格生图 / z-image 文生图工作流）
  * 前三者统一以 https://komaapi.com 作为默认 baseUrl，默认启用 Koma 协议
  * （内部仍用 'grok-image-index' 作为编译标识）。
  *
@@ -21,6 +22,7 @@ import { Grok2ApiImagineTTIProvider } from './Grok2ApiImagineTTIProvider';
 import { GeminiNativeTTIProvider } from './GeminiNativeTTIProvider';
 import { SeedreamTTIProvider } from './SeedreamTTIProvider';
 import { SuiheTTIProvider } from './SuiheTTIProvider';
+import { ComfyUITTIProvider } from './ComfyUITTIProvider';
 import type { ProviderDefinition } from '../registry.types';
 import { DEFAULT_POLLING_CONFIG, MEDIA_PROVIDER_CONTRACT_VERSION } from '../registry.types';
 import { ttiRegistry } from '../registry';
@@ -31,6 +33,7 @@ export { Grok2ApiImagineTTIProvider } from './Grok2ApiImagineTTIProvider';
 export { GeminiNativeTTIProvider } from './GeminiNativeTTIProvider';
 export { SeedreamTTIProvider } from './SeedreamTTIProvider';
 export { SuiheTTIProvider } from './SuiheTTIProvider';
+export { ComfyUITTIProvider } from './ComfyUITTIProvider';
 
 // 注册内置 Provider
 function registerBuiltinProviders() {
@@ -92,6 +95,27 @@ function registerBuiltinProviders() {
       polling: DEFAULT_POLLING_CONFIG,
       presetBaseUrl: 'https://www.suihemedia.cloud',
       auth: { apiKey: 'required', baseUrl: 'optional' },
+    },
+    {
+      type: 'comfyui-tti',
+      kind: 'tti',
+      name: 'ComfyUI 生图',
+      description: '直连 ComfyUI 服务端生图（POST /prompt + GET /history 轮询）。内置 krea2 参考风格生图'
+        + '（提示词→LLM 反推润色→采样，可带单张参考图）与 z-image 文生图两套工作流，'
+        + '模型 defaults.workflowId 可覆盖工作流选择，defaults.workflowJson 可整体替换模板。',
+      factory: (config) => new ComfyUITTIProvider(config as TTIModelConfig),
+      contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
+      capabilities: ['tti'],
+      // ComfyUI 本地推理耗时远高于云端 API，放宽到 30 分钟
+      polling: {
+        interval: 5000,
+        maxDuration: 1800000,
+        initialDelay: 5000,
+      },
+      presetBaseUrl: 'https://swiw2459sckk4jq3-8188.container.x-gpu.com',
+      // ComfyUI 原生无鉴权：apiKey 可选，服务地址必填
+      auth: { apiKey: 'optional', baseUrl: 'required' },
+      fallbackPolicy: 'lock-to-selection',
     },
   ];
 
