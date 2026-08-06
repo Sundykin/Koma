@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createMiniMaxH3Workflow } from './minimaxH3Workflow';
 import {
   applyComfyWorkflowParams,
+  allocateComfyReferenceBudget,
   normalizeAspectRatioOption,
   normalizeMegapixels,
   resolveComfyBindings,
@@ -185,5 +186,73 @@ describe('applyComfyWorkflowParams', () => {
   it('leaves aspect ratio untouched for unsupported ratios', () => {
     const result = applyComfyWorkflowParams(template, bindings, { prompt: 'x', aspectRatio: '7:5' });
     expect(result['115'].inputs.aspect_ratio).toBe('16:9 (Widescreen)');
+  });
+
+  it('autogrows video references onto ref_videos with LoadVideo nodes', () => {
+    const result = applyComfyWorkflowParams(template, bindings, {
+      prompt: 'x',
+      videoReferences: ['clip-a.mp4', 'clip-b.mp4'],
+    });
+
+    expect(result['136'].inputs['ref_videos.ref_video_0']).toEqual(['koma_video_0', 0]);
+    expect(result['136'].inputs['ref_videos.ref_video_1']).toEqual(['koma_video_1', 0]);
+    expect(result['koma_video_0'].class_type).toBe('LoadVideo');
+    expect(result['koma_video_0'].inputs.file).toBe('clip-a.mp4');
+    expect(result['koma_video_1'].inputs.file).toBe('clip-b.mp4');
+  });
+
+  it('caps video references at maxVideoReferences (default 3)', () => {
+    const result = applyComfyWorkflowParams(template, bindings, {
+      prompt: 'x',
+      videoReferences: ['a.mp4', 'b.mp4', 'c.mp4', 'd.mp4'],
+    });
+
+    const refKeys = Object.keys(result['136'].inputs).filter(k => k.startsWith('ref_videos.'));
+    expect(refKeys).toHaveLength(3);
+    expect(result['koma_video_3']).toBeUndefined();
+  });
+
+  it('coexists: 9 images + 3 videos + 3 audios all wired to host', () => {
+    const result = applyComfyWorkflowParams(template, bindings, {
+      prompt: 'x',
+      referenceImages: Array.from({ length: 9 }, (_, i) => `img-${i}.png`),
+      videoReferences: ['v0.mp4', 'v1.mp4', 'v2.mp4'],
+      audioReferences: ['a0.wav', 'a1.wav', 'a2.wav'],
+    });
+
+    expect(Object.keys(result['136'].inputs).filter(k => k.startsWith('ref_images.'))).toHaveLength(9);
+    expect(Object.keys(result['136'].inputs).filter(k => k.startsWith('ref_videos.'))).toHaveLength(3);
+    expect(Object.keys(result['136'].inputs).filter(k => k.startsWith('ref_audios.'))).toHaveLength(3);
+  });
+});
+
+describe('allocateComfyReferenceBudget', () => {
+  const limits = { maxImages: 9, maxVideos: 3, maxAudios: 3, maxTotal: 12 };
+
+  it('不超上限时原样分配', () => {
+    expect(allocateComfyReferenceBudget({ images: 2, videos: 1, audios: 2 }, limits))
+      .toEqual({ images: 2, videos: 1, audios: 2, droppedAudios: 0 });
+  });
+
+  it('9 图 + 3 视频 + 3 音频 = 15 > 12：音色参考被裁到 0', () => {
+    const result = allocateComfyReferenceBudget({ images: 9, videos: 3, audios: 3 }, limits);
+    expect(result).toEqual({ images: 9, videos: 3, audios: 0, droppedAudios: 3 });
+  });
+
+  it('9 图 + 3 音频 = 12：全部保留', () => {
+    const result = allocateComfyReferenceBudget({ images: 9, videos: 0, audios: 3 }, limits);
+    expect(result.audios).toBe(3);
+    expect(result.droppedAudios).toBe(0);
+  });
+
+  it('单项上限独立生效：图片最多 9，视频最多 3', () => {
+    const result = allocateComfyReferenceBudget({ images: 15, videos: 10, audios: 0 }, limits);
+    expect(result.images).toBe(9);
+    expect(result.videos).toBe(3);
+  });
+
+  it('部分挤压：10 图（裁到 9）+ 2 视频后音频只剩 1 席', () => {
+    const result = allocateComfyReferenceBudget({ images: 10, videos: 2, audios: 3 }, limits);
+    expect(result).toEqual({ images: 9, videos: 2, audios: 1, droppedAudios: 2 });
   });
 });

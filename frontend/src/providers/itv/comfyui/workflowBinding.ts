@@ -13,6 +13,10 @@ import { isComfyLink } from './types';
 const REF_IMAGE_INPUT_RE = /^ref_images\.ref_image_(\d+)$/;
 const REF_IMAGE_INPUT_PREFIX = 'ref_images.ref_image_';
 
+/** ref_videos / ref_audios 同为 COMFY_AUTOGROW_V3（MiniMax H3：视频/音频各上限 3） */
+const REF_VIDEO_INPUT_PREFIX = 'ref_videos.ref_video_';
+const REF_AUDIO_INPUT_PREFIX = 'ref_audios.ref_audio_';
+
 /** 提示词节点：类名 → 承载文本的字段名 */
 const PROMPT_CLASS_FIELDS: Record<string, string> = {
   PrimitiveStringMultiline: 'value',
@@ -111,6 +115,8 @@ export interface ComfyWorkflowParams {
   referenceImages?: string[];
   /** 已上传到 ComfyUI 的音频参考取值（LoadAudio.inputs.audio）——音色参考，接 ref_audios */
   audioReferences?: string[];
+  /** 已上传到 ComfyUI 的视频参考取值（LoadVideo.inputs.file）——接 ref_videos */
+  videoReferences?: string[];
   durationSec?: number;
   aspectRatio?: string;
   resolution?: string;
@@ -121,6 +127,23 @@ export interface ComfyWorkflowParams {
   maxReferenceImages?: number;
   /** 音频参考数量上限（MiniMax H3 ref_audios 上限 3） */
   maxAudioReferences?: number;
+  /** 视频参考数量上限（MiniMax H3 ref_videos 上限 3） */
+  maxVideoReferences?: number;
+}
+
+/**
+ * MiniMax H3 类模型的联合参考配额：9 图 + 3 视频 + 3 音频且总数 ≤ 12。
+ * 分配优先级：用户显式附加的视觉参考（图 > 视频）优先，自动附加的音色参考吃剩余额度。
+ * 返回各类实际可用数量（调用方据此 slice）。
+ */
+export function allocateComfyReferenceBudget(
+  requested: { images: number; videos: number; audios: number },
+  limits: { maxImages: number; maxVideos: number; maxAudios: number; maxTotal: number },
+): { images: number; videos: number; audios: number; droppedAudios: number } {
+  const images = Math.max(0, Math.min(requested.images, limits.maxImages, limits.maxTotal));
+  const videos = Math.max(0, Math.min(requested.videos, limits.maxVideos, limits.maxTotal - images));
+  const audios = Math.max(0, Math.min(requested.audios, limits.maxAudios, limits.maxTotal - images - videos));
+  return { images, videos, audios, droppedAudios: Math.max(0, Math.min(requested.audios, limits.maxAudios) - audios) };
 }
 
 function findByClass(workflow: ComfyWorkflow, classNames: string[]): string | undefined {
@@ -323,7 +346,25 @@ export function applyComfyWorkflowParams(
       inputs: { audio },
       _meta: { title: `加载音频（Koma 音色参考 ${index + 1}）` },
     };
-    host.inputs[`ref_audios.ref_audio_${index}`] = [nodeId, 0];
+    host.inputs[`${REF_AUDIO_INPUT_PREFIX}${index}`] = [nodeId, 0];
+  });
+
+  // 视频参考：ref_videos 同为 autogrow（prefix ref_video_，max 3），
+  // 按需新建核心 LoadVideo 节点（inputs.file）并接线。
+  // 提示词占位符 <视频 N> / @Video N 从 1 开始，对应 ref_videos.ref_video_(N-1)。
+  const videoReferences = (params.videoReferences ?? [])
+    .filter(Boolean)
+    .slice(0, params.maxVideoReferences ?? 3);
+  videoReferences.forEach((video, index) => {
+    if (!host) return;
+    let nodeId = `koma_video_${index}`;
+    while (next[nodeId]) nodeId = `${nodeId}_x`;
+    next[nodeId] = {
+      class_type: 'LoadVideo',
+      inputs: { file: video },
+      _meta: { title: `加载视频（Koma 视频参考 ${index + 1}）` },
+    };
+    host.inputs[`${REF_VIDEO_INPUT_PREFIX}${index}`] = [nodeId, 0];
   });
 
   if (bindings.resolutionNodeId && next[bindings.resolutionNodeId]) {

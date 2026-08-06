@@ -354,6 +354,19 @@ export function analyzeComfyWorkflow(workflow: ComfyWorkflow): ComfyWorkflowAnal
   if (referenceImages.length > 0) {
     warnings.push(`含 ${referenceImages.length} 个参考图节点（LoadImage）：未提供参考图时这些节点会被自动摘除`);
   }
+  // 视频工作流：宿主节点（ref_images autogrow / ReferenceToVideo 类）存在时参考数量不受
+  // 模板槽位限制（客户端自动扩槽，MiniMax H3 为 9 图 + 3 视频 + 3 音频、总数 ≤ 12）；
+  // 没有宿主时超出模板槽位的参考会被丢弃
+  if (kind === 'video') {
+    const hasAutogrowHost = nodeIds.some(id =>
+      Object.keys(workflow[id]?.inputs || {}).some(key => /^ref_images\.ref_image_\d+$/.test(key))
+      || /ReferenceToVideo$/i.test(workflow[id]?.class_type || ''));
+    if (hasAutogrowHost) {
+      warnings.push('检测到参考宿主节点：参考图/视频/音频会自动扩槽（9 图 + 3 视频 + 3 音频，总数 ≤ 12），无需在模板里放全节点');
+    } else if (referenceImages.length > 0) {
+      warnings.push('未检测到参考宿主节点（ref_images autogrow）：参考数量受模板现有槽位限制，超出部分会被忽略');
+    }
+  }
 
   const promptCandidates = nodeIds
     .filter(id => Boolean(PROMPT_ENTRY_CLASS_FIELDS[workflow[id]?.class_type ?? '']))

@@ -42,6 +42,7 @@ import { createMiniMaxH3Workflow } from './comfyui/minimaxH3Workflow';
 import {
   applyComfyWorkflowParams,
   resolveComfyBindings,
+  allocateComfyReferenceBudget,
   type ComfyNodeBindingOverrides,
 } from './comfyui/workflowBinding';
 import type { ComfyWorkflow, ComfyUploadedImage } from './comfyui/types';
@@ -304,6 +305,40 @@ export class ComfyUIITVProvider implements ITVProvider {
     return uploaded;
   }
 
+  /** 上传视频参考：优先 /upload/video（新端点），不行退回通用 /upload/image */
+  private async uploadReferenceVideo(ref: ProviderAssetInput, index: number): Promise<string> {
+    const { bytes, mimeType } = await fetchReferenceBytes(ref);
+    if (!bytes || bytes.length === 0) {
+      throw new Error('视频参考为空，无法上传到 ComfyUI');
+    }
+    const filename = `koma-video-${Date.now()}-${index + 1}.${extFromMime(mimeType)}`;
+
+    const attempt = async (path: string, field: string): Promise<string | null> => {
+      const form = new FormData();
+      form.append(field, new Blob([bytes], { type: mimeType }), filename);
+      form.append('overwrite', 'true');
+      const response = await safeFetch(joinUrl(this.getBaseUrl(), path), {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: form as any,
+      });
+      if (!response.ok) return null;
+      try {
+        const uploaded = JSON.parse(await response.text()) as ComfyUploadedImage;
+        return uploaded?.name ? toLoadImageValue(uploaded) : null;
+      } catch {
+        return null;
+      }
+    };
+
+    const uploaded = await attempt('/upload/video', 'video')
+      ?? await attempt(COMFY_UPLOAD_IMAGE_PATH, 'image');
+    if (!uploaded) {
+      throw new Error(`ComfyUI 视频参考上传失败（/upload/video 与 /upload/image 均不可用）`);
+    }
+    return uploaded;
+  }
+
   private collectReferences(request: ITVRequest): ProviderAssetInput[] {
     if (request.capability === 'video.image-to-video') {
       return [request.primaryImage, ...(request.additionalReferences || [])]
@@ -328,6 +363,10 @@ export class ComfyUIITVProvider implements ITVProvider {
     const options = request.options as ITVOptions | undefined;
     const defaults = this.getModelDefaults();
     const maxReferenceImages = toNumber(defaults.maxReferenceImages) ?? COMFY_DEFAULT_MAX_REFERENCES;
+    const maxAudioReferences = toNumber(defaults.maxAudioReferences) ?? 3;
+    const maxVideoReferences = toNumber(defaults.maxVideoReferences) ?? 3;
+    // MiniMax H3 联合配额：9 图 + 3 视频 + 3 音频，总数不超过 12
+    const maxTotalReferences = toNumber(defaults.maxTotalReferences) ?? 12;
 
     const template = this.loadWorkflowTemplate();
     const bindings = resolveComfyBindings(
@@ -335,19 +374,46 @@ export class ComfyUIITVProvider implements ITVProvider {
       (defaults.nodeBindings || undefined) as ComfyNodeBindingOverrides | undefined,
     );
 
+    // 联合配额分配：显式视觉参考（图 > 视频）优先，音色参考吃剩余额度
+    const allImageRefs = this.collectReferences(request);
+    const allVideoRefs = (request.metadata?.komaVideoReferences as ProviderAssetInput[] | undefined) ?? [];
+    const allVoiceRefs = (request.metadata?.komaVoiceReferences as ProviderAssetInput[] | undefined) ?? [];
+    const budget = allocateComfyReferenceBudget(
+      { images: allImageRefs.length, videos: allVideoRefs.length, audios: allVoiceRefs.length },
+      {
+        maxImages: maxReferenceImages,
+        maxVideos: maxVideoReferences,
+        maxAudios: maxAudioReferences,
+        maxTotal: maxTotalReferences,
+      },
+    );
+    if (allImageRefs.length > budget.images || allVideoRefs.length > budget.videos || allVoiceRefs.length > budget.audios) {
+      logger.warn('参考数量超过模型上限，已按 图>视频>音频 优先级裁剪', {
+        requested: { images: allImageRefs.length, videos: allVideoRefs.length, audios: allVoiceRefs.length },
+        allocated: { images: budget.images, videos: budget.videos, audios: budget.audios },
+        maxTotalReferences,
+      });
+    }
+
     // 参考图逐张 multipart 直传（顺序上传，保持槽位顺序且不给 GPU 容器瞬时压力）
-    const references = this.collectReferences(request).slice(0, maxReferenceImages);
+    const references = allImageRefs.slice(0, budget.images);
     const uploadedImages: string[] = [];
     for (let i = 0; i < references.length; i += 1) {
       uploadedImages.push(await this.uploadReferenceImage(references[i], i));
     }
 
+    // 视频参考：接 MiniMaxH3ReferenceToVideo 的 ref_videos（autogrow，上限 3）
+    const videoRefs = allVideoRefs.slice(0, budget.videos);
+    const uploadedVideos: string[] = [];
+    for (let i = 0; i < videoRefs.length; i += 1) {
+      uploadedVideos.push(await this.uploadReferenceVideo(videoRefs[i], i));
+    }
+
     // 音色参考（音画同出）：渲染工作流经 metadata.komaVoiceReferences 传入，
     // 上传后接 MiniMaxH3ReferenceToVideo 的 ref_audios（上限 3）
-    const voiceRefs = (request.metadata?.komaVoiceReferences as ProviderAssetInput[] | undefined) ?? [];
-    const maxAudioReferences = toNumber(defaults.maxAudioReferences) ?? 3;
+    const voiceRefs = allVoiceRefs.slice(0, budget.audios);
     const uploadedAudios: string[] = [];
-    for (let i = 0; i < Math.min(voiceRefs.length, maxAudioReferences); i += 1) {
+    for (let i = 0; i < voiceRefs.length; i += 1) {
       uploadedAudios.push(await this.uploadReferenceAudio(voiceRefs[i], i));
     }
 
@@ -355,6 +421,7 @@ export class ComfyUIITVProvider implements ITVProvider {
       prompt: String(request.prompt || '').trim(),
       referenceImages: uploadedImages,
       audioReferences: uploadedAudios,
+      videoReferences: uploadedVideos,
       durationSec: this.clampDuration(options?.duration ?? this.config.defaultDuration, COMFY_DEFAULT_DURATION_SEC),
       aspectRatio: options?.aspectRatio,
       resolution: options?.resolution ?? this.config.defaultResolution,
@@ -363,6 +430,7 @@ export class ComfyUIITVProvider implements ITVProvider {
       fps: options?.fps ?? toNumber(defaults.fps),
       maxReferenceImages,
       maxAudioReferences,
+      maxVideoReferences,
     });
 
     logger.info('ComfyUI start request', {
