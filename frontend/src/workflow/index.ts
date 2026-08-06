@@ -17,8 +17,6 @@ export {
 } from './scenePropAssetWorkflow';
 export {
   generateCostumePhoto,
-  generateCharacterFaceCandidate,
-  generateCharacterFaceCandidatesBatch,
   generateCharacterPreviewVideo,
   extractAndBindCharacter,
   buildCostumePhotoPrompt,
