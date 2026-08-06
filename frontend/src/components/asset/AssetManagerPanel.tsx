@@ -35,6 +35,7 @@ import { submitShotAnalysisTask, submitScriptAnalysisTask } from '../../services
 import { listTaskRecords } from '../../services/tasksIPC';
 import { runWithTask } from '../../services/taskRunner';
 import { runBatchWithConcurrency } from '../../utils/batchRunner';
+import { ensureRemoteUrlForImageAsset } from '../../services/mediaRemoteUrlService';
 import { generateCostumePhoto } from '../../workflow/characterAssetWorkflow';
 import { generateSceneImage, generatePropImage } from '../../workflow/scenePropAssetWorkflow';
 import {
@@ -543,6 +544,20 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
                 // 单图生成没有细粒度进度回传需求，这里只保证总条在动
                 syncOverall(item.name);
               };
+              // 用户上传过参考图的资产，批量生成同样要带参考图（否则与单资产生成结果不一致）
+              let userReference = item.asset.media?.referenceImage;
+              if (userReference) {
+                try {
+                  userReference = await ensureRemoteUrlForImageAsset({
+                    projectId,
+                    asset: userReference,
+                    policy: 'best-effort',
+                    filenameHint: `${item.asset.id}-reference.png`,
+                  });
+                } catch {
+                  // 归一化失败则按本地引用继续使用
+                }
+              }
               const common = {
                 projectId,
                 aspectRatio,
@@ -552,6 +567,7 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
                 ttiSelection,
                 onProgress,
                 disableTask: true,
+                userReference,
               };
               let result: { success: boolean; error?: string };
               if (item.type === 'character') {
