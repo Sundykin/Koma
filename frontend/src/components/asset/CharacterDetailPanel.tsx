@@ -20,6 +20,7 @@ import {
   Segmented,
   Tooltip,
   Tag,
+  Image,
 } from 'antd';
 import {
   UserOutlined,
@@ -47,6 +48,7 @@ import { getStorageConfig, initStorageConfig } from '../../store/storageConfig';
 import { saveCharacters, loadCharacters } from '../../store/projectStore';
 import { useActiveConfig } from '../../hooks/useActiveConfig';
 import { uploadLocalFileToImageHosting, isImageHostingEnabled } from '../../services/imageHostingService';
+import { ensureRemoteUrlForImageAsset } from '../../services/mediaRemoteUrlService';
 import { createStoredMediaAsset, updateCharacterMedia } from '../../utils/mediaAssets';
 import { mergeEpisodeRefs } from './assetEpisodeRefs';
 import { saveActorFromCharacter } from '../../services/actorLibraryService';
@@ -182,6 +184,56 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
     }
   }, [editedCharacter, form, projectId, onUpdate, message, t]);
 
+  /** 上传形象参考图：生成定妆照时作为人物身份参考（与项目风格参考图相互独立） */
+  const handleUploadReference = useCallback(async () => {
+    try {
+      const result = await openFileDialog({
+        filters: [{ name: t('storyboard.image'), extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+        title: '选择形象参考图',
+      });
+      if (result.canceled || !result.filePaths[0]) return;
+
+      const destPath = await getAssetPath('reference.png');
+      await fsCopy(result.filePaths[0], destPath);
+
+      const updated = updateCharacterMedia(editedCharacter, {
+        referenceImage: createStoredMediaAsset('image', { localPath: destPath }),
+      });
+      setEditedCharacter(updated);
+      onUpdate(updated);
+      const characters = await loadCharacters(projectId);
+      const index = characters.findIndex(c => c.id === editedCharacter.id);
+      if (index !== -1) {
+        characters[index] = updated;
+        await saveCharacters(projectId, characters);
+      }
+      message.success('参考图已上传，生成定妆照时将作为人物参考');
+    } catch (err: any) {
+      message.error(err.message || '参考图上传失败');
+    }
+  }, [editedCharacter, getAssetPath, projectId, onUpdate, message, t]);
+
+  const handleRemoveReference = useCallback(async () => {
+    try {
+      const localPath = editedCharacter.media?.referenceImage?.localPath;
+      const updated = updateCharacterMedia(editedCharacter, { referenceImage: undefined });
+      const characters = await loadCharacters(projectId);
+      const index = characters.findIndex(c => c.id === editedCharacter.id);
+      if (index !== -1) {
+        characters[index] = updated;
+        await saveCharacters(projectId, characters);
+      }
+      if (localPath && !isRemoteMediaUri(localPath) && (await fsExists(localPath))) {
+        await fsRemove(localPath);
+      }
+      setEditedCharacter(updated);
+      onUpdate(updated);
+      message.success('已移除参考图');
+    } catch (err: any) {
+      message.error(err.message || '移除失败');
+    }
+  }, [editedCharacter, projectId, onUpdate, message]);
+
   /** 把当前角色（含定妆照与绑定音色）收进全局演员库，供其他项目/剧集复用 */
   const handleSaveAsActor = useCallback(async () => {
     try {
@@ -248,6 +300,21 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
       const currentValues = await form.getFieldsValue();
       const charWithPrompt = { ...editedCharacter, ...currentValues };
 
+      // 用户手动上传的形象参考图：归一化远端 URL 后作为人物身份参考传入
+      let userReference = charWithPrompt.media?.referenceImage;
+      if (userReference) {
+        try {
+          userReference = await ensureRemoteUrlForImageAsset({
+            projectId,
+            asset: userReference,
+            policy: 'best-effort',
+            filenameHint: `${ownerId}-reference.png`,
+          });
+        } catch (error) {
+          logger.warn('形象参考图 remoteUrl 归一化失败，将尝试使用本地引用', { error: error instanceof Error ? error.message : String(error) });
+        }
+      }
+
       const result = await generateCostumePhoto({
         projectId,
         character: charWithPrompt,
@@ -259,6 +326,7 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
         destPath: await getAssetPath('costume.png'),
         bindOwner: false,
         normalizeRemoteUrl: true,
+        userReference,
         onProgress: (p, step) => {
           if (!isCurrent()) return;
           setProgress(p);
@@ -546,6 +614,13 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
   const costumePhotoVersion = getMediaVersion(costumePhotoAsset?.createdAt, costumePhotoAsset?.metadata);
   const costumePhotoDisplayUrl = toVersionedImageUrl(costumePhotoSource, costumePhotoVersion);
 
+  const referenceImageAsset = editedCharacter.media?.referenceImage;
+  const referenceImageDisplayUrl = referenceImageAsset
+    ? (referenceImageAsset.localPath
+        ? toVersionedImageUrl(referenceImageAsset.localPath, referenceImageAsset.createdAt)
+        : referenceImageAsset.remoteUrl || '')
+    : '';
+
   const roleOptions = [
     { value: 'protagonist', label: t('asset.protagonist') },
     { value: 'antagonist', label: t('asset.antagonist') },
@@ -620,6 +695,35 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
                 autoSize={{ minRows: 10, maxRows: 18 }}
                 placeholder={t('asset.characterPromptPlaceholder')}
               />
+            </Form.Item>
+
+            <Form.Item
+              label="形象参考图（可选）"
+              tooltip="上传后生成定妆照会以它为人物身份参考（脸/发型/服装）；不上传则只按文字设定与项目风格生成。"
+            >
+              {referenceImageAsset ? (
+                <Space>
+                  <Image
+                    src={referenceImageDisplayUrl}
+                    width={56}
+                    height={56}
+                    style={{ objectFit: 'cover', borderRadius: 6 }}
+                    preview={{ mask: null }}
+                  />
+                  <Button size="small" icon={<UploadOutlined />} onClick={handleUploadReference}>
+                    更换
+                  </Button>
+                  <Popconfirm title="移除形象参考图？" onConfirm={handleRemoveReference} okButtonProps={{ danger: true }}>
+                    <Button size="small" danger icon={<DeleteOutlined />}>
+                      移除
+                    </Button>
+                  </Popconfirm>
+                </Space>
+              ) : (
+                <Button icon={<UploadOutlined />} onClick={handleUploadReference} block>
+                  上传参考图
+                </Button>
+              )}
             </Form.Item>
 
             <Form.Item

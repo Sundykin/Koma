@@ -6,6 +6,8 @@ import {
   getMediaAssetDisplaySource,
   getMediaAssetSource,
   type Character,
+  type MediaAssetSource,
+  type ProviderAssetInput,
   type StoredMediaAsset,
   type VideoGenerationCapability,
 } from '../types';
@@ -69,6 +71,11 @@ interface GenerateOptions {
   destPath?: string;
   bindOwner?: boolean;
   normalizeRemoteUrl?: boolean;
+  /**
+   * 用户手动上传的形象参考图：作为人物身份参考传入（references 中位于风格锚定图之后），
+   * 让定妆照继承其脸/发型/服装，而不是只依赖项目风格参考图。
+   */
+  userReference?: MediaAssetSource | ProviderAssetInput;
   onProgress?: (progress: number, step: string) => void;
   /** 批量场景下父 task 已包装，子调用传 true 跳过单独的 task 创建 */
   disableTask?: boolean;
@@ -81,7 +88,7 @@ interface GenerateOptions {
 export async function generateCostumePhoto(
   options: GenerateOptions
 ): Promise<{ success: boolean; path?: string; url?: string; error?: string }> {
-  const { projectId, character, aspectRatio, theme, stylePrompt, styleSnapshot, project, ttiSelection, seed, variationPrompt, destPath, bindOwner, normalizeRemoteUrl, onProgress, disableTask } = options;
+  const { projectId, character, aspectRatio, theme, stylePrompt, styleSnapshot, project, ttiSelection, seed, variationPrompt, destPath, bindOwner, normalizeRemoteUrl, userReference, onProgress, disableTask } = options;
   const finalAspectRatio = aspectRatio || project?.aspectRatio || '16:9';
 
   logger.info(`开始生成角色定妆照: ${character.name}`, { aspectRatio: finalAspectRatio });
@@ -95,6 +102,14 @@ export async function generateCostumePhoto(
       buildCharacterCostumeTemplateVariables(character, stylePrefix || '')
     );
     const basePrompt = appendCandidateVariationPrompt(resolvedPrompt.prompt, variationPrompt);
+    const identityGuard = userReference
+      ? [
+          '',
+          'User-provided character reference instructions:',
+          'A user-uploaded character reference image is included in the references AFTER the optional style anchor. Treat it as the binding identity/appearance anchor for this character: inherit the person\'s face, hairstyle, body type, clothing and accessories from it; do not redesign or re-randomize the character. Only adapt it into the three-view costume-sheet layout and the project art style.',
+        ].join('\n')
+      : '';
+    const promptWithIdentity = `${basePrompt}${identityGuard}`;
 
     // 风格锚定参考图（references[0]）：让模型严格继承画风但不继承内容。
     // 项目级 styleSnapshot.styleReferenceImage 优先，回退到预设默认图。
@@ -102,8 +117,11 @@ export async function generateCostumePhoto(
       project: { styleSnapshot: (styleSnapshot || project?.styleSnapshot) as ProjectStyleSnapshot | undefined },
       themeId: theme,
     });
-    const prompt = appendStyleAnchorGuard(basePrompt, Boolean(styleAnchorAsset));
-    const references = styleAnchorAsset ? [styleAnchorAsset] : [];
+    const prompt = appendStyleAnchorGuard(promptWithIdentity, Boolean(styleAnchorAsset));
+    const references = [
+      ...(styleAnchorAsset ? [styleAnchorAsset] : []),
+      ...(userReference ? [userReference] : []),
+    ];
 
     onProgress?.(10, '调用 TTI 服务...');
 
