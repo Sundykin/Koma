@@ -3,7 +3,7 @@
  * 操作按钮在左侧列直接显示，参考图使用引用样式
  */
 import React, { useMemo, useCallback, useEffect, useRef, useState } from 'react';
-import { isShotPromptStale, isShotVoiceStale } from '../../services/shotFreshness';
+import { isShotPromptStale, isShotVoiceStale, isShotSpeechOverDuration } from '../../services/shotFreshness';
 import { useTranslation } from 'react-i18next';
 import {
   Tag,
@@ -236,6 +236,8 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
   const promptStale = useMemo(() => isShotPromptStale(shot), [shot]);
   // 台词与配音的新鲜度：台词改了 → 配音待更新（只依赖可配音内容，画面改动不误报）
   const voiceStale = useMemo(() => isShotVoiceStale(shot), [shot]);
+  // 时长合理性：台词朗读估算超过分镜时长 → 配音会溢出，建议加长/拆镜
+  const speechOverDuration = useMemo(() => isShotSpeechOverDuration(shot), [shot]);
   const isFirst = index === 0;
   const isLast = index === totalCount - 1;
 
@@ -557,6 +559,11 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
             />
           ) : (
             <Tag className="m-0 text-[9px] px-1" color="blue">{shot.duration}s</Tag>
+          )}
+          {speechOverDuration && (
+            <Tooltip title="台词量可能超出分镜时长，配音会溢出——建议加长时长或拆成两个镜头">
+              <span className="text-status-warning text-[10px] cursor-help">台词超时长</span>
+            </Tooltip>
           )}
 
           {/* 操作按钮 - 直接显示（gap 加大、与 #N / 时长视觉区隔） */}

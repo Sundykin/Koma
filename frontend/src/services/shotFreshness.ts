@@ -87,3 +87,53 @@ export function isShotVoiceStale(shot: {
   if (!hasAudio || !shot.voiceScriptHash) return false;
   return computeShotVoiceHash(shot) !== shot.voiceScriptHash;
 }
+
+// ---------------------------------------------------------------------------
+// 分镜时长 vs 台词量合理性
+// ---------------------------------------------------------------------------
+
+/** 中文朗读估算：每 4.5 字 ≈ 1 秒（含句间停顿），0.25s/字为保守下限 */
+const CHARS_PER_SECOND = 4.5;
+
+/**
+ * 估算分镜可配音内容的朗读时长（秒）。
+ * 台词 + 旁白 + description 里的引号台词都算；画面文本不算。
+ */
+export function estimateShotSpeechDuration(shot: { scriptLines?: ShotScriptLine[] }): number {
+  let chars = 0;
+  for (const line of shot.scriptLines ?? []) {
+    const text = line.text?.trim();
+    if (!text) continue;
+    if (line.role === 'dialogue' || line.role === 'narration') {
+      chars += text.length;
+      continue;
+    }
+    for (const d of extractDialoguesFromDescription(text)) {
+      chars += d.text.length;
+    }
+  }
+  return chars / CHARS_PER_SECOND;
+}
+
+/**
+ * 台词量是否超出分镜时长（配音会溢出）。
+ * 朗读估算 > 时长 × 1.3 判为超配（给 30% 缓冲：语速快/停顿少可容忍）。
+ */
+export function isShotSpeechOverDuration(shot: {
+  duration?: number;
+  scriptLines?: ShotScriptLine[];
+}): boolean {
+  const duration = Number(shot.duration) || 0;
+  if (duration <= 0) return false;
+  return estimateShotSpeechDuration(shot) > duration * 1.3;
+}
+
+/** 分镜时长远大于台词量（几乎无对白却拖长）：> 时长 60% 无台词/少台词 */
+export function isShotSpeechUnderused(shot: {
+  duration?: number;
+  scriptLines?: ShotScriptLine[];
+}): boolean {
+  const duration = Number(shot.duration) || 0;
+  if (duration < 8) return false;
+  return estimateShotSpeechDuration(shot) < duration * 0.4;
+}

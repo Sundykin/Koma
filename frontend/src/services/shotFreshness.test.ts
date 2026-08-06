@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeShotScriptHash, isShotPromptStale, computeShotVoiceHash, isShotVoiceStale } from './shotFreshness';
+import { computeShotScriptHash, isShotPromptStale, computeShotVoiceHash, isShotVoiceStale, estimateShotSpeechDuration, isShotSpeechOverDuration, isShotSpeechUnderused } from './shotFreshness';
 import type { ShotScriptLine } from '../types/scene-character';
 
 const line = (text: string, role?: ShotScriptLine['role'], characterId?: string): ShotScriptLine => ({
@@ -83,5 +83,38 @@ describe('computeShotVoiceHash / isShotVoiceStale', () => {
     expect(isShotVoiceStale({ scriptLines, voiceScriptHash: hash })).toBe(false);
     // 有配音无指纹（旧数据）
     expect(isShotVoiceStale({ media: { audios: [{}] }, scriptLines })).toBe(false);
+  });
+});
+
+describe('时长 vs 台词量合理性', () => {
+  const dlg = (text: string): ShotScriptLine => ({
+    id: Math.random().toString(36), text, role: 'dialogue',
+  });
+
+  it('估算朗读时长：90 字台词 ≈ 20 秒', () => {
+    const dur = estimateShotSpeechDuration({ scriptLines: [dlg('字'.repeat(90))] });
+    expect(dur).toBeGreaterThan(18);
+    expect(dur).toBeLessThan(22);
+  });
+
+  it('台词超时长判定：120 字台词配 10 秒 → 超配', () => {
+    const shot = { duration: 10, scriptLines: [dlg('字'.repeat(120))] };
+    expect(estimateShotSpeechDuration(shot)).toBeGreaterThan(10 * 1.3);
+    expect(isShotSpeechOverDuration(shot)).toBe(true);
+  });
+
+  it('台词够时长的镜不误报', () => {
+    const shot = { duration: 30, scriptLines: [dlg('字'.repeat(100))] };
+    expect(isShotSpeechOverDuration(shot)).toBe(false);
+  });
+
+  it('无台词的长镜 → 判拖沓；短镜不判', () => {
+    expect(isShotSpeechUnderused({ duration: 16, scriptLines: [dlg('')] })).toBe(true);
+    expect(isShotSpeechUnderused({ duration: 4, scriptLines: [dlg('')] })).toBe(false);
+  });
+
+  it('description 引号台词计入估算', () => {
+    const shot = { scriptLines: [{ id: 'l', text: '叶赎："' + '字'.repeat(50) + '"', role: 'description' as const }] };
+    expect(estimateShotSpeechDuration(shot)).toBeGreaterThan(10);
   });
 });
