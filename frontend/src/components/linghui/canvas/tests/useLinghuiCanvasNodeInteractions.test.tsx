@@ -60,7 +60,10 @@ function HookProbe({
   useEffect(() => {
     if (!openOnMount) return;
     interactions.openNodeEditor(node.id);
-  }, [node.id, openOnMount, interactions]);
+    // interactions 在本测试里每轮 render 都重建；列入依赖会让 effect 每轮重跑
+    // （openNodeEditor → 状态更新 → 再渲染 → 死循环 OOM）。只在 node/openOnMount 变化时触发。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [node.id, openOnMount]);
 
   useEffect(() => {
     onSelection(selection);
