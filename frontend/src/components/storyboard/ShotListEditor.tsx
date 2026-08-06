@@ -306,7 +306,10 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
         voiceStaleIds.push(s.id);
       }
     }
-    return { missingPhoto, overDuration, videoCount, audioCount, missingVoice, promptStale, promptStaleIds, voiceStale, voiceStaleIds };
+    // 全部就绪：无质量缺口 + 视频渲染齐全（配音可选）
+    const allReady = missingPhoto === 0 && overDuration === 0 && missingVoice === 0
+      && promptStale === 0 && videoCount === shots.length;
+    return { missingPhoto, overDuration, videoCount, audioCount, missingVoice, promptStale, promptStaleIds, voiceStale, voiceStaleIds, allReady };
   }, [shots, characters]);
 
   const renderShotRow = useCallback(
@@ -455,8 +458,14 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
         {/* 生产就绪条：一眼看到还有哪些准备工作，可点击批量修复 */}
         {shots.length > 0 && (
           <div className="px-3 py-1 bg-bg-surface/40 border-b border-border-subtle flex items-center gap-3 text-[11px] flex-wrap">
-            <span className="text-text-secondary font-medium">生产就绪</span>
-            {readinessStats.missingPhoto > 0 && onBulkUpgradeScripts && (
+            {readinessStats.allReady ? (
+              <span className="text-status-success font-medium" title="所有分镜已就绪（无质量缺口、视频齐全），可进剪辑/导出">
+                生产就绪 ✓ 可进剪辑
+              </span>
+            ) : (
+              <span className="text-text-secondary font-medium">生产就绪</span>
+            )}
+            {!readinessStats.allReady && readinessStats.missingPhoto > 0 && onBulkUpgradeScripts && (
               <button
                 className="text-status-warning hover:opacity-80 cursor-pointer"
                 onClick={() => onBulkUpgradeScripts()}
