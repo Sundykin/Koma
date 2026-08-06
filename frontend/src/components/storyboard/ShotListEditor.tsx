@@ -273,6 +273,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
 
   // 成片预览：连续播放所有有视频的分镜（顺序播放）
   const [episodePreviewOpen, setEpisodePreviewOpen] = useState(false);
+  const [scriptPreviewOpen, setScriptPreviewOpen] = useState(false);
   const [playIndex, setPlayIndex] = useState(0);
   const playableVideos = useMemo(
     () => shots.map(s => ({
@@ -284,6 +285,13 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   );
   const currentPlayVideo = playIndex < playableVideos.length ? playableVideos[playIndex] : undefined;
   const currentPlaySrc = currentPlayVideo?.src;
+
+  // 整集剧本预览文本（所有镜脚本连起来，便于整体阅读/检查衔接）
+  const fullScriptText = useMemo(() => shots.map((s, i) => {
+    const size = getPrimaryShotSize(s);
+    const script = (s.scriptLines ?? []).map(l => l.text).join('\n');
+    return `【#${i + 1}${size ? ` · ${size}` : ''}】\n${script}`;
+  }).join('\n\n'), [shots]);
 
   // 批量操作已用时长（秒）：batchProgress 活跃时每秒递增，结束归零
   const [batchElapsedSec, setBatchElapsedSec] = useState(0);
@@ -581,6 +589,13 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
             <span className="text-text-tertiary">
               视频 {readinessStats.videoCount}/{shots.length} · 配音 {readinessStats.audioCount}/{shots.length}
             </span>
+            <button
+              className="text-text-secondary hover:opacity-80 cursor-pointer"
+              title="连起来看整集分镜脚本（检查整体节奏与衔接）"
+              onClick={() => setScriptPreviewOpen(true)}
+            >
+              剧本预览
+            </button>
             {playableVideos.length > 0 && (
               <button
                 className="text-text-secondary hover:opacity-80 cursor-pointer"
@@ -607,6 +622,25 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
             </button>
           </div>
         )}
+
+        {/* 剧本预览 modal */}
+        <Modal
+          open={scriptPreviewOpen}
+          onCancel={() => setScriptPreviewOpen(false)}
+          footer={null}
+          width={720}
+          title="整集分镜剧本"
+          destroyOnClose
+        >
+          <div style={{ maxHeight: 560, overflowY: 'auto', whiteSpace: 'pre-wrap', fontSize: 13, lineHeight: 1.7 }}>
+            {fullScriptText || '（无分镜脚本）'}
+          </div>
+          <div style={{ marginTop: 12, textAlign: 'right' }}>
+            <Button size="small" onClick={() => {
+              void navigator.clipboard?.writeText(fullScriptText).then(() => message.success('整集剧本已复制')).catch(() => undefined);
+            }}>复制整集剧本</Button>
+          </div>
+        </Modal>
 
         {/* 成片预览 modal */}
         <Modal
