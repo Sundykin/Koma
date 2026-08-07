@@ -10,8 +10,15 @@ import { LINGHUI_WORKFLOW_BLOCK_LABEL } from '../../../../constants/linghuiWorkf
 import { LINGHUI_NODE_CATALOG } from '../state/linghuiNodeDefs';
 import { resolveLinghuiRecipeTemplateLabel } from '../state/linghuiRecipeTemplates';
 import { toFileSystemDisplayUrl } from '../../../../services/fileSystemPort';
+import {
+  filterLinghuiWorkspaceAssets,
+  getLinghuiProductionAssetKindLabel,
+  resolveLinghuiProductionAssetMetadata,
+  type LinghuiMediaAssetFilter,
+  type LinghuiProductionAssetFilter,
+} from '../state/linghuiProductionAssetRecords';
 
-export type LinghuiAssetFilter = 'all' | 'image' | 'video' | 'audio' | 'text';
+export type LinghuiAssetFilter = LinghuiMediaAssetFilter;
 export type LinghuiLibraryDrawerKey = 'workflow' | 'asset' | 'history' | 'tutorial';
 
 const LINGHUI_TUTORIAL_SHORTCUTS = [
@@ -84,6 +91,7 @@ function buildWorkflowTemplateMeta(template: LinghuiWorkflowTemplateRecord): str
 interface LinghuiLibraryDrawerProps {
   activeDrawer: LinghuiLibraryDrawerKey | null;
   assetFilter: LinghuiAssetFilter;
+  productionAssetFilter: LinghuiProductionAssetFilter;
   workflowLoading: boolean;
   assetLoading: boolean;
   historyLoading: boolean;
@@ -93,6 +101,7 @@ interface LinghuiLibraryDrawerProps {
   nodeCatalog?: LinghuiNodeCatalogItem[];
   onClose: () => void;
   onAssetFilterChange: (filter: LinghuiAssetFilter) => void;
+  onProductionAssetFilterChange: (filter: LinghuiProductionAssetFilter) => void;
   onRefreshWorkflows: () => void;
   onSendWorkflowToCanvas: (template: LinghuiWorkflowTemplateRecord) => void;
   onRefreshAssets: () => void;
@@ -104,6 +113,7 @@ interface LinghuiLibraryDrawerProps {
 export function LinghuiLibraryDrawer({
   activeDrawer,
   assetFilter,
+  productionAssetFilter,
   workflowLoading,
   assetLoading,
   historyLoading,
@@ -113,6 +123,7 @@ export function LinghuiLibraryDrawer({
   nodeCatalog = LINGHUI_NODE_CATALOG,
   onClose,
   onAssetFilterChange,
+  onProductionAssetFilterChange,
   onRefreshWorkflows,
   onSendWorkflowToCanvas,
   onRefreshAssets,
@@ -120,10 +131,11 @@ export function LinghuiLibraryDrawer({
   onRefreshHistory,
   onSendHistoryToCanvas,
 }: LinghuiLibraryDrawerProps) {
-  const filteredAssets = useMemo(() => {
-    if (assetFilter === 'all') return workspaceAssets;
-    return workspaceAssets.filter(asset => asset.kind === assetFilter);
-  }, [assetFilter, workspaceAssets]);
+  const filteredAssets = useMemo(() => filterLinghuiWorkspaceAssets({
+    assets: workspaceAssets,
+    mediaFilter: assetFilter,
+    productionFilter: productionAssetFilter,
+  }), [assetFilter, productionAssetFilter, workspaceAssets]);
 
   const systemWorkflowTemplates = useMemo(() => (
     workflowTemplates.filter(template => template.source === 'system')
@@ -242,17 +254,36 @@ export function LinghuiLibraryDrawer({
       {activeDrawer === 'asset' && (
         <div className="linghuiLibraryDrawerBody">
           <div className="linghuiAssetDrawerToolbar">
-            <Segmented<LinghuiAssetFilter>
-              options={[
-                { label: '全部', value: 'all' },
-                { label: '图片', value: 'image' },
-                { label: '视频', value: 'video' },
-                { label: '音频', value: 'audio' },
-                { label: '文本', value: 'text' },
-              ]}
-              value={assetFilter}
-              onChange={value => onAssetFilterChange(value as LinghuiAssetFilter)}
-            />
+            <div className="linghuiAssetDrawerFilters">
+              <div className="linghuiAssetDrawerFilterRow">
+                <span>媒体</span>
+                <Segmented<LinghuiAssetFilter>
+                  options={[
+                    { label: '全部', value: 'all' },
+                    { label: '图片', value: 'image' },
+                    { label: '视频', value: 'video' },
+                    { label: '音频', value: 'audio' },
+                    { label: '文本', value: 'text' },
+                  ]}
+                  value={assetFilter}
+                  onChange={value => onAssetFilterChange(value as LinghuiAssetFilter)}
+                />
+              </div>
+              <div className="linghuiAssetDrawerFilterRow">
+                <span>用途</span>
+                <Segmented<LinghuiProductionAssetFilter>
+                  options={[
+                    { label: '全部', value: 'all' },
+                    { label: '角色', value: 'character' },
+                    { label: '场景', value: 'scene' },
+                    { label: '道具', value: 'prop' },
+                    { label: '普通', value: 'ordinary' },
+                  ]}
+                  value={productionAssetFilter}
+                  onChange={value => onProductionAssetFilterChange(value as LinghuiProductionAssetFilter)}
+                />
+              </div>
+            </div>
             <Button size="small" onClick={onRefreshAssets}>
               刷新
             </Button>
@@ -270,6 +301,7 @@ export function LinghuiLibraryDrawer({
             <div className="linghuiLibraryCardList">
               {filteredAssets.map(asset => {
                 const previewSource = toPreviewSource(asset.previewSource || asset.posterSource || asset.source);
+                const productionMetadata = resolveLinghuiProductionAssetMetadata(asset);
                 return (
                   <div key={asset.id} className="linghuiAssetDrawerCard">
                     <div className={`linghuiAssetDrawerPreview ${previewSource ? 'hasPreview' : 'isTextual'}`}>
@@ -289,6 +321,24 @@ export function LinghuiLibraryDrawer({
                         <span>{asset.kind}</span>
                         <span>{new Date(asset.createdAt).toLocaleString()}</span>
                       </div>
+                      {productionMetadata ? (
+                        <div className="linghuiAssetDrawerProductionMeta">
+                          <span className={`is-${productionMetadata.productionAssetKind}`}>
+                            {getLinghuiProductionAssetKindLabel(productionMetadata.productionAssetKind)}
+                          </span>
+                          <span className={productionMetadata.productionAssetStatus === 'locked' ? 'isLocked' : undefined}>
+                            {productionMetadata.productionAssetStatus === 'locked'
+                              ? '已锁定'
+                              : productionMetadata.productionAssetStatus === 'approved'
+                                ? '已批准'
+                                : '已确认'}
+                          </span>
+                          <span>{productionMetadata.sourceShotIds?.length ?? 0} 个来源镜头</span>
+                          <span title={productionMetadata.sourceNodeId}>
+                            来源节点 {productionMetadata.sourceNodeId.slice(-8)}
+                          </span>
+                        </div>
+                      ) : null}
                       {asset.text && (
                         <div className="linghuiAssetDrawerCardText">{asset.text}</div>
                       )}

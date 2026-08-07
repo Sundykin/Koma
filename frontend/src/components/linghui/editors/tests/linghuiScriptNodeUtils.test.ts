@@ -88,6 +88,23 @@ describe('parseLinghuiScriptContent duration normalization', () => {
     }));
   });
 
+  it('保留统一制作台需要的场景与道具实体', () => {
+    const parsed = parseLinghuiScriptContent(JSON.stringify({
+      shots: [{
+        title: '交换信物',
+        description: '两人在雨夜月台交换半枚硬币。',
+        scenes: [{ sceneName: '雨夜月台', sceneDescription: '湿润地面与冷色顶灯' }],
+        props: [{ propName: '半枚硬币', propDescription: '旧银币，边缘有缺口' }],
+      }],
+    }));
+
+    const reparsed = parseLinghuiScriptContent(serializeLinghuiScriptShots(parsed.shots));
+    expect(reparsed.shots[0]).toEqual(expect.objectContaining({
+      scenes: [{ sceneName: '雨夜月台', sceneDescription: '湿润地面与冷色顶灯', sceneImageUrl: '' }],
+      props: [{ propName: '半枚硬币', propDescription: '旧银币，边缘有缺口', propImageUrl: '' }],
+    }));
+  });
+
   it('序列化手动表格编辑后的分镜 JSON 并可重新解析', () => {
     const text = serializeLinghuiScriptShots([{
       id: 'shot-1',

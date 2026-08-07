@@ -1,6 +1,7 @@
 import type {
   LinghuiSubgraphSnapshot,
 } from '../../../../types/linghui';
+import { createNewNodeData } from './linghuiNodeDefs';
 
 export type LinghuiRecipeTemplateKey =
   | 'character-design-flow'
@@ -17,7 +18,36 @@ export interface LinghuiBuiltinRecipeTemplateDefinition {
 }
 
 export function listBuiltinLinghuiRecipeTemplates(): LinghuiBuiltinRecipeTemplateDefinition[] {
-  return [];
+  const productionNodeData = createNewNodeData('linghui/storyboard', {
+    label: '剧本到分镜一体化制作台',
+  });
+
+  return [{
+    id: 'builtin-storyboard-production-flow',
+    recipeKey: 'storyboard-creation-flow',
+    name: '剧本到分镜一体化制作台',
+    description: '在一个节点内完成剧本生成、角色/场景/道具资产确认，以及分镜图和视频流程派生。',
+    sortOrder: 1,
+    snapshot: {
+      nodes: [{
+        id: 'builtin-storyboard-production-node',
+        type: 'linghui-storyboard',
+        position: { x: 0, y: 0 },
+        data: {
+          ...productionNodeData,
+          properties: {
+            ...productionNodeData.properties,
+            productionStage: 'script',
+            productionAssets: [],
+          },
+        },
+        width: 236,
+        height: 368,
+      }],
+      edges: [],
+      groups: [],
+    },
+  }];
 }
 
 export function resolveLinghuiRecipeTemplateLabel(recipeKey?: LinghuiRecipeTemplateKey): string | null {

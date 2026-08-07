@@ -22,8 +22,6 @@ function getStatusMeta(status?: LinghuiRunStatus, progress?: number) {
       return { label: '已完成', className: 'is-success' };
     case 'failed':
       return { label: '失败', className: 'is-error' };
-    case 'stale':
-      return { label: '待重跑', className: 'is-warning' };
     default:
       return { label: '未运行', className: 'is-idle' };
   }
@@ -71,9 +69,11 @@ export const LinghuiNodeShell: React.FC<PropsWithChildren<LinghuiNodeShellProps>
       <div className="linghuiRFNodeHeader">
         <span className="linghuiRFNodeAccent" />
         <span className="linghuiRFNodeTitle">{data.label}</span>
-        <span className={`linghuiNodeStatusBadge ${statusMeta.className}`}>
-          {statusMeta.label}
-        </span>
+        {status !== 'stale' ? (
+          <span className={`linghuiNodeStatusBadge ${statusMeta.className}`}>
+            {statusMeta.label}
+          </span>
+        ) : null}
       </div>
 
       {/* Progress bar */}

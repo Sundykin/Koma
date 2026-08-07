@@ -97,6 +97,54 @@ function normalizeVideoReference(value: unknown): LinghuiStoryboardFrame['videoR
   return { referenceFrameImage, startTime, endTime };
 }
 
+function normalizeStoryboardScenes(value: unknown): LinghuiStoryboardFrame['scenes'] {
+  if (!Array.isArray(value)) return undefined;
+  const scenes = value.map(item => {
+    if (typeof item === 'string') {
+      const sceneName = item.trim();
+      return sceneName ? { sceneName } : null;
+    }
+    if (!item || typeof item !== 'object') return null;
+    const record = item as Record<string, unknown>;
+    const sceneName = readString(record, ['sceneName', 'scene_name', 'name', 'scene']);
+    const sceneDescription = readString(record, ['sceneDescription', 'scene_description', 'description']);
+    const sceneImageUrl = readString(record, ['sceneImageUrl', 'scene_image_url', 'imageUrl', 'image_url', 'url']);
+    if (!sceneName && !sceneDescription && !sceneImageUrl) return null;
+    return { sceneName, sceneDescription, sceneImageUrl };
+  }).filter(Boolean) as NonNullable<LinghuiStoryboardFrame['scenes']>;
+  return scenes.length > 0 ? scenes : undefined;
+}
+
+function normalizeStoryboardProps(value: unknown): LinghuiStoryboardFrame['props'] {
+  if (!Array.isArray(value)) return undefined;
+  const props = value.map(item => {
+    if (typeof item === 'string') {
+      const propName = item.trim();
+      return propName ? { propName } : null;
+    }
+    if (!item || typeof item !== 'object') return null;
+    const record = item as Record<string, unknown>;
+    const propName = readString(record, ['propName', 'prop_name', 'name', 'prop']);
+    const propDescription = readString(record, ['propDescription', 'prop_description', 'description']);
+    const propImageUrl = readString(record, ['propImageUrl', 'prop_image_url', 'imageUrl', 'image_url', 'url']);
+    if (!propName && !propDescription && !propImageUrl) return null;
+    return { propName, propDescription, propImageUrl };
+  }).filter(Boolean) as NonNullable<LinghuiStoryboardFrame['props']>;
+  return props.length > 0 ? props : undefined;
+}
+
+function normalizeProductionAsset(value: unknown): LinghuiStoryboardFrame['productionAsset'] {
+  if (!value || typeof value !== 'object') return undefined;
+  const record = value as Record<string, unknown>;
+  const id = readString(record, ['id']);
+  const name = readString(record, ['name']);
+  const kind = record.kind === 'character' || record.kind === 'scene' || record.kind === 'prop'
+    ? record.kind
+    : null;
+  if (!id || !name || !kind) return undefined;
+  return { id, name, kind };
+}
+
 function normalizeShotRecord(value: unknown, index: number): LinghuiStoryboardFrame | null {
   if (typeof value === 'string') {
     const description = value.trim();
@@ -153,6 +201,9 @@ function normalizeShotRecord(value: unknown, index: number): LinghuiStoryboardFr
     plotDescription: plotDescription || description || title,
     visualDescription,
     characters: normalizeStoryboardCharacters(record.characters),
+    scenes: normalizeStoryboardScenes(record.scenes),
+    props: normalizeStoryboardProps(record.props ?? record.objects),
+    productionAsset: normalizeProductionAsset(record.productionAsset ?? record.production_asset),
     videoReference: normalizeVideoReference(record.videoReference ?? record.video_reference),
     shotSize,
     characterAction,
@@ -318,6 +369,9 @@ export function serializeLinghuiScriptShots(shots: LinghuiStoryboardFrame[]): st
       plotDescription: shot.plotDescription,
       visualDescription: shot.visualDescription,
       characters: shot.characters,
+      scenes: shot.scenes,
+      props: shot.props,
+      productionAsset: shot.productionAsset,
       videoReference: shot.videoReference,
       shotSize: shot.shotSize,
       characterAction: shot.characterAction,

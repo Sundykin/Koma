@@ -118,6 +118,16 @@ class LinghuiController extends BaseController {
     return services.linghui.createWorkspaceAsset(args);
   }
 
+  async syncProductionAssets(args: {
+    workspaceId: string;
+    nodeId: string;
+    nodeType: any;
+    assets: any[];
+  }) {
+    await ensureServicesReady();
+    return services.linghui.syncProductionAssets(args);
+  }
+
   async listWorkspaceHistoryRecords(args: { workspaceId: string }) {
     await ensureServicesReady();
     return services.linghui.listWorkspaceHistoryRecords(args.workspaceId);

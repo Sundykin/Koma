@@ -1,8 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { act, renderHook } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 import {
   hasPersistableEdgeChanges,
   hasPersistableNodeChanges,
   resolveQuickCreateFromConnectEnd,
+  useLinghuiCanvasFlowBridge,
 } from '../hooks/useLinghuiCanvasFlowBridge';
 import type { PendingConnectionCreateState } from '../state/linghuiCanvasShared';
 
@@ -51,6 +53,87 @@ describe('useLinghuiCanvasFlowBridge snapshot policy', () => {
     expect(hasPersistableEdgeChanges([
       { id: 'e1', type: 'remove' },
     ])).toBe(true);
+  });
+
+  it('waits for an asynchronous node updater before deciding whether to save a data change', () => {
+    const frameCallbacks: FrameRequestCallback[] = [];
+    const requestAnimationFrameSpy = vi.spyOn(window, 'requestAnimationFrame')
+      .mockImplementation(callback => {
+        frameCallbacks.push(callback);
+        return frameCallbacks.length;
+      });
+    const scheduleSnapshot = vi.fn();
+    const emitSnapshot = vi.fn();
+    let deferredUpdater: ((nodes: any[]) => any[]) | undefined;
+    const setNodes = vi.fn((updater: (nodes: any[]) => any[]) => {
+      deferredUpdater = updater;
+    });
+    const node = {
+      id: 'script-1',
+      type: 'linghui-script',
+      position: { x: 0, y: 0 },
+      data: {
+        linghuiType: 'linghui/script',
+        label: '脚本',
+        accent: '#64748b',
+        background: '#0f172a',
+        properties: { productionStage: 'storyboard' },
+        inputs: [],
+        outputs: [],
+        active: false,
+      },
+    };
+
+    try {
+      const { result } = renderHook(() => useLinghuiCanvasFlowBridge({
+        reactFlow: { getNodes: () => [node], getNode: () => node } as never,
+        hostRef: { current: null },
+        onNodesChange: vi.fn(),
+        onEdgesChange: vi.fn(),
+        setNodes: setNodes as never,
+        setEdges: vi.fn() as never,
+        setSelection: vi.fn() as never,
+        setEditorSelection: vi.fn() as never,
+        setCanvasRect: vi.fn() as never,
+        scheduleSnapshot,
+        emitSnapshot,
+        openQuickCreateAt: vi.fn(),
+        pendingConnectionCreateRef: { current: null },
+        onSelectionChangeRef: { current: undefined },
+        onNodeMutateRef: { current: vi.fn() },
+        onConnectionErrorRef: { current: undefined },
+        onConnectionInteractionChange: vi.fn(),
+      }));
+
+      act(() => {
+        result.current.updateLinghuiNodeData('script-1', previous => ({
+          ...previous,
+          properties: {
+            ...previous.properties,
+            acknowledgedProductionConsistencyIssueIds: ['issue-1'],
+          },
+        }), { markStale: false });
+      });
+
+      expect(scheduleSnapshot).not.toHaveBeenCalled();
+      expect(deferredUpdater).toBeTypeOf('function');
+
+      act(() => {
+        deferredUpdater?.([node]);
+      });
+      expect(scheduleSnapshot).not.toHaveBeenCalled();
+
+      act(() => {
+        frameCallbacks[0]?.(0);
+      });
+      expect(emitSnapshot).not.toHaveBeenCalled();
+      act(() => {
+        frameCallbacks[1]?.(0);
+      });
+      expect(emitSnapshot).toHaveBeenCalledTimes(1);
+    } finally {
+      requestAnimationFrameSpy.mockRestore();
+    }
   });
 });
 

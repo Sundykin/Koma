@@ -70,12 +70,14 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
   const closeActiveDrawer = useLinghuiCanvasStore(state => state.closeActiveDrawer);
   const {
     assetFilter,
+    productionAssetFilter,
     assetLoading,
     historyLoading,
     loadAssetLibrary,
     loadHistoryLibrary,
     loadWorkflowLibrary,
     setAssetFilter,
+    setProductionAssetFilter,
     workspaceAssets,
     workspaceHistory,
     workflowLoading,
@@ -390,7 +392,6 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
     handleCancelRun,
     handleFocusFailedNode,
     handleFocusLogNode,
-    handleRerunAffected,
     handleRetryFailed,
   } = useLinghuiPageExecutionRailState({
     canvasRef,
@@ -461,7 +462,6 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
         onNodeMutate={handleNodeMutate}
         onOpenDrawer={handleOpenDrawerFromCanvas}
         onRestoreNodeRuns={handleRestoreNodeRuns}
-        onRerunAffected={handleRerunAffected}
         onRetryFailed={handleRetryFailed}
         onRunAll={handleRunAll}
         onRunSelection={handleRunSelection}
@@ -473,6 +473,7 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
         activeDrawer={activeDrawer}
         activeWorkspaceId={activeWorkspace?.id}
         assetFilter={assetFilter}
+        productionAssetFilter={productionAssetFilter}
         assetLoading={assetLoading}
         historyLoading={historyLoading}
         pendingExecutionPlan={pendingExecutionPlan}
@@ -481,6 +482,7 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
         workspaceAssets={workspaceAssets}
         workspaceHistory={workspaceHistory}
         onAssetFilterChange={setAssetFilter}
+        onProductionAssetFilterChange={setProductionAssetFilter}
         onCancelExecutionPlan={handleCancelExecutionPlan}
         onCloseDrawer={closeActiveDrawer}
         onConfirmExecutionPlan={handleConfirmExecutionPlan}

@@ -1,5 +1,109 @@
 # Findings
 
+## 2026-08-07 Unified Script-to-Storyboard Product Iteration
+
+- `/goal` 已创建持续目标；本轮不是一次性改按钮，而是建立可继续演进的统一生产链路。
+- 仓库已有大量 LibTV 节点对标与实现记录，尤其是 `ScriptAggregatedGenerator`、剧本表格角色引用、批量分镜图/视频生成，第一轮应复用这些真实能力，不重新造一套不兼容的数据结构。
+- 当前工作区仅有两个与本任务无关的未跟踪 ComfyUI JSON；后续不触碰、不纳入改动。
+- 视觉验证必须走 Electron remote debugging port `9333`，不能以普通 Vite 浏览器代替。
+- 初步代码盘点显示系统同时存在两套相关语义：项目级 `store/project` 已有角色/场景/道具/分镜 SQLite 实体存储；Linghui 画布侧已有 `ScriptNode` / `StoryboardNodeEditor`、批量分镜派生 hooks、全局资产库与工作区资产库，但主流程入口仍以独立节点/抽屉为中心。
+- 现成能力足够支撑统一编排：剧本结构化解析保留 `characters` 与角色图引用，分镜选择后可以批量派生图片/视频；因此 P0 更可能是“统一编排层 + 复用现有执行器”，而不是新增底层生成服务。
+- 当前可见的角色/场景/道具资产持久化主要在项目 store；Linghui 自身更多以节点数据、连接引用、library snapshot/global asset 管理媒体。统一方案必须明确两者的 source of truth，避免生成后出现两份互不同步的资产。
+- `ScriptNode` 已经把剧本与镜头表格放在同一节点里，选中镜头后可“派生文本 / 生成分镜 / 生成视频组”；编辑器里也有同类动作。真正缺口是角色/场景/道具的抽取、确认、参考图生成与镜头资产生成没有成为这个节点内部的连续阶段。
+- `linghui/script` 与 `linghui/storyboard` 目前是两个目录入口和两套编辑器，但输出都是 `LinghuiStoryboardFrame[]`，派生逻辑完全复用。产品上这是明显的重复选择成本，P0 应在一个统一入口中用模式/阶段承载，而不是让用户先判断该建哪个节点。
+- 执行器证明剧本和故事板底层只差 prompt/system prompt 与 mode；没有资产实体抽取执行器。旧的项目级实体存储虽完整，但 Linghui 流程没有直接接入它，若本轮直接跨接会扩大迁移风险。
+- 因此第一轮最小闭环应先在 Linghui `ScriptNode` 上增加统一的制作阶段与“资产清单”结构：从分镜结果自动归并角色/场景/道具候选，允许确认/编辑，再复用现有图像派生能力生成资产图和分镜图；随后再评估与项目实体库的双向同步。
+- `LinghuiNodeEditorSurface` 已将 script/storyboard 的运行与三类派生动作集中透传，统一工作台适合放在 script 编辑器/节点属性内，所需画布副作用可以沿用现有 editor API，不需要让新组件直接操纵 ReactFlow。
+- 左侧工作流抽屉已经为“系统 Recipe”预留完整 UI 和 `character-design-flow` / `storyboard-creation-flow` 类型，但 `listBuiltinLinghuiRecipeTemplates()` 当前直接返回空数组。这是一个明确产品断点：用户看到“工作流”入口却没有可开箱使用的从剧本到分镜模板。
+- 工作区资产抽屉当前只按 image/video/audio/text 分类，是媒体结果库，不认识角色/场景/道具的语义类型；3D 全局资产库又只支持 character/prop。后续统一资产管理需要引入 production asset role（character/scene/prop/shot）元数据，而不必立刻替换媒体 kind。
+- 竞品资料核验已启动：LTX Studio 官方站点可重定向到 `ltx.io/studio`，但当前页面在内置浏览器中只返回空文档/导航超时，未将不可核验的页面内容当作事实；后续以仓库已有 LibTV 反编与可读取的官方静态资料为主。
+
+### Competitive Workflow Benchmark (official landing pages fetched 2026-08-07)
+
+- LTX Studio：官网明确把工作流定义为 `From Script` 起点，“上传脚本后立即生成 scenes and storyboards”；同一 Studio 内提供 Dynamic Storyboard / Timeline Editor / Sound Design，并用 Elements 统一管理 `Characters / Objects / Locations / Other`，强调跨 scene 一致性。这是本轮最直接的对标：一个项目入口、一个资产元素层、一个动态故事板/时间线，而不是让用户手动拼节点。
+- Boords：核心流程是 3 步 `Add script/brief → Upload or generate images → Share/review/sign-off`；脚本与视觉始终同步，自动生成 shot list，角色只建一次并在每镜复用；对已确认画面提供局部重绘、换机位不重建、frame-level comment/status/version。Koma P0 可借鉴前两步与“保留已确认内容”的重跑语义，协作/审批放 P2。
+- Storyboarder.ai：把完整链路公开为 6 步 `Upload Script → Shot List → Storyboards → Character Consistency → Image-to-Video → Animatic with Audio`，并宣称角色/地点/道具跨镜保持一致；支持脚本格式导入与从一次输入自动生成每项 deliverable。Koma 的统一阶段设计应接近这个顺序，但必须显示每阶段可编辑、可跳过、可重试。
+- FinalBit（原 NolanAI 页面）：产品定位是 `write / breakdown / budget / storyboard / schedule` 的一体化 pre-production，自动 breakdown 把剧本元素组织成可规划对象。它提醒 Koma 不应只做“生成按钮聚合”，资产抽取结果要成为后续镜头/预算/排期等可复用的结构化实体。
+- Katalist 当前官网已转向广告素材换品/重混，不再是最合适的通用剧本分镜直接对标；保留为“在同一 canvas 中复用既有资产、prompt 修改而不重拍”的局部编辑参考，不列入 P0 主竞品。
+- 结合仓库内 LibTV：LibTV 的优势在画布内选中镜头后紧凑批量生成，以及角色图片作为 image2image refs；LTX/Storyboarder 的优势在统一项目级流程和一致性资产层；Boords 的优势在单镜局部修订与审批状态。Koma 第一轮应组合前两类，不照搬积分/云端会话/协作权限。
+
+### P0 Design Decision
+
+- 统一制作台采用 3 个连续阶段：`1 剧本 → 2 资产 → 3 分镜`。阶段是同一 script/storyboard 节点的持久化属性，不新增第三种节点，不破坏旧数据。
+- 新增 production asset 候选结构（character/scene/prop），由已解析 `LinghuiStoryboardFrame[]` 本地汇总；允许编辑名称/描述、确认/取消确认和重新同步。运行脚本后第一次出现镜头时自动进入资产阶段，避免用户遗漏一致性资产。
+- “生成资产参考图”复用现有 `onGenerateScriptImages`：把确认的资产映射为带 production asset 元数据的虚拟 frame，再由现有派生 hook 创建并立即运行 image 节点。这样复用队列、失败重试、历史和现有生成 provider，不增加假后端。
+- 分镜阶段继续复用现有镜头表格、选择与批量图/视频生成；资产阶段不替代画布资产库，而是在源剧本节点内管理“这一部作品需要哪些语义资产”。
+- `listBuiltinLinghuiRecipeTemplates()` 的空实现将在 P0 加入至少一个“剧本到分镜一体化”系统 Recipe，用户从工作流抽屉一次即可建立统一节点，不再先判断“脚本节点还是故事板节点”。
+
+## 2026-08-07 P1 Project Production Assets Audit
+
+- 当前 `LinghuiWorkspaceAssetRecord` 已有通用 `metadata: Record<string, unknown>`，无需立刻迁移 SQLite schema；生产资产语义可以兼容地写入 metadata。
+- 当前 `createLinghuiWorkspaceAsset` 只接受 `nodeId + nodeData + nodeRun`，面向“把节点结果存成资产”，不适合直接同步尚未生成图片的角色/场景/道具定义，也没有幂等 upsert 入口。
+- 资产抽屉的 `LinghuiAssetFilter` 仅有 `all/image/video/audio/text`，过滤逻辑只看 `asset.kind`；角色/场景/道具必须通过 metadata 提供第二维生产语义。
+- 资产卡片当前只展示媒体 kind 和创建时间，生产资产需要显式类型标签与来源节点提示，否则用户无法区分普通图片和角色参考资产。
+- 最小兼容方案：新增 production asset metadata 解析 helper；后端增加按稳定 ID 写入/替换的 `upsertWorkspaceAsset`，节点侧同步定义记录；已有生成图片资产继续保留媒体 `kind: image`，同时带生产语义 metadata。
+- `LinghuiService` 已引入 `createHash`，可用 `workspaceId + nodeId + productionAssetId` 生成稳定 record ID；`INSERT OR REPLACE` 和 `insertWorkspaceAssetRecord()` 已存在，幂等写入不需要新表。
+- 数据表的 `kind` 仍受 `image/video/audio/text` CHECK 约束，所以生产类型必须留在 metadata；无参考图的生产资产以 `kind: text` 保存描述，有参考图时可物化为 `kind: image`。
+- Script/Storyboard editor 当前通过 `LinghuiNodeEditorSurface` 已能拿到 `workspaceId` 和 `onAssetLibraryMutate`，只需把这两个 props 透传，不必扩张画布 store 或 ReactFlow editor API。
+- IPC 需要新增一个批量 `syncProductionAssets` 通道：一次调用同步当前节点全部已确认资产，并删除该节点此前同步但现已取消确认/删除的 production records，才能保证项目资产库与制作台一致而不是只增不减。
+
+## 2026-08-07 P1 Project Production Assets Completed
+
+- P1 已完成：不新增数据库表，继续复用 `linghui_workspace_assets.metadata_json` 承载生产语义；媒体 `kind` 仍只表示 image/video/audio/text，兼容旧资产。
+- 稳定记录 ID 为 `sha256(workspaceId + NUL + nodeId + NUL + productionAssetId).slice(0, 32)`；因此同一工作区不同制作台节点不会互相覆盖，同一节点重复同步不会增长记录。
+- `syncProductionAssets` 只接纳 `confirmed === true` 的资产；每次同步以当前节点的 confirmed 集合作为 desired state，并删除当前节点已取消确认/删除的旧 production record。
+- 生产 metadata 至少包括 `recordType / sourceNodeId / productionAssetId / productionAssetKind / productionAssetName / sourceShotIds / confirmed`；参考图另存 fingerprint，避免每次编辑都重复下载或复制。
+- 有参考图的生产资产保存为 `kind=image` 并物化到工作区；没有参考图的资产保存为 `kind=text`，描述写入 `text`，这样角色/场景/道具定义在生成参考图前也能被项目资产库复用。
+- Script/Storyboard editor 已透传 `workspaceId` 和资产库刷新回调，防抖 hook 在确认、编辑、删除和取消确认后回写；工作台会呈现同步状态和失败重试入口。
+- 抽屉筛选保持两维：媒体类型（全部/图片/视频/音频/文本）× 生产语义（全部/角色/场景/道具/普通）。没有 production metadata 的旧记录统一视为普通资产。
+- Electron CDP 9333 实操证据：Recipe → 制作台 → 添加角色 → 确认后显示“已确认资产已同步到项目资产库”；资产抽屉显示角色标签、0 个来源镜头、来源节点；取消确认后角色筛选为空，重新确认后恢复为单条同名记录；临时工作区已删除，原有 3 个工作区仍在。
+
+### 下一轮建议（P1.5 / P2）
+
+- 让参考图生成成功后可选择回写生产资产的 `referenceImage`，并增加 `draft / approved / locked` 状态；锁定后编辑或批量重生成必须明确提示作用范围。
+- 在镜头卡片增加生产资产引用摘要和“跳回资产”入口，再做一致性检查（角色外观、场景时段、关键道具和风格约束）。
+- 为生产资产增加别名/合并候选和受影响镜头列表；删除前显示引用影响，替代当前同步的静默删除。
+- 继续对标 LTX Studio 的 Elements、Boords 的 review、Storyboarder.ai 的 consistency/animatic，但不迁移积分、云端账号和未接入的模型服务。
+
+## 2026-08-07 Prompt @ Focus Regression
+
+- 用户反馈画布节点输入框输入 `@` 后失焦。根因不是 autocomplete popup，而是 `LinghuiPromptEditor` 的 CodeMirror 初始化 effect 依赖受控 `value` 与 `referenceExtension`；输入触发父状态更新后，effect 销毁并重建 `EditorView`。
+- 修复策略是把初始 doc/引用扩展放入 ref，仅在基础编辑器配置变化时创建 view；受控值仍由已有外部同步 effect 处理，引用列表由 `Compartment.reconfigure` 更新，避免重新挂载输入 DOM。
+- 回归测试通过 CodeMirror `EditorView.dispatch({ changes: { insert: '@' } })` 驱动受控更新，并断言原 view DOM 仍 connected、`document.activeElement` 仍为 `.cm-content`。
+- Electron CDP 9333 实测图片节点：输入 `@` 后焦点保持，随后输入中文继续追加；验证产生的临时前缀已从原工作区内容中删除。
+
+## 2026-08-07 P2 镜头到生产资产追溯审计
+
+- `LinghuiStoryboardFrame` 已保留结构化 `characters / scenes / props`，生产资产同时保存 `sourceShotIds`；因此第一版引用关系可以本地双向推导，不需要再次调用模型或迁移数据库。
+- 普通镜头当前没有持久化 `productionAssetIds`；只有用于生成资产参考图的虚拟 frame 带单个 `productionAsset`。为兼容旧数据，展示层应先按 `sourceShotIds` 精确匹配，再以 kind + 归一化名称回退匹配镜头字段。
+- `ScriptShotCards / ScriptShotTable` 被节点本体、Script 编辑器和 Storyboard 编辑器共同复用，是添加资产摘要的最小一致入口；需要通过可选 props 注入 `productionAssets` 和定位回调，避免组件直接依赖画布 store。
+- 当前制作台资产卡已显示来源镜头数，但删除只是直接过滤数组。P2 可用同一个引用投影结果在删除前给出具体镜头标题/编号，并保持 locked 资产不可删除。
+- “跳回资产”最短路径不是打开项目资产抽屉，而是把同一制作台阶段切到 `assets` 并定位对应卡片；节点本体可复用已有 `openNodeEditor(id)` 后由节点属性记录一次性定位目标。
+- `ScriptProductionWorkbench` 当前删除按钮直接执行 `assets.filter(...)`，没有任何影响确认；这正是最适合先补的变更影响闭环。组件可接收当前 `shots`，由纯函数给出被引用镜头，再用确认弹层显示编号/标题。
+- Script/Storyboard 编辑器已经持有 `previewState.shots + productionAssets + updateProductionProps`，可在不扩大画布 API 的前提下完成阶段切换和资产定位；节点本体只需把相同 assets 传入共享镜头视图，点击 chip 时打开现有制作台。
+- 卡片与表格已有统一的紧凑样式区段，新增引用 chips 可放在 `ScriptShotViews` 内部并复用 token，不需要重做布局；表格可加一个动态“生产资产”列，只有至少一个匹配/缺失项时才出现。
+- 为避免旧工作区在尚未建立生产资产域时满屏“缺失”警告，一致性缺口只在当前节点已经存在至少一个 `productionAssets` 时启用；无资产的旧镜头仍按原样展示。
+
+### P2 Electron Verification Findings
+
+- Electron 重载验证发现 TypeScript 源码中的 SQLite 反序列化映射漏了 `linghui/storyboard` / `linghui-storyboard`；虽然当前 public runtime 镜像已有该 case，源码缺口会在重新构建后把故事板恢复为文本节点。已补齐源映射，并由 watcher 重启 Electron 后重新验证。
+- 修复后，隔离故事板工作区重载为 `.react-flow__node-linghui-storyboard`，节点内真实展示 1 个镜头及角色、场景、道具三个资产 chip，不再降级为文本空态。
+- 点击镜头的“阿澈”chip 会直接打开同一节点制作台，阶段自动切换为资产，目标卡片带 `.isFocused`，同时显示 `用于 #1 月台停手`，证明引用和反向定位闭环在真实 Electron 中成立。
+- 删除“阿澈”前会展示 `删除会影响 1 个镜头 / #1 月台停手 / 取消 / 仍然删除`；取消后仍保留 3 张资产卡和原字段，确认删除后只剩 2 张资产卡，并在镜头中留下缺失角色提示。
+- 验证时创建的 4 个临时工作区均按精确 ID 删除；Electron 项目面板最终显示 `3 个项目`，只保留 `模拟器UIUX设计 / 未命名灵绘 / 创意酒瓶设计`。
+
+## 2026-08-07 画布执行 HUD 简化审计
+
+- “待重跑 / 重跑受影响”来自 `LinghuiCanvasHud` 的 stale 状态计数与 `useLinghuiPageExecutionRailState.handleRerunAffected`，它们是执行实现细节，不是用户熟悉的生产动作；当前同时存在“需要处理”“失败”“定位失败”“重试”等多层状态，信息密度高且语义重复。
+- `runWorkflow()` 本身仍需要 `stale` 状态来做依赖传播和执行计划过滤，不能删除状态模型；本轮只移除 HUD 上的 stale 计数、重跑按钮和对应页面 rail handler，节点边框/执行日志中的内部 stale 仍保留。
+- 明确保留 `运行全部`、`运行选中`、失败节点的 `重试`/`定位失败` 和执行中的 `取消执行`；这些按钮分别对应用户可理解的范围动作或恢复动作。
+- 同一内部 stale 术语还出现在旧 `LinghuiStatusBar`、属性面板、通用节点壳和工作流块摘要中。当前主画布实际可见的是 HUD 与工作流块；为避免术语从其他入口再次露出，本轮统一从所有展示组件移除“待重跑”文案，但不改 `LinghuiRunStatus` 和依赖失效计算。
+- `onRerunAffected` 只沿 `Page → PageShell → Canvas → Hud` 透传，唯一行为实现也只被这个 HUD 按钮使用；可完整删除该公开 prop 和 handler，不会影响普通执行、失败重试或内部 stale 依赖计算。
+- Electron 9333 实测主画布顶部当前只显示 `画布就绪 / 运行全部 / 运行选中`，DOM 中已找不到 `待重跑 / 重跑受影响 / 需要处理`；这证明简化落在真实 Electron UI，而不只是测试环境。
+- Electron 临时工作区已成功插入内置“剧本到分镜一体化制作台” Recipe，当前节点本体仍保持 `制作台 / 生成故事板` 两个明确入口；接下来可用该临时节点验证镜头资产 chip、跳回与删除影响提示。
+- 临时 Recipe 的远端 LLM 流式生成在取消后进入明确的 `运行失败 / 重试失败节点 / 查看失败节点` 状态，验证了失败恢复文案；本地 Linghui 工作区数据位于 SQLite 而非散落 JSON，若需要构造 UI smoke 数据应走应用 API或临时工作区数据库记录，避免触碰原项目。
+- SQLite 只存节点的 `properties_json / inputs_json / outputs_json`，临时 workspace `a890093dd1d7` 目前只有一个 Recipe 节点；可在清理前用精确 workspace/node ID 构造测试数据，但不应直接修改原有三个工作区。
+
 ## 2026-05-20 Koma 当前系统能力规格化初始发现
 
 - 用户目标是为 Koma 自底向上重构建立“现状基线”：底层规划、持久化存储、文件存储、后台任务、插件系统、系统数据管理、主题系统。
@@ -1435,3 +1539,62 @@ LibTV 节点类型中**灵绘未实现**：
 - 灵绘已有 `linghui/agent` 执行器、模型选择、工具白名单和 preset 编辑器，但节点本体仍只是静态 AI 缩略图；常用的任务模板与运行入口都需要展开编辑器。
 - 对齐方向不是伪造 LibTV WebSocket 会话，而是把灵绘已有 Agent 能力前移到节点本体：节点内显示紧凑任务模板、工具/迭代摘要、运行按钮和流式输出摘要。
 - 任务模板应复用 `LINGHUI_AGENT_PROMPT_PRESETS`，运行仍走已有 `onRunNode`，不迁入 LibTV 登录、在线项目会话、积分或云端工具注册逻辑。
+
+## 2026-08-07 P3 Storyboard Consistency Preflight Findings
+
+- 现有镜头资产投影已经能按 `productionAsset.id → sourceShotIds → 名称回退` 得到稳定关系，因此预检不需要再次请求模型或复制一套实体识别逻辑。
+- 新增 `auditLinghuiProductionConsistency(shots, assets)`：缺失资产、草稿资产按 `error`，已确认但没有 `referenceImage` 按 `warning`；同一资产在多个镜头中只生成一条问题，并保留 `shotIds / shotLabels`。
+- 预检只审计镜头实际引用的资产，不会把未被镜头使用的手工资产误报成风险。
+- 分镜阶段的制作台显示“缺少角色/场景/道具资产”“资产未确认”“缺少参考图”，每行展示受影响镜头；已有 `assetId` 的问题可直接调用原有 `handleOpenProductionAsset` 跳回资产阶段并聚焦卡片。
+- 缺失实体使用“提取缺失资产”重新走现有 `extractLinghuiProductionAssets`，再切换资产阶段；没有 `productionAssets` 的旧工作区只显示“先从镜头提取一次”的单条提示，避免满屏缺失误报。
+- Electron 9333 真实验证数据为 2 个镜头：阿澈（草稿）、雨夜车站（已批准但无参考图）、半枚硬币（缺失）。制作台正确显示 2 项影响一致性和 1 条参考图警告；点击“打开资产”聚焦阿澈，点击“提取缺失资产”补出道具资产并停留在资产阶段。
+- 本轮临时工作区 `dac316c77fd3` 已按精确 ID 删除；原项目 `模拟器UIUX设计`、`未命名灵绘`、`创意酒瓶设计` 保持不变。
+
+## 2026-08-07 P4 Selective Shot Refresh Audit
+
+- Script/Storyboard editor 已有唯一的 `selectedShotIds` 状态；分镜卡片、表格和底部的 `生成分镜图 / 生成视频流程` 都从该状态过滤 `selectedShots`，因此选择性刷新不需要改执行器协议。
+- 当前选中态在有镜头时默认全选，并由 `handleToggleShot` 维护；P4 已补齐制作台到该选择状态的回写入口。
+- 最小闭环是给 `ScriptProductionWorkbench` 增加可选的 `onSelectShots(shotIds)`，一致性问题行增加“选中受影响镜头”，将问题的 `shotIds` 传回 editor；生成按钮仍留在镜头视图底部，避免复制一套生成执行入口。
+- 选择动作应保留问题的资产处理按钮：用户可先选镜头，再处理资产，或先处理资产后继续使用已选范围；不能把“选中”误解成已执行生成。
+
+## 2026-08-07 P4 Selective Shot Refresh Implementation
+
+- `ScriptProductionWorkbench` 现在把问题对象的 `shotIds` 作为选择范围入口；按钮使用 `选中 N 个受影响镜头` / `已选中 N 个镜头` 文案，并在制作台头部显示 `已选 N/总数 个镜头`。
+- `ScriptNodeEditor` 和 `StoryboardNodeEditor` 的回写 handler 会先以当前 `previewState.shots` 过滤、去重并按镜头原顺序重建选择数组，避免一致性审计数据中出现未知 ID 或顺序抖动。
+- 生成执行器无需改协议：图片、视频和派生文本入口原本都从 `selectedShotIds` 过滤；本轮只补齐制作台到该状态的连接。
+- 组件测试验证：点击一致性问题选择按钮触发 `onSelectShots(['shot-1', 'shot-2'])`；编辑器端将 3 个镜头收敛到受影响的 2 个后，生图和视频回调都只收到所选镜头范围内的镜头。
+- Electron 验证使用临时工作区 `P4选择范围验证`（ID `1a0d77233c45`），真实看到 `已选 3/3 → 已选 2/3`、两个受影响卡片勾选和底部生成工具条；验证后已精确删除，未触碰原有工作区。
+
+## 2026-08-07 P5 Reference Version Management Findings
+
+- 现有 `referenceImage` 同时承担制作台预览、图片生成参考和项目资产同步，因此版本模型应在它旁边增量扩展，不能直接把它改成数组破坏旧消费者。
+- 兼容策略是把只有 `referenceImage` 的旧资产在读取时投影为稳定 legacy V1；只有发生追加/切换时才把版本数组写回节点数据，不需要批量迁移工作区。
+- 采用图片结果必须是“追加且采用”，而不是继续覆盖；相同 source 的结果应复用已有版本，避免重复点击制造无意义候选。
+- `currentReferenceImageId` 是版本选择锚点，`referenceImage` 继续镜像当前版本。这样项目资产同步、提示词参考和既有一致性预检都自动读取用户当前选择，不需要复制版本判断。
+- 回退语义采用版本创建顺序中的前一个候选，不删除较新版本；用户仍可再次采用较新版本，形成可逆操作。
+- 锁定资产不仅应禁止编辑名称/描述，也必须禁止追加、切换和回退参考图，否则“locked”不能作为后续镜头一致性检查的稳定锚点。
+- Electron 100% 视觉复核确认：当前版本摘要、回退按钮和 V1/V2 候选在单张资产卡内形成紧凑层级，没有新增独立弹窗或离开制作台的操作。
+- 临时工作区 `998ec74ea8e7` 已按精确 ID 删除，原有三个工作区保持不变。
+
+## 2026-08-07 P6 Semantic Consistency Audit Direction
+
+- 下一层一致性不能只比较自由文本是否完全相等；应优先从镜头已有结构字段和明确标签提取有限词表信号，并在证据不足时不报错，控制误报。
+- 服装冲突应以“同一角色 + 相邻/连续镜头 + 明确服装描述不同”为基础；允许换装的场景切换需要能被用户忽略或后续标注例外。
+- 场景时段冲突应以同一场景资产为聚合键，比较明确的晨/昼/黄昏/夜等时段信号；单纯光线描述不能一律当作时段。
+- 关键道具连续性应复用已有镜头资产投影，重点识别同一道具在连续镜头中突然缺失或状态描述冲突，而不是要求每个道具出现在所有镜头。
+- 风格检查应先支持项目级或资产级明确风格标签，再检查镜头提示词中的互斥标签；没有显式基准风格时不凭模型猜测“风格不一致”。
+
+## 2026-08-07 P6/P7 Semantic Consistency Implementation Findings
+
+- 四类语义问题已落在同一 `auditLinghuiProductionConsistency()` 问题模型中，问题携带 `type / assetId / shotIds / evidence`，因此现有“打开资产”和“选中受影响镜头”不需要另建执行链路。
+- 低误报规则的共同约束是“明确词汇 + 相邻镜头或明确基准”：没有词汇证据就不提示；单纯的氛围形容词不推断时段；同一道具不要求跨所有镜头持续出现；不把不同资产之间的服装/状态差异误当冲突。
+- P7 的确认指纹必须包含规范化证据和镜头范围，而不是只用资产 ID；否则用户确认一次后，镜头新增或证据改变会被旧确认错误遮蔽。
+- 节点内编辑保存竞态根因是 functional updater 执行前检查 `changed`，以及旧 snapshot 可能先于最新节点状态排队。同步读取 React Flow 节点预判、更新后双 RAF、再直接 `emitSnapshot()` 能确保确认列表等编辑状态实际写入 DB，同时无变化时不产生额外保存。
+
+## 2026-08-07 P8 Asset Alias & Duplicate Candidate Audit Direction
+
+- 现有生产资产的稳定域是 `workspaceId + sourceNodeId + productionAssetId`，项目资产表通过 metadata 保存 `productionAssetKind / productionAssetName / sourceShotIds / sourceNodeId`；因此别名与合并不能只改显示名称，必须保留 canonical/alias 映射。
+- 生产资产对象当前已有 `id / kind / name / description / status / referenceImageVersions / sourceShotIds` 等字段；本轮优先复用这些字段并增量增加 `aliases` 或 metadata 映射，避免迁移旧工作区。
+- 候选检测应先限制为同一 `kind`，再对名称和显式别名做 Unicode 规范化（大小写、空白、标点、常见称谓后缀）；描述相似只能作为低置信提示，不能自动合并。
+- 合并前必须展示两项资产的来源镜头、锁定状态、当前参考图和版本数；锁定项只能作为被保留的 canonical，不能被静默覆盖。
+- 旧镜头引用继续通过 alias→canonical 解析，合并后保留旧 ID 的 redirect，便于撤销或打开历史节点；普通图片资产、跨类型同名实体不进入候选。

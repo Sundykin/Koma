@@ -342,20 +342,23 @@ export function useLinghuiCanvasFlowBridge({
     updater: (previous: LinghuiNodeData) => LinghuiNodeData,
     options?: { markStale?: boolean },
   ) => {
-    let changed = false;
+    const currentNode = reactFlow.getNode(nodeId);
+    if (!currentNode) return;
+    const previousData = currentNode.data as unknown as LinghuiNodeData;
+    const previewData = updater(previousData);
+    if (JSON.stringify(previousData) === JSON.stringify(previewData)) return;
 
     setNodes(currentNodes => currentNodes.map(node => {
       if (node.id !== nodeId) {
         return node;
       }
 
-      const previousData = node.data as unknown as LinghuiNodeData;
-      const nextData = updater(previousData);
-      if (JSON.stringify(previousData) === JSON.stringify(nextData)) {
+      const latestData = node.data as unknown as LinghuiNodeData;
+      const nextData = latestData === previousData ? previewData : updater(latestData);
+      if (JSON.stringify(latestData) === JSON.stringify(nextData)) {
         return node;
       }
 
-      changed = true;
       return {
         ...node,
         data: withAutoGroupCountLabel(
@@ -365,17 +368,17 @@ export function useLinghuiCanvasFlowBridge({
       };
     }));
 
-    if (!changed) {
-      return;
-    }
-
     requestAnimationFrame(() => {
-      scheduleSnapshot();
-      if (options?.markStale !== false) {
-        onNodeMutateRef.current?.(nodeId);
-      }
+      requestAnimationFrame(() => {
+        // 直接 flush，绕过可能已排队的旧 snapshot；否则旧 RAF 会先把节点数据落盘，
+        // 本次编辑虽然在画布上可见，却要等下一次平移/缩放才真正保存。
+        emitSnapshot();
+        if (options?.markStale !== false) {
+          onNodeMutateRef.current?.(nodeId);
+        }
+      });
     });
-  }, [onNodeMutateRef, scheduleSnapshot, setNodes]);
+  }, [emitSnapshot, onNodeMutateRef, reactFlow, setNodes]);
 
   return {
     handleNodesChange,

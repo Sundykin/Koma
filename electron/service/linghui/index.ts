@@ -19,11 +19,19 @@ import type {
   LinghuiWorkspaceMeta,
 } from '../../../frontend/src/types/linghui';
 import type {
+  LinghuiProductionAssetSyncResult,
   LinghuiWorkflowTemplateRecord,
   LinghuiWorkspaceAssetRecord,
   LinghuiWorkspaceHistoryRecord,
   LinghuiWorkspaceHistoryRecordResult,
 } from '../../../frontend/src/store/linghuiStorage';
+import {
+  buildLinghuiProductionAssetRecordId,
+  buildLinghuiProductionReferenceFingerprint,
+  listStaleLinghuiProductionAssetRecordIds,
+  normalizeLinghuiProductionAssetSyncItems,
+  resolveLinghuiProductionAssetRecordMetadata,
+} from './productionAssets';
 import {
   assignLinghuiResultPrimary,
   buildLinghuiGraphStats,
@@ -1391,6 +1399,120 @@ export class LinghuiService {
     );
 
     return record;
+  }
+
+  async syncProductionAssets(params: {
+    workspaceId: string;
+    nodeId: string;
+    nodeType: LinghuiNodeData['linghuiType'];
+    assets: Array<{
+      id: string;
+      kind: 'character' | 'scene' | 'prop';
+      name: string;
+      description: string;
+      sourceShotIds: string[];
+      referenceImage?: string;
+      aliases?: string[];
+      mergedAssetIds?: string[];
+      confirmed: boolean;
+      status?: 'draft' | 'approved' | 'locked';
+    }>;
+  }): Promise<LinghuiProductionAssetSyncResult> {
+    const workspaceId = String(params.workspaceId ?? '').trim();
+    const nodeId = String(params.nodeId ?? '').trim();
+    if (!workspaceId || !nodeId) {
+      throw new Error('同步生产资产需要有效的工作区和来源节点');
+    }
+
+    const existingRecords = this.listWorkspaceAssets(workspaceId);
+    const existingById = new Map(existingRecords.map(record => [record.id, record]));
+    const normalizedAssets = normalizeLinghuiProductionAssetSyncItems(params.assets);
+    const records: LinghuiWorkspaceAssetRecord[] = [];
+
+    for (const asset of normalizedAssets) {
+      const recordId = buildLinghuiProductionAssetRecordId(workspaceId, nodeId, asset.id);
+      const existing = existingById.get(recordId);
+      const existingMetadata = existing
+        ? resolveLinghuiProductionAssetRecordMetadata(existing)
+        : null;
+      const referenceFingerprint = buildLinghuiProductionReferenceFingerprint(asset.referenceImage);
+      let persistedSource: string | undefined;
+
+      if (asset.referenceImage) {
+        if (
+          existing?.source
+          && existingMetadata?.sourceReferenceFingerprint === referenceFingerprint
+        ) {
+          persistedSource = existing.source;
+        } else {
+          persistedSource = await materializeLinghuiSource({
+            assetDir: path.join(
+              this.getWorkspaceDir(workspaceId),
+              'assets',
+              'library',
+              'production',
+              asset.kind,
+              recordId,
+            ),
+            filename: 'reference',
+            source: asset.referenceImage,
+            fallbackExt: 'png',
+          });
+        }
+      }
+
+      const kind = persistedSource ? 'image' : 'text';
+      const record: LinghuiWorkspaceAssetRecord = {
+        id: recordId,
+        workspaceId,
+        nodeId,
+        nodeType: params.nodeType,
+        kind,
+        name: asset.name,
+        createdAt: existing?.createdAt ?? Date.now(),
+        source: persistedSource,
+        previewSource: persistedSource,
+        text: asset.description || undefined,
+        snapshotPath: buildLinghuiLibrarySnapshotKey(workspaceId, 'assets', recordId),
+        metadata: {
+          recordType: 'production-asset',
+          sourceNodeId: nodeId,
+          productionAssetId: asset.id,
+          productionAssetKind: asset.kind,
+          productionAssetName: asset.name,
+          sourceShotIds: asset.sourceShotIds,
+          sourceReferenceImage: asset.referenceImage
+            && asset.referenceImage.length <= 2048
+            && !asset.referenceImage.startsWith('data:')
+            && !asset.referenceImage.startsWith('blob:')
+              ? asset.referenceImage
+              : undefined,
+          sourceReferenceFingerprint: referenceFingerprint,
+          productionAssetAliases: asset.aliases,
+          mergedProductionAssetIds: asset.mergedAssetIds,
+          confirmed: true,
+          productionAssetStatus: asset.status,
+        },
+      };
+      records.push(record);
+    }
+
+    const desiredRecordIds = new Set(records.map(record => record.id));
+    const removedIds = listStaleLinghuiProductionAssetRecordIds({
+      existingRecords,
+      nodeId,
+      desiredRecordIds,
+    });
+
+    baseDB.transaction(() => {
+      records.forEach(record => this.insertWorkspaceAssetRecord(record));
+      const deleteRecord = this.getDb().prepare(
+        'DELETE FROM linghui_workspace_assets WHERE workspace_id = ? AND id = ?',
+      );
+      removedIds.forEach(id => deleteRecord.run(workspaceId, id));
+    });
+
+    return { records, removedIds };
   }
 
   async createWorkspaceHistoryRecord(params: {

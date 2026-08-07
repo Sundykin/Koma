@@ -1,8 +1,8 @@
 import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import type { LinghuiStoryboardFrame } from '../../../../types/linghui';
-import { ScriptShotTable } from '../components/ScriptShotViews';
+import type { LinghuiProductionAsset, LinghuiStoryboardFrame } from '../../../../types/linghui';
+import { ScriptShotCards, ScriptShotTable } from '../components/ScriptShotViews';
 
 vi.mock('../../../../services/fileSystemPort', () => ({
   toFileSystemDisplayUrl: (source?: string) => source || '',
@@ -11,6 +11,8 @@ vi.mock('../../../../services/fileSystemPort', () => ({
 function renderTable(shots: LinghuiStoryboardFrame[], options?: {
   editable?: boolean;
   onChangeShot?: (shotId: string, patch: Partial<LinghuiStoryboardFrame>) => void;
+  productionAssets?: LinghuiProductionAsset[];
+  onOpenProductionAsset?: (assetId: string) => void;
 }) {
   return render(
     <ScriptShotTable
@@ -19,6 +21,8 @@ function renderTable(shots: LinghuiStoryboardFrame[], options?: {
       onToggleShot={vi.fn()}
       editable={options?.editable}
       onChangeShot={options?.onChangeShot}
+      productionAssets={options?.productionAssets}
+      onOpenProductionAsset={options?.onOpenProductionAsset}
     />,
   );
 }
@@ -91,5 +95,44 @@ describe('ScriptShotViews', () => {
 
     expect(onChangeShot).toHaveBeenCalledWith('shot-1', { plotDescription: '新剧情推进' });
     expect(onChangeShot).toHaveBeenCalledWith('shot-1', { durationSec: 10 });
+  });
+
+  it('在表格和卡片展示镜头资产，并可跳回对应资产', () => {
+    const shot: LinghuiStoryboardFrame = {
+      id: 'shot-1',
+      title: '交换',
+      description: '阿澈交出半枚硬币',
+      durationSec: 6,
+      characters: [{ characterName: '阿澈' }],
+      props: [{ propName: '半枚硬币' }],
+    };
+    const assets: LinghuiProductionAsset[] = [{
+      id: 'character-1',
+      kind: 'character',
+      name: '阿澈（雨夜造型）',
+      description: '',
+      sourceShotIds: ['shot-1'],
+      confirmed: true,
+    }];
+    const onOpenProductionAsset = vi.fn();
+
+    const table = renderTable([shot], { productionAssets: assets, onOpenProductionAsset });
+    expect(screen.getByRole('columnheader', { name: '生产资产' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '跳回资产 阿澈（雨夜造型）' }));
+    expect(onOpenProductionAsset).toHaveBeenCalledWith('character-1');
+    expect(screen.getByTitle('未建立道具资产：半枚硬币')).toBeInTheDocument();
+    table.unmount();
+
+    render(
+      <ScriptShotCards
+        shots={[shot]}
+        selectedShotIds={[]}
+        onToggleShot={vi.fn()}
+        productionAssets={assets}
+        onOpenProductionAsset={onOpenProductionAsset}
+      />,
+    );
+    expect(screen.getByLabelText('本镜头生产资产')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '跳回资产 阿澈（雨夜造型）' })).toBeInTheDocument();
   });
 });

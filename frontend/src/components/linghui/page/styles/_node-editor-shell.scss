@@ -282,6 +282,17 @@
     transform-origin: top center;
     transition: width 180ms ease, max-height 180ms ease, transform 180ms ease;
 
+    &.isProductionWorkbench {
+      overflow: auto;
+      scrollbar-gutter: stable;
+    }
+
+    &.isProductionWorkbench.isAbove {
+      top: auto;
+      bottom: var(--linghui-node-editor-panel-bottom, calc(100% + 14px));
+      transform-origin: bottom center;
+    }
+
     > .linghuiEditorPanel {
       width: 100%;
       min-width: 0;
@@ -293,6 +304,11 @@
     &.isTextGenerator {
       overflow: visible;
       scrollbar-gutter: auto;
+    }
+
+    &.isProductionWorkbench.isTextGenerator {
+      overflow: auto;
+      scrollbar-gutter: stable;
     }
   }
 
@@ -1075,6 +1091,809 @@
   }
 }
 
+/* 统一制作台：剧本 → 资产 → 分镜。阶段状态保存在 script/storyboard node properties，
+   视觉上保持轻量，避免再引入一个全屏向导。 */
+.linghuiProductionWorkbench {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.linghuiProductionStageRail {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px;
+  border: 1px solid var(--token-border-subtle);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--token-bg-card) 92%, var(--token-accent-base));
+}
+
+.linghuiProductionStage {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  color: var(--token-text-secondary);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .16s ease, background .16s ease, color .16s ease;
+}
+
+.linghuiProductionStage:hover,
+.linghuiProductionStage.isActive {
+  border-color: color-mix(in srgb, var(--token-accent-base) 42%, transparent);
+  background: color-mix(in srgb, var(--token-accent-base) 12%, transparent);
+  color: var(--token-text-primary);
+}
+
+.linghuiProductionStageIndex {
+  display: inline-grid;
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  border-radius: 999px;
+  color: var(--token-text-muted);
+  background: var(--token-bg-elevated);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.linghuiProductionStage.isActive .linghuiProductionStageIndex {
+  color: var(--token-bg-card);
+  background: var(--token-accent-base);
+}
+
+.linghuiProductionStageCopy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.linghuiProductionStageCopy strong {
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.linghuiProductionStageCopy small {
+  overflow: hidden;
+  color: var(--token-text-muted);
+  font-size: 10px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.linghuiProductionStageConnector {
+  width: 10px;
+  height: 1px;
+  flex: 0 0 auto;
+  background: var(--token-border-subtle);
+}
+
+.linghuiProductionConsistency {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 11px 12px;
+  border: 1px solid var(--token-border-subtle);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--token-bg-card) 96%, var(--token-accent-base));
+}
+
+.linghuiProductionConsistencyHeader,
+.linghuiProductionConsistencyLegacy,
+.linghuiProductionConsistencyReady,
+.linghuiProductionConsistencyIssue {
+  display: flex;
+  align-items: center;
+}
+
+.linghuiProductionConsistencyHeader {
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.linghuiProductionConsistencyTitle {
+  color: var(--token-text-primary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.linghuiProductionConsistencyHeaderMeta {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.linghuiProductionConsistencySubtitle {
+  margin-top: 3px;
+  color: var(--token-text-muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.linghuiProductionConsistencyStatus {
+  flex: 0 0 auto;
+  border: 1px solid var(--token-border-subtle);
+  border-radius: 999px;
+  padding: 4px 7px;
+  color: var(--token-text-muted);
+  background: var(--token-bg-elevated);
+  font-size: 9px;
+}
+
+.linghuiProductionConsistencyStatus.isError {
+  border-color: color-mix(in srgb, var(--token-status-error) 42%, var(--token-border-subtle));
+  color: var(--token-status-error);
+}
+
+.linghuiProductionConsistencyStatus.isWarning {
+  border-color: color-mix(in srgb, var(--token-status-warning) 42%, var(--token-border-subtle));
+  color: var(--token-status-warning);
+}
+
+.linghuiProductionConsistencyStatus.isReady {
+  border-color: color-mix(in srgb, var(--token-status-success) 42%, var(--token-border-subtle));
+  color: var(--token-status-success);
+}
+
+.linghuiProductionConsistencySelection {
+  border-radius: 999px;
+  padding: 4px 7px;
+  color: var(--token-text-secondary);
+  background: color-mix(in srgb, var(--token-accent-base) 9%, transparent);
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.linghuiProductionConsistencyAcknowledged {
+  border: 1px solid color-mix(in srgb, var(--token-status-success) 34%, var(--token-border-subtle));
+  border-radius: 999px;
+  padding: 4px 7px;
+  color: var(--token-status-success);
+  background: color-mix(in srgb, var(--token-status-success) 8%, transparent);
+  font-size: 9px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.linghuiProductionConsistencyAcknowledged:hover {
+  border-color: color-mix(in srgb, var(--token-status-success) 58%, var(--token-border-subtle));
+}
+
+.linghuiProductionConsistencyEmpty,
+.linghuiProductionConsistencyLegacy,
+.linghuiProductionConsistencyReady {
+  color: var(--token-text-muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.linghuiProductionConsistencyLegacy {
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px;
+  border: 1px dashed var(--token-border-subtle);
+  border-radius: 8px;
+}
+
+.linghuiProductionConsistencyReady {
+  gap: 6px;
+  color: var(--token-status-success);
+}
+
+.linghuiProductionConsistencyLegacy button,
+.linghuiProductionConsistencyIssue button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--token-border-subtle);
+  border-radius: 7px;
+  padding: 5px 7px;
+  color: var(--token-text-secondary);
+  background: var(--token-bg-card);
+  font-size: 9px;
+  cursor: pointer;
+}
+
+.linghuiProductionConsistencyLegacy button:hover,
+.linghuiProductionConsistencyIssue button:hover {
+  border-color: color-mix(in srgb, var(--token-accent-base) 52%, transparent);
+  color: var(--token-text-primary);
+}
+
+.linghuiProductionConsistencyIssue button.isSelected {
+  border-color: color-mix(in srgb, var(--token-accent-base) 56%, transparent);
+  color: var(--token-accent-base);
+  background: color-mix(in srgb, var(--token-accent-base) 10%, transparent);
+}
+
+.linghuiProductionConsistencyList {
+  display: flex;
+  max-height: 220px;
+  flex-direction: column;
+  gap: 5px;
+  overflow: auto;
+}
+
+.linghuiProductionConsistencyIssue {
+  gap: 7px;
+  padding: 7px 8px;
+  border: 1px solid var(--token-border-subtle);
+  border-radius: 8px;
+  background: var(--token-bg-card);
+}
+
+.linghuiProductionConsistencyIssue.is-error {
+  border-color: color-mix(in srgb, var(--token-status-error) 28%, var(--token-border-subtle));
+}
+
+.linghuiProductionConsistencyIssue.is-warning {
+  border-color: color-mix(in srgb, var(--token-status-warning) 28%, var(--token-border-subtle));
+}
+
+.linghuiProductionConsistencyIssueIcon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: var(--token-status-warning);
+}
+
+.linghuiProductionConsistencyIssue.is-error .linghuiProductionConsistencyIssueIcon {
+  color: var(--token-status-error);
+}
+
+.linghuiProductionConsistencyIssueCopy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.linghuiProductionConsistencyIssueCopy strong {
+  overflow: hidden;
+  color: var(--token-text-primary);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.linghuiProductionConsistencyIssueCopy span {
+  overflow: hidden;
+  color: var(--token-text-muted);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.linghuiProductionConsistencyIssueActions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+}
+
+.linghuiProductionAssetPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--token-border-subtle);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--token-bg-card) 95%, var(--token-accent-base));
+}
+
+.linghuiProductionAssetHeader,
+.linghuiProductionAssetActions,
+.linghuiProductionAssetCardHeader,
+.linghuiProductionAssetStats {
+  display: flex;
+  align-items: center;
+}
+
+.linghuiProductionAssetHeader {
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.linghuiProductionAssetTitle {
+  color: var(--token-text-primary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.linghuiProductionAssetSubtitle {
+  margin-top: 3px;
+  color: var(--token-text-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.linghuiProductionAssetStats {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.linghuiProductionAssetStats span,
+.linghuiProductionAssetKind,
+.linghuiProductionAssetCardMeta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--token-text-muted);
+  font-size: 10px;
+}
+
+.linghuiProductionAssetActions {
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.linghuiProductionAssetActions button,
+.linghuiProductionAssetConfirm,
+.linghuiProductionAssetLock,
+.linghuiProductionAssetUnlock,
+.linghuiProductionAssetDelete {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--token-border-subtle);
+  border-radius: 7px;
+  padding: 5px 7px;
+  color: var(--token-text-secondary);
+  background: var(--token-bg-card);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.linghuiProductionAssetActions button:hover,
+.linghuiProductionAssetConfirm:hover,
+.linghuiProductionAssetLock:hover,
+.linghuiProductionAssetUnlock:hover,
+.linghuiProductionAssetConfirm.isActive {
+  border-color: color-mix(in srgb, var(--token-accent-base) 52%, transparent);
+  color: var(--token-text-primary);
+}
+
+.linghuiProductionAssetActions button:disabled {
+  cursor: not-allowed;
+  opacity: .45;
+}
+
+.linghuiProductionAssetActions button.isPrimary {
+  border-color: var(--token-accent-base);
+  color: var(--token-on-accent);
+  background: var(--token-accent-base);
+}
+
+.linghuiProductionAssetSync {
+  display: flex;
+  min-height: 22px;
+  align-items: center;
+  gap: 5px;
+  color: var(--token-text-muted);
+  font-size: 10px;
+}
+
+.linghuiProductionAssetSync.is-synced {
+  color: var(--token-status-success);
+}
+
+.linghuiProductionAssetSync.is-error {
+  color: var(--token-status-error);
+}
+
+.linghuiProductionAssetSync button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.linghuiProductionAssetSyncSpinner {
+  animation: linghuiProductionAssetSpin .9s linear infinite;
+}
+
+.linghuiProductionAssetReferenceAction {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 8px 10px 0;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--token-accent-base) 24%, var(--token-border-subtle));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--token-accent-base) 6%, var(--token-bg-card));
+}
+
+.linghuiProductionAssetReferenceCopy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.linghuiProductionAssetReferenceCopy strong {
+  overflow: hidden;
+  color: var(--token-text-primary);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.linghuiProductionAssetReferenceCopy span {
+  color: var(--token-text-muted);
+  font-size: 9px;
+}
+
+@keyframes linghuiProductionAssetSpin {
+  to { transform: rotate(360deg); }
+}
+
+.linghuiProductionAssetSpacer {
+  flex: 1;
+}
+
+.linghuiProductionAssetGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  max-height: 360px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.linghuiProductionAssetCard {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--token-border-subtle);
+  border-radius: 9px;
+  background: var(--token-bg-card);
+}
+
+.linghuiProductionAssetCard.isConfirmed {
+  border-color: color-mix(in srgb, var(--token-status-success) 48%, var(--token-border-subtle));
+}
+
+.linghuiProductionAssetCard.is-locked {
+  border-color: color-mix(in srgb, var(--token-status-warning) 58%, var(--token-border-subtle));
+  background: color-mix(in srgb, var(--token-status-warning) 4%, var(--token-bg-card));
+}
+
+.linghuiProductionAssetCard.isFocused {
+  border-color: var(--token-accent-base);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--token-accent-base) 18%, transparent);
+}
+
+.linghuiProductionAssetCardHeader {
+  gap: 5px;
+}
+
+.linghuiProductionAssetKind {
+  font-weight: 700;
+}
+
+.linghuiProductionAssetKind.is-character { color: var(--token-status-info); }
+.linghuiProductionAssetKind.is-scene { color: var(--token-status-warning); }
+.linghuiProductionAssetKind.is-prop { color: var(--token-status-success); }
+
+.linghuiProductionAssetConfirm {
+  margin-left: auto;
+  padding: 3px 5px;
+  font-size: 9px;
+}
+
+.linghuiProductionAssetConfirm.isActive {
+  border-color: color-mix(in srgb, var(--token-status-success) 48%, transparent);
+  color: var(--token-status-success);
+}
+
+.linghuiProductionAssetStatus {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  border: 1px solid color-mix(in srgb, var(--token-status-warning) 42%, transparent);
+  border-radius: 7px;
+  padding: 3px 5px;
+  color: var(--token-status-warning);
+  font-size: 9px;
+}
+
+.linghuiProductionAssetLock,
+.linghuiProductionAssetUnlock,
+.linghuiProductionAssetDelete {
+  border-color: transparent;
+  padding: 3px;
+  color: var(--token-text-muted);
+}
+
+.linghuiProductionAssetLock:hover,
+.linghuiProductionAssetUnlock:hover {
+  color: var(--token-status-warning);
+}
+
+.linghuiProductionAssetDelete {
+  margin-left: 0;
+}
+
+.linghuiProductionAssetDelete:hover {
+  color: var(--token-status-error);
+}
+
+.linghuiProductionAssetDelete:disabled {
+  cursor: not-allowed;
+  opacity: .35;
+}
+
+.linghuiProductionAssetCard input,
+.linghuiProductionAssetCard textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--token-border-subtle);
+  border-radius: 6px;
+  padding: 6px 7px;
+  color: var(--token-text-primary);
+  background: var(--token-bg-elevated);
+  font: inherit;
+  font-size: 11px;
+}
+
+.linghuiProductionAssetCard input:disabled,
+.linghuiProductionAssetCard textarea:disabled {
+  cursor: not-allowed;
+  color: var(--token-text-secondary);
+  opacity: .72;
+}
+
+.linghuiProductionAssetCard textarea {
+  min-height: 48px;
+  resize: vertical;
+  line-height: 1.4;
+}
+
+.linghuiProductionAssetCard input:focus,
+.linghuiProductionAssetCard textarea:focus {
+  border-color: var(--token-accent-base);
+  outline: none;
+}
+
+.linghuiProductionAssetVersions {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid var(--token-border-subtle);
+  border-radius: 8px;
+  background: var(--token-bg-elevated);
+}
+
+.linghuiProductionAssetVersionCurrent {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+}
+
+.linghuiProductionAssetVersionCurrent > img {
+  width: 44px;
+  height: 38px;
+  flex: 0 0 auto;
+  border-radius: 6px;
+  object-fit: cover;
+  background: var(--token-bg-card);
+}
+
+.linghuiProductionAssetVersionCurrent > span {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.linghuiProductionAssetVersionCurrent strong,
+.linghuiProductionAssetVersionCurrent small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.linghuiProductionAssetVersionCurrent strong {
+  color: var(--token-text-primary);
+  font-size: 10px;
+}
+
+.linghuiProductionAssetVersionCurrent small {
+  color: var(--token-text-muted);
+  font-size: 9px;
+}
+
+.linghuiProductionAssetVersionCurrent button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 3px;
+  border: 1px solid var(--token-border-subtle);
+  border-radius: 6px;
+  padding: 4px 6px;
+  color: var(--token-text-secondary);
+  background: var(--token-bg-card);
+  font-size: 9px;
+  cursor: pointer;
+}
+
+.linghuiProductionAssetVersionCurrent button:hover:not(:disabled) {
+  border-color: var(--token-accent-base);
+  color: var(--token-text-primary);
+}
+
+.linghuiProductionAssetVersionCurrent button:disabled {
+  cursor: not-allowed;
+  opacity: .45;
+}
+
+.linghuiProductionAssetVersionList {
+  display: flex;
+  min-width: 0;
+  gap: 5px;
+  overflow-x: auto;
+}
+
+.linghuiProductionAssetVersionList button {
+  position: relative;
+  display: flex;
+  width: 60px;
+  height: 48px;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border: 1px solid var(--token-border-subtle);
+  border-radius: 7px;
+  padding: 0;
+  background: var(--token-bg-card);
+  cursor: pointer;
+}
+
+.linghuiProductionAssetVersionList button:hover:not(:disabled),
+.linghuiProductionAssetVersionList button.isCurrent {
+  border-color: var(--token-accent-base);
+}
+
+.linghuiProductionAssetVersionList button:disabled {
+  cursor: default;
+}
+
+.linghuiProductionAssetVersionList img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.linghuiProductionAssetVersionList span {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  max-width: calc(100% - 4px);
+  overflow: hidden;
+  border-radius: 4px;
+  padding: 1px 3px;
+  color: var(--token-text-primary);
+  background: var(--canvas-controls-bg);
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.linghuiProductionAssetImpactSummary {
+  overflow: hidden;
+  color: var(--token-text-muted);
+  font-size: 9px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.linghuiProductionAssetDeleteImpact {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 7px;
+  border: 1px solid color-mix(in srgb, var(--token-status-error) 36%, var(--token-border-subtle));
+  border-radius: 7px;
+  color: var(--token-text-secondary);
+  background: color-mix(in srgb, var(--token-status-error) 5%, var(--token-bg-card));
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.linghuiProductionAssetDeleteImpact strong {
+  color: var(--token-status-error);
+  font-size: 10px;
+}
+
+.linghuiProductionAssetDeleteImpact div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.linghuiProductionAssetDeleteImpact button {
+  border: 1px solid var(--token-border-subtle);
+  border-radius: 6px;
+  padding: 3px 6px;
+  color: var(--token-text-secondary);
+  background: var(--token-bg-card);
+  font-size: 9px;
+  cursor: pointer;
+}
+
+.linghuiProductionAssetDeleteImpact button.isDanger {
+  border-color: color-mix(in srgb, var(--token-status-error) 48%, transparent);
+  color: var(--token-status-error);
+}
+
+.linghuiProductionAssetEmpty {
+  padding: 24px 12px;
+  border: 1px dashed var(--token-border-subtle);
+  border-radius: 9px;
+  color: var(--token-text-muted);
+  font-size: 12px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+@media (max-width: 720px) {
+  .linghuiProductionStageCopy small,
+  .linghuiProductionStageConnector {
+    display: none;
+  }
+
+  .linghuiProductionAssetHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .linghuiProductionConsistencyHeader,
+  .linghuiProductionConsistencyLegacy {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .linghuiProductionConsistencyHeaderMeta,
+  .linghuiProductionConsistencyIssueActions {
+    flex-wrap: wrap;
+  }
+
+  .linghuiProductionAssetStats {
+    justify-content: flex-start;
+  }
+
+  .linghuiProductionAssetGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .linghuiScriptManualPanel {
   box-shadow: 0 6px 18px color-mix(in srgb, var(--token-shadow, #000) 12%, transparent);
 }
@@ -1588,6 +2407,62 @@
   }
 }
 
+.linghuiScriptShotAssetSummary {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 5px;
+}
+
+.linghuiScriptShotAssetLabel {
+  flex: 0 0 auto;
+  padding-top: 3px;
+  color: $lh-text-muted;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.linghuiScriptShotAssetChips {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.linghuiScriptShotAssetChip {
+  display: inline-flex;
+  max-width: 150px;
+  align-items: center;
+  gap: 3px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--token-accent-base) 25%, var(--token-border-base));
+  border-radius: 999px;
+  padding: 2px 6px;
+  color: $lh-text-secondary;
+  background: color-mix(in srgb, var(--token-accent-base) 7%, var(--token-bg-card));
+  font: inherit;
+  font-size: 9px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button.linghuiScriptShotAssetChip {
+  cursor: pointer;
+}
+
+button.linghuiScriptShotAssetChip:hover {
+  border-color: var(--token-accent-base);
+  color: $lh-text-primary;
+}
+
+.linghuiScriptShotAssetChip.isMissing {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--token-status-warning) 48%, var(--token-border-base));
+  color: var(--token-status-warning);
+  background: color-mix(in srgb, var(--token-status-warning) 6%, var(--token-bg-card));
+}
+
 .linghuiScriptShotTableWrap {
   max-width: 100%;
   overflow: auto;
@@ -1660,6 +2535,11 @@
   word-break: break-word;
   cursor: text;
   user-select: text;
+}
+
+.linghuiScriptShotAssetCell {
+  width: 240px;
+  padding: 8px !important;
 }
 
 .linghuiScriptShotEditableCell {

@@ -44,7 +44,6 @@ export const LinghuiStatusBar: React.FC<LinghuiStatusBarProps> = ({
         <span>运行中 {runSummary.running}</span>
         <span>成功 {runSummary.succeeded}</span>
         <span>失败 {runSummary.failed}</span>
-        <span>待重跑 {runSummary.stale}</span>
       </div>
 
       <div className="linghuiStatusItems">

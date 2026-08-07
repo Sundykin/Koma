@@ -26,7 +26,6 @@ interface LinghuiPageShellProps {
   onNodeMutate: NonNullable<LinghuiCanvasProps['onNodeMutate']>;
   onOpenDrawer: NonNullable<LinghuiCanvasProps['onOpenDrawer']>;
   onRestoreNodeRuns: NonNullable<LinghuiCanvasProps['onRestoreNodeRuns']>;
-  onRerunAffected: NonNullable<LinghuiCanvasProps['onRerunAffected']>;
   onRetryFailed: NonNullable<LinghuiCanvasProps['onRetryFailed']>;
   onRunAll: NonNullable<LinghuiCanvasProps['onRunAll']>;
   onRunSelection: NonNullable<LinghuiCanvasProps['onRunSelection']>;
@@ -53,7 +52,6 @@ export function LinghuiPageShell({
   onNodeMutate,
   onOpenDrawer,
   onRestoreNodeRuns,
-  onRerunAffected,
   onRetryFailed,
   onRunAll,
   onRunSelection,
@@ -86,7 +84,6 @@ export function LinghuiPageShell({
             onExportSelection={onExportSelection}
             onFocusFailedNode={onFocusFailedNode}
             onRetryFailed={onRetryFailed}
-            onRerunAffected={onRerunAffected}
             onCancelRun={onCancelRun}
             executionQueue={executionQueue}
             onOpenDrawer={onOpenDrawer}

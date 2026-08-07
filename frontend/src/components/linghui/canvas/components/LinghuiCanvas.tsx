@@ -42,7 +42,6 @@ function areLinghuiCanvasPropsEqual(prev: LinghuiCanvasProps, next: LinghuiCanva
     prev.onExportSelection === next.onExportSelection &&
     prev.onFocusFailedNode === next.onFocusFailedNode &&
     prev.onRetryFailed === next.onRetryFailed &&
-    prev.onRerunAffected === next.onRerunAffected &&
     prev.onCancelRun === next.onCancelRun &&
     prev.executionQueue === next.executionQueue &&
     prev.onOpenDrawer === next.onOpenDrawer

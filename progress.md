@@ -1,5 +1,59 @@
 # Progress Log
 
+## 2026-08-07: Unified Script-to-Storyboard Product Iteration Started
+
+- Confirmed the `/goal` objective is active.
+- Read and applied the `pi-planning-with-files` workflow; ran session catch-up.
+- Audited existing persistent planning context and working-tree status.
+- Added a six-phase plan for baseline mapping, competitor benchmark, unified-flow design, P0 implementation, Electron verification, and follow-up backlog.
+- Preserved two unrelated untracked ComfyUI workflow JSON files.
+
+## 2026-08-07: Unified Script-to-Storyboard P0 Completed
+
+- Added a persisted three-stage production workbench: 剧本 → 资产 → 分镜.
+- Preserved structured characters, scenes, and props from script/storyboard generation and deduplicated them into editable production assets.
+- Connected confirmed production assets to the existing storyboard image derivation, execution queue, provider, retry, history, and image-node persistence flow.
+- Added production asset source metadata to derived image nodes.
+- Added the built-in “剧本到分镜一体化制作台” Recipe.
+- Restored the missing ScriptNode/StoryboardNode editor mount and added a visible “制作台” action on the canvas node.
+- Normalized workflow snapshot `linghuiType` from the React Flow node type so a storyboard Recipe stays a storyboard after save/reload.
+- Added viewport-aware editor placement and scrolling when the 440px workbench cannot fit below its node.
+- Verified through Electron CDP port 9333: Recipe insertion, workbench opening, stage rail, asset stage, add/edit/confirm asset, and enabled reference-image generation action.
+- Deleted all three temporary smoke-test workspaces by exact ID; the original `未命名灵绘`, `模拟器UIUX设计`, and `创意酒瓶设计` workspaces remain.
+- Added `docs/剧本到分镜一体化迭代路线图.md` with competitor patterns, P1/P2 backlog, product metrics, risks, and the recommended next slice.
+- Validation passed: frontend/root TypeScript, `git diff --check`, and 7 targeted test files / 40 tests in the final regression command. Existing jsdom/AntD warnings remain unchanged.
+
+## 2026-08-07: P1 Project Production Assets Completed
+
+- Added a `syncProductionAssets` Electron IPC path with stable SHA-256 IDs, confirmed-only desired-state sync, stale-record cleanup, and reference-image materialization.
+- Synced Script/Storyboard workbench assets into the existing workspace asset domain without a schema migration; metadata keeps source node, production kind/name, source shot IDs, and confirmation state.
+- Added debounced editor sync with visible `同步中 / 已同步 / 失败重试` feedback and asset-library refresh after successful persistence.
+- Extended the asset drawer with independent media and production-semantic filters, plus role/scene/prop badges, source-node trace, and source-shot counts; legacy records remain ordinary assets.
+- Validation: 11 targeted test files / 57 tests passed; frontend/root TypeScript, IPC whitelist, and `git diff --check` passed.
+- Electron CDP `9333` verified Recipe insertion, workbench stage flow, confirm/cancel cleanup, role filtering, and stable single-record re-confirmation. The temporary workspace was deleted; the original three workspaces remain.
+- Next product slice: reference-image result backwrite with draft/approved/locked states, then consistency hints and impact-aware alias/merge/delete flows.
+
+## 2026-08-07: Prompt @ Mention Focus Regression Fixed
+
+- Root cause: `LinghuiPromptEditor` recreated its CodeMirror `EditorView` whenever the controlled `value` or reference list changed. Typing `@` updated the parent value, destroyed the focused view, and mounted a new unfocused view.
+- Changed the initialization effect to run only when the base editor configuration changes; controlled value updates continue through the existing external-sync effect, and reference updates use the existing CodeMirror compartment.
+- Added a regression test that dispatches `@` through CodeMirror with a controlled React value and asserts the same editor DOM/view remains focused.
+- Electron CDP `9333` verified a real image-node prompt: after `@`, focus stayed on `.cm-content`, and subsequent Chinese text was inserted without reopening the editor. The temporary verification prefix was removed before leaving the original workspace.
+- Validation: prompt/editor regression suite 5 files / 41 tests passed; frontend/root TypeScript and `git diff --check` passed.
+
+## 2026-08-07: P2 Shot Traceability + Execution HUD Clarity
+
+- Removed user-facing `待重跑` / `重跑受影响` from the main canvas HUD, legacy status bar, properties panel, generic node shell, and group summary. Internal stale dependency state remains available to execution planning and node styling.
+- Renamed failure recovery actions to `重试失败节点` and `查看失败节点`, and changed the status badge to `运行失败` so the scope is explicit.
+- Added `resolveLinghuiShotProductionAssetProjection()` with stable-id/source-shot priority and name fallback for legacy frames; added affected-shot projection for mutation warnings.
+- Shared shot cards/table now show production asset chips, missing-asset hints (only when a node has a production asset set), and a jump-back callback. Clicking a chip switches the production workbench to the asset stage and highlights/scrolls the target card.
+- Production asset deletion now shows the affected shot titles and requires an explicit `仍然删除`; rename context keeps the affected shot list visible. Locked assets remain non-deletable.
+- Fixed the Electron persistence source mapping for `linghui/storyboard` ↔ `linghui-storyboard`; without it, a rebuilt runtime could deserialize a saved storyboard as a text node.
+- Electron CDP `9333` verified a reload-safe storyboard node with one shot and three asset chips; clicking `阿澈` opened the asset stage and focused the matching card.
+- Deleting the referenced role showed `删除会影响 1 个镜头 / #1 月台停手`; cancel preserved all three assets, while explicit `仍然删除` removed only the role and surfaced the missing relation in the shot.
+- Validation: 6 targeted files / 28 tests passed; frontend/root TypeScript and `git diff --check` passed.
+- Deleted four temporary verification workspaces by exact ID. The Electron project panel is back to the original three workspaces.
+
 ## Session: 2026-05-20 Koma Current Capability Requirements Spec
 
 ### Phase 1: Session Setup
@@ -2590,3 +2644,65 @@
   - `npx tsc --noEmit --project frontend/tsconfig.json --pretty false`: passed.
 - Next:
   - Continue broad node parity or run the full targeted Linghui suite before committing.
+
+### Phase P3: Storyboard Consistency Preflight
+- **Status:** complete
+- Actions taken:
+  - 新增 `auditLinghuiProductionConsistency()`，复用镜头资产投影聚合缺失资产、未确认资产和缺少参考图三类问题；问题按资产去重并保留受影响镜头编号/标题。
+  - `ScriptProductionWorkbench` 在分镜阶段增加一致性检查面板：状态明确区分“影响一致性 / 缺少参考图 / 可生成”，问题行提供“打开资产”或“提取缺失资产”。没有生产资产的旧工作区只显示建立资产提示。
+  - Script/Storyboard editor 传入已有 `handleOpenProductionAsset`，沿用资产阶段切换和卡片聚焦能力；新增 SCSS 只增加轻量问题列表和状态样式。
+  - Electron CDP 9333 以隔离工作区验证 2 镜头、角色草稿、场景无参考图、道具缺失：打开资产聚焦角色卡；重新提取后补出道具卡；截图检查了分镜阶段面板布局。
+  - 清理临时工作区 `dac316c77fd3`，确认剩余原项目为 3 个。
+- Validation:
+  - `cd frontend && npm run test -- --run src/components/linghui/editors/tests/linghuiProductionAssets.test.ts src/components/linghui/editors/tests/ScriptProductionWorkbench.test.tsx`：2 files / 14 tests passed。
+  - 6 个定向测试文件 / 33 个测试通过：`LinghuiCanvasHud`、`ScriptNode`、`ScriptShotViews`、`ScriptProductionWorkbench`、`linghuiProductionAssets`、`linghuiScriptNodeUtils`。
+  - `npx tsc --noEmit --project frontend/tsconfig.json --pretty false`：passed。
+  - `npx tsc --noEmit --project tsconfig.json --pretty false`：passed。
+  - `git diff --check`：passed。
+- Next:
+  - 继续“一致性检查 + 选择性刷新范围”：允许用户只刷新受影响镜头，并在下一轮评估资产参考图版本/候选管理。
+
+### Phase P4: Selective Shot Refresh Scope
+
+- **状态：complete**
+- `ScriptProductionWorkbench` 新增可选 `selectedShotIds / onSelectShots`；一致性问题行显示“选中 N 个受影响镜头”，点击只回写当前选择，不直接执行生成；已有“打开资产 / 提取缺失资产”动作保持不变。
+- `ScriptNodeEditor` 与 `StoryboardNodeEditor` 按 `previewState.shots` 原顺序过滤问题 `shotIds`，使卡片、表格、已选数量和底部“生成分镜图 / 生成视频流程”始终使用同一选择范围。
+- 新增当前选择状态显示（`已选 N/总数 个镜头`）与已选按钮态，避免把选择动作误解为已经开始生成。
+- Electron `9333` 真实验证：隔离创建 3 镜头临时脚本，角色资产未确认且影响 #1/#2；进入制作台后点击“选中 2 个受影响镜头”，状态从 `已选 3/3` 变为 `已选 2/3`，对应两个卡片勾选，底部生成工具条仍保持；截图确认布局可用。验证结束删除临时工作区 `1a0d77233c45`，原有 3 个工作区保持不变。
+- 验证：4 个定向测试文件 / 19 个测试通过（含编辑器选择到生图/视频回调）；前端 TypeScript、根 TypeScript、`git diff --check` 通过。针对 `_node-editor-shell.scss` 的 Stylelint 仍报告既有 19 项主题硬编码规则，不包含本轮新增选择样式错误。
+- 下一步：进入资产参考图候选版本、当前版本和回退能力；随后再做服装、场景时段、关键道具与风格冲突等语义一致性检查。
+
+### Phase P5: Production Asset Reference Versions
+
+- **状态：complete**
+- `LinghuiProductionAsset` 新增可选 `referenceImageVersions / currentReferenceImageId`，版本记录包含稳定 ID、图片来源、创建时间和可选标签；保留 `referenceImage` 作为当前版本及项目资产同步字段，旧工作区无需迁移。
+- 状态层新增版本列举、当前版本解析、追加、选择和回退纯函数；只有旧 `referenceImage` 的资产运行时补为 legacy V1，相同图片去重，新结果自动成为当前版本，重新提取保留历史。
+- `ImageNodeEditor` 的“采用为资产参考图”从覆盖改为追加版本；`ScriptProductionWorkbench` 显示当前 Vn、候选缩略图、采用历史版本和“回退”，锁定资产上的版本变更全部禁用。
+- Electron `9333` 真实验证：临时资产初始显示 `当前 V2 / 2`，点击回退切到 V1，再采用 V2 恢复当前；随后将画布调整为 100%，确认完整制作台和候选区域同屏可读。
+- 临时工作区 `P5参考图版本验证`（ID `998ec74ea8e7`）已精确删除；工作区列表仅保留原有 `模拟器UIUX设计 / 未命名灵绘 / 创意酒瓶设计`。
+- 定向验证基线：`linghuiProductionAssets` 10 tests、`ScriptProductionWorkbench` 7 tests、`ImageNodeEditor` 15 tests，合计 3 files / 32 tests；前端 TypeScript、根 TypeScript、`git diff --check` 通过。`_node-editor-shell.scss` 的 Stylelint 仍仅报告原文件既有 19 项主题硬编码规则。
+- 下一步：进入 P6 语义一致性规则，先审计服装、场景时段、关键道具和风格信号，复用现有问题聚合与“选中受影响镜头”闭环。
+
+### Phase P6: Semantic Consistency Rules
+
+- **状态：complete**
+- 在 `linghuiProductionAssets.ts` 增加四类确定性语义问题：`character-clothing-conflict`、`scene-time-conflict`、`prop-state-conflict`、`style-conflict`。
+- 规则只接受明确词汇证据：服装比较衣物类型，双方都明确颜色时才比较颜色；场景只识别清晨/白天/黄昏/夜晚等时段；道具只比较同一状态维度的互斥状态；风格只比较写实、动漫、漫画、水彩、像素画等明确风格族。
+- 角色、场景、道具仅比较相邻镜头或资产中的明确基准描述；风格比较连续出现明确风格信号的镜头；全部为 warning，不阻断生成。
+- 制作台问题行显示“证据：…”并继续复用打开资产和选中受影响镜头入口。Electron `9333` 隔离验证真实命中林夏服装、中央车站时段、怀表状态和全片画面风格四类问题，并完成 `1/2 → 2/2` 选择范围操作。
+- 临时工作区 `492f7d461994` 已精确删除，原有 `模拟器UIUX设计 / 未命名灵绘 / 创意酒瓶设计` 保持不变。
+
+### Phase P7: Intentional Consistency Change Acknowledgement
+
+- **状态：complete**
+- 新增 `acknowledgedProductionConsistencyIssueIds`，Script/Storyboard 节点均持久化该确认列表。
+- `getLinghuiProductionConsistencyIssueId()` 将问题类型、资产或范围、镜头 ID 和规范化证据组成指纹；镜头范围或证据变化后会产生新指纹。
+- 语义问题提供“确认有意变化”；确认后隐藏该问题，头部显示已确认数量；“重新检查已确认变化”会清空确认并恢复检查。
+- Electron 验证确认指纹真实写入 DB：`character-clothing-conflict:p7-character:p7-shot-1,p7-shot-2:黑色+风衣/红色+制服`。
+- 修复 `useLinghuiCanvasFlowBridge` 的节点内编辑保存竞态：用 React Flow 实例同步预判变化，更新后等待两层 RAF 并直接捕获最新节点状态；新增回归测试覆盖该路径。
+- 最终回归：4 files / 47 tests passed（`linghuiProductionAssets` 12、`ScriptProductionWorkbench` 8、`ImageNodeEditor` 15、`useLinghuiCanvasFlowBridge` 12）；前端/根 TypeScript 与 `git diff --check` 通过。
+
+### Next: Phase P8 Asset Alias & Duplicate Candidate Reduction
+
+- **状态：in_progress**
+- 优先盘点现有生产资产记录的名称、描述、别名和镜头引用，再实现低误报重复候选与用户确认合并；不自动覆盖锁定资产。

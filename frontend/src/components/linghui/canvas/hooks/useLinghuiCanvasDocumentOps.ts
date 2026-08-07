@@ -2,11 +2,12 @@ import { addEdge, type Edge, type Node, type ReactFlowInstance } from '@xyflow/r
 import { nanoid } from 'nanoid';
 import { useCallback, useRef } from 'react';
 import type { Dispatch, RefObject, SetStateAction } from 'react';
-import type {
-  LinghuiCanvasSelection,
-  LinghuiImageNodeProperties,
-  LinghuiNodeData,
-  LinghuiNodeType,
+import {
+  rfTypeToLinghuiType,
+  type LinghuiCanvasSelection,
+  type LinghuiImageNodeProperties,
+  type LinghuiNodeData,
+  type LinghuiNodeType,
 } from '../../../../types/linghui';
 import type {
   LinghuiWorkspaceAssetRecord,
@@ -161,6 +162,10 @@ export function useLinghuiCanvasDocumentOps({
       const nextParentId = node.parentId && groupIdMap.has(node.parentId)
         ? groupIdMap.get(node.parentId)
         : undefined;
+      const clonedData = cloneLinghuiNodeData(node.data);
+      const normalizedType = node.type?.startsWith('linghui-')
+        ? rfTypeToLinghuiType(node.type)
+        : clonedData.linghuiType;
 
       return {
         id: nodeIdMap.get(node.id)!,
@@ -171,7 +176,10 @@ export function useLinghuiCanvasDocumentOps({
               x: absolutePosition.x + deltaX,
               y: absolutePosition.y + deltaY,
             },
-        data: cloneLinghuiNodeData(node.data) as unknown as Record<string, unknown>,
+        data: {
+          ...clonedData,
+          linghuiType: normalizedType,
+        } as unknown as Record<string, unknown>,
         parentId: nextParentId,
         extent: resolveParentExtent(nextParentId),
         draggable: false,

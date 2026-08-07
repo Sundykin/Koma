@@ -120,6 +120,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'controller/linghui/getWorkspaceDir',
   'controller/linghui/listWorkflowTemplates', 'controller/linghui/createWorkflowTemplate',
   'controller/linghui/listWorkspaceAssets', 'controller/linghui/createWorkspaceAsset',
+  'controller/linghui/syncProductionAssets',
   'controller/linghui/listWorkspaceHistoryRecords', 'controller/linghui/createWorkspaceHistoryRecord',
   'controller/linghui/importWorkspaceAsset',
   'controller/linghui/listGlobalAssets',
@@ -378,6 +379,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     createWorkflowTemplate: (payload: any) => invokeMain('controller/linghui/createWorkflowTemplate', payload),
     listWorkspaceAssets: (workspaceId: string) => invokeMain('controller/linghui/listWorkspaceAssets', { workspaceId }),
     createWorkspaceAsset: (payload: any) => invokeMain('controller/linghui/createWorkspaceAsset', payload),
+    syncProductionAssets: (payload: any) => invokeMain('controller/linghui/syncProductionAssets', payload),
     listWorkspaceHistoryRecords: (workspaceId: string) => invokeMain('controller/linghui/listWorkspaceHistoryRecords', { workspaceId }),
     createWorkspaceHistoryRecord: (payload: any) => invokeMain('controller/linghui/createWorkspaceHistoryRecord', payload),
     importWorkspaceAsset: (workspaceId: string, sourcePath: string, filenameHint?: string) =>

@@ -1,16 +1,19 @@
 import React, { memo, useMemo, useState } from 'react';
 import { type NodeProps } from '@xyflow/react';
-import { ArrowUp, LoaderCircle, Maximize2, Minimize2, Table2, LayoutGrid, Image as ImageIcon, Video, Wand2, X } from 'lucide-react';
+import { ArrowUp, LoaderCircle, Maximize2, Minimize2, PanelRightOpen, Table2, LayoutGrid, Image as ImageIcon, Video, Wand2, X } from 'lucide-react';
 import type {
   LinghuiNodeData,
   LinghuiNodeType,
+  LinghuiProductionAsset,
   LinghuiRunStatus,
   LinghuiScriptNodeProperties,
   LinghuiStoryboardFrame,
 } from '../../../../types/linghui';
 import {
   useLinghuiNodeEditorApi,
+  useLinghuiNodeEditorVisibility,
   useLinghuiNodeInteraction,
+  useLinghuiNodeInteractionApi,
   useLinghuiNodeMutation,
   useNodeRunState,
 } from '../state/LinghuiNodeRunsContext';
@@ -22,6 +25,7 @@ import { cssVars } from '../../../../theme/runtime';
 import { LinghuiNodeRunError } from './LinghuiNodeRunError';
 import { LinghuiNodePorts } from './LinghuiNodeHandle';
 import { ScriptShotCards, ScriptShotTable } from '../../editors/components/ScriptShotViews';
+import { LinghuiNodeEditor } from '../../editors/components/LinghuiNodeEditor';
 
 const STATUS_COLORS: Record<LinghuiRunStatus, string> = {
   idle: 'var(--token-text-muted)',
@@ -46,6 +50,7 @@ function ScriptNodeInner({ id, data, selected }: NodeProps) {
   const props = nodeData.properties as unknown as LinghuiScriptNodeProperties;
   const runState = useNodeRunState(id);
   const interactionHandlers = useLinghuiNodeInteraction(id);
+  const interactionApi = useLinghuiNodeInteractionApi();
   const editorApi = useLinghuiNodeEditorApi();
   const { updateNodeData } = useLinghuiNodeMutation();
   const status = runState?.status ?? 'idle';
@@ -61,6 +66,7 @@ function ScriptNodeInner({ id, data, selected }: NodeProps) {
     ? 'linghui/storyboard'
     : 'linghui/script';
   const isStoryboard = linghuiType === 'linghui/storyboard';
+  const isEditorVisible = useLinghuiNodeEditorVisibility(id, linghuiType);
   const [nodeViewMode, setNodeViewMode] = useState<'cards' | 'table'>(props.viewMode === 'table' ? 'table' : 'cards');
   const [selectedShotIds, setSelectedShotIds] = useState<string[]>([]);
   const [isStoryExpanded, setIsStoryExpanded] = useState(false);
@@ -73,6 +79,7 @@ function ScriptNodeInner({ id, data, selected }: NodeProps) {
     ? (runState.result.shots ?? [])
     : fallbackShots;
   const editedShots = Array.isArray(props.editedShots) ? props.editedShots : [];
+  const productionAssets: LinghuiProductionAsset[] = Array.isArray(props.productionAssets) ? props.productionAssets : [];
   const shots = editedShots.length > 0 ? editedShots : sourceShots;
   const availableShotIds = useMemo(() => new Set(shots.map(shot => shot.id)), [shots]);
   const effectiveSelectedShotIds = useMemo(() => {
@@ -117,6 +124,17 @@ function ScriptNodeInner({ id, data, selected }: NodeProps) {
         prompt: value,
       } as unknown as Record<string, unknown>,
     }));
+  };
+  const handleOpenProductionAsset = (assetId: string) => {
+    updateNodeData(id, prev => ({
+      ...prev,
+      properties: {
+        ...prev.properties,
+        productionStage: 'assets',
+        focusedProductionAssetId: assetId,
+      } as unknown as Record<string, unknown>,
+    }), { markStale: false });
+    interactionApi.openNodeEditor(id);
   };
   const handleRunStoryboard = () => {
     if (!String(props.prompt ?? '').trim() || status === 'running') return;
@@ -189,6 +207,20 @@ function ScriptNodeInner({ id, data, selected }: NodeProps) {
             ) : null}
             <button
               type="button"
+              className="isText"
+              aria-label="打开制作台"
+              title="在统一制作台中编辑剧本、资产和分镜"
+              onClick={event => {
+                event.preventDefault();
+                event.stopPropagation();
+                interactionApi.openNodeEditor(id);
+              }}
+            >
+              <PanelRightOpen size={12} />
+              制作台
+            </button>
+            <button
+              type="button"
               aria-label={isStoryExpanded ? '收起节点' : '展开节点'}
               title={isStoryExpanded ? '收起节点' : '展开节点'}
               onClick={event => {
@@ -210,12 +242,16 @@ function ScriptNodeInner({ id, data, selected }: NodeProps) {
                   onToggleShot={handleToggleShot}
                   editable
                   onChangeShot={handleChangeShot}
+                  productionAssets={productionAssets}
+                  onOpenProductionAsset={handleOpenProductionAsset}
                 />
               ) : (
                 <ScriptShotCards
                   shots={shots}
                   selectedShotIds={effectiveSelectedShotIds}
                   onToggleShot={handleToggleShot}
+                  productionAssets={productionAssets}
+                  onOpenProductionAsset={handleOpenProductionAsset}
                 />
               )
             ) : (
@@ -331,6 +367,8 @@ function ScriptNodeInner({ id, data, selected }: NodeProps) {
           </button>
         </div>
       ) : null}
+
+      {isEditorVisible ? <LinghuiNodeEditor nodeId={id} nodeType={linghuiType} /> : null}
     </div>
   );
 }

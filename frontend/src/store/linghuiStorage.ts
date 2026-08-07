@@ -6,6 +6,9 @@ import {
   type LinghuiNodeData,
   type LinghuiNodeRunState,
   type LinghuiNodeType,
+  type LinghuiProductionAsset,
+  type LinghuiProductionAssetKind,
+  type LinghuiProductionAssetStatus,
   type LinghuiSubgraphSnapshot,
   type LinghuiWorkspaceDocument,
   type LinghuiWorkspaceMeta,
@@ -105,6 +108,29 @@ export interface LinghuiWorkspaceAssetRecord {
   text?: string;
   snapshotPath: string;
   metadata?: Record<string, unknown>;
+}
+
+export interface LinghuiProductionAssetRecordMetadata extends Record<string, unknown> {
+  recordType: 'production-asset';
+  sourceNodeId: string;
+  productionAssetId: string;
+  productionAssetKind: LinghuiProductionAssetKind;
+  productionAssetName: string;
+  sourceShotIds: string[];
+  sourceReferenceImage?: string;
+  sourceReferenceFingerprint?: string;
+  /** 用户维护的同义称呼，用于项目资产库重复候选。 */
+  productionAssetAliases?: string[];
+  /** 已合并的历史生产资产 ID，解析旧镜头引用时仍指向 canonical。 */
+  mergedProductionAssetIds?: string[];
+  confirmed: true;
+  /** 新记录写入；老项目资产记录没有该字段时按 confirmed 兼容。 */
+  productionAssetStatus?: LinghuiProductionAssetStatus;
+}
+
+export interface LinghuiProductionAssetSyncResult {
+  records: LinghuiWorkspaceAssetRecord[];
+  removedIds: string[];
 }
 
 function normalizeLinghuiWorkflowTemplateRecord(
@@ -246,6 +272,15 @@ export async function createLinghuiWorkspaceAsset(params: {
   nodeRun?: LinghuiNodeRunState;
 }): Promise<LinghuiWorkspaceAssetRecord> {
   return assertLinghuiBackend().createWorkspaceAsset(params);
+}
+
+export async function syncLinghuiProductionAssets(params: {
+  workspaceId: string;
+  nodeId: string;
+  nodeType: LinghuiNodeType;
+  assets: LinghuiProductionAsset[];
+}): Promise<LinghuiProductionAssetSyncResult> {
+  return assertLinghuiBackend().syncProductionAssets(params);
 }
 
 export async function listLinghuiWorkspaceHistoryRecords(workspaceId: string): Promise<LinghuiWorkspaceHistoryRecord[]> {

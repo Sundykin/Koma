@@ -145,6 +145,24 @@ describe('ScriptNode', () => {
     expect(container.querySelector('[data-story-expanded="true"]')).toBeTruthy();
   });
 
+  it('opens the unified production workbench from an explicit node action', () => {
+    const openNodeEditor = vi.fn();
+    useLinghuiNodeInteractionApiMock.mockReturnValue({ openNodeEditor });
+    renderScriptNode();
+
+    fireEvent.click(screen.getByRole('button', { name: '打开制作台' }));
+
+    expect(openNodeEditor).toHaveBeenCalledWith('storyboard-node-1');
+  });
+
+  it('mounts the unified production workbench when this node is the editor selection', () => {
+    useLinghuiNodeEditorVisibilityMock.mockReturnValue(true);
+
+    renderScriptNode();
+
+    expect(screen.getByTestId('script-node-editor')).toBeInTheDocument();
+  });
+
   it('runs image/video derivation from node inline actions with selected storyboard rows', () => {
     const editorApi = {
       onDeriveScriptShots: vi.fn(),

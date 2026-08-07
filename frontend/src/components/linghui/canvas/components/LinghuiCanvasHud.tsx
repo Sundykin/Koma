@@ -46,7 +46,6 @@ interface LinghuiCanvasHudProps {
   showEmpty: boolean;
   onFocusFailedNode?: () => void;
   onRetryFailed?: () => void;
-  onRerunAffected?: () => void;
   onCancelRun?: () => void;
   onRunAll?: () => void;
   onRunSelection?: () => void;
@@ -79,7 +78,6 @@ export const LinghuiCanvasHud: React.FC<LinghuiCanvasHudProps> = ({
   showEmpty,
   onFocusFailedNode,
   onRetryFailed,
-  onRerunAffected,
   onCancelRun,
   onRunAll,
   onRunSelection,
@@ -99,13 +97,13 @@ export const LinghuiCanvasHud: React.FC<LinghuiCanvasHudProps> = ({
 }) => {
   const isCanceling = runSummary.queueStatus === 'canceling';
   const hasQueue = runSummary.running > 0 || runSummary.queued > 0 || isCanceling;
-  const hasAttention = runSummary.failed > 0 || runSummary.stale > 0;
+  const hasAttention = runSummary.failed > 0;
   const badgeLabel = isCanceling
     ? `取消中 · 排队 ${runSummary.queued}`
     : hasQueue
       ? `${runSummary.queued > 0 ? `排队 ${runSummary.queued} · ` : ''}运行中 ${runSummary.running}`
       : hasAttention
-        ? '需要处理'
+        ? '运行失败'
         : '画布就绪';
 
   return (
@@ -123,7 +121,6 @@ export const LinghuiCanvasHud: React.FC<LinghuiCanvasHudProps> = ({
         >
           {badgeLabel}
           {runSummary.failed > 0 && <span className="isWarn">失败 {runSummary.failed}</span>}
-          {runSummary.stale > 0 && <span className="isMuted">待重跑 {runSummary.stale}</span>}
         </div>
         {runSummary.failed > 0 && onRetryFailed && !hasQueue && (
           <button
@@ -132,7 +129,7 @@ export const LinghuiCanvasHud: React.FC<LinghuiCanvasHudProps> = ({
             onClick={onRetryFailed}
             title="重新执行失败节点"
           >
-            重试
+            重试失败节点
           </button>
         )}
         {runSummary.failed > 0 && onFocusFailedNode && (
@@ -142,17 +139,7 @@ export const LinghuiCanvasHud: React.FC<LinghuiCanvasHudProps> = ({
             onClick={onFocusFailedNode}
             title="快速定位失败节点"
           >
-            定位失败
-          </button>
-        )}
-        {runSummary.stale > 0 && onRerunAffected && (
-          <button
-            type="button"
-            className="linghuiCanvasRunAction isMuted"
-            onClick={onRerunAffected}
-            title="只重跑受影响的节点"
-          >
-            重跑受影响
+            查看失败节点
           </button>
         )}
         {hasQueue && onCancelRun && (

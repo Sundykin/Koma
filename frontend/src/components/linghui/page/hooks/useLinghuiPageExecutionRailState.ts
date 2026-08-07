@@ -37,11 +37,6 @@ export function useLinghuiPageExecutionRailState({
     .sort((left, right) => (right[1].updatedAt ?? 0) - (left[1].updatedAt ?? 0))
     .map(([nodeId]) => nodeId), [nodeRuns]);
 
-  const staleNodeIds = useMemo(() => Object.entries(nodeRuns)
-    .filter(([, item]) => item.status === 'stale')
-    .sort((left, right) => (right[1].updatedAt ?? 0) - (left[1].updatedAt ?? 0))
-    .map(([nodeId]) => nodeId), [nodeRuns]);
-
   const handleFocusFailedNode = useCallback(() => {
     const targetNodeId = failedNodeIds[0];
     if (!targetNodeId) {
@@ -69,17 +64,6 @@ export function useLinghuiPageExecutionRailState({
   );
 
   const executionLogLatest = executionLogItems[0];
-
-  const handleRerunAffected = useCallback(async () => {
-    if (staleNodeIds.length === 0) {
-      message.info('当前没有待重跑节点');
-      return;
-    }
-
-    await runWorkflow(staleNodeIds, {
-      successMessage: '已重跑受影响节点',
-    });
-  }, [message, runWorkflow, staleNodeIds]);
 
   const handleRetryFailed = useCallback(async () => {
     if (failedNodeIds.length === 0) {
@@ -120,7 +104,6 @@ export function useLinghuiPageExecutionRailState({
     handleCancelRun,
     handleFocusFailedNode,
     handleFocusLogNode,
-    handleRerunAffected,
     handleRetryFailed,
   };
 }

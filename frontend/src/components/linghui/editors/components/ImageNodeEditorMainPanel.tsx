@@ -13,6 +13,7 @@ export interface ImageNodeEditorDisplayReferenceImage {
 
 interface ImageNodeEditorImportPanelProps {
   activeLibTVToolPanel: React.ReactNode;
+  productionAssetAction?: React.ReactNode;
   currentImageLabel?: string;
   hasCurrentImage: boolean;
   hasImportSource: boolean;
@@ -23,6 +24,7 @@ interface ImageNodeEditorImportPanelProps {
 
 export const ImageNodeEditorImportPanel: React.FC<ImageNodeEditorImportPanelProps> = ({
   activeLibTVToolPanel,
+  productionAssetAction,
   currentImageLabel,
   hasCurrentImage,
   hasImportSource,
@@ -31,6 +33,7 @@ export const ImageNodeEditorImportPanel: React.FC<ImageNodeEditorImportPanelProp
   onReplaceImage,
 }) => (
   <div className="linghuiEditorPanel" onMouseDown={event => event.stopPropagation()}>
+    {productionAssetAction}
     {activeLibTVToolPanel ?? (
       <div className="linghuiEditorControlRow">
         {hasCurrentImage ? (
@@ -53,6 +56,7 @@ export const ImageNodeEditorImportPanel: React.FC<ImageNodeEditorImportPanelProp
 
 interface ImageNodeEditorGeneratePanelProps {
   activeLibTVToolPanel: React.ReactNode;
+  productionAssetAction?: React.ReactNode;
   cameraButtonSummary: string;
   cameraSettingsContent: React.ReactNode;
   derivedBannerText: string;
@@ -78,6 +82,7 @@ interface ImageNodeEditorGeneratePanelProps {
 
 export const ImageNodeEditorGeneratePanel: React.FC<ImageNodeEditorGeneratePanelProps> = ({
   activeLibTVToolPanel,
+  productionAssetAction,
   cameraButtonSummary,
   cameraSettingsContent,
   derivedBannerText,
@@ -101,6 +106,7 @@ export const ImageNodeEditorGeneratePanel: React.FC<ImageNodeEditorGeneratePanel
   onRun,
 }) => (
   <div className="linghuiEditorPanel" onMouseDown={event => event.stopPropagation()}>
+    {productionAssetAction}
     {activeLibTVToolPanel ?? (
       <>
       {displayReferenceImages.length > 0 && (

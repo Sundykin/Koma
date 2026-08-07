@@ -152,7 +152,6 @@ function CanvasGroupNodeInner({ id, data, selected }: NodeProps) {
     if (!runSummary || runSummary.total === 0) return '空工作流块';
     if (runSummary.failed > 0) return `失败 ${runSummary.failed}`;
     if (runSummary.running > 0) return `运行中 ${runSummary.running}/${runSummary.total}`;
-    if (runSummary.stale > 0) return `待重跑 ${runSummary.stale}`;
     if (runSummary.succeeded === runSummary.total) return `完成 ${runSummary.succeeded}`;
     if (runSummary.succeeded > 0) return `部分完成 ${runSummary.succeeded}/${runSummary.total}`;
     return `${runSummary.total} 节点`;

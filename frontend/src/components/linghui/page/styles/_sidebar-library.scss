@@ -301,7 +301,29 @@
 
 .linghuiAssetDrawer {
   &Toolbar {
-    @include lh-inline(10px, nowrap, center, space-between);
+    @include lh-inline(10px, nowrap, flex-start, space-between);
+  }
+
+  &Filters {
+    @include lh-stack(8px);
+
+    min-width: 0;
+  }
+
+  &FilterRow {
+    @include lh-inline(8px, nowrap, center, flex-start);
+
+    > span {
+      width: 28px;
+      flex: 0 0 auto;
+      color: $lh-text-muted;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .ant-segmented {
+      min-width: 0;
+    }
   }
 
   &Loading,
@@ -348,6 +370,37 @@
       -webkit-box-orient: vertical;
       overflow: hidden;
       word-break: break-word;
+    }
+  }
+
+  &ProductionMeta {
+    @include lh-inline(6px, wrap);
+
+    color: $lh-text-muted;
+    font-size: 10px;
+
+    span {
+      @include lh-chip(22px, 0 8px, color-mix(in srgb, var(--token-text-tertiary) 10%, transparent), $lh-text-secondary, 10px, 700);
+    }
+
+    .is-character {
+      background: color-mix(in srgb, var(--token-status-info) 14%, transparent);
+      color: $lh-text-info;
+    }
+
+    .is-scene {
+      background: color-mix(in srgb, var(--token-status-warning) 14%, transparent);
+      color: color-mix(in srgb, var(--token-status-warning) 78%, var(--token-text-primary));
+    }
+
+    .is-prop {
+      background: color-mix(in srgb, var(--token-status-success) 14%, transparent);
+      color: $lh-text-success;
+    }
+
+    .isLocked {
+      background: color-mix(in srgb, var(--token-status-warning) 14%, transparent);
+      color: color-mix(in srgb, var(--token-status-warning) 82%, var(--token-text-primary));
     }
   }
 

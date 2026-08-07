@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
 import {
   useEdges,
@@ -93,6 +93,7 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
     onSetGridSplitUpscaleFactor,
     onRevertGridSplit,
     onSeparateVideoAudio,
+    canvasInteractionVersion,
   } = useLinghuiNodeEditorApi();
   const { message } = App.useApp();
   const canvasZoom = useLinghuiCanvasZoom();
@@ -146,6 +147,12 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
       },
     })
   ), [nodeId, nodeRuns, nodes, referenceEdges]);
+  const productionAssetSourceNodeData = useMemo(() => {
+    if (nodeType !== 'linghui/image' || !nodeData) return null;
+    const imageProperties = nodeData.properties as unknown as Partial<LinghuiImageNodeProperties>;
+    const sourceNodeId = String(imageProperties.scriptSourceNodeId ?? '').trim();
+    return sourceNodeId ? nodeDataMap.get(sourceNodeId) ?? null : null;
+  }, [nodeData, nodeDataMap, nodeType]);
   const currentPrimaryImage = useMemo(() => (
     nodeData ? resolveLinghuiImagePrimaryForNode(nodeData, nodeRuns[nodeId]?.result) : null
   ), [nodeData, nodeId, nodeRuns]);
@@ -179,6 +186,7 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
     && String((nodeData?.properties as { mode?: unknown } | undefined)?.mode ?? '') === 'generate';
   const isAgentGeneratorPanel = nodeType === 'linghui/agent';
   const isStoryboardGeneratorPanel = nodeType === 'linghui/storyboard';
+  const isProductionWorkbenchPanel = nodeType === 'linghui/script' || nodeType === 'linghui/storyboard';
   const isImageToolbarOnlyTopBar = nodeType === 'linghui/image' && hasCurrentImage && !isGridSplitMode;
   const useMinimalTopBar = nodeType === 'linghui/image' && !hasCurrentImage && !isGridSplitMode;
   // 区分"导入素材节点"和"生成节点"。前者执行器只是回放上传图，不消费 prompt，
@@ -195,6 +203,9 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
   const safeZoom = Number.isFinite(canvasZoom) && canvasZoom > 0 ? canvasZoom : 1;
   const inverseZoom = 1 / safeZoom;
   const [openDropdownKey, setOpenDropdownKey] = useState<string | null>(null);
+  const [panelPlacement, setPanelPlacement] = useState<'below' | 'above'>('below');
+  const [panelViewportMaxHeight, setPanelViewportMaxHeight] = useState<number | null>(null);
+  const editorContainerRef = useRef<HTMLDivElement>(null);
 
   const gridSplitState = useLinghuiGridSplitOverlay(nodeId);
   const splitGridSize = gridSplitState?.gridSize ?? 2;
@@ -248,6 +259,42 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
                 ? 520
           : getPanelMaxHeight(nodeType);
 
+  useLayoutEffect(() => {
+    if (!isVisible || !isProductionWorkbenchPanel || typeof window === 'undefined') {
+      setPanelPlacement('below');
+      setPanelViewportMaxHeight(null);
+      return undefined;
+    }
+
+    const updatePanelPlacement = () => {
+      const rect = editorContainerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      const viewportMargin = 16;
+      const gap = panelGap / safeZoom;
+      const availableBelow = Math.max(0, window.innerHeight - rect.bottom - viewportMargin - gap);
+      const availableAbove = Math.max(0, rect.top - viewportMargin - gap);
+      const shouldPlaceAbove = availableBelow < Math.min(panelMaxHeight, 320) && availableAbove > availableBelow;
+      const available = shouldPlaceAbove ? availableAbove : availableBelow;
+      const nextMaxHeight = available > 0
+        ? Math.min(panelMaxHeight, Math.max(180, Math.floor(available * safeZoom)))
+        : panelMaxHeight;
+
+      setPanelPlacement(shouldPlaceAbove ? 'above' : 'below');
+      setPanelViewportMaxHeight(previous => (
+        previous !== null && Math.abs(previous - nextMaxHeight) < 2 ? previous : nextMaxHeight
+      ));
+    };
+
+    updatePanelPlacement();
+    window.addEventListener('resize', updatePanelPlacement);
+    window.addEventListener('scroll', updatePanelPlacement, true);
+    return () => {
+      window.removeEventListener('resize', updatePanelPlacement);
+      window.removeEventListener('scroll', updatePanelPlacement, true);
+    };
+  }, [canvasInteractionVersion, isProductionWorkbenchPanel, isVisible, panelGap, panelMaxHeight, safeZoom]);
+
   const toolbarStyle = useMemo(() => cssVars({
     '--linghui-node-editor-bottom': `calc(100% + ${(TOOLBAR_STANDOFF / safeZoom).toFixed(3)}px)`,
     '--linghui-node-editor-width': getViewportBoundWidth(toolbarWidth),
@@ -256,10 +303,11 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
 
   const panelStyle = useMemo(() => cssVars({
     '--linghui-node-editor-top': `calc(100% + ${(panelGap / safeZoom).toFixed(3)}px)`,
+    '--linghui-node-editor-panel-bottom': `calc(100% + ${(panelGap / safeZoom).toFixed(3)}px)`,
     '--linghui-node-editor-width': getViewportBoundWidth(panelWidth),
-    '--linghui-node-editor-max-height': getViewportBoundHeight(panelMaxHeight),
+    '--linghui-node-editor-max-height': getViewportBoundHeight(panelViewportMaxHeight ?? panelMaxHeight),
     '--linghui-node-editor-scale': inverseZoom.toFixed(4),
-  }), [inverseZoom, panelGap, panelMaxHeight, panelWidth, safeZoom]);
+  }), [inverseZoom, panelGap, panelMaxHeight, panelViewportMaxHeight, panelWidth, safeZoom]);
 
   const handleClose = useCallback(() => {
     setOpenDropdownKey(null);
@@ -439,7 +487,7 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
   const toolbarContent = renderToolbar();
 
   return (
-    <div className="linghuiNodeEditorContainer nodrag nopan nowheel">
+    <div ref={editorContainerRef} className="linghuiNodeEditorContainer nodrag nopan nowheel">
       {!isTextGeneratorPanel && !isVideoGeneratorPanel && !isAudioGeneratorPanel && !isScriptGeneratorPanel && !isAgentGeneratorPanel && !isStoryboardGeneratorPanel && (
         <div
           className={`linghuiNodeEditorTopBar ${useMinimalTopBar ? 'isMinimal' : ''} ${isImageToolbarOnlyTopBar ? 'isImageToolbarOnly' : ''}`}
@@ -480,7 +528,7 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
 
       {!isGridSplitMode && (
         <div
-          className={`linghuiNodeEditorMainSurface ${isTextGeneratorPanel || isVideoGeneratorPanel || isAudioGeneratorPanel || isScriptGeneratorPanel || isAgentGeneratorPanel || isStoryboardGeneratorPanel ? 'isTextGenerator' : ''}`}
+          className={`linghuiNodeEditorMainSurface ${isTextGeneratorPanel || isVideoGeneratorPanel || isAudioGeneratorPanel || isScriptGeneratorPanel || isAgentGeneratorPanel || isStoryboardGeneratorPanel ? 'isTextGenerator' : ''} ${isProductionWorkbenchPanel ? `isProductionWorkbench is${panelPlacement === 'above' ? 'Above' : 'Below'}` : ''}`}
           style={panelStyle}
           onClick={handleStopPropagation}
           onMouseDown={handleStopPropagation}
@@ -496,6 +544,7 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
             referenceVideos={referenceVideos}
             referenceAudios={referenceAudios}
             promptReferences={promptReferences}
+            productionAssetSourceNodeData={productionAssetSourceNodeData}
             activeImageTool={activeImageTool}
             activeVideoTool={activeVideoTool}
             onImageToolChange={tool => setActiveTool(tool ? { kind: 'image', nodeId, tool } : null)}

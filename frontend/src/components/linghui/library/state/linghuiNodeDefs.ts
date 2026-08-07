@@ -270,6 +270,8 @@ export const NODE_PROPERTY_DEFAULTS: Record<LinghuiNodeType, Record<string, unkn
     systemPrompt: '',
     llmSelection: '',
     viewMode: 'cards',
+    productionStage: 'script',
+    productionAssets: [],
   },
   // 故事板节点：剧情→分镜傻瓜版，不暴露 mode / systemPrompt 字段
   'linghui/storyboard': {
@@ -278,6 +280,8 @@ export const NODE_PROPERTY_DEFAULTS: Record<LinghuiNodeType, Record<string, unkn
     scene: DEFAULT_LINGHUI_STORYBOARD_SCENE,
     viewMode: 'cards',
     targetShotCount: 9,
+    productionStage: 'script',
+    productionAssets: [],
   },
   'linghui/director3d': {
     prompt: '',

@@ -336,6 +336,11 @@ export const linghuiApi = {
     if (!a?.linghui) throw new Error('Linghui API not available');
     return await a.linghui.createWorkspaceAsset(payload);
   },
+  syncProductionAssets: async (payload: any) => {
+    const a = getElectronAPI();
+    if (!a?.linghui) throw new Error('Linghui API not available');
+    return await a.linghui.syncProductionAssets(payload);
+  },
   listWorkspaceHistoryRecords: async (workspaceId: string) => {
     const a = getElectronAPI();
     if (!a?.linghui) throw new Error('Linghui API not available');

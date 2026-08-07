@@ -15,6 +15,8 @@ import { ArrowUp, Expand, FileAudio, FileText, Image as ImageIcon, LayoutGrid, R
 import type {
   LinghuiNodeData,
   LinghuiNodeRunState,
+  LinghuiProductionAsset,
+  LinghuiProductionStage,
   LinghuiStoryboardFrame,
   LinghuiStoryboardNodeProperties,
 } from '../../../../types/linghui';
@@ -29,6 +31,12 @@ import {
   resolveLinghuiStoryboardScene,
 } from '../state/linghuiStoryboardScenes';
 import { ScriptShotCards, ScriptShotTable } from './ScriptShotViews';
+import { ScriptProductionWorkbench } from './ScriptProductionWorkbench';
+import { useLinghuiProductionAssetSync } from '../hooks/useLinghuiProductionAssetSync';
+import {
+  buildLinghuiProductionAssetFrames,
+  extractLinghuiProductionAssets,
+} from '../state/linghuiProductionAssets';
 
 interface ProviderOption {
   value: string;
@@ -42,6 +50,8 @@ interface StoryboardNodeEditorProps {
   nodeData: LinghuiNodeData;
   nodeRun?: LinghuiNodeRunState;
   promptReferences?: LinghuiPromptReferenceItem[];
+  workspaceId?: string;
+  onAssetLibraryMutate?: () => void;
   onRun: () => void;
   onDeriveShots: (shots: LinghuiStoryboardFrame[]) => void;
   onGenerateImages: (shots: LinghuiStoryboardFrame[]) => void;
@@ -53,6 +63,8 @@ export const StoryboardNodeEditor: React.FC<StoryboardNodeEditorProps> = ({
   nodeData,
   nodeRun,
   promptReferences = [],
+  workspaceId,
+  onAssetLibraryMutate,
   onRun,
   onDeriveShots,
   onGenerateImages,
@@ -62,6 +74,14 @@ export const StoryboardNodeEditor: React.FC<StoryboardNodeEditorProps> = ({
   const props = nodeData.properties as unknown as LinghuiStoryboardNodeProperties;
   const prompt = String(props.prompt ?? '');
   const llmSelection = String(props.llmSelection ?? '');
+  const productionAssets = Array.isArray(props.productionAssets) ? props.productionAssets : [];
+  const productionAssetSync = useLinghuiProductionAssetSync({
+    workspaceId,
+    nodeId,
+    nodeType: 'linghui/storyboard',
+    assets: productionAssets,
+    onAssetLibraryMutate,
+  });
   const sceneDef = useMemo(() => resolveLinghuiStoryboardScene(props.scene), [props.scene]);
   const targetShotCount = Math.max(4, Math.min(25, Math.round(Number(props.targetShotCount ?? sceneDef.targetShotCount))));
   const viewMode = props.viewMode === 'table' ? 'table' : 'cards';
@@ -99,6 +119,8 @@ export const StoryboardNodeEditor: React.FC<StoryboardNodeEditorProps> = ({
       source: 'plain' as const,
     };
   }, [nodeRun, props.editedShots]);
+  const productionStage: LinghuiProductionStage = props.productionStage
+    ?? (previewState.shots.length > 0 ? 'storyboard' : 'script');
 
   useEffect(() => {
     const availableIds = new Set(previewState.shots.map(shot => shot.id));
@@ -117,6 +139,37 @@ export const StoryboardNodeEditor: React.FC<StoryboardNodeEditorProps> = ({
     }));
   }, [nodeId, updateNodeData]);
 
+  const updateProductionProps = useCallback((patch: {
+    productionStage?: LinghuiProductionStage;
+    productionAssets?: LinghuiProductionAsset[];
+    focusedProductionAssetId?: string;
+    acknowledgedProductionConsistencyIssueIds?: string[];
+  }) => {
+    updateNodeData(nodeId, prev => ({
+      ...prev,
+      properties: { ...prev.properties, ...patch },
+    }), { markStale: false });
+  }, [nodeId, updateNodeData]);
+
+  useEffect(() => {
+    if (
+      nodeRun?.status !== 'succeeded'
+      || previewState.shots.length === 0
+      || productionAssets.length > 0
+      || productionStage !== 'script'
+    ) return;
+    updateProductionProps({
+      productionStage: 'assets',
+      productionAssets: extractLinghuiProductionAssets(previewState.shots),
+    });
+  }, [nodeRun?.status, previewState.shots, productionAssets.length, productionStage, updateProductionProps]);
+
+  const handleRefreshProductionAssets = useCallback(() => {
+    updateProductionProps({
+      productionAssets: extractLinghuiProductionAssets(previewState.shots, productionAssets),
+    });
+  }, [previewState.shots, productionAssets, updateProductionProps]);
+
   const handleRun = useCallback(() => {
     runWithActionLock(onRun);
   }, [onRun, runWithActionLock]);
@@ -125,9 +178,23 @@ export const StoryboardNodeEditor: React.FC<StoryboardNodeEditorProps> = ({
     runGenerateImagesWithLock(() => onGenerateImages(shots));
   }, [onGenerateImages, runGenerateImagesWithLock]);
 
+  const handleGenerateProductionAssets = useCallback((assets: LinghuiProductionAsset[]) => {
+    const frames = buildLinghuiProductionAssetFrames(assets);
+    if (!frames.length) return;
+    handleGenerateImages(frames);
+    updateProductionProps({ productionStage: 'storyboard' });
+  }, [handleGenerateImages, updateProductionProps]);
+
   const handleGenerateVideos = useCallback((shots: LinghuiStoryboardFrame[]) => {
     runGenerateVideosWithLock(() => onGenerateVideos(shots));
   }, [onGenerateVideos, runGenerateVideosWithLock]);
+
+  const handleOpenProductionAsset = useCallback((assetId: string) => {
+    updateProductionProps({
+      productionStage: 'assets',
+      focusedProductionAssetId: assetId,
+    });
+  }, [updateProductionProps]);
 
   const handleToggleShot = useCallback((shotId: string, checked: boolean) => {
     setSelectedShotIds(prev => {
@@ -135,6 +202,13 @@ export const StoryboardNodeEditor: React.FC<StoryboardNodeEditorProps> = ({
       return prev.filter(id => id !== shotId);
     });
   }, []);
+
+  const handleSelectShotScope = useCallback((shotIds: string[]) => {
+    const requestedIds = new Set(shotIds);
+    setSelectedShotIds(previewState.shots
+      .filter(shot => requestedIds.has(shot.id))
+      .map(shot => shot.id));
+  }, [previewState.shots]);
 
   const handleChangeShot = useCallback((shotId: string, patch: Partial<LinghuiStoryboardFrame>) => {
     updateNodeData(nodeId, prev => {
@@ -289,12 +363,16 @@ export const StoryboardNodeEditor: React.FC<StoryboardNodeEditorProps> = ({
             onToggleShot={handleToggleShot}
             editable
             onChangeShot={handleChangeShot}
+            productionAssets={productionAssets}
+            onOpenProductionAsset={handleOpenProductionAsset}
           />
         ) : (
           <ScriptShotCards
             shots={previewState.shots}
             selectedShotIds={selectedShotIds}
             onToggleShot={handleToggleShot}
+            productionAssets={productionAssets}
+            onOpenProductionAsset={handleOpenProductionAsset}
           />
         )}
         {selectedCount > 0 ? (
@@ -336,6 +414,32 @@ export const StoryboardNodeEditor: React.FC<StoryboardNodeEditorProps> = ({
         className="linghuiEditorPanel linghuiScriptGeneratorPanel linghuiStoryboardGeneratorPanel"
         onMouseDown={event => event.stopPropagation()}
       >
+        <ScriptProductionWorkbench
+          stage={productionStage}
+          shotCount={previewState.shots.length}
+          shots={previewState.shots}
+          assets={productionAssets}
+          selectedShotIds={selectedShotIds}
+          acknowledgedConsistencyIssueIds={props.acknowledgedProductionConsistencyIssueIds}
+          focusedAssetId={props.focusedProductionAssetId}
+          syncStatus={productionAssetSync.status}
+          syncError={productionAssetSync.error}
+          onRetrySync={() => {
+            void productionAssetSync.retry();
+          }}
+          onStageChange={nextStage => updateProductionProps({ productionStage: nextStage })}
+          onAssetsChange={nextAssets => updateProductionProps({ productionAssets: nextAssets })}
+          onRefreshAssets={handleRefreshProductionAssets}
+          onGenerateAssets={handleGenerateProductionAssets}
+          onFocusAsset={handleOpenProductionAsset}
+          onSelectShots={handleSelectShotScope}
+          onAcknowledgedConsistencyIssueIdsChange={issueIds => updateProductionProps({
+            acknowledgedProductionConsistencyIssueIds: issueIds,
+          })}
+        />
+
+        {productionStage === 'script' ? (
+          <>
         {referenceCards.length > 0 ? (
           <div className="linghuiScriptGeneratorRefs" aria-label="上游参考">
             {referenceCards.map(reference => (
@@ -468,10 +572,14 @@ export const StoryboardNodeEditor: React.FC<StoryboardNodeEditorProps> = ({
             </button>
           </div>
         </div>
+          </>
+        ) : null}
 
-        <div className="linghuiScriptPanel">
-          {renderShotView()}
-        </div>
+        {productionStage === 'storyboard' ? (
+          <div className="linghuiScriptPanel">
+            {renderShotView()}
+          </div>
+        ) : null}
       </div>
 
       <Modal

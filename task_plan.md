@@ -38,6 +38,350 @@
 |---|---|---|
 | None yet | 0 | N/A |
 
+## Session: 2026-08-07 Unified Script-to-Storyboard Product Iteration
+
+### Goal
+- 将剧本生成、角色/场景等资产生成与提取、分镜生成、资产管理从多个孤立动作收敛为一个连续工作流，减少用户在节点、弹窗和资产库之间来回跳转。
+- 以现有 Linghui/LibTV 对标发现为基础，先做一轮可验证的 P0 合并流程，再以真实 Electron 操作反馈继续迭代。
+
+### Scope
+- Included:
+  - 当前前端剧本、资产、分镜节点与编辑器的入口、状态和持久化链路。
+  - 统一工作流的产品方案与第一轮实现。
+  - Electron CDP 端到端 smoke/视觉验证，以及对应测试与文档记录。
+- Excluded:
+  - 不引入未配置的云端模型、积分、登录或竞品专属后端能力。
+  - 不用普通浏览器验证 Electron UI。
+  - 不覆盖与本流程无关的组件结构重构。
+
+### Phases
+| Phase | Status | Description |
+|---|---|---|
+| 1. Baseline & Workflow Map | complete | 盘点剧本/资产/分镜现有入口、数据结构、执行器与持久化边界，明确重复操作和最小合并面 |
+| 2. Competitive Product Benchmark | complete | 基于仓库已有 LibTV 反编与可核验公开资料，整理竞品工作流模式、可迁移能力和不应照搬的云端概念 |
+| 3. Unified Flow Design | complete | 已确定节点级“剧本 → 资产 → 分镜”三阶段制作台，阶段和生产资产持久化在 script/storyboard properties 中 |
+| 4. P0 Implementation | complete | 已接通结构化实体保留、资产提取/编辑/确认/生成、分镜派生、明确入口、系统 Recipe 和重载类型归一化 |
+| 5. Electron Verification | complete | 已通过 Electron CDP 9333 验证 Recipe、制作台入口、阶段切换、视口自适应、资产添加/编辑/确认，并清理临时工作区 |
+| 6. Iteration Backlog | complete | 已新增 `docs/剧本到分镜一体化迭代路线图.md`，记录竞品对标、P1/P2、指标和下一轮建议 |
+
+### Acceptance Criteria
+- 用户可以从一个连续入口完成：输入/生成剧本 → 确认角色/场景资产 → 提取或生成资产 → 选择分镜生成，而不必手动寻找多个孤立节点。
+- 每一步的状态、失败、重试和已有资产复用语义清晰，且不会伪装未接入的云端能力。
+- 现有剧本/资产/分镜节点数据可继续打开，旧路径不被破坏。
+- 至少有针对统一入口的组件/状态测试和 Electron CDP smoke 证据。
+
+### Error Log
+| Error | Attempt | Resolution |
+|---|---|---|
+| `create_goal` rejected because `/goal` had already created an active goal | 1 | Reused the existing active goal returned by `get_goal`; no work lost |
+| Looked for `frontend/src/types/linghui.ts`, but types are split under `frontend/src/types/linghui/` | 1 | Located definitions with `rg --files` and continued from `graph.ts` / `imageNodes.ts` |
+| LTX Studio page redirected and did not expose readable DOM in the in-app browser | 1 | Recorded as unverifiable; do not infer feature claims from the failed page, continue with local LibTV decompile and accessible static sources |
+| Type inference made `referenceImage` required in the extracted asset array | 1 | Explicitly typed the result as `LinghuiProductionAsset[]` so optional reference images remain optional |
+| New derivation test cast node properties directly from `Record<string, unknown>` | 1 | Added the intentional intermediate `unknown` cast used elsewhere in the suite |
+| Targeted Stylelint reports legacy hard-coded color/shadow errors in `_node-editor-shell.scss`, including one new fallback hex | 1 | Removed the new fallback hex and used the declared `--token-on-accent`; final targeted run reports 19 remaining errors, all outside this slice |
+| Storyboard node click selected the node but no editor mounted | 1 | Added the missing `LinghuiNodeEditor` mount to `ScriptNode`, plus an explicit “制作台” action and regression tests |
+| Workflow snapshot could reload a storyboard RF node with `linghuiType: linghui/text` | 1 | Normalize inserted snapshot data from the RF node type before persistence and cover the mismatch with a test |
+| Production workbench extended below the Electron viewport | 1 | Added viewport-aware above/below placement and a constrained scroll surface for script/storyboard workbenches |
+
+## Session: 2026-08-07 P1 Project Production Assets
+
+### Goal
+- 将统一制作台内确认的角色、场景、道具同步到项目级资产域，使其可跨节点复用。
+- 在资产抽屉中增加角色、场景、道具语义筛选，用户不需要从所有图片记录中人工查找生产资产。
+
+### Scope
+- Included:
+  - `productionAssets` 与现有 workspace asset record 的映射、幂等写入和来源元数据。
+  - 制作台确认/编辑/生成后的同步时机。
+  - 资产抽屉筛选类型、筛选控件和生产资产标签。
+  - 状态/组件测试与 Electron CDP 验证。
+- Excluded:
+  - 项目数据库实体迁移、跨工作区全局资产、审核锁定和版本树。
+  - 未配置的云端识别或一致性模型。
+
+### Phases
+| Phase | Status | Description |
+|---|---|---|
+| 1. Storage & UI Audit | complete | 盘点 workspace asset record、创建/列表 API、制作台状态与抽屉筛选边界 |
+| 2. Semantic Asset Sync | complete | 定义生产资产 metadata，接通幂等创建/更新和节点来源关联 |
+| 3. Asset Drawer Semantics | complete | 增加角色/场景/道具筛选与标签，不破坏现有媒体类型筛选 |
+| 4. Tests & Electron Verification | complete | 覆盖映射、同步、筛选并通过 Electron CDP 验证真实交互 |
+| 5. Backlog Update | complete | 记录指标、风险和下一轮锁定/版本化切片 |
+
+### Acceptance Criteria
+- 同一节点内同一生产资产重复同步不会产生重复的项目资产记录。
+- 项目资产记录能追溯 `sourceNodeId / productionAssetId / productionAssetKind / productionAssetName`。
+- 角色、场景、道具可在资产抽屉中单独筛选，普通图片资产仍按原逻辑展示。
+- 老工作区和不带生产 metadata 的资产记录继续可读。
+- TypeScript、目标测试、`git diff --check` 和 Electron CDP smoke 通过。
+
+### Error Log
+| Error | Attempt | Resolution |
+|---|---|---|
+| Electron dev 启动时出现 `Session can only be received when app is ready` | 1 | 这是既有 lifecycle 启动日志；窗口仍正常加载，9333 CDP 交互与 IPC 均可用，本轮未扩大范围修改启动生命周期 |
+
+## P1 Completion Notes
+
+- 新增 `syncProductionAssets` IPC；稳定 ID 由 `workspaceId + nodeId + productionAssetId` 的 SHA-256 派生，重复同步使用 `INSERT OR REPLACE`，当前节点不再确认的旧 production records 会被删除。
+- 参考图存在时物化到工作区 `assets/library/production/<kind>/<recordId>`；无参考图时以 `text` asset 保存描述，生产 metadata 始终保留来源镜头和来源节点。
+- Script/Storyboard editor 通过防抖 hook 自动同步，制作台显示 `同步中 / 已同步 / 失败重试` 状态；同步成功刷新资产抽屉。
+- 资产抽屉保留媒体筛选，并增加独立的生产语义筛选：全部、角色、场景、道具、普通；生产卡片显示来源节点和来源镜头数。
+- 11 个定向测试文件 / 57 个测试通过；前端与根 TypeScript、IPC 白名单、`git diff --check` 通过；Electron 9333 已验证 Recipe、制作台、确认/取消确认清理、角色筛选与重复稳定记录。
+
+## Session: 2026-08-07 P1.5 Reference Backwrite & Asset Locking
+
+### Goal
+- 把“生成资产参考图”产生的图片结果回写到源角色、场景或道具，避免用户生成后再手动寻找并绑定。
+- 为生产资产增加草稿、已确认、已锁定状态，锁定后默认保护名称、描述和参考图，给后续一致性检查与版本管理提供稳定锚点。
+
+### Scope
+- Included:
+  - production asset 状态模型与旧 `confirmed` 字段兼容。
+  - 派生图片节点到源 script/storyboard production asset 的结果追踪与回写入口。
+  - 制作台的状态按钮、锁定保护、参考图预览/回写反馈。
+  - 项目资产同步 metadata 的状态与参考图更新。
+  - 状态/组件测试、TypeScript、Electron CDP 验证。
+- Excluded:
+  - 多候选版本树、跨节点自动实体合并、审核批注和云端一致性识别。
+
+### Phases
+| Phase | Status | Description |
+|---|---|---|
+| 1. Backwrite & Lock Audit | complete | 已追踪 production image node 结果、源节点 mutation API、锁定状态与制作台交互边界 |
+| 2. State & Data Model | complete | 已设计兼容旧 confirmed 的 draft/approved/locked 状态，并为锁定资产保留稳定内容锚点 |
+| 3. Backwrite & Lock UX | complete | 已实现结果回写入口、参考图预览、锁定/解锁和锁定态编辑保护 |
+| 4. Tests & Electron Verification | complete | 已覆盖兼容、回写、保护、同步并通过 Electron 9333 真实交互验证 |
+| 5. Product Backlog Update | complete | 已记录本轮效果、风险与下一轮镜头资产引用/影响分析切片 |
+
+### Acceptance Criteria
+- 生产资产派生图片节点成功后，用户可从制作台一键采用最新结果作为源资产参考图。
+- 旧工作区只有 `confirmed` 的生产资产继续可读，并映射到正确的新状态。
+- locked 资产默认不可编辑名称/描述、不可取消确认或被重新提取覆盖；显式解锁后可修改。
+- 回写或锁定状态变化会同步到工作区资产记录且不产生重复记录。
+- 前端/根 TypeScript、目标测试、`git diff --check` 和 Electron CDP smoke 通过。
+
+### Error Log
+| Error | Attempt | Resolution |
+|---|---|---|
+| `Session can only be received when app is ready` | 1 | 既有 Electron lifecycle 启动日志；窗口、IPC 与 9333 CDP 仍可用，本轮未扩大范围修改启动生命周期 |
+| CDP inspection script `ReferenceError: i is not defined` | 1 | 脚本回调误用了未定义变量，未触碰应用状态；改用新的只读连接脚本继续验证 |
+| CDP result expression referenced host-side `clicked` | 1 | 取消按钮已触发，但结果对象返回 undefined；后续查询把 host 变量序列化后再检查状态 |
+
+### P1.5 Completion Notes
+
+- 新增 `draft / approved / locked` 状态，并将旧 `confirmed` 数据兼容映射；锁定资产重新提取时保留用户内容。
+- 图片结果节点可从已有生成结果一键回写源节点的 `referenceImage`；locked 资产必须先显式解锁。
+- 已批准/锁定资产同步到项目资产库，草稿不进入项目资产域；抽屉显示状态和来源。
+- 定向状态/组件测试、前端与根 TypeScript、`git diff --check` 和 Electron 9333 smoke 均通过。
+
+## Session: 2026-08-07 P2 Shot-to-Asset Traceability
+
+### Goal
+
+- 在镜头卡片和分镜阶段直接展示本镜头使用的角色、场景、道具生产资产。
+- 提供“跳回资产”入口，并在删除/修改资产前显示受影响镜头，减少一致性维护的隐式成本。
+
+### Phases
+
+| Phase | Status | Description |
+|---|---|---|
+| 1. Traceability Audit | complete | 已审计 storyboard frame、productionAssets、派生 image/video metadata，并确认共享镜头视图是最小入口 |
+| 2. Reference Projection | complete | 已按 production id/sourceShotIds/名称回退推导镜头资产引用与缺失实体 |
+| 3. Shot Card UX | complete | 卡片/表格已展示资产 chips，点击可跳回同一制作台资产阶段并定位卡片 |
+| 4. Impact-aware Mutations | complete | 删除被引用资产前展示受影响镜头；重命名前常驻显示关联镜头；locked 保护保持不变 |
+| 5. Tests & Electron Verification | complete | 6 个定向测试文件 / 28 个测试、前端/根 TypeScript、diff check 通过；Electron 9333 已验证重载、资产追溯、跳转聚焦和删除影响确认 |
+| 6. Product Backlog Update | complete | 已记录持久化修复、真实交互证据、竞品对标指标和下一轮版本/一致性工作 |
+
+### UX Clarity Slice: Execution HUD
+
+- 已移除“待重跑 / 重跑受影响”及相关公开 prop/handler；stale 仍只作为内部依赖失效状态。
+- 失败恢复动作改为“重试失败节点 / 查看失败节点”，运行状态改为“运行失败”，保留运行全部、运行选中、取消执行。
+- 定向 HUD 测试覆盖 stale 不再展示和失败恢复按钮文案。
+
+### Acceptance Criteria
+
+- 每个镜头可从自身字段或可追溯的生产资产 ID 推导角色、场景、道具引用，不依赖模型再次输出。
+- 引用资产在卡片和表格视图都有紧凑可读摘要；点击后能打开对应制作台并定位资产。
+- 删除或重命名仍被镜头引用的资产时，用户能看到影响范围并取消；locked 资产继续受保护。
+- 旧工作区无生产资产 ID 的镜头继续可读，不出现误报或破坏原编辑流程。
+
+### Error Log
+
+| Error | Attempt | Resolution |
+|---|---|---|
+| 故事板节点重载后被恢复为文本节点 | 1 | `electron/service/linghui/persistenceHelpers.ts` 漏掉 `linghui/storyboard` ↔ `linghui-storyboard` 映射；补齐映射并重启 Electron watcher 后重载验证通过 |
+| Electron CDP 直接写入当前活动工作区后被页面自动保存覆盖 | 1 | 改为先切到原有项目，再写入隔离工作区并切换加载；验证结束按精确 ID 删除全部临时工作区 |
+
+## Session: 2026-08-07 P3 Storyboard Consistency Preflight
+
+### Goal
+
+- 在分镜生成前集中检查镜头引用的角色、场景和道具资产是否缺失、未确认或缺少参考图。
+- 在同一制作台内提供明确的问题、影响镜头和返回资产的处理入口，不强制阻断旧工作区的分镜生成。
+
+### Phases
+
+| Phase | Status | Description |
+|---|---|---|
+| 1. Preflight Audit | complete | 已确认复用镜头资产投影、资产状态和现有跳转回调 |
+| 2. State & Workbench UX | complete | 已实现纯函数检查与分镜阶段问题列表，支持提取缺失资产和定位已有资产 |
+| 3. Compatibility & Tests | complete | 已覆盖问题聚合、旧工作区紧凑提示和制作台交互 |
+| 4. Validation & Records | complete | 已通过 TypeScript、定向测试、diff check 和 Electron 9333 验证，并更新路线图 |
+
+### Acceptance Criteria
+
+- 同一实体在多个镜头中的问题聚合为一条，并列出受影响镜头。
+- 已存在的问题资产可一键切回资产阶段并聚焦；缺失资产可一键重新提取。
+- 无 `productionAssets` 的旧工作区只显示一条建立资产的提示，不展开为满屏缺失误报。
+- 参考图缺失作为可见风险而不强制禁用现有分镜操作。
+
+### Error Log
+
+| Error | Attempt | Resolution |
+|---|---|---|
+| browser-client 初始导入路径写成 skill 子目录路径 | 1 | 改用插件根目录的 `scripts/browser-client.mjs`，连接初始化成功 |
+| chrome-devtools-mcp 的默认 Chrome profile 已被其他进程占用 | 1 | 按项目 AGENTS 直接使用 Electron `9333` 的 DevTools Protocol 端点完成验证，没有打开普通 Vite 浏览器 |
+| Electron CDP 验证脚本首次拼接临时快照对象时报 `Unexpected token ']'` | 1 | 将快照拆成 `shots / nodeData / graphNode / next` 分步构造后保存成功 |
+| zsh 执行带未匹配 `test*` glob 的 `rg` 命令时报 `no matches found` | 1 | 去掉无关 glob 后重新执行检索 |
+| 进度文件首次追加补丁因尾部上下文已变化而未匹配 | 1 | 读取文件尾部后以稳定的最后一行作为补丁锚点重新追加 |
+
+## Session: 2026-08-07 P4 Selective Shot Refresh Scope
+
+### Goal
+
+- 将一致性问题的受影响镜头直接转成分镜选择范围，后续生成分镜图或视频时只作用于这些镜头。
+- 继续复用现有生成入口和执行器，避免在一致性面板复制一套不一致的生成逻辑。
+
+### Phases
+
+| Phase | Status | Description |
+|---|---|---|
+| 1. Selection Scope Audit | complete | 已确认 Script/Storyboard editor 的 `selectedShotIds` 是卡片、表格和生成按钮的统一作用域 |
+| 2. Workbench Selection UX | complete | 一致性问题行增加“选中受影响镜头”，并回写 Script/Storyboard editor 选择状态；保留资产处理动作 |
+| 3. Tests & Scope Verification | complete | 覆盖选择回调、当前选择显示和图片/视频生成只收到受影响镜头 |
+| 4. Electron & Records | complete | 通过 Electron 9333 真实验证 3 镜头中选择 2 个受影响镜头，并清理临时工作区、更新路线图/进度 |
+
+### Acceptance Criteria
+
+- 一致性问题可一键把所有受影响镜头设为当前选择，不混入无关镜头。
+- 选中后卡片/表格复选框、已选数量和底部生成工具条保持同一状态。
+- 点击“生成分镜图”或“生成视频流程”时，回调只收到已选受影响镜头。
+- 资产打开/重新提取动作保持原行为，旧工作区和无问题状态不增加多余按钮。
+
+### Error Log
+
+| Error | Attempt | Resolution |
+|---|---|---|
+| `chrome-devtools-mcp` 默认 profile 被其他进程占用 | 1 | 按 AGENTS 直接连接 Electron `127.0.0.1:9333` DevTools Protocol；未打开普通浏览器 |
+| Electron 临时节点初始被 React Flow 标记为 hidden | 1 | 通过画布内“制作台”入口打开编辑器；仅为验证临时 DOM 可见性，不修改持久化数据 |
+
+## Session: 2026-08-07 P5 Production Asset Reference Versions
+
+### Goal
+
+- 为角色、场景和道具生产资产保留参考图候选版本、当前版本和回退能力，避免采用新结果时覆盖唯一历史。
+- 保持旧工作区兼容，并让锁定资产继续作为不可隐式变更的一致性锚点。
+
+### Phases
+
+| Phase | Status | Description |
+|---|---|---|
+| 1. Version Path Audit | complete | 已审计参考图结果回写、重新提取、项目资产同步和锁定保护路径 |
+| 2. Compatible Version Model | complete | 新增稳定版本记录和当前版本 ID；旧 `referenceImage` 运行时兼容为 legacy V1 |
+| 3. Workbench Version UX | complete | 制作台显示当前版本、候选缩略图、采用旧版本和回退；锁定态禁用变更 |
+| 4. Backwrite & Regression Tests | complete | 新生成结果追加版本并自动采用；重复图片去重；状态和组件测试覆盖版本切换 |
+| 5. Electron & Records | complete | Electron 9333 验证 V2→V1 回退和 V1→V2 再采用，并清理临时工作区、更新路线图 |
+
+### Acceptance Criteria
+
+- 旧资产只有 `referenceImage` 时继续显示为稳定 V1，无需迁移工作区。
+- 每次采用不同生成结果时追加候选版本并自动设为当前，相同图片不会重复创建版本。
+- 用户可从制作台采用任一历史版本，或一键回退到当前版本之前的版本。
+- 重新提取资产不会丢失版本历史；锁定资产不能追加、切换或回退参考图版本。
+- 当前版本仍通过 `referenceImage` 同步到项目资产库，现有生成和一致性链路无需改协议。
+- 定向测试、前端/根 TypeScript、`git diff --check` 和 Electron CDP 验证通过。
+
+### Error Log
+
+| Error | Attempt | Resolution |
+|---|---|---|
+| Electron 保存的画布缩放为 202%，制作台版本区域靠近视口顶部 | 1 | 通过 Electron React Flow 实例切到 100% 并重新定位节点，确认完整制作台和版本区域在同一视口内可读 |
+| 缩放菜单依赖 hover，直接调用隐藏菜单按钮没有改变视口 | 1 | 使用 React Flow store 的 `panZoom.setViewport()` 做验证态调整；未修改持久化代码或原有工作区 |
+
+## Session: 2026-08-07 P6 Semantic Consistency Rules
+
+### Goal
+
+- 在既有引用/状态预检之上，识别同一角色服装、同一场景时段、关键道具连续性和全片风格约束冲突。
+- 只使用镜头和生产资产中已有的确定性字段，问题仍可一键转成受影响镜头选择范围。
+
+### Phases
+
+| Phase | Status | Description |
+|---|---|---|
+| 1. Semantic Field Audit | complete | 审计镜头结构字段、资产描述和提示词中可稳定提取的服装/时段/关键道具/风格信号 |
+| 2. Rule Model | complete | 定义可解释、低误报的问题类型、聚合键和受影响镜头范围 |
+| 3. Workbench UX | complete | 把语义冲突接入现有一致性面板和选择范围入口 |
+| 4. Tests & Electron Verification | complete | 覆盖正常连续、冲突、旧数据与真实制作台布局 |
+
+### Acceptance Criteria
+
+- 仅凭镜头和生产资产中的明确词汇证据提示服装、场景时段、道具状态和风格冲突，不因模糊自由文本阻断生成。
+- 问题按资产或全片风格聚合，列出证据与受影响镜头，并复用“选中受影响镜头”和“打开资产”入口。
+- 旧工作区没有生产资产或明确语义信号时保持原流程，不产生泛化误报。
+- 定向测试、前端/根 TypeScript、`git diff --check` 和 Electron CDP 9333 验证通过。
+
+### Error Log
+
+| Error | Attempt | Resolution |
+|---|---|---|
+| Electron 验证后节点数据更新未立即落盘 | 1 | 修复 `useLinghuiCanvasFlowBridge`：用 React Flow 实例同步预判变化，更新后等待两层 RAF，再直接捕获最新节点快照，绕过旧 snapshot 竞态 |
+
+## Session: 2026-08-07 P7 Intentional Consistency Change Acknowledgement
+
+### Goal
+
+- 允许用户确认某个语义差异是有意换装、时段切换、道具状态变化或风格变化，避免每次重新检查都重复提示。
+- 确认必须绑定问题指纹；镜头范围或证据改变后自动形成新问题，不被旧确认遮蔽。
+
+### Phases
+
+| Phase | Status | Description |
+|---|---|---|
+| 1. Fingerprint & Persistence | complete | 增加问题类型、资产/范围、镜头和规范化证据组成的稳定指纹，并持久化到 Script/Storyboard properties |
+| 2. Workbench UX | complete | 语义问题显示“确认有意变化”，头部显示已确认数量，并提供重新检查入口 |
+| 3. Regression & Electron Verification | complete | 覆盖确认/清除/新证据重新出现及真实节点保存竞态 |
+
+### Acceptance Criteria
+
+- 只有语义问题提供确认动作；确认后不再显示该问题，但不改变镜头或资产内容。
+- 新的镜头范围或证据会生成不同指纹并重新提示。
+- Script/Storyboard editor 均能保存和重载确认状态。
+- 定向测试、前端/根 TypeScript、`git diff --check` 和 Electron 9333 验证通过。
+
+## Session: 2026-08-07 P8 Asset Alias & Duplicate Candidate Reduction
+
+### Goal
+
+- 在项目资产库中识别同类生产资产的重复候选，提供可解释的别名合并入口，减少角色/场景/道具被重复维护。
+- 合并必须保留来源镜头、参考图版本、锁定状态和旧 ID 的可追溯映射，不破坏现有镜头引用。
+
+### Phases
+
+| Phase | Status | Description |
+|---|---|---|
+| 1. Duplicate Evidence Audit | in_progress | 盘点生产资产记录、名称/描述/别名字段和镜头引用，定义低误报候选规则 |
+| 2. Alias & Merge Model | pending | 设计 canonical asset、aliases、旧 ID 映射和冲突保护语义 |
+| 3. Library/Workbench UX | pending | 在资产抽屉和制作台显示重复候选、合并预览和可撤销确认 |
+| 4. Tests & Electron Verification | pending | 覆盖候选聚合、引用迁移、锁定保护、旧数据兼容和 Electron 真实交互 |
+
+### Acceptance Criteria
+
+- 仅同一 production kind 且名称/别名或规范化描述明确接近时提示候选，不自动合并。
+- 合并前展示保留项、被合并项、影响镜头和参考图版本差异；用户明确确认后才写入。
+- 合并后旧 ID 可解析到 canonical ID，已有镜头/节点引用继续可读；被锁定资产不能被静默覆盖。
+- 候选提示不会把普通图片资产或不同生产类型误报为重复实体。
+
 ## Session: 2026-05-17 Linghui Large Component/Hook Refactor Plan
 
 ### Goal

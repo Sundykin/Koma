@@ -236,6 +236,8 @@ function linghuiTypeToRFType(type: LinghuiNodeType): string {
       return 'linghui-audio';
     case 'linghui/script':
       return 'linghui-script';
+    case 'linghui/storyboard':
+      return 'linghui-storyboard';
     case 'linghui/director3d':
       return 'linghui-director3d';
     default:
@@ -259,6 +261,8 @@ function rfTypeToLinghuiType(rfType: string): LinghuiNodeType {
       return 'linghui/audio';
     case 'linghui-script':
       return 'linghui/script';
+    case 'linghui-storyboard':
+      return 'linghui/storyboard';
     case 'linghui-director3d':
       return 'linghui/director3d';
     default:

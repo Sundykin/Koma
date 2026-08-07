@@ -42,6 +42,8 @@ export const LinghuiPromptEditor: React.FC<LinghuiPromptEditorProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<EditorView | null>(null);
   const extensionCompartmentRef = useRef(new Compartment());
+  const latestValueRef = useRef(value);
+  const latestReferenceExtensionRef = useRef<Extension[] | null>(null);
   const onChangeRef = useRef(onChange);
   const isSyncingExternalRef = useRef(false);
   const isComposingRef = useRef(false);
@@ -56,6 +58,9 @@ export const LinghuiPromptEditor: React.FC<LinghuiPromptEditorProps> = ({
     createReferenceAutocomplete(references),
     autocompleteTheme,
   ], [references]);
+
+  latestValueRef.current = value;
+  latestReferenceExtensionRef.current = referenceExtension;
 
   const baseExtensions = useMemo<Extension[]>(() => {
     const isFusionSurface = surfaceStyle === 'fusion';
@@ -151,11 +156,11 @@ export const LinghuiPromptEditor: React.FC<LinghuiPromptEditorProps> = ({
     const tooltipParent = containerRef.current.ownerDocument.body;
     const view = new EditorView({
       state: EditorState.create({
-        doc: value,
+        doc: latestValueRef.current,
         extensions: [
           ...baseExtensions,
           tooltips({ parent: tooltipParent, position: 'fixed' }),
-          compartment.of(referenceExtension),
+          compartment.of(latestReferenceExtensionRef.current ?? []),
         ],
       }),
       parent: containerRef.current,
@@ -166,7 +171,7 @@ export const LinghuiPromptEditor: React.FC<LinghuiPromptEditorProps> = ({
       view.destroy();
       editorRef.current = null;
     };
-  }, [baseExtensions, referenceExtension, value]);
+  }, [baseExtensions]);
 
   useEffect(() => {
     const view = editorRef.current;

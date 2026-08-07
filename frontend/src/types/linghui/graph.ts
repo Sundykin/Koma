@@ -88,6 +88,21 @@ export interface LinghuiStoryboardFrame {
     characterDescription?: string;
     characterImageUrl?: string;
   }>;
+  scenes?: Array<{
+    sceneName?: string;
+    sceneDescription?: string;
+    sceneImageUrl?: string;
+  }>;
+  props?: Array<{
+    propName?: string;
+    propDescription?: string;
+    propImageUrl?: string;
+  }>;
+  productionAsset?: {
+    id: string;
+    kind: 'character' | 'scene' | 'prop';
+    name: string;
+  };
   videoReference?: {
     startTime?: number;
     endTime?: number;
@@ -561,4 +576,3 @@ export function gridTypeToCount(gridType: LinghuiGridType): number {
     default: return 1;
   }
 }
-

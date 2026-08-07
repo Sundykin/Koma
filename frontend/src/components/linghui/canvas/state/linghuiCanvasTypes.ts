@@ -57,7 +57,6 @@ export interface LinghuiCanvasProps {
   onExportSelection?: (selectionIds?: string[]) => void;
   onFocusFailedNode?: () => void;
   onRetryFailed?: () => void;
-  onRerunAffected?: () => void;
   onCancelRun?: () => void;
   executionQueue?: LinghuiExecutionQueueState | null;
   onOpenDrawer?: (drawer: LinghuiLibraryDrawerKey) => void;

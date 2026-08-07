@@ -10,6 +10,7 @@ import {
   listLinghuiWorkspaces,
   loadLinghuiWorkspace,
   saveLinghuiWorkspace,
+  syncLinghuiProductionAssets,
 } from './linghuiStorage';
 import { DEFAULT_LINGHUI_WORKSPACE_NAME } from '../types/linghui';
 
@@ -28,6 +29,7 @@ const { linghuiApiMock, saveFileMock } = vi.hoisted(() => ({
     createWorkflowTemplate: vi.fn(),
     listWorkspaceAssets: vi.fn(),
     createWorkspaceAsset: vi.fn(),
+    syncProductionAssets: vi.fn(),
     listWorkspaceHistoryRecords: vi.fn(),
     createWorkspaceHistoryRecord: vi.fn(),
     importWorkspaceAsset: vi.fn(),
@@ -141,7 +143,7 @@ describe('linghuiStorage', () => {
     expect(linghuiApiMock.loadWorkspace).toHaveBeenCalledWith('workspace-1');
   });
 
-  it('暂不返回系统 Recipe，仅保留后端工作区模板', async () => {
+  it('合并系统 Recipe 与后端工作区模板', async () => {
     linghuiApiMock.listWorkflowTemplates.mockResolvedValueOnce([
       {
         id: 'workspace-template-1',
@@ -169,7 +171,13 @@ describe('linghuiStorage', () => {
     const workspaceTemplate = templates.find(template => template.id === 'workspace-template-1');
 
     expect(linghuiApiMock.listWorkflowTemplates).toHaveBeenCalledWith('workspace-1');
-    expect(builtinTemplates).toEqual([]);
+    expect(builtinTemplates).toEqual([
+      expect.objectContaining({
+        id: 'builtin-storyboard-production-flow',
+        name: '剧本到分镜一体化制作台',
+        source: 'system',
+      }),
+    ]);
     expect(workspaceTemplate).toEqual(expect.objectContaining({
       source: 'workspace',
       kind: 'saved-workflow',
@@ -210,6 +218,31 @@ describe('linghuiStorage', () => {
       name: '三镜头流程',
       snapshot: { nodes: [], edges: [], groups: [] },
     });
+  });
+
+  it('同步制作台生产资产时透传工作区、来源节点和确认状态', async () => {
+    linghuiApiMock.syncProductionAssets.mockResolvedValueOnce({ records: [], removedIds: [] });
+
+    const result = await syncLinghuiProductionAssets({
+      workspaceId: 'workspace-1',
+      nodeId: 'script-node-1',
+      nodeType: 'linghui/script',
+      assets: [{
+        id: 'character-1',
+        kind: 'character',
+        name: '林夏',
+        description: '青年侦探',
+        sourceShotIds: ['shot-1'],
+        confirmed: true,
+      }],
+    });
+
+    expect(result.removedIds).toEqual([]);
+    expect(linghuiApiMock.syncProductionAssets).toHaveBeenCalledWith(expect.objectContaining({
+      workspaceId: 'workspace-1',
+      nodeId: 'script-node-1',
+      nodeType: 'linghui/script',
+    }));
   });
 
   it('创建历史结果时保留后端物化后的 run 数据', async () => {

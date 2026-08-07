@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo } from 'react';
-import { App } from 'antd';
+import { App, Button } from 'antd';
 import type { MenuProps } from 'antd';
 import type {
   LinghuiExecuteMultiAngleOptions,
@@ -7,6 +7,7 @@ import type {
   LinghuiImageToolKey,
   LinghuiNodeData,
   LinghuiNodeRunState,
+  LinghuiProductionAsset,
 } from '../../../../types/linghui';
 import {
   DEFAULT_LINGHUI_IMAGE_CINEMATIC_CONFIG,
@@ -36,6 +37,12 @@ import { useImageNodeEditorProviders } from '../hooks/useImageNodeEditorProvider
 import { useImageNodeEditorFocusMarks } from '../hooks/useImageNodeEditorFocusMarks';
 import { useImageNodeEditorFileActions } from '../hooks/useImageNodeEditorFileActions';
 import { useImageNodeEditorLibTVTools } from '../hooks/useImageNodeEditorLibTVTools';
+import { syncLinghuiProductionAssets } from '../../../../store/linghuiStorage';
+import {
+  addLinghuiProductionAssetReferenceVersion,
+  canEditLinghuiProductionAsset,
+  resolveLinghuiProductionAssetStatus,
+} from '../state/linghuiProductionAssets';
 import { renderImageNodeEditorLibTVToolPanel } from './ImageNodeEditorLibTVToolPanelHost';
 import {
   resolveLinghuiImageCollection,
@@ -59,6 +66,7 @@ export interface ImageNodeEditorProps {
   referenceImages: Array<{ source?: string; label?: string }>;
   promptReferences?: LinghuiPromptReferenceItem[];
   workspaceId?: string | null;
+  productionAssetSourceNodeData?: LinghuiNodeData | null;
   activeTool: LinghuiImageToolKey | null;
   onToolChange: (tool: LinghuiImageToolKey | null) => void;
   onExecuteMultiAngle?: (options?: LinghuiExecuteMultiAngleOptions) => void;
@@ -67,6 +75,7 @@ export interface ImageNodeEditorProps {
     promptSnippet: string;
     properties?: Partial<LinghuiImageNodeProperties>;
   }) => void;
+  onAssetLibraryMutate?: () => void;
   onRun: () => void;
   /** 覆盖默认 IMAGE_ASPECT_RATIOS，用于全景节点这类只允许子集（16:9/21:9）的场景 */
   aspectRatioOptions?: Array<{ value: string; label: string }>;
@@ -86,10 +95,12 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
   referenceImages,
   promptReferences = [],
   workspaceId = null,
+  productionAssetSourceNodeData = null,
   activeTool,
   onToolChange,
   onExecuteMultiAngle,
   onApplyImageToolPreset,
+  onAssetLibraryMutate,
   onRun,
   aspectRatioOptions,
   hideBatchCount = false,
@@ -100,6 +111,12 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
   const { executionQueue, onExecuteImageCrop } = useLinghuiNodeEditorApi();
   const { clearNodeRunState, updateNodeData } = useLinghuiNodeMutation();
   const props = nodeData.properties as unknown as LinghuiImageNodeProperties;
+  const sourceNodeId = String(props.scriptSourceNodeId ?? '').trim();
+  const sourceNodeData = productionAssetSourceNodeData ?? undefined;
+  const sourceNodeType = sourceNodeData?.linghuiType;
+  const sourceProperties = sourceNodeData?.properties as unknown as {
+    productionAssets?: LinghuiProductionAsset[];
+  } | undefined;
   const mode = resolveImageNodeMode(props);
   const isImportMode = mode === 'import';
   const prompt = String(props.prompt ?? '');
@@ -113,6 +130,21 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
   const currentImageSource = String(currentImage?.source ?? props.source ?? '').trim();
   const currentImagePreview = getPreviewSource(currentImageSource);
   const hasCurrentImage = Boolean(currentImageSource);
+  const productionAssetId = String(props.productionAssetId ?? '').trim();
+  const linkedProductionAsset = sourceProperties?.productionAssets?.find(asset => (
+    asset.id === productionAssetId || asset.mergedAssetIds?.includes(productionAssetId)
+  ));
+  const linkedProductionAssetStatus = linkedProductionAsset
+    ? resolveLinghuiProductionAssetStatus(linkedProductionAsset)
+    : null;
+  const canAdoptProductionAssetReference = Boolean(
+    workspaceId
+    && hasCurrentImage
+    && sourceNodeId
+    && (sourceNodeType === 'linghui/script' || sourceNodeType === 'linghui/storyboard')
+    && linkedProductionAsset
+    && canEditLinghuiProductionAsset(linkedProductionAsset),
+  );
   const normalizedFocusRegion = normalizeLinghuiImageFocusRegion(props.focusRegion);
   const activeFocusRegion = normalizedFocusRegion?.enabled ? normalizedFocusRegion : null;
   const normalizedMarkPoints = normalizeLinghuiImageMarkPoints(props.markPoints);
@@ -146,6 +178,81 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
   const handleRun = useCallback(() => {
     runWithActionLock(onRun);
   }, [onRun, runWithActionLock]);
+
+  const handleAdoptProductionAssetReference = useCallback(async () => {
+    if (!workspaceId || !sourceNodeId || !sourceNodeData || !linkedProductionAsset || !currentImageSource) {
+      return;
+    }
+    if (!canEditLinghuiProductionAsset(linkedProductionAsset)) {
+      message.info('该生产资产已锁定，请先在制作台解锁编辑');
+      return;
+    }
+
+    const currentAssets = sourceProperties?.productionAssets ?? [];
+    const nextAssets = addLinghuiProductionAssetReferenceVersion(
+      currentAssets,
+      linkedProductionAsset.id,
+      currentImageSource,
+      { label: nodeData.label || '生成结果' },
+    );
+    if (nextAssets.every((asset, index) => asset === currentAssets[index])) {
+      message.info('当前图片已经是该资产的参考图');
+      return;
+    }
+
+    updateNodeData(sourceNodeId, previous => ({
+      ...previous,
+      properties: {
+        ...previous.properties,
+        productionAssets: nextAssets,
+      },
+    }), { markStale: false });
+
+    try {
+      await syncLinghuiProductionAssets({
+        workspaceId,
+        nodeId: sourceNodeId,
+        nodeType: sourceNodeData.linghuiType,
+        assets: nextAssets,
+      });
+      onAssetLibraryMutate?.();
+      message.success(`已将图片采用为「${linkedProductionAsset.name}」参考图`);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '回写资产参考图失败');
+    }
+  }, [
+    currentImageSource,
+    linkedProductionAsset,
+    message,
+    onAssetLibraryMutate,
+    sourceNodeData,
+    sourceNodeId,
+    sourceProperties?.productionAssets,
+    nodeData.label,
+    updateNodeData,
+    workspaceId,
+  ]);
+
+  const productionAssetAction = linkedProductionAsset && hasCurrentImage ? (
+    <div className="linghuiProductionAssetReferenceAction" role="note">
+      <div className="linghuiProductionAssetReferenceCopy">
+        <strong>生产资产 · {linkedProductionAsset.name}</strong>
+        <span>
+          {linkedProductionAssetStatus === 'locked'
+            ? '资产已锁定，解锁后才能替换参考图'
+            : '把当前生成结果回写为该资产的统一参考图'}
+        </span>
+      </div>
+      <Button
+        size="small"
+        type="primary"
+        onClick={() => void handleAdoptProductionAssetReference()}
+        disabled={!canAdoptProductionAssetReference}
+      >
+        {linkedProductionAssetStatus === 'locked' ? '已锁定' : '采用为资产参考图'}
+      </Button>
+    </div>
+  ) : null;
 
   const updateProp = useCallback((key: string, value: unknown, options?: { markStale?: boolean }) => {
     updateNodeData(nodeId, prev => ({
@@ -305,6 +412,7 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
     return (
       <ImageNodeEditorImportPanel
         activeLibTVToolPanel={activeLibTVToolPanel}
+        productionAssetAction={productionAssetAction}
         currentImageLabel={currentImage?.label}
         hasCurrentImage={hasCurrentImage}
         hasImportSource={hasImportSource}
@@ -318,6 +426,7 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
   return (
     <ImageNodeEditorGeneratePanel
       activeLibTVToolPanel={activeLibTVToolPanel}
+      productionAssetAction={productionAssetAction}
       cameraButtonSummary={cameraButtonSummary}
       cameraSettingsContent={cameraSettingsContent}
       derivedBannerText={derivedBannerText}

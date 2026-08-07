@@ -35,6 +35,39 @@ export type LinghuiTextNodeViewState =
 export type LinghuiScriptNodeMode = 'manual' | 'generate';
 export type LinghuiScriptNodeViewMode = 'cards' | 'table';
 export type LinghuiScriptDerivationKind = 'text' | 'image' | 'video-image' | 'video' | 'video-clip';
+export type LinghuiProductionStage = 'script' | 'assets' | 'storyboard';
+export type LinghuiProductionAssetKind = 'character' | 'scene' | 'prop';
+export type LinghuiProductionAssetStatus = 'draft' | 'approved' | 'locked';
+
+export interface LinghuiProductionAssetReferenceVersion {
+  id: string;
+  source: string;
+  createdAt: number;
+  label?: string;
+}
+
+export interface LinghuiProductionAsset {
+  id: string;
+  kind: LinghuiProductionAssetKind;
+  name: string;
+  description: string;
+  sourceShotIds: string[];
+  referenceImage?: string;
+  /** 参考图候选版本；旧工作区只有 referenceImage 时由状态层补出兼容版本。 */
+  referenceImageVersions?: LinghuiProductionAssetReferenceVersion[];
+  /** 当前采用的参考图版本 ID；referenceImage 仍作为兼容/同步字段保留。 */
+  currentReferenceImageId?: string;
+  /** 用户确认的同义称呼；用于重复候选提示和镜头名称回退。 */
+  aliases?: string[];
+  /** 已合并到当前 canonical 资产的旧 ID，保留历史镜头和派生节点可解析性。 */
+  mergedAssetIds?: string[];
+  confirmed: boolean;
+  /**
+   * 生产资产生命周期：旧工作区没有该字段时由 confirmed 推导。
+   * locked 资产必须显式解锁后才能编辑、删除或重新提取覆盖。
+   */
+  status?: LinghuiProductionAssetStatus;
+}
 export type LinghuiStoryboardScene =
   | 'plot_deduction_four_grid'
   | 'plot_deduction_nine_grid'
@@ -46,6 +79,9 @@ export interface LinghuiScriptDerivedProperties {
   scriptShotId?: string;
   scriptShotTitle?: string;
   scriptDerivationKind?: LinghuiScriptDerivationKind;
+  productionAssetId?: string;
+  productionAssetKind?: LinghuiProductionAssetKind;
+  productionAssetName?: string;
 }
 
 export interface LinghuiTextNodeProperties extends LinghuiScriptDerivedProperties {
@@ -72,6 +108,12 @@ export interface LinghuiScriptNodeProperties {
   llmSelection: string;
   viewMode: LinghuiScriptNodeViewMode;
   editedShots?: LinghuiStoryboardFrame[];
+  productionStage?: LinghuiProductionStage;
+  productionAssets?: LinghuiProductionAsset[];
+  /** 用户已确认属于有意变化的一致性问题指纹；问题证据或镜头范围变化后会自动重新出现。 */
+  acknowledgedProductionConsistencyIssueIds?: string[];
+  /** 打开制作台后一次性定位的生产资产，不参与执行语义。 */
+  focusedProductionAssetId?: string;
 }
 
 /**
@@ -92,6 +134,12 @@ export interface LinghuiStoryboardNodeProperties {
   targetShotCount: number;
   /** 用户在节点/编辑器表格中手动修正后的镜头数据。 */
   editedShots?: LinghuiStoryboardFrame[];
+  productionStage?: LinghuiProductionStage;
+  productionAssets?: LinghuiProductionAsset[];
+  /** 用户已确认属于有意变化的一致性问题指纹；问题证据或镜头范围变化后会自动重新出现。 */
+  acknowledgedProductionConsistencyIssueIds?: string[];
+  /** 打开制作台后一次性定位的生产资产，不参与执行语义。 */
+  focusedProductionAssetId?: string;
 }
 
 export type LinghuiGridType = 'none' | '2x2' | '3x3' | '4x4' | '5x5';
@@ -379,4 +427,3 @@ export interface LinghuiExecuteMultiAngleOptions {
   multiAngle?: Partial<LinghuiMultiAngleConfig>;
   label?: string;
 }
-

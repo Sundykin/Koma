@@ -18,12 +18,14 @@ const {
   listConfiguredModelSelectOptionsMock,
   clearNodeRunStateMock,
   updateNodeDataMock,
+  syncLinghuiProductionAssetsMock,
   useLinghuiNodeEditorApiMock,
 } = vi.hoisted(() => ({
   loadSettingsMock: vi.fn(),
   listConfiguredModelSelectOptionsMock: vi.fn(),
   clearNodeRunStateMock: vi.fn(),
   updateNodeDataMock: vi.fn(),
+  syncLinghuiProductionAssetsMock: vi.fn(),
   useLinghuiNodeEditorApiMock: vi.fn(),
 }));
 
@@ -33,6 +35,10 @@ vi.mock('../../../../store/settings/core', () => ({
 
 vi.mock('../../../../providers/channel/resolver', () => ({
   listConfiguredModelSelectOptions: (...args: unknown[]) => listConfiguredModelSelectOptionsMock(...args),
+}));
+
+vi.mock('../../../../store/linghuiStorage', () => ({
+  syncLinghuiProductionAssets: (...args: unknown[]) => syncLinghuiProductionAssetsMock(...args),
 }));
 
 vi.mock('../components/LinghuiPromptEditor', () => ({
@@ -97,6 +103,8 @@ function renderEditor(
     onToolChange?: (tool: any) => void;
     onExecuteMultiAngle?: (options?: any) => void;
     onApplyImageToolPreset?: (preset: any) => void;
+    workspaceId?: string;
+    productionAssetSourceNodeData?: LinghuiNodeData | null;
     onRun?: () => void;
   },
 ) {
@@ -108,6 +116,8 @@ function renderEditor(
         nodeRun={options?.nodeRun}
         referenceImages={[]}
         promptReferences={[]}
+        workspaceId={options?.workspaceId}
+        productionAssetSourceNodeData={options?.productionAssetSourceNodeData}
         activeTool={options?.activeTool ?? null}
         onToolChange={options?.onToolChange ?? vi.fn()}
         onExecuteMultiAngle={options?.onExecuteMultiAngle}
@@ -130,6 +140,7 @@ describe('ImageNodeEditor', () => {
         modelLabel: 'flux-pro',
       },
     ]);
+    syncLinghuiProductionAssetsMock.mockResolvedValue({ records: [], removedIds: [] });
     useLinghuiNodeEditorApiMock.mockReturnValue({ executionQueue: null });
   });
 
@@ -168,6 +179,84 @@ describe('ImageNodeEditor', () => {
     fireEvent.click(button);
 
     expect(onRun).toHaveBeenCalledTimes(1);
+  });
+
+  it('把生成结果回写到源生产资产并同步项目资产库', async () => {
+    const sourceNodeData: LinghuiNodeData = {
+      linghuiType: 'linghui/script',
+      label: '剧本',
+      accent: '#4ade80',
+      background: '#0f1720',
+      active: true,
+      inputs: [],
+      outputs: [],
+      properties: {
+        productionAssets: [{
+          id: 'character-1',
+          kind: 'character',
+          name: '林夏',
+          description: '青年侦探',
+          sourceShotIds: ['shot-1'],
+          confirmed: true,
+          status: 'approved',
+        }],
+      },
+    };
+    const updateLibrary = vi.fn();
+    render(
+      <App>
+        <ImageNodeEditor
+          nodeId="image-node-1"
+          nodeData={createImageNodeData({
+            source: 'https://cdn.example.com/generated.png',
+            primaryResultSource: 'https://cdn.example.com/generated.png',
+            scriptSourceNodeId: 'script-node-1',
+            productionAssetId: 'character-1',
+            productionAssetKind: 'character',
+            productionAssetName: '林夏',
+          })}
+          referenceImages={[]}
+          promptReferences={[]}
+          workspaceId="workspace-1"
+          productionAssetSourceNodeData={sourceNodeData}
+          activeTool={null}
+          onToolChange={vi.fn()}
+          onAssetLibraryMutate={updateLibrary}
+          onRun={vi.fn()}
+        />
+      </App>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: '采用为资产参考图' }));
+
+    await waitFor(() => {
+      expect(syncLinghuiProductionAssetsMock).toHaveBeenCalledWith(expect.objectContaining({
+        workspaceId: 'workspace-1',
+        nodeId: 'script-node-1',
+        nodeType: 'linghui/script',
+        assets: [expect.objectContaining({
+          id: 'character-1',
+          referenceImage: 'https://cdn.example.com/generated.png',
+          currentReferenceImageId: expect.any(String),
+          referenceImageVersions: [expect.objectContaining({
+            source: 'https://cdn.example.com/generated.png',
+          })],
+        })],
+      }));
+    });
+    expect(updateNodeDataMock).toHaveBeenCalledWith('script-node-1', expect.any(Function), { markStale: false });
+    const updater = updateNodeDataMock.mock.calls.find(call => call[0] === 'script-node-1')?.[1];
+    expect(updater(sourceNodeData).properties).toEqual(expect.objectContaining({
+      productionAssets: [expect.objectContaining({
+        id: 'character-1',
+        referenceImage: 'https://cdn.example.com/generated.png',
+        currentReferenceImageId: expect.any(String),
+        referenceImageVersions: [expect.objectContaining({
+          source: 'https://cdn.example.com/generated.png',
+        })],
+      })],
+    }));
+    expect(updateLibrary).toHaveBeenCalledTimes(1);
   });
 
   it('运行中时会把图片进度文案显示到生成按钮上并保持 loading', async () => {

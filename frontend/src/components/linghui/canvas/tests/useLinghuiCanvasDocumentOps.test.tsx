@@ -20,7 +20,9 @@ interface DocumentOpsHarnessHandle {
   createDerivedVideoAnalysisNodeFromNode: ReturnType<typeof useLinghuiCanvasDocumentOps>['createDerivedVideoAnalysisNodeFromNode'];
   applyTextEmptyAction: ReturnType<typeof useLinghuiCanvasDocumentOps>['applyTextEmptyAction'];
   applyVideoEmptyAction: ReturnType<typeof useLinghuiCanvasDocumentOps>['applyVideoEmptyAction'];
+  deriveStoryboardImagesFromScript: ReturnType<typeof useLinghuiCanvasDocumentOps>['deriveStoryboardImagesFromScript'];
   deriveStoryboardVideosFromScript: ReturnType<typeof useLinghuiCanvasDocumentOps>['deriveStoryboardVideosFromScript'];
+  insertSubgraphSnapshotAtScreenPosition: ReturnType<typeof useLinghuiCanvasDocumentOps>['insertSubgraphSnapshotAtScreenPosition'];
   getNodes: () => Node[];
   getEdges: () => Edge[];
   getEditorSelection: () => LinghuiCanvasSelection;
@@ -162,7 +164,9 @@ function DocumentOpsHarness({
       createDerivedVideoAnalysisNodeFromNode: ops.createDerivedVideoAnalysisNodeFromNode,
       applyTextEmptyAction: ops.applyTextEmptyAction,
       applyVideoEmptyAction: ops.applyVideoEmptyAction,
+      deriveStoryboardImagesFromScript: ops.deriveStoryboardImagesFromScript,
       deriveStoryboardVideosFromScript: ops.deriveStoryboardVideosFromScript,
+      insertSubgraphSnapshotAtScreenPosition: ops.insertSubgraphSnapshotAtScreenPosition,
       getNodes: () => nodesRef.current,
       getEdges: () => edgesRef.current,
       getEditorSelection: () => editorSelectionRef.current,
@@ -173,13 +177,55 @@ function DocumentOpsHarness({
     ops.createDerivedVideoAnalysisNodeFromNode,
     ops.applyTextEmptyAction,
     ops.applyVideoEmptyAction,
+    ops.deriveStoryboardImagesFromScript,
     ops.deriveStoryboardVideosFromScript,
+    ops.insertSubgraphSnapshotAtScreenPosition,
   ]);
 
   return <div ref={hostRef} />;
 }
 
 describe('useLinghuiCanvasDocumentOps', () => {
+  it('normalizes workflow snapshot data to the React Flow node type before persistence', async () => {
+    const scheduleSnapshot = vi.fn();
+    let handle: DocumentOpsHarnessHandle | null = null;
+    const staleTextData = createNewNodeData('linghui/text', { label: '剧本到分镜一体化制作台' });
+
+    render(
+      <DocumentOpsHarness
+        scheduleSnapshot={scheduleSnapshot}
+        initialNodes={[]}
+        initialSelection={null}
+        onReady={nextHandle => {
+          handle = nextHandle;
+        }}
+      />,
+    );
+
+    await waitFor(() => expect(handle).not.toBeNull());
+
+    act(() => {
+      handle?.insertSubgraphSnapshotAtScreenPosition({
+        nodes: [{
+          id: 'workflow-storyboard',
+          type: 'linghui-storyboard',
+          position: { x: 0, y: 0 },
+          data: staleTextData,
+          width: 236,
+          height: 368,
+        }],
+        edges: [],
+        groups: [],
+      });
+    });
+
+    await waitFor(() => expect(handle?.getNodes()).toHaveLength(1));
+    const insertedNode = handle!.getNodes()[0];
+    expect(insertedNode.type).toBe('linghui-storyboard');
+    expect((insertedNode.data as unknown as LinghuiNodeData).linghuiType).toBe('linghui/storyboard');
+    expect(scheduleSnapshot).toHaveBeenCalledTimes(1);
+  });
+
   it('creates a selected executable image-to-image node for LibTV-style image tool presets', async () => {
     const scheduleSnapshot = vi.fn();
     let handle: DocumentOpsHarnessHandle | null = null;
@@ -602,6 +648,43 @@ describe('useLinghuiCanvasDocumentOps', () => {
       expect(result).toBeNull();
       expect(handle!.getNodes()).toHaveLength(1);
       expect(handle!.getEdges()).toHaveLength(0);
+    });
+  });
+
+  describe('deriveStoryboardImagesFromScript production assets', () => {
+    it('persists production asset identity on generated reference image nodes', async () => {
+      const scheduleSnapshot = vi.fn();
+      let handle: DocumentOpsHarnessHandle | null = null;
+      render(
+        <DocumentOpsHarness
+          scheduleSnapshot={scheduleSnapshot}
+          initialNodes={[createSourceStoryboardNode()]}
+          initialSelection={{ kind: 'node', nodeId: 'source-storyboard', nodeType: 'linghui/storyboard', label: '故事板' }}
+          onReady={next => { handle = next; }}
+        />,
+      );
+      await waitFor(() => expect(handle?.getNodes()).toHaveLength(1));
+
+      act(() => {
+        handle!.deriveStoryboardImagesFromScript('source-storyboard', [{
+          id: 'production-asset-shot-character-a-che',
+          title: '角色 · 阿澈',
+          description: '黑色风衣，银色耳钉',
+          durationSec: 10,
+          imageGenerationPrompt: '角色资产设定图：阿澈。',
+          productionAsset: { id: 'character-a-che', kind: 'character', name: '阿澈' },
+        }]);
+      });
+
+      await waitFor(() => expect(handle?.getNodes()).toHaveLength(2));
+      const imageNode = handle!.getNodes().find(node => node.id !== 'source-storyboard');
+      const imageProps = (imageNode?.data as unknown as LinghuiNodeData).properties as unknown as LinghuiImageNodeProperties;
+      expect(imageProps).toMatchObject({
+        prompt: '角色资产设定图：阿澈。',
+        productionAssetId: 'character-a-che',
+        productionAssetKind: 'character',
+        productionAssetName: '阿澈',
+      });
     });
   });
 

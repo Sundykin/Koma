@@ -94,6 +94,9 @@ export function useLinghuiCanvasStoryboardImageDerivation({
               scriptShotId: shot.id,
               scriptShotTitle: normalizedLabel,
               scriptDerivationKind: 'image',
+              productionAssetId: shot.productionAsset?.id,
+              productionAssetKind: shot.productionAsset?.kind,
+              productionAssetName: shot.productionAsset?.name,
             } satisfies LinghuiImageNodeProperties,
           } as unknown as Record<string, unknown>,
         });
@@ -123,6 +126,9 @@ export function useLinghuiCanvasStoryboardImageDerivation({
             scriptShotId: shot.id,
             scriptShotTitle: normalizedLabel,
             scriptDerivationKind: 'image',
+            productionAssetId: shot.productionAsset?.id,
+            productionAssetKind: shot.productionAsset?.kind,
+            productionAssetName: shot.productionAsset?.name,
           } satisfies LinghuiImageNodeProperties,
         } as unknown as Record<string, unknown>,
       });

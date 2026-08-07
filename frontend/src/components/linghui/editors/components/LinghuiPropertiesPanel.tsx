@@ -105,10 +105,6 @@ export const LinghuiPropertiesPanel: React.FC<LinghuiPropertiesPanelProps> = ({
                 <div className="linghuiInfoLabel">失败</div>
                 <div className="linghuiInfoValue">{runSummary.failed}</div>
               </div>
-              <div>
-                <div className="linghuiInfoLabel">待重跑</div>
-                <div className="linghuiInfoValue">{runSummary.stale}</div>
-              </div>
             </div>
           </div>
         )}

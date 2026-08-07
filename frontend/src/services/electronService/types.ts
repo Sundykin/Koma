@@ -144,6 +144,7 @@ export interface ElectronAPI {
     createWorkflowTemplate: (payload: any) => Promise<any>;
     listWorkspaceAssets: (workspaceId: string) => Promise<any[]>;
     createWorkspaceAsset: (payload: any) => Promise<any>;
+    syncProductionAssets: (payload: any) => Promise<any>;
     listWorkspaceHistoryRecords: (workspaceId: string) => Promise<any[]>;
     createWorkspaceHistoryRecord: (payload: any) => Promise<any>;
     importWorkspaceAsset: (workspaceId: string, sourcePath: string, filenameHint?: string) => Promise<string | { path: string }>;

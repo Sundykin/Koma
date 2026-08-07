@@ -31,6 +31,7 @@ interface LinghuiNodeEditorSurfaceProps {
   referenceVideos: LinghuiReferenceVideo[];
   referenceAudios: LinghuiReferenceAudio[];
   promptReferences: LinghuiPromptReferenceItem[];
+  productionAssetSourceNodeData?: LinghuiNodeData | null;
   activeImageTool: LinghuiImageToolKey | null;
   activeVideoTool: LinghuiVideoToolKey | null;
   onImageToolChange: (tool: LinghuiImageToolKey | null) => void;
@@ -57,6 +58,7 @@ export const LinghuiNodeEditorSurface: React.FC<LinghuiNodeEditorSurfaceProps> =
   referenceVideos,
   referenceAudios,
   promptReferences,
+  productionAssetSourceNodeData,
   activeImageTool,
   activeVideoTool,
   onImageToolChange,
@@ -99,10 +101,12 @@ export const LinghuiNodeEditorSurface: React.FC<LinghuiNodeEditorSurfaceProps> =
         referenceImages={referenceImages}
         promptReferences={promptReferences}
         workspaceId={workspaceId}
+        productionAssetSourceNodeData={productionAssetSourceNodeData}
         activeTool={activeImageTool}
         onToolChange={onImageToolChange}
         onExecuteMultiAngle={options => onExecuteMultiAngle?.(options)}
         onApplyImageToolPreset={onApplyImageToolPreset}
+        onAssetLibraryMutate={onAssetLibraryMutate}
         onRun={() => onRunNode(nodeId)}
       />
     )}
@@ -155,6 +159,8 @@ export const LinghuiNodeEditorSurface: React.FC<LinghuiNodeEditorSurfaceProps> =
         nodeData={nodeData}
         nodeRun={nodeRuns[nodeId]}
         promptReferences={promptReferences}
+        workspaceId={workspaceId}
+        onAssetLibraryMutate={onAssetLibraryMutate}
         onRun={() => onRunNode(nodeId)}
         onDeriveShots={shots => onDeriveScriptShots(nodeId, shots)}
         onGenerateImages={shots => onGenerateScriptImages(nodeId, shots)}
@@ -167,6 +173,8 @@ export const LinghuiNodeEditorSurface: React.FC<LinghuiNodeEditorSurfaceProps> =
         nodeData={nodeData}
         nodeRun={nodeRuns[nodeId]}
         promptReferences={promptReferences}
+        workspaceId={workspaceId}
+        onAssetLibraryMutate={onAssetLibraryMutate}
         onRun={() => onRunNode(nodeId)}
         onDeriveShots={shots => onDeriveScriptShots(nodeId, shots)}
         onGenerateImages={shots => onGenerateScriptImages(nodeId, shots)}

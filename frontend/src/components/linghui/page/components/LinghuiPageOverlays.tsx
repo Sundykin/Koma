@@ -1,4 +1,5 @@
 import { LinghuiLibraryDrawer, type LinghuiAssetFilter, type LinghuiLibraryDrawerKey } from '../../library/components/LinghuiLibraryDrawer';
+import type { LinghuiProductionAssetFilter } from '../../library/state/linghuiProductionAssetRecords';
 import type {
   LinghuiWorkflowTemplateRecord,
   LinghuiWorkspaceAssetRecord,
@@ -11,6 +12,7 @@ interface LinghuiPageOverlaysProps {
   activeDrawer: LinghuiLibraryDrawerKey | null;
   activeWorkspaceId?: string;
   assetFilter: LinghuiAssetFilter;
+  productionAssetFilter: LinghuiProductionAssetFilter;
   assetLoading: boolean;
   historyLoading: boolean;
   pendingExecutionPlan: {
@@ -22,6 +24,7 @@ interface LinghuiPageOverlaysProps {
   workspaceAssets: LinghuiWorkspaceAssetRecord[];
   workspaceHistory: LinghuiWorkspaceHistoryRecord[];
   onAssetFilterChange: (filter: LinghuiAssetFilter) => void;
+  onProductionAssetFilterChange: (filter: LinghuiProductionAssetFilter) => void;
   onCancelExecutionPlan: () => void;
   onCloseDrawer: () => void;
   onConfirmExecutionPlan: () => void;
@@ -37,6 +40,7 @@ export function LinghuiPageOverlays({
   activeDrawer,
   activeWorkspaceId,
   assetFilter,
+  productionAssetFilter,
   assetLoading,
   historyLoading,
   pendingExecutionPlan,
@@ -45,6 +49,7 @@ export function LinghuiPageOverlays({
   workspaceAssets,
   workspaceHistory,
   onAssetFilterChange,
+  onProductionAssetFilterChange,
   onCancelExecutionPlan,
   onCloseDrawer,
   onConfirmExecutionPlan,
@@ -61,6 +66,7 @@ export function LinghuiPageOverlays({
       <LinghuiLibraryDrawer
         activeDrawer={activeDrawer}
         assetFilter={assetFilter}
+        productionAssetFilter={productionAssetFilter}
         workflowLoading={workflowLoading}
         assetLoading={assetLoading}
         historyLoading={historyLoading}
@@ -69,6 +75,7 @@ export function LinghuiPageOverlays({
         workspaceHistory={workspaceHistory}
         onClose={onCloseDrawer}
         onAssetFilterChange={onAssetFilterChange}
+        onProductionAssetFilterChange={onProductionAssetFilterChange}
         onRefreshWorkflows={() => {
           void onRefreshWorkflows(workspaceId);
         }}

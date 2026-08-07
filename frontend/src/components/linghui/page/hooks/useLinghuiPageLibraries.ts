@@ -11,6 +11,7 @@ import {
 } from '../../../../store/linghuiStorage';
 import type { LinghuiCanvasHandle } from '../../canvas/components/LinghuiCanvas';
 import type { LinghuiAssetFilter, LinghuiLibraryDrawerKey } from '../../library/components/LinghuiLibraryDrawer';
+import type { LinghuiProductionAssetFilter } from '../../library/state/linghuiProductionAssetRecords';
 
 interface UseLinghuiPageLibrariesParams {
   activeDrawer: LinghuiLibraryDrawerKey | null;
@@ -26,6 +27,7 @@ export function useLinghuiPageLibraries({
   message,
 }: UseLinghuiPageLibrariesParams) {
   const [assetFilter, setAssetFilter] = useState<LinghuiAssetFilter>('all');
+  const [productionAssetFilter, setProductionAssetFilter] = useState<LinghuiProductionAssetFilter>('all');
   const [assetLoading, setAssetLoading] = useState(false);
   const [workspaceAssets, setWorkspaceAssets] = useState<LinghuiWorkspaceAssetRecord[]>([]);
   const [workflowLoading, setWorkflowLoading] = useState(false);
@@ -129,11 +131,13 @@ export function useLinghuiPageLibraries({
   return {
     assetFilter,
     assetLoading,
+    productionAssetFilter,
     historyLoading,
     loadAssetLibrary,
     loadHistoryLibrary,
     loadWorkflowLibrary,
     setAssetFilter,
+    setProductionAssetFilter,
     workspaceAssets,
     workspaceHistory,
     workflowLoading,

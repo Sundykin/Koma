@@ -6,6 +6,8 @@ import type { ModelConfig } from '../../../../types';
 import type {
   LinghuiNodeData,
   LinghuiNodeRunState,
+  LinghuiProductionAsset,
+  LinghuiProductionStage,
   LinghuiScriptNodeMode,
   LinghuiScriptNodeProperties,
   LinghuiStoryboardFrame,
@@ -25,6 +27,12 @@ import {
 } from '../state/linghuiScriptPromptPresets';
 import { useLinghuiActionLock } from '../hooks/useLinghuiActionLock';
 import { ScriptShotCards, ScriptShotTable } from './ScriptShotViews';
+import { ScriptProductionWorkbench } from './ScriptProductionWorkbench';
+import { useLinghuiProductionAssetSync } from '../hooks/useLinghuiProductionAssetSync';
+import {
+  buildLinghuiProductionAssetFrames,
+  extractLinghuiProductionAssets,
+} from '../state/linghuiProductionAssets';
 import { toFileSystemDisplayUrl } from '../../../../services/fileSystemPort';
 
 interface ProviderOption {
@@ -39,6 +47,8 @@ interface ScriptNodeEditorProps {
   nodeData: LinghuiNodeData;
   nodeRun?: LinghuiNodeRunState;
   promptReferences?: LinghuiPromptReferenceItem[];
+  workspaceId?: string;
+  onAssetLibraryMutate?: () => void;
   onRun: () => void;
   onDeriveShots: (shots: LinghuiStoryboardFrame[]) => void;
   onGenerateImages: (shots: LinghuiStoryboardFrame[]) => void;
@@ -55,6 +65,8 @@ export const ScriptNodeEditor: React.FC<ScriptNodeEditorProps> = ({
   nodeData,
   nodeRun,
   promptReferences = [],
+  workspaceId,
+  onAssetLibraryMutate,
   onRun,
   onDeriveShots,
   onGenerateImages,
@@ -68,6 +80,14 @@ export const ScriptNodeEditor: React.FC<ScriptNodeEditorProps> = ({
   const systemPrompt = String(props.systemPrompt ?? '');
   const llmSelection = String(props.llmSelection ?? '');
   const viewMode = props.viewMode === 'table' ? 'table' : 'cards';
+  const productionAssets = Array.isArray(props.productionAssets) ? props.productionAssets : [];
+  const productionAssetSync = useLinghuiProductionAssetSync({
+    workspaceId,
+    nodeId,
+    nodeType: 'linghui/script',
+    assets: productionAssets,
+    onAssetLibraryMutate,
+  });
   const [providers, setProviders] = useState<ProviderOption[]>([]);
   const [selectedShotIds, setSelectedShotIds] = useState<string[]>([]);
   const [immersiveOpen, setImmersiveOpen] = useState(false);
@@ -108,6 +128,8 @@ export const ScriptNodeEditor: React.FC<ScriptNodeEditorProps> = ({
       source: 'plain' as const,
     };
   }, [content, mode, nodeRun]);
+  const productionStage: LinghuiProductionStage = props.productionStage
+    ?? (previewState.shots.length > 0 ? 'storyboard' : 'script');
 
   useEffect(() => {
     const availableIds = new Set(previewState.shots.map(shot => shot.id));
@@ -129,6 +151,38 @@ export const ScriptNodeEditor: React.FC<ScriptNodeEditorProps> = ({
       properties: { ...prev.properties, [key]: value },
     }));
   }, [nodeId, updateNodeData]);
+
+  const updateProductionProps = useCallback((patch: {
+    productionStage?: LinghuiProductionStage;
+    productionAssets?: LinghuiProductionAsset[];
+    focusedProductionAssetId?: string;
+    acknowledgedProductionConsistencyIssueIds?: string[];
+  }) => {
+    updateNodeData(nodeId, prev => ({
+      ...prev,
+      properties: { ...prev.properties, ...patch },
+    }), { markStale: false });
+  }, [nodeId, updateNodeData]);
+
+  useEffect(() => {
+    if (
+      mode !== 'generate'
+      || nodeRun?.status !== 'succeeded'
+      || previewState.shots.length === 0
+      || productionAssets.length > 0
+      || productionStage !== 'script'
+    ) return;
+    updateProductionProps({
+      productionStage: 'assets',
+      productionAssets: extractLinghuiProductionAssets(previewState.shots),
+    });
+  }, [mode, nodeRun?.status, previewState.shots, productionAssets.length, productionStage, updateProductionProps]);
+
+  const handleRefreshProductionAssets = useCallback(() => {
+    updateProductionProps({
+      productionAssets: extractLinghuiProductionAssets(previewState.shots, productionAssets),
+    });
+  }, [previewState.shots, productionAssets, updateProductionProps]);
 
   const handleRun = useCallback(() => {
     runWithActionLock(onRun);
@@ -159,9 +213,23 @@ export const ScriptNodeEditor: React.FC<ScriptNodeEditorProps> = ({
     runGenerateImagesWithLock(() => onGenerateImages(shots));
   }, [onGenerateImages, runGenerateImagesWithLock]);
 
+  const handleGenerateProductionAssets = useCallback((assets: LinghuiProductionAsset[]) => {
+    const frames = buildLinghuiProductionAssetFrames(assets);
+    if (!frames.length) return;
+    handleGenerateImages(frames);
+    updateProductionProps({ productionStage: 'storyboard' });
+  }, [handleGenerateImages, updateProductionProps]);
+
   const handleGenerateVideos = useCallback((shots: LinghuiStoryboardFrame[]) => {
     runGenerateVideosWithLock(() => onGenerateVideos(shots));
   }, [onGenerateVideos, runGenerateVideosWithLock]);
+
+  const handleOpenProductionAsset = useCallback((assetId: string) => {
+    updateProductionProps({
+      productionStage: 'assets',
+      focusedProductionAssetId: assetId,
+    });
+  }, [updateProductionProps]);
 
   const handleToggleShot = useCallback((shotId: string, checked: boolean) => {
     setSelectedShotIds(prev => {
@@ -171,6 +239,13 @@ export const ScriptNodeEditor: React.FC<ScriptNodeEditorProps> = ({
       return prev.filter(id => id !== shotId);
     });
   }, []);
+
+  const handleSelectShotScope = useCallback((shotIds: string[]) => {
+    const requestedIds = new Set(shotIds);
+    setSelectedShotIds(previewState.shots
+      .filter(shot => requestedIds.has(shot.id))
+      .map(shot => shot.id));
+  }, [previewState.shots]);
 
   const handleChangeManualShot = useCallback((shotId: string, patch: Partial<LinghuiStoryboardFrame>) => {
     if (mode !== 'manual') return;
@@ -354,12 +429,16 @@ export const ScriptNodeEditor: React.FC<ScriptNodeEditorProps> = ({
             onToggleShot={handleToggleShot}
             editable={mode === 'manual'}
             onChangeShot={handleChangeManualShot}
+            productionAssets={productionAssets}
+            onOpenProductionAsset={handleOpenProductionAsset}
           />
         ) : (
           <ScriptShotCards
             shots={previewState.shots}
             selectedShotIds={selectedShotIds}
             onToggleShot={handleToggleShot}
+            productionAssets={productionAssets}
+            onOpenProductionAsset={handleOpenProductionAsset}
           />
         )}
         {selectedCount > 0 ? (
@@ -410,6 +489,32 @@ export const ScriptNodeEditor: React.FC<ScriptNodeEditorProps> = ({
           </div>
         </div> : null}
 
+        <ScriptProductionWorkbench
+          stage={productionStage}
+          shotCount={previewState.shots.length}
+          shots={previewState.shots}
+          assets={productionAssets}
+          selectedShotIds={selectedShotIds}
+          acknowledgedConsistencyIssueIds={props.acknowledgedProductionConsistencyIssueIds}
+          focusedAssetId={props.focusedProductionAssetId}
+          syncStatus={productionAssetSync.status}
+          syncError={productionAssetSync.error}
+          onRetrySync={() => {
+            void productionAssetSync.retry();
+          }}
+          onStageChange={nextStage => updateProductionProps({ productionStage: nextStage })}
+          onAssetsChange={nextAssets => updateProductionProps({ productionAssets: nextAssets })}
+          onRefreshAssets={handleRefreshProductionAssets}
+          onGenerateAssets={handleGenerateProductionAssets}
+          onFocusAsset={handleOpenProductionAsset}
+          onSelectShots={handleSelectShotScope}
+          onAcknowledgedConsistencyIssueIdsChange={issueIds => updateProductionProps({
+            acknowledgedProductionConsistencyIssueIds: issueIds,
+          })}
+        />
+
+        {productionStage === 'script' ? (
+          <>
         <div className="linghuiEditorRefModes">
           {SCRIPT_MODES.map(item => (
             <button
@@ -571,10 +676,14 @@ export const ScriptNodeEditor: React.FC<ScriptNodeEditorProps> = ({
           </div>
           </>
         ) : null}
+          </>
+        ) : null}
 
-        <div className="linghuiScriptPanel">
-          {renderShotView()}
-        </div>
+        {productionStage === 'storyboard' ? (
+          <div className="linghuiScriptPanel">
+            {renderShotView()}
+          </div>
+        ) : null}
       </div>
 
       <Modal
