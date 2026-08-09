@@ -2,9 +2,9 @@
  * 分镜视频生成工作流
  * 纯 ITV 调用：使用已有参考图片（可选）生成视频
  */
-import { runWithConcurrency } from '../utils/concurrency';
 import {
   getMediaAssetDisplaySource,
+  getMediaAssetSource,
   getShotScriptText,
   isImageToVideoRequest,
   isReferenceToVideoRequest,
@@ -14,8 +14,17 @@ import {
   type Scene,
   type Shot,
   type ShotVersion,
+  type StoredMediaAsset,
 } from '../types';
-import { saveShotVersion, loadShotMeta, loadCharacters, loadProps, loadScenes, loadEpisodeShots } from '../store/projectStore';
+import {
+  saveShotVersion,
+  loadShotMeta,
+  loadCharacters,
+  loadProps,
+  loadScenes,
+  loadEpisodeShots,
+  updateShot,
+} from '../store/projectStore';
 import { createLogger } from '../store/logger';
 import { logITVCall } from '../store/aiCallLogger';
 import {
@@ -41,6 +50,8 @@ import { getModelMaxReferenceImages } from '../providers/itv/modelCatalog';
 import type { StyleSnapshotLike } from '../utils/promptNormalize';
 import { normalizeVideoDurationSeconds } from '../utils/videoDuration';
 import { clampDurationToSpec, getDurationSpecForITVSelection } from '../providers/itv/durationSpec';
+import { ffmpegManager } from '../services/ffmpegManager';
+import { normalizeShotContinuity, usesPreviousTailFrame } from '../services/shotContinuity';
 
 const logger = createLogger('ShotRender');
 
@@ -96,6 +107,140 @@ interface BatchRenderResult {
   results: ShotRenderResult[];
 }
 
+let tailReferencePersistenceQueue: Promise<void> = Promise.resolve();
+
+function selectedShotVideo(shot: Shot): StoredMediaAsset | undefined {
+  const videos = shot.media?.videos || [];
+  if (!videos.length) return undefined;
+  const index = shot.media?.currentVideoIndex ?? videos.length - 1;
+  const selected = videos[index] || videos[videos.length - 1];
+  return selected?.kind === 'video' && getMediaAssetSource(selected) ? selected : undefined;
+}
+
+function buildSourceVideoKey(shotId: string, asset: StoredMediaAsset, version?: number): string {
+  return [
+    shotId,
+    version != null ? `v${version}` : undefined,
+    asset.providerTaskId,
+    asset.createdAt,
+    asset.localPath,
+    asset.remoteUrl,
+  ].filter(Boolean).join(':');
+}
+
+async function resolvePredecessorVideo(
+  projectId: string,
+  predecessor: Shot,
+): Promise<{ asset: StoredMediaAsset; sourceVideoKey: string }> {
+  const meta = await loadShotMeta(projectId, predecessor.id);
+  const version = meta?.versions?.find(candidate => candidate.version === meta.currentVersion)
+    || meta?.versions?.at(-1);
+  const versionVideo = version?.media?.video;
+  if (versionVideo?.kind === 'video' && getMediaAssetSource(versionVideo)) {
+    return {
+      asset: versionVideo,
+      sourceVideoKey: buildSourceVideoKey(predecessor.id, versionVideo, version.version),
+    };
+  }
+  const inShot = selectedShotVideo(predecessor);
+  if (inShot) {
+    return {
+      asset: inShot,
+      sourceVideoKey: buildSourceVideoKey(predecessor.id, inShot, predecessor.currentVersion),
+    };
+  }
+  throw new Error(`上一镜 ${predecessor.id} 没有已完成的真实视频，请先生成上一镜视频`);
+}
+
+async function persistTailReference(
+  projectId: string,
+  episodeId: string | undefined,
+  shot: Shot,
+): Promise<void> {
+  if (!episodeId || !shot.videoReference) return;
+  const write = tailReferencePersistenceQueue
+    .catch(() => undefined)
+    .then(async () => {
+      await updateShot(projectId, episodeId, shot.id, { videoReference: shot.videoReference });
+    });
+  tailReferencePersistenceQueue = write;
+  await write;
+}
+
+export async function resolveShotTailFrameReference(params: {
+  projectId: string;
+  episodeId?: string;
+  shot: Shot;
+  allShots?: Shot[];
+  forceRefresh?: boolean;
+}): Promise<Shot> {
+  const sequence = (params.allShots?.length ? params.allShots : [params.shot])
+    .map(candidate => candidate.id === params.shot.id ? params.shot : candidate);
+  const normalizedSequence = normalizeShotContinuity(sequence);
+  const currentIndex = normalizedSequence.findIndex(candidate => candidate.id === params.shot.id);
+  const current = currentIndex >= 0 ? normalizedSequence[currentIndex] : params.shot;
+  if (!usesPreviousTailFrame(current)) return current;
+
+  const predecessor = currentIndex > 0
+    ? normalizedSequence[currentIndex - 1]
+    : normalizedSequence.find(candidate => candidate.id === current.videoReference?.sourceShotId);
+  if (!predecessor) {
+    throw new Error('当前分镜需要上一镜尾帧，但项目分镜顺序中找不到上一镜');
+  }
+
+  const reference = current.videoReference!;
+  // 手动帧不随上一视频自动变化；只有用户明确“重新截取”才刷新。
+  if (reference.mode === 'manual' && reference.referenceFrame && !params.forceRefresh) {
+    return current;
+  }
+
+  const { asset: predecessorVideo, sourceVideoKey } = await resolvePredecessorVideo(
+    params.projectId,
+    predecessor,
+  );
+  if (reference.mode === 'auto'
+    && reference.referenceFrame
+    && reference.sourceVideoKey === sourceVideoKey
+    && !params.forceRefresh) {
+    return current;
+  }
+
+  const tailPath = await ffmpegManager.getTailFrame(predecessorVideo, current.id, {
+    sourceVideoKey: params.forceRefresh ? `${sourceVideoKey}:refresh:${Date.now()}` : sourceVideoKey,
+  });
+  const resolved: Shot = {
+    ...current,
+    videoReference: {
+      ...reference,
+      sourceShotId: predecessor.id,
+      referenceFrame: {
+        kind: 'image',
+        localPath: tailPath,
+        mimeType: 'image/jpeg',
+        createdAt: Date.now(),
+        metadata: {
+          previousVideoTail: true,
+          sourceShotId: predecessor.id,
+          sourceVideoKey,
+        },
+      },
+      capturedAt: Date.now(),
+      sourceVideoKey,
+    },
+  };
+  await persistTailReference(params.projectId, params.episodeId, resolved);
+  return resolved;
+}
+
+function addTailFrameContinuityDirective(prompt: string, shot: Shot): string {
+  if (!shot.videoReference?.usePreviousTailFrame || !shot.videoReference.referenceFrame) return prompt;
+  if (prompt.includes('@previous_tail_frame')) return prompt;
+  return [
+    '连续性主参考：@previous_tail_frame 是上一镜真实视频尾帧；从其中的人物站位、朝向、动作末态、视线、场景与光影自然继续，不要重置为新的起始状态。',
+    prompt,
+  ].join('\n');
+}
+
 /**
  * 分镜视频生成工作流
  * 只调用 ITV，不生成图片
@@ -105,13 +250,37 @@ export async function shotRenderWorkflow(
   onProgress: (progress: number, step?: string) => void
 ): Promise<ShotRenderResult> {
   const { projectId, episodeId, shot, settings, mediaSelections } = params;
-  const normalizedShot = normalizeShotMediaState(shot);
+  let normalizedShot = normalizeShotMediaState(shot);
+  const episodeShots = params.allShots
+    ?? (episodeId ? await loadEpisodeShots(projectId, episodeId).catch(() => undefined) : undefined);
+
+  try {
+    normalizedShot = await resolveShotTailFrameReference({
+      projectId,
+      episodeId,
+      shot: normalizedShot,
+      allShots: episodeShots,
+    });
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    logger.error('分镜连续性尾帧准备失败', { shotId: normalizedShot.id, error });
+    return {
+      shotId: normalizedShot.id,
+      version: {} as ShotVersion,
+      success: false,
+      error,
+    };
+  }
+
   // videoPrompt 是 LLM 推理出的视频版"优化提示词"，合并 / 拆分 / 编辑剧情后会过期。
   // 这里和 shotImageWorkflow 对齐：缓存为空时回落到 scriptLines（"剧情"原文），避免出现
   // "剧情已合并 6 个分镜、生成视频却只覆盖最后一段"的情况。
   const cachedVideoPrompt = (normalizedShot.videoPrompt || '').trim();
   const fallbackScriptText = getShotScriptText(normalizedShot).trim();
-  const sourceVideoPrompt = cachedVideoPrompt || fallbackScriptText;
+  const sourceVideoPrompt = addTailFrameContinuityDirective(
+    cachedVideoPrompt || fallbackScriptText,
+    normalizedShot,
+  );
   if (!sourceVideoPrompt) {
     logger.warn('分镜视频生成被阻止：视频提示词与剧情均为空', { shotId: normalizedShot.id });
     return {
@@ -127,9 +296,6 @@ export async function shotRenderWorkflow(
       scriptLength: fallbackScriptText.length,
     });
   }
-  const episodeShots = params.allShots
-    ?? (episodeId ? await loadEpisodeShots(projectId, episodeId).catch(() => undefined) : undefined);
-
   logger.info(`开始生成分镜视频 ${normalizedShot.id}`);
 
   let itvProviderName = 'unknown';
@@ -427,69 +593,139 @@ export async function batchRenderShots(
 
   logger.info(`开始批量生成 ${shots.length} 个分镜视频`);
 
-  // 并发提交（受 concurrency 控制）：准备阶段（提示词编译/上传/提交）可重叠，
-  // GPU 渲染阶段由 ComfyUI 队列自动串行 —— 长批量显著缩短总等待。
-  // results 保持输入顺序（runWithConcurrency 按序返回）。
-  // completed 必须在并发回调前声明（回调里引用它，避免 TDZ）
-  let completed = 0;
-  const results = (await runWithConcurrency(
-    shots.map((shot) => async () => {
-      let result: ShotRenderResult;
-      try {
-        result = await shotRenderWorkflow(
-          { projectId, episodeId, shot, settings, aspectRatio, mediaSelections, theme, stylePrompt, styleSnapshot, allShots, project },
-          (progress, step) => {
-            // completed 在单线程 JS 中按序递增；onProgress 只做展示，无需精确同步
-            const overall = Math.round(((completed + progress / 100) / shots.length) * 100);
-            onProgress(overall, { shotId: shot.id, progress, step });
-          }
-        );
-      } catch (err) {
-        const error = err instanceof Error ? err.message : String(err);
-        logger.error('批量分镜视频单项异常，继续后续分镜', {
-          shotId: shot.id,
-          error,
-        });
-        result = {
-          shotId: shot.id,
-          version: {} as ShotVersion,
-          success: false,
-          error,
-        };
-      }
-      return result;
-    }),
-    Math.max(1, Math.min(_concurrency, shots.length)),
-  )).map((settled, index) => {
-    const shotId = shots[index]?.id ?? '';
-    if (settled.status === 'rejected') {
-      return {
-        shotId,
-        version: {} as ShotVersion,
-        success: false,
-        error: settled.reason instanceof Error ? settled.reason.message : String(settled.reason),
-      };
-    }
-    return settled.value;
+  // 先按项目最终顺序规范化一次，确保旧 Shot 也能推导出连续性依赖；传入的 shot
+  // 可能是 UI 刚编辑过的版本，优先覆盖 allShots 中同 ID 的记录。
+  const baseSequence = allShots?.length ? allShots : shots;
+  const mergedSequence = baseSequence.map(candidate => {
+    const incoming = shots.find(shot => shot.id === candidate.id);
+    return incoming ? { ...candidate, ...incoming } : candidate;
   });
+  const normalizedSequence = normalizeShotContinuity(mergedSequence);
+  const sequenceIndex = new Map(normalizedSequence.map((shot, index) => [shot.id, index]));
+  const targetIds = new Set(shots.map(shot => shot.id));
+  const predecessorByTarget = new Map<string, string | undefined>();
+  for (const shot of shots) {
+    const index = sequenceIndex.get(shot.id);
+    const normalized = index == null ? shot : normalizedSequence[index];
+    const predecessor = index != null && index > 0
+      ? normalizedSequence[index - 1]
+      : normalized.videoReference?.sourceShotId
+        ? normalizedSequence.find(candidate => candidate.id === normalized.videoReference?.sourceShotId)
+        : undefined;
+    predecessorByTarget.set(
+      shot.id,
+      usesPreviousTailFrame(normalized) ? predecessor?.id : undefined,
+    );
+  }
 
-  // 逐项完成回调（顺序执行，避免 onShotComplete 里的 setState 竞态）
-  for (const result of results) {
-    completed++;
-    const overall = Math.round((completed / shots.length) * 100);
-    onProgress(overall, { shotId: result.shotId, progress: 100, step: result.success ? '完成' : '失败' });
+  const maxConcurrency = Math.max(1, Math.min(_concurrency, Math.max(shots.length, 1)));
+  let running = 0;
+  const waiters: Array<() => void> = [];
+  const acquire = async (): Promise<void> => {
+    if (running < maxConcurrency) {
+      running += 1;
+      return;
+    }
+    await new Promise<void>(resolve => waiters.push(resolve));
+    running += 1;
+  };
+  const release = (): void => {
+    running -= 1;
+    waiters.shift()?.();
+  };
+
+  type Deferred = { promise: Promise<ShotRenderResult>; resolve: (value: ShotRenderResult) => void };
+  const deferredById = new Map<string, Deferred>();
+  for (const shot of shots) {
+    let resolve!: (value: ShotRenderResult) => void;
+    const promise = new Promise<ShotRenderResult>(nextResolve => { resolve = nextResolve; });
+    deferredById.set(shot.id, { promise, resolve });
+  }
+
+  let completed = 0;
+  const finalizeBatchResult = async (result: ShotRenderResult): Promise<ShotRenderResult> => {
+    completed += 1;
+    onProgress(
+      Math.round((completed / Math.max(shots.length, 1)) * 100),
+      { shotId: result.shotId, progress: 100, step: result.success ? '完成' : '失败' },
+    );
     if (onShotComplete) {
       try {
         await onShotComplete(result);
       } catch (err) {
-        logger.warn('批量分镜视频单项完成回调失败', {
+        logger.warn('批量分镜单项完成回调失败', {
           shotId: result.shotId,
           success: result.success,
           error: err instanceof Error ? err.message : String(err),
         });
       }
     }
-  }
+    return result;
+  };
+
+  const runOne = async (shot: Shot): Promise<ShotRenderResult> => {
+    const predecessorId = predecessorByTarget.get(shot.id);
+    if (predecessorId && targetIds.has(predecessorId)) {
+      const predecessorResult = await deferredById.get(predecessorId)!.promise;
+      if (!predecessorResult.success) {
+        return finalizeBatchResult({
+          shotId: shot.id,
+          version: {} as ShotVersion,
+          success: false,
+          error: `依赖分镜 ${predecessorId} 失败，未生成上一镜尾帧：${predecessorResult.error || '未知错误'}`,
+        });
+      }
+    }
+
+    await acquire();
+    let result: ShotRenderResult;
+    try {
+      result = await shotRenderWorkflow(
+        {
+          projectId,
+          episodeId,
+          shot,
+          settings,
+          aspectRatio,
+          mediaSelections,
+          theme,
+          stylePrompt,
+          styleSnapshot,
+          allShots: normalizedSequence,
+          project,
+        },
+        (progress, step) => {
+          const overall = Math.round(((completed + progress / 100) / Math.max(shots.length, 1)) * 100);
+          onProgress(overall, { shotId: shot.id, progress, step });
+        },
+      );
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err);
+      logger.error('批量分镜视频单项异常，继续后续分镜', { shotId: shot.id, error });
+      result = { shotId: shot.id, version: {} as ShotVersion, success: false, error };
+    } finally {
+      release();
+    }
+
+    return finalizeBatchResult(result);
+  };
+
+  // 所有任务同时注册，依赖任务通过 deferred 等待前置任务完成；独立分支继续竞争并发槽位。
+  const resultPromises = shots.map(shot => runOne(shot).then(result => {
+    deferredById.get(shot.id)!.resolve(result);
+    return result;
+  }).catch(error => {
+    const result: ShotRenderResult = {
+      shotId: shot.id,
+      version: {} as ShotVersion,
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+    deferredById.get(shot.id)!.resolve(result);
+    return result;
+  }));
+
+  const results = await Promise.all(resultPromises);
 
   const successCount = results.filter((r) => r.success).length;
   const failedCount = results.filter((r) => !r.success).length;

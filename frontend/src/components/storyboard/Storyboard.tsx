@@ -549,7 +549,11 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     handleBulkVideoModeChange,
     handleBulkDurationChange,
     handleBulkCalibrateDurations,
+    handleVideoReferenceModeChange,
+    handleCapturePreviousTailFrame,
   } = useStoryboardShotMutations({
+    projectId,
+    episodeId,
     shots,
     shotsRef,
     shotMetas,
@@ -904,6 +908,8 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             onInsertBelow={handleInsertBelow}
             onShotImageModeChange={handleShotImageModeChange}
             onStoryboardInheritPreviousChange={handleStoryboardInheritPreviousChange}
+            onVideoReferenceModeChange={handleVideoReferenceModeChange}
+            onCapturePreviousTailFrame={handleCapturePreviousTailFrame}
             onShotVideoModeChange={handleShotVideoModeChange}
             onBulkVideoModeChange={handleBulkVideoModeChange}
             onBulkImageModeChange={handleBulkImageModeChange}

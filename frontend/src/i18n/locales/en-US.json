@@ -106,7 +106,7 @@
   },
   "editor": {
     "title": "Editor",
-    "stepScript": "Script",
+    "stepScript": "Project",
     "stepAssets": "Assets",
     "stepStoryboard": "Storyboard",
     "stepVideo": "Video",

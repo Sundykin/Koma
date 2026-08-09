@@ -2706,3 +2706,21 @@
 
 - **状态：in_progress**
 - 优先盘点现有生产资产记录的名称、描述、别名和镜头引用，再实现低误报重复候选与用户确认合并；不自动覆盖锁定资产。
+
+## 2026-08-08 Project Continuous Production Actions
+
+### Phase 1: OpenSpec & Existing Flow Audit
+
+- **状态：complete**
+- 已确认当前分支为 `main`，工作区是用户现有未提交项目模块变更；`stash@{0}` 为隔离的 Linghui 误改，未恢复、未删除。
+- 已读取 `openspec-apply-change` 与 `pi-planning-with-files` 技能说明，并运行会话接续检查。
+- `openspec status --change add-project-continuous-production-actions --json`：spec-driven，全部实施文档齐备。
+- `openspec validate add-project-continuous-production-actions --strict`：passed。
+- `openspec instructions apply --change add-project-continuous-production-actions --json`：0/12，ready。
+- 已审计 `AssetManagerPanel` 内嵌批量逻辑、三个资产生成 workflow、`runWithTask` / task record / hooks、项目 readiness 与现有组件测试。
+- 共享工作流将使用 episode 父任务、进程内提交锁和持久化活动记录三层去重；进度/成功/失败统计写入任务 metadata 供项目页重挂载恢复。
+
+### Phase 2: Shared Asset Workflow
+
+- **状态：in_progress**
+- 下一步实现缺失项收集与共享 batch runner，再让资产面板切换调用。

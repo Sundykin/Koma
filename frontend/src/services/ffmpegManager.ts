@@ -4,6 +4,7 @@
  */
 import { isElectron, electronService } from './electronService';
 import { createLogger } from '../store/logger';
+import type { MediaAssetSource } from '../types';
 
 const logger = createLogger('FFmpegManager');
 
@@ -164,6 +165,7 @@ const getFFmpegAPI = (): any => {
 class FFmpegManager {
   private frameCache: Map<string, string[]> = new Map();
   private posterFrameCache: Map<string, string> = new Map();
+  private tailFrameCache: Map<string, string> = new Map();
   private waveformCache: Map<string, string> = new Map();
   private mediaInfoCache: Map<string, MediaInfo> = new Map();
   private cacheDir: string = '';
@@ -206,7 +208,8 @@ class FFmpegManager {
    * 如果已经是本地路径则直接返回。
    */
   async #materializeInput(input: string): Promise<string | null> {
-    if (!/^https?:\/\//i.test(input)) {
+    if (!input) return null;
+    if (!/^https?:\/\//i.test(input) && !/^data:/i.test(input) && !/^blob:/i.test(input)) {
       return input;
     }
     if (!this.cacheDir) {
@@ -214,7 +217,8 @@ class FFmpegManager {
       return null;
     }
     const hash = Math.abs(hashCode(input)).toString(36);
-    const ext = (input.split('.').pop()?.split('?')[0] || 'mp4').substring(0, 8);
+    const dataMime = input.match(/^data:([^;,]+)/i)?.[1];
+    const ext = (dataMime?.split('/')[1] || input.split('.').pop()?.split('?')[0] || 'mp4').substring(0, 8);
     const downloadDir = `${this.cacheDir}/_materialized`;
     const localPath = `${downloadDir}/${hash}.${ext}`;
     const alreadyExists = await electronService.fs.exists(localPath);
@@ -223,8 +227,24 @@ class FFmpegManager {
     }
     try {
       await electronService.fs.mkdir(downloadDir);
-      logger.info('[materializeInput] 下载远程 URL 到本地', { input: input.substring(0, 80), localPath });
-      await electronService.fs.downloadFile(input, localPath);
+      if (/^data:/i.test(input)) {
+        const match = input.match(/^data:[^;,]+;base64,(.+)$/i);
+        if (!match) throw new Error('不支持的 data URL：需要 base64 编码');
+        await electronService.fs.writeFile(localPath, match[1], true);
+      } else if (/^blob:/i.test(input)) {
+        const response = await fetch(input);
+        if (!response.ok) throw new Error(`读取 blob 视频失败（${response.status}）`);
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        let binary = '';
+        const chunkSize = 0x8000;
+        for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+          binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+        }
+        await electronService.fs.writeFile(localPath, btoa(binary), true);
+      } else {
+        logger.info('[materializeInput] 下载远程 URL 到本地', { input: input.substring(0, 80), localPath });
+        await electronService.fs.downloadFile(input, localPath);
+      }
       return localPath;
     } catch (err) {
       logger.error('[materializeInput] 下载远程 URL 失败', {
@@ -379,6 +399,59 @@ class FFmpegManager {
       this.posterFrameCache.set(cacheKey, firstFrame);
     }
     return firstFrame;
+  }
+
+  /**
+   * 提取真实视频尾帧（不是 poster/首帧）。在片尾前 50–120ms 的安全窗口内取单帧，
+   * 并按来源版本键缓存，供项目相邻 Shot 的视频连续性引用使用。
+   */
+  async getTailFrame(
+    source: MediaAssetSource,
+    resourceId: string,
+    options?: { sourceVideoKey?: string; width?: number; tailOffsetMs?: number },
+  ): Promise<string> {
+    const rawSource = typeof source === 'string'
+      ? source
+      : (source.localPath || source.remoteUrl || '');
+    if (!rawSource) throw new Error('上一镜没有可读取的视频媒体');
+
+    await this.init();
+    const inputPath = await this.#materializeInput(rawSource);
+    if (!inputPath) throw new Error('上一镜视频无法物化为本地文件');
+
+    const width = options?.width ?? 320;
+    const sourceKey = options?.sourceVideoKey || `${inputPath}:${sourceVideoFingerprint(source)}`;
+    const cacheKey = `${resourceId}:${sourceKey}:${width}:${options?.tailOffsetMs ?? 80}`;
+    const cached = this.tailFrameCache.get(cacheKey);
+    if (cached) return cached;
+
+    const api = getFFmpegAPI();
+    if (!api || !(await this.isAvailable())) throw new Error('FFmpeg 不可用，无法截取上一镜尾帧');
+    const info = await this.getMediaInfo(inputPath);
+    if (!info.hasVideo || !Number.isFinite(info.duration) || info.duration <= 0) {
+      throw new Error('上一镜没有已完成的真实视频，无法截取尾帧');
+    }
+
+    const durationSec = info.duration / 1000;
+    const offsetMs = Math.max(50, Math.min(120, options?.tailOffsetMs ?? 80));
+    const windowSec = Math.min(durationSec, offsetMs / 1000);
+    const startTime = Math.max(0, durationSec - windowSec);
+    const rootDir = await api.getCacheDir('video-tail-frames');
+    const outputDir = `${rootDir}/${Math.abs(hashCode(cacheKey)).toString(36)}`;
+    await api.ensureDir(outputDir);
+    const frames = await api.extractFrames({
+      input: inputPath,
+      outputDir,
+      fps: 1,
+      startTime,
+      endTime: durationSec,
+      width,
+      quality: 2,
+    });
+    const tailFrame = Array.isArray(frames) && frames.length > 0 ? frames[frames.length - 1] : undefined;
+    if (!tailFrame) throw new Error('FFmpeg 未能从上一镜视频提取真实尾帧');
+    this.tailFrameCache.set(cacheKey, tailFrame);
+    return tailFrame;
   }
 
   /**
@@ -553,6 +626,7 @@ class FFmpegManager {
    */
   async clearAllCache(): Promise<void> {
     this.frameCache.clear();
+    this.tailFrameCache.clear();
     this.waveformCache.clear();
     this.mediaInfoCache.clear();
 
@@ -737,6 +811,13 @@ class FFmpegManager {
       await api.cleanupTemp(tempDir);
     }
   }
+}
+
+function sourceVideoFingerprint(source: MediaAssetSource): string {
+  if (typeof source === 'string') return source;
+  return [source.providerTaskId, source.createdAt, source.durationMs, source.remoteUrl, source.localPath]
+    .filter(value => value !== undefined && value !== '')
+    .join(':');
 }
 
 // 单例

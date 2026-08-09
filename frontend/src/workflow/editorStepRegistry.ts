@@ -82,6 +82,10 @@ export interface EditorStepDefinition {
   labelKey: string;
   /** "下一步"按钮配置；最末步骤可省略 */
   nextAction?: EditorStepNextAction;
+  /** 是否显示在主步骤导航与默认步骤顺序中；隐藏步骤仍可通过 id 直接打开。 */
+  visibleInNavigator?: boolean;
+  /** 隐藏步骤在导航上归属的可见步骤，用于兼容旧路由时保持正确高亮。 */
+  navigatorStepId?: string;
   /**
    * 步骤主视图组件。由 components/editor/steps/index.ts 通过
    * setStepComponent(id, Component) 在内置元数据基础上 patch 注入。
@@ -108,8 +112,12 @@ class EditorStepRegistryImpl {
     return Array.from(this.steps.values()).sort((a, b) => a.order - b.order);
   }
 
+  visibleList(): EditorStepDefinition[] {
+    return this.list().filter((step) => step.visibleInNavigator !== false);
+  }
+
   ids(): string[] {
-    return this.list().map((step) => step.id);
+    return this.visibleList().map((step) => step.id);
   }
 
   has(id: string): boolean {
@@ -124,7 +132,7 @@ export function registerEditorStep(def: EditorStepDefinition): void {
 }
 
 export function listEditorSteps(): EditorStepDefinition[] {
-  return editorStepRegistry.list();
+  return editorStepRegistry.visibleList();
 }
 
 export function listEditorStepIds(): string[] {
@@ -133,6 +141,11 @@ export function listEditorStepIds(): string[] {
 
 export function getEditorStep(id: string): EditorStepDefinition | undefined {
   return editorStepRegistry.get(id);
+}
+
+/** 把兼容步骤映射到主导航节点；未知 id 原样返回，由调用方处理 fallback。 */
+export function resolveEditorNavigatorStepId(id: string): string {
+  return editorStepRegistry.get(id)?.navigatorStepId || id;
 }
 
 /**
@@ -151,23 +164,26 @@ export function setStepComponent(
   def.Component = Component;
 }
 
-// ========== 内置四步注册 ==========
+// ========== 内置三步主流程 + 一个兼容步骤 ==========
 
-// 第一步：剧本（含写剧本 / AI 解析 / 推文文案 / 导入剧本）
+// 第一步：项目（剧本 + 资产生产工作台）
 registerEditorStep({
   id: 'script',
   order: 0,
   icon: FileText,
   labelKey: 'editor.stepScript',
-  nextAction: { targetStepId: 'assets', labelKey: 'editor.nextAssets' },
+  nextAction: { targetStepId: 'storyboard', labelKey: 'editor.nextStoryboard' },
 });
 
+// 旧的完整资产编辑器保留为项目步骤的按需子视图，不占用主导航节点。
 registerEditorStep({
   id: 'assets',
   order: 1,
   icon: Users,
   labelKey: 'editor.stepAssets',
   nextAction: { targetStepId: 'storyboard', labelKey: 'editor.nextStoryboard' },
+  visibleInNavigator: false,
+  navigatorStepId: 'script',
 });
 
 registerEditorStep({

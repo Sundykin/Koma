@@ -27,6 +27,7 @@ import type { VoiceResolveContext } from '../voiceLibrary/voiceResolver';
  *  - `@grid_anchor`   — 九宫格 3×3 锚点
  *  - `@storyboard_anchor` — 当前故事板整图
  *  - `@previous_storyboard_anchor` — 上一分镜故事板整图
+ *  - `@previous_tail_frame` — 上一分镜真实视频尾帧
  *  - `@char_<id>`     — 角色
  *  - `@scene_<id>`    — 场景
  *  - `@prop_<id>`     — 道具
@@ -58,7 +59,7 @@ export interface CompiledBundlePrompt {
   };
 }
 
-const MENTION_RE = /@(shot_anchor|grid_anchor|storyboard_anchor|previous_storyboard_anchor|char_[A-Za-z0-9_-]+|scene_[A-Za-z0-9_-]+|prop_[A-Za-z0-9_-]+|user_\d+)\b/g;
+const MENTION_RE = /@(shot_anchor|grid_anchor|storyboard_anchor|previous_storyboard_anchor|previous_tail_frame|char_[A-Za-z0-9_-]+|scene_[A-Za-z0-9_-]+|prop_[A-Za-z0-9_-]+|user_\d+)\b/g;
 const IMAGE_NUMBER_RE = /(?:@Image|@图片)\s*(\d+)/g;
 
 export function compileShotPromptToBundle(params: {

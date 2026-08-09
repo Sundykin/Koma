@@ -1598,3 +1598,19 @@ LibTV 节点类型中**灵绘未实现**：
 - 候选检测应先限制为同一 `kind`，再对名称和显式别名做 Unicode 规范化（大小写、空白、标点、常见称谓后缀）；描述相似只能作为低置信提示，不能自动合并。
 - 合并前必须展示两项资产的来源镜头、锁定状态、当前参考图和版本数；锁定项只能作为被保留的 canonical，不能被静默覆盖。
 - 旧镜头引用继续通过 alias→canonical 解析，合并后保留旧 ID 的 redirect，便于撤销或打开历史节点；普通图片资产、跨类型同名实体不进入候选。
+
+## 2026-08-08 Project Continuous Production Actions
+
+- 用户已纠正范围：目标是 Koma“项目”模块，不是 Linghui；Linghui 误改保存在 `stash@{0}`，必须保持隔离。
+- OpenSpec `add-project-continuous-production-actions` 已通过 strict validate；schema 为 `spec-driven`，初始进度 0/12，apply 状态 ready。
+- 现有上一轮已完成项目生产 readiness、项目/资产子视图与分镜尾帧连续性；本轮只在该基础上把缺失素材补全动作前移到项目页，并加显式跳过动作。
+- OpenSpec 要求新增共享 `projectAssetGenerationWorkflow`：两个入口复用同一项目风格/比例/模型/参考图与失败隔离语义；新任务按 episode 作用域，兼容旧 project 作用域活动任务。
+- readiness 的产品语义是主行动“补齐素材”与次行动“跳过素材，生成分镜”并存；缺图只保留为显式风险，不得成为分镜生成的隐藏硬门槛。
+- 任务记录是可恢复进度的权威来源；组件内 starting 状态只覆盖任务创建前的短窗口，任务完成/失败/取消边沿需要刷新资产、readiness 和资产概览。
+- 入口路径实际为 `frontend/src/components/asset/AssetManagerPanel.tsx`（不是 `components/assets`）；`ProjectOverview` 当前只投影 `script-analysis` 与 `shot-analysis` episode 任务，需扩展到 `asset-generation`。
+- `ProjectOverview` 已有 `loadProductionData()`、`assetOverviewRef` 和两组 `useTaskTransitions`，可作为资产任务完成/失败刷新接入点；当前 `handleReadinessAction` 仅处理剧本就绪、分析和生成分镜。
+- `AssetManagerPanel` 当前批量逻辑确实内嵌在组件：按可见列表缺图筛选，父级 `runWithTask`，并发 3、重试 2、参考图 best-effort 远程化、三个统一生成 workflow、进度/成功失败统计，最终重载资产。
+- readiness 当前缺图时返回 `open-assets`；需要改为 `generate-assets`，并新增独立 skip action，而不是让一个 `nextAction` 同时承担两种选择。
+- 单项生成 workflow 已支持 `disableTask: true`，所以共享批量父任务可继续避免子任务刷屏；成功结果由现有 workflow 的 owner binding 写回资产记录。
+- `runWithTask` 会把 `targetType` 写成任务记录的 `targetKind`；因此新父任务可直接使用 `targetType: 'episode'`。任务进度输入单位是 0–100，并由 runner 映射到 0–90，现有内嵌逻辑把 `acc/items.length` 当成百分比，实际进度偏低，抽取时应修为 `acc/items.length` 已按每项 0–100 汇总后的真实百分比。
+- 活动任务恢复可直接复用 `useTasks`/`useActiveTask` 的全局 task cache；任务 `payload` 保留 metadata，可用于从完成记录恢复成功/失败统计和兼容识别旧批量任务。

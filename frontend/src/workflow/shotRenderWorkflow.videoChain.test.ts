@@ -12,6 +12,12 @@ vi.mock('../services/MediaGenerationService', () => ({
   },
 }));
 
+vi.mock('../services/ffmpegManager', () => ({
+  ffmpegManager: {
+    getTailFrame: vi.fn(),
+  },
+}));
+
 vi.mock('../store/projectStore', () => ({
   saveShotVersion: vi.fn(),
   loadShotMeta: vi.fn(),
@@ -19,6 +25,7 @@ vi.mock('../store/projectStore', () => ({
   loadProps: vi.fn(),
   loadScenes: vi.fn(),
   loadEpisodeShots: vi.fn(),
+  updateShot: vi.fn(),
 }));
 
 vi.mock('../store/promptTemplates', () => ({
@@ -752,5 +759,271 @@ describe('shotRenderWorkflow video chain', () => {
 
     expect(result).toMatchObject({ success: false, error: '请先填写剧情或视频提示词' });
     expect(mediaGenerationService.generateVideo).not.toHaveBeenCalled();
+  });
+
+  it('连续性镜头在生成前提取上一镜真实尾帧并把它编译为第一参考图', async () => {
+    const { shotRenderWorkflow } = await import('./shotRenderWorkflow');
+    const { mediaGenerationService } = await import('../services/MediaGenerationService');
+    const { ffmpegManager } = await import('../services/ffmpegManager');
+    const projectStore = await import('../store/projectStore');
+    const previousVideo = createImageAsset('https://cdn.example.com/previous.mp4') as any;
+    previousVideo.kind = 'video';
+    previousVideo.providerTaskId = 'previous-task';
+    const generatedVideo = {
+      kind: 'video',
+      localPath: '/tmp/current.mp4',
+      createdAt: 2,
+    } as any;
+    const tailPath = '/tmp/tail-frame.jpg';
+
+    vi.mocked(projectStore.loadShotMeta).mockImplementation(async (_projectId, shotId) => {
+      if (shotId === 'shot-prev') {
+        return { id: 'shot-prev', currentVersion: 1, versions: [{ version: 1, media: { video: previousVideo } }] } as any;
+      }
+      return { id: 'shot-next', currentVersion: 1, versions: [{ version: 1, media: { video: generatedVideo } }] } as any;
+    });
+    vi.mocked(projectStore.saveShotVersion).mockResolvedValue({
+      version: 1,
+      prompt: '连续性 prompt',
+      seed: 1,
+      createdAt: 1,
+      model: 'test-model',
+      media: {},
+    } as any);
+    vi.mocked(mediaGenerationService.generateVideo).mockResolvedValue(generatedVideo);
+    vi.mocked(ffmpegManager.getTailFrame).mockResolvedValue(tailPath);
+    vi.mocked(projectStore.updateShot).mockResolvedValue(null as any);
+
+    const previous = createShot({
+      id: 'shot-prev',
+      scenes: ['scene-room'],
+      media: { videos: [previousVideo], currentVideoIndex: 0 },
+    });
+    const current = createShot({
+      id: 'shot-next',
+      scenes: ['scene-room'],
+      videoReference: {
+        mode: 'auto',
+        usePreviousTailFrame: true,
+        autoUsePreviousTailFrame: true,
+        continuityReason: '同一场景延续',
+      },
+      videoPrompt: '镜头从人物抬手继续',
+    });
+
+    const result = await shotRenderWorkflow({
+      projectId: 'project-1',
+      episodeId: 'episode-1',
+      shot: current,
+      allShots: [previous, current],
+      settings: createSettings('grok-main', 'grok-imagine-video'),
+      mediaSelections: { itvSelection: 'grok-main::grok-imagine-video' },
+    }, () => {});
+
+    expect(result.success).toBe(true);
+    expect(ffmpegManager.getTailFrame).toHaveBeenCalledWith(previousVideo, 'shot-next', expect.objectContaining({
+      sourceVideoKey: expect.stringContaining('shot-prev'),
+    }));
+    expect(projectStore.updateShot).toHaveBeenCalledWith(
+      'project-1',
+      'episode-1',
+      'shot-next',
+      expect.objectContaining({
+        videoReference: expect.objectContaining({
+          sourceShotId: 'shot-prev',
+          sourceVideoKey: expect.stringContaining('shot-prev'),
+          referenceFrame: expect.objectContaining({ localPath: tailPath }),
+        }),
+      }),
+    );
+    const request = vi.mocked(mediaGenerationService.generateVideo).mock.calls.at(-1)?.[0].request as any;
+    expect(request.referenceImages?.[0]).toEqual(expect.objectContaining({ localPath: tailPath }));
+    expect(request.prompt).toContain('@Image 1');
+  });
+
+  it('需要连续性但上一镜没有真实视频时明确失败且不调用抽帧', async () => {
+    const { shotRenderWorkflow } = await import('./shotRenderWorkflow');
+    const { mediaGenerationService } = await import('../services/MediaGenerationService');
+    const { ffmpegManager } = await import('../services/ffmpegManager');
+    const projectStore = await import('../store/projectStore');
+    vi.mocked(projectStore.loadShotMeta).mockResolvedValue({ id: 'shot-prev', currentVersion: 0, versions: [] } as any);
+
+    const previous = createShot({ id: 'shot-prev', scenes: ['scene-room'], media: {} });
+    const current = createShot({
+      id: 'shot-next',
+      scenes: ['scene-room'],
+      videoReference: { mode: 'manual', usePreviousTailFrame: true, sourceShotId: 'shot-prev' },
+    });
+    const result = await shotRenderWorkflow({
+      projectId: 'project-1',
+      episodeId: 'episode-1',
+      shot: current,
+      allShots: [previous, current],
+      settings: createSettings('grok-main', 'grok-imagine-video'),
+      mediaSelections: { itvSelection: 'grok-main::grok-imagine-video' },
+    }, () => {});
+
+    expect(result).toMatchObject({ success: false, error: expect.stringContaining('没有已完成的真实视频') });
+    expect(ffmpegManager.getTailFrame).not.toHaveBeenCalled();
+    expect(mediaGenerationService.generateVideo).not.toHaveBeenCalled();
+  });
+
+  it('批量连续镜头等待上一镜完成后才抽尾帧并生成', async () => {
+    const { batchRenderShots } = await import('./shotRenderWorkflow');
+    const { mediaGenerationService } = await import('../services/MediaGenerationService');
+    const { ffmpegManager } = await import('../services/ffmpegManager');
+    const projectStore = await import('../store/projectStore');
+    const predecessorVideo = { kind: 'video', localPath: '/tmp/shot-prev.mp4', createdAt: 10 } as any;
+    const currentVideo = { kind: 'video', localPath: '/tmp/shot-next.mp4', createdAt: 20 } as any;
+    let predecessorFinished = false;
+
+    vi.mocked(projectStore.saveShotVersion).mockImplementation(async (_projectId, shotId) => ({
+      version: 1,
+      prompt: `${shotId} prompt`,
+      seed: 1,
+      createdAt: 1,
+      model: 'test-model',
+      media: {},
+    } as any));
+    vi.mocked(projectStore.loadShotMeta).mockImplementation(async (_projectId, shotId) => {
+      if (shotId === 'shot-prev') {
+        return predecessorFinished
+          ? { id: shotId, currentVersion: 1, versions: [{ version: 1, media: { video: predecessorVideo } }] } as any
+          : { id: shotId, currentVersion: 0, versions: [] } as any;
+      }
+      return { id: shotId, currentVersion: 1, versions: [{ version: 1, media: { video: currentVideo } }] } as any;
+    });
+    vi.mocked(mediaGenerationService.generateVideo).mockImplementation(async (args: any) => {
+      if (args.ownerRef.ownerId === 'shot-prev') {
+        predecessorFinished = true;
+        return predecessorVideo;
+      }
+      expect(predecessorFinished).toBe(true);
+      return currentVideo;
+    });
+    vi.mocked(ffmpegManager.getTailFrame).mockImplementation(async () => {
+      expect(predecessorFinished).toBe(true);
+      return '/tmp/shot-prev-tail.jpg';
+    });
+    vi.mocked(projectStore.updateShot).mockResolvedValue(null as any);
+
+    const previous = createShot({ id: 'shot-prev', scenes: ['room'], videoPrompt: '前镜' });
+    const current = createShot({
+      id: 'shot-next',
+      scenes: ['room'],
+      videoPrompt: '后镜',
+      videoReference: {
+        mode: 'auto',
+        usePreviousTailFrame: true,
+        autoUsePreviousTailFrame: true,
+        sourceShotId: 'shot-prev',
+      },
+    });
+    const onShotComplete = vi.fn();
+    const result = await batchRenderShots({
+      projectId: 'project-1',
+      episodeId: 'episode-1',
+      shots: [previous, current],
+      allShots: [previous, current],
+      concurrency: 2,
+      settings: createSettings('grok-main', 'grok-imagine-video'),
+      mediaSelections: { itvSelection: 'grok-main::grok-imagine-video' },
+      onShotComplete,
+    }, () => {});
+
+    expect(result).toMatchObject({ total: 2, success: 2, failed: 0 });
+    expect(vi.mocked(mediaGenerationService.generateVideo).mock.calls.map(call => call[0].ownerRef.ownerId))
+      .toEqual(['shot-prev', 'shot-next']);
+    expect(ffmpegManager.getTailFrame).toHaveBeenCalledTimes(1);
+    expect(onShotComplete).toHaveBeenCalledTimes(2);
+  });
+
+  it('批量上一镜失败时阻止依赖镜头，但不影响完成回调', async () => {
+    const { batchRenderShots } = await import('./shotRenderWorkflow');
+    const { mediaGenerationService } = await import('../services/MediaGenerationService');
+    const { ffmpegManager } = await import('../services/ffmpegManager');
+    const projectStore = await import('../store/projectStore');
+    vi.mocked(projectStore.saveShotVersion).mockResolvedValue({
+      version: 1, prompt: 'prev', seed: 1, createdAt: 1, model: 'test', media: {},
+    } as any);
+    vi.mocked(mediaGenerationService.generateVideo).mockRejectedValue(new Error('前镜生成失败'));
+    const previous = createShot({ id: 'shot-prev', scenes: ['room'] });
+    const current = createShot({
+      id: 'shot-next',
+      scenes: ['room'],
+      videoReference: {
+        mode: 'manual',
+        usePreviousTailFrame: true,
+        sourceShotId: 'shot-prev',
+      },
+    });
+    const onShotComplete = vi.fn();
+
+    const result = await batchRenderShots({
+      projectId: 'project-1',
+      episodeId: 'episode-1',
+      shots: [previous, current],
+      allShots: [previous, current],
+      concurrency: 2,
+      settings: createSettings('grok-main', 'grok-imagine-video'),
+      mediaSelections: { itvSelection: 'grok-main::grok-imagine-video' },
+      onShotComplete,
+    }, () => {});
+
+    expect(result.failed).toBe(2);
+    expect(result.results[1].error).toContain('依赖分镜 shot-prev 失败');
+    expect(mediaGenerationService.generateVideo).toHaveBeenCalledTimes(1);
+    expect(ffmpegManager.getTailFrame).not.toHaveBeenCalled();
+    expect(onShotComplete).toHaveBeenCalledTimes(2);
+  });
+
+  it('批量无连续性依赖的镜头仍按并发上限并行执行', async () => {
+    const { batchRenderShots } = await import('./shotRenderWorkflow');
+    const { mediaGenerationService } = await import('../services/MediaGenerationService');
+    const projectStore = await import('../store/projectStore');
+    let releaseFirst!: () => void;
+    let notifySecondStarted!: () => void;
+    const firstGate = new Promise<void>(resolve => { releaseFirst = resolve; });
+    const secondStarted = new Promise<void>(resolve => { notifySecondStarted = resolve; });
+
+    vi.mocked(projectStore.saveShotVersion).mockResolvedValue({
+      version: 1, prompt: 'parallel', seed: 1, createdAt: 1, model: 'test', media: {},
+    } as any);
+    vi.mocked(projectStore.loadShotMeta).mockImplementation(async (_projectId, shotId) => ({
+      id: shotId,
+      currentVersion: 1,
+      versions: [{ version: 1, media: { video: { kind: 'video', localPath: `/tmp/${shotId}.mp4`, createdAt: 1 } } }],
+    } as any));
+    vi.mocked(mediaGenerationService.generateVideo).mockImplementation(async (args: any) => {
+      if (args.ownerRef.ownerId === 'shot-a') {
+        await firstGate;
+      } else {
+        notifySecondStarted();
+      }
+      return { kind: 'video', localPath: `/tmp/${args.ownerRef.ownerId}.mp4`, createdAt: 1 } as any;
+    });
+
+    const shotA = createShot({
+      id: 'shot-a',
+      videoReference: { mode: 'manual', usePreviousTailFrame: false },
+    });
+    const shotB = createShot({
+      id: 'shot-b',
+      videoReference: { mode: 'manual', usePreviousTailFrame: false },
+    });
+    const batchPromise = batchRenderShots({
+      projectId: 'project-1',
+      episodeId: 'episode-1',
+      shots: [shotA, shotB],
+      allShots: [shotA, shotB],
+      concurrency: 2,
+      settings: createSettings('grok-main', 'grok-imagine-video'),
+      mediaSelections: { itvSelection: 'grok-main::grok-imagine-video' },
+    }, () => {});
+
+    await secondStarted;
+    expect(mediaGenerationService.generateVideo).toHaveBeenCalledTimes(2);
+    releaseFirst();
+    await expect(batchPromise).resolves.toMatchObject({ success: 2, failed: 0 });
   });
 });

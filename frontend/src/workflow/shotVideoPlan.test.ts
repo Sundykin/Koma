@@ -138,6 +138,62 @@ function createReferenceOnlySettings(): AppSettings {
 }
 
 describe('shotVideoPlan', () => {
+  it('上一镜尾帧是 image-to-video 主图，当前分镜图和资产作为补充', () => {
+    const tail = createImageAsset('https://cdn.example.com/previous-tail.jpg');
+    const current = createImageAsset('https://cdn.example.com/current-shot.png');
+    const shot = createShot({
+      videoReference: {
+        mode: 'auto',
+        usePreviousTailFrame: true,
+        autoUsePreviousTailFrame: true,
+        sourceShotId: 'shot-prev',
+        referenceFrame: tail,
+      },
+      media: { images: [current], currentImageIndex: 0 },
+    });
+    const plan = collectShotVideoPlan({
+      shot,
+      characters: [],
+      scenes: [],
+      props: [],
+      modelCapabilities: ['video.image-to-video'],
+    });
+    expect(plan.capability).toBe('video.image-to-video');
+    expect(plan.bundle.items.map(item => item.kind)).toEqual(['previous-video-tail', 'shot-anchor']);
+    expect(plan.primaryImageInput).toEqual(tail);
+    expect(plan.additionalReferenceImages).toEqual([current]);
+  });
+
+  it('参考生视频时上一镜尾帧固定为 referenceImages[0]', () => {
+    const tail = createImageAsset('https://cdn.example.com/previous-tail.jpg');
+    const current = createImageAsset('https://cdn.example.com/current-shot.png');
+    const shot = createShot({
+      videoMode: 'multi-ref',
+      videoReference: {
+        mode: 'manual',
+        usePreviousTailFrame: true,
+        sourceShotId: 'shot-prev',
+        referenceFrame: tail,
+      },
+      media: { images: [current], currentImageIndex: 0 },
+    });
+    const plan = collectShotVideoPlan({
+      shot,
+      characters: [],
+      scenes: [],
+      props: [],
+      modelCapabilities: ['video.reference-to-video', 'video.image-to-video'],
+    });
+    const request = buildShotVideoRequest({
+      plan,
+      prompt: '延续上一镜',
+      duration: 4,
+      aspectRatio: '16:9',
+    });
+    expect(request.capability).toBe('video.reference-to-video');
+    expect(request.referenceImages).toEqual([tail, current]);
+  });
+
   it('有选中主图且未传模型能力时按图生视频执行，资产留在 bundle 中但不直接进 additional', () => {
     const character: Character = {
       id: 'char-1',

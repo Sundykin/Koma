@@ -480,6 +480,49 @@ describe('buildShotReferenceBundle — storyboard mode', () => {
 });
 
 describe('buildShotReferenceBundle — 配额裁剪', () => {
+  it('视频尾帧启用时占据 references[0]，且 maxRefs 裁剪优先保留尾帧', () => {
+    const tail = asset('https://example.com/previous-tail.jpg');
+    const current = asset('https://example.com/current-shot.png');
+    const shot = shotOf({
+      imageMode: 'normal',
+      characters: ['char-zhouming'],
+      scenes: ['scene-dorm'],
+      videoReference: {
+        mode: 'auto',
+        usePreviousTailFrame: true,
+        autoUsePreviousTailFrame: true,
+        sourceShotId: 'shot-prev',
+        referenceFrame: tail,
+      },
+      media: { images: [current], currentImageIndex: 0 },
+    });
+
+    const bundle = buildShotReferenceBundle({
+      shot,
+      characters: [charZhouming],
+      scenes: [sceneDorm],
+      props: [],
+      options: { maxRefs: 2, includePreviousVideoTail: true },
+    });
+
+    expect(bundle.items.map(item => item.kind)).toEqual(['previous-video-tail', 'shot-anchor']);
+    expect(bundle.items[0].mentionToken).toBe('@previous_tail_frame');
+    expect(bundle.items[0].source).toEqual(tail);
+    expect(bundle.capacity.truncatedKinds).toEqual(expect.arrayContaining(['scene', 'character']));
+  });
+
+  it('生图 bundle 默认不包含项目视频尾帧', () => {
+    const shot = shotOf({
+      videoReference: {
+        mode: 'manual',
+        usePreviousTailFrame: true,
+        referenceFrame: asset('https://example.com/manual-tail.jpg'),
+      },
+    });
+    const bundle = buildShotReferenceBundle({ shot, characters: [], scenes: [], props: [] });
+    expect(bundle.items.some(item => item.kind === 'previous-video-tail')).toBe(false);
+  });
+
   it('maxRefs 限制时按 priority 保留 anchor + 主场景 + 主角，其它被截掉', () => {
     const shot = shotOf({
       imageMode: 'normal',

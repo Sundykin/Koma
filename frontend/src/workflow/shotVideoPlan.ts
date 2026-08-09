@@ -109,7 +109,10 @@ export function collectShotVideoPlan(params: {
     scenes: params.scenes,
     props: params.props,
     allShots: params.allShots,
-    options: { maxRefs: params.modelMaxRefs },
+    options: {
+      maxRefs: params.modelMaxRefs,
+      includePreviousVideoTail: true,
+    },
   });
 
   const knowsModelCaps = !!params.modelCapabilities;
@@ -165,6 +168,27 @@ function routeBundleToCapability(params: {
   const { bundle, supportsRefToVideo, knowsModelCaps, videoMode } = params;
   const items = bundle.items;
   const allSources = items.map(item => item.source);
+  const previousTailItem = items.find(item => item.kind === 'previous-video-tail');
+
+  // 尾帧本身就是本镜视频的主锚点；即使当前镜头还没有分镜图，也不能回退为文生视频。
+  if (previousTailItem) {
+    const otherItems = items.filter(item => item !== previousTailItem);
+    const additional = pickAdditionalSources(otherItems, knowsModelCaps);
+    if (supportsRefToVideo && videoMode === 'multi-ref') {
+      return {
+        capability: 'video.reference-to-video',
+        primaryImageInput: previousTailItem.source,
+        additionalReferenceImages: additional,
+        visualReferenceInputs: allSources,
+      };
+    }
+    return {
+      capability: 'video.image-to-video',
+      primaryImageInput: previousTailItem.source,
+      additionalReferenceImages: additional,
+      visualReferenceInputs: [previousTailItem.source, ...additional],
+    };
+  }
 
   // 1) 有当前分镜锚点（shot-anchor / grid-anchor / storyboard-anchor）
   if (bundle.hasShotImage) {
@@ -238,7 +262,8 @@ function routeBundleToCapability(params: {
 }
 
 function isAnchorItem(item: ShotReferenceItem): boolean {
-  return item.kind === 'shot-anchor'
+  return item.kind === 'previous-video-tail'
+    || item.kind === 'shot-anchor'
     || item.kind === 'grid-anchor'
     || item.kind === 'storyboard-anchor'
     || item.kind === 'previous-storyboard-anchor';

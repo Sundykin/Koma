@@ -7,6 +7,7 @@ import type {
   StoredMediaAsset,
 } from '../../types';
 import { getMediaAssetSource } from '../../types';
+import { normalizeShotVideoReference } from '../../services/shotContinuity';
 
 function ensureCreatedAt(asset: StoredMediaAsset): StoredMediaAsset {
   if (asset.createdAt) return asset;
@@ -152,7 +153,11 @@ export function normalizeShotMediaState(shot: Shot): Shot {
     }
     : undefined;
 
-  return { ...shot, media };
+  return {
+    ...shot,
+    media,
+    videoReference: normalizeShotVideoReference(shot.videoReference),
+  };
 }
 
 export function normalizeCharactersMediaState(characters: Character[]): Character[] {

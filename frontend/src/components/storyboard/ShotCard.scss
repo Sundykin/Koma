@@ -123,6 +123,31 @@
   letter-spacing: 0;
 }
 
+.shot-continuity-row {
+  min-height: 27px;
+  border-bottom: 1px solid color-mix(in srgb, var(--token-border-subtle) 65%, transparent);
+  overflow: hidden;
+}
+
+.shot-continuity-seg.ant-segmented {
+  max-width: 168px;
+}
+
+.shot-continuity-preview {
+  width: 34px;
+  height: 20px;
+  flex: 0 0 auto;
+  object-fit: cover;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--token-status-info) 55%, transparent);
+  background: var(--token-bg-elevated);
+}
+
+.shot-continuity-preview.stale {
+  border-color: var(--token-status-warning);
+  opacity: 0.72;
+}
+
 .shot-card:hover {
   background: var(--token-bg-elevated);
   border-color: var(--token-border-base);

@@ -32,6 +32,10 @@ import {
   PlusOutlined,
   AudioOutlined,
   DownOutlined,
+  CameraOutlined,
+  ReloadOutlined,
+  UndoOutlined,
+  InfoCircleOutlined,
 } from '@ant-design/icons';
 import type { Shot, ShotImageMode, ShotScriptLine, Character, Scene, Prop, StoredMediaAsset } from '../../types';
 import { buildShotVoiceSegments } from '../../types';
@@ -40,6 +44,7 @@ import { ShotScriptParagraph } from './ShotScriptParagraph';
 import {
   getMediaAssetDisplaySource,
   getMediaAssetEditingSource,
+  getMediaAssetSource,
   isRemoteMediaUri,
 } from '../../types';
 import { ScriptEditor } from '../../editor';
@@ -121,11 +126,19 @@ export interface ShotCardProps {
   prevLightTone?: 'warm' | 'cold' | 'mixed' | 'none';
   /** 与上一镜是否同场景（光线跳变只在同场景内才可疑） */
   prevSameScene?: boolean;
+  /** 上一镜项目 Shot，用于连续性尾帧控制和可用性提示。 */
+  previousShot?: Shot;
   onImagePromptChange: (shotId: string, imagePrompt: string) => void;
   onVideoPromptChange: (shotId: string, videoPrompt: string) => void;
   onDurationChange?: (shotId: string, duration: number) => void;
   onImageModeChange: (shotId: string, mode: Exclude<ShotImageMode, 'grid'>) => void;
   onStoryboardInheritPreviousChange?: (shotId: string, enabled: boolean) => void;
+  onVideoReferenceModeChange?: (
+    shotId: string,
+    mode: 'auto' | 'manual',
+    usePreviousTailFrame: boolean,
+  ) => void | Promise<void>;
+  onCapturePreviousTailFrame?: (shotId: string, forceRefresh?: boolean) => void | Promise<void>;
   onVideoModeChange?: (shotId: string, mode: 'multi-ref' | 'first-frame') => void;
   onCharactersChange: (shotId: string, characterIds: string[]) => void;
   onScenesChange?: (shotId: string, sceneIds: string[]) => void;
@@ -191,11 +204,14 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
   prevShotSize,
   prevLightTone,
   prevSameScene,
+  previousShot,
   onImagePromptChange,
   onVideoPromptChange,
   onDurationChange,
   onImageModeChange,
   onStoryboardInheritPreviousChange,
+  onVideoReferenceModeChange,
+  onCapturePreviousTailFrame,
   onVideoModeChange,
   onCharactersChange,
   onScenesChange,
@@ -227,6 +243,7 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
   const isDarkTheme = theme.meta.mode === 'dark';
   const { t } = useTranslation();
   const [videoModalOpen, setVideoModalOpen] = useState(false);
+  const [isCapturingTailFrame, setIsCapturingTailFrame] = useState(false);
   // 配音预览：HTMLAudioElement 持有播放状态，UI 用 isPlayingAudio 同步按钮 icon
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
@@ -343,6 +360,42 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
       currentVideo?.providerTaskId,
       currentVideo?.createdAt,
     ],
+  );
+
+  const previousVideo = useMemo(() => {
+    const previousVideos = previousShot?.media?.videos || [];
+    if (!previousVideos.length) return null;
+    const previousIndex = previousShot?.media?.currentVideoIndex ?? previousVideos.length - 1;
+    return previousVideos[previousIndex] || previousVideos[previousVideos.length - 1] || null;
+  }, [previousShot?.media?.videos, previousShot?.media?.currentVideoIndex]);
+  const previousVideoAvailable = Boolean(
+    previousVideo && previousVideo.kind === 'video' && getMediaAssetSource(previousVideo),
+  );
+  const currentPreviousVideoKey = useMemo(() => {
+    if (!previousShot || !previousVideo || !getMediaAssetSource(previousVideo)) return undefined;
+    return [
+      previousShot.id,
+      previousShot.currentVersion != null ? `v${previousShot.currentVersion}` : undefined,
+      previousVideo.providerTaskId,
+      previousVideo.createdAt,
+      previousVideo.localPath,
+      previousVideo.remoteUrl,
+    ].filter(Boolean).join(':');
+  }, [previousShot, previousVideo]);
+  const videoReference = shot.videoReference;
+  const autoUsePreviousTailFrame = videoReference?.autoUsePreviousTailFrame
+    ?? (videoReference?.mode === 'auto' ? videoReference.usePreviousTailFrame : false)
+    ?? false;
+  const continuitySelection = isFirst
+    ? 'independent'
+    : videoReference?.mode === 'manual'
+      ? (videoReference.usePreviousTailFrame ? 'inherit' : 'independent')
+      : 'auto';
+  const tailFrameSourceChanged = Boolean(
+    videoReference?.referenceFrame
+      && videoReference.sourceVideoKey
+      && currentPreviousVideoKey
+      && videoReference.sourceVideoKey !== currentPreviousVideoKey,
   );
 
   const selectedImageIndex = useMemo(() => {
@@ -560,6 +613,57 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
     }
     return source;
   }, []);
+
+  const tailFramePreview = useMemo(
+    () => getDisplaySrc(videoReference?.referenceFrame),
+    [getDisplaySrc, videoReference?.referenceFrame],
+  );
+
+  const handleCaptureTailFrame = useCallback(async (forceRefresh: boolean) => {
+    if (!onCapturePreviousTailFrame) return;
+    setIsCapturingTailFrame(true);
+    try {
+      await onCapturePreviousTailFrame(shot.id, forceRefresh);
+      message.success(forceRefresh ? '上一镜尾帧已重新截取' : '上一镜尾帧已截取并绑定');
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      message.error(errorMessage || '截取上一镜尾帧失败');
+    } finally {
+      setIsCapturingTailFrame(false);
+    }
+  }, [message, onCapturePreviousTailFrame, shot.id]);
+
+  const handleChangeVideoReferenceMode = useCallback(async (
+    mode: 'auto' | 'manual',
+    usePreviousTailFrame: boolean,
+  ) => {
+    if (!onVideoReferenceModeChange) return;
+    setIsCapturingTailFrame(true);
+    try {
+      await onVideoReferenceModeChange(shot.id, mode, usePreviousTailFrame);
+      message.success(mode === 'auto'
+        ? '已恢复自动连续性判断'
+        : usePreviousTailFrame ? '已设为手动继承' : '已设为本镜独立');
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      message.error(errorMessage || '更新视频连续性失败');
+    } finally {
+      setIsCapturingTailFrame(false);
+    }
+  }, [message, onVideoReferenceModeChange, shot.id]);
+
+  const handleContinuitySelectionChange = useCallback((value: string | number) => {
+    if (isFirst) return;
+    if (value === 'inherit') {
+      void handleCaptureTailFrame(false);
+      return;
+    }
+    if (value === 'independent') {
+      void handleChangeVideoReferenceMode('manual', false);
+      return;
+    }
+    void handleChangeVideoReferenceMode('auto', autoUsePreviousTailFrame);
+  }, [autoUsePreviousTailFrame, handleCaptureTailFrame, handleChangeVideoReferenceMode, isFirst]);
 
   const gridSplitSrc = gridSplitAsset ? getDisplaySrc(gridSplitAsset) : '';
 
@@ -948,6 +1052,113 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
 
           {/* === 视频行 === */}
           <div className="flex-1 flex flex-col min-h-0">
+            {/* 项目视频连续性：自动判断、当前生效模式、尾帧来源与人工控制集中在视频区，
+                避免用户在剧本/资产/视频之间来回切换寻找相邻镜头设置。 */}
+            <div
+              className="shot-continuity-row flex items-center gap-1.5 px-2 py-1 bg-bg-surface/20"
+              data-testid="shot-video-continuity"
+            >
+              {isFirst ? (
+                <Tag color="default" className="!m-0 !text-[10px]">首镜·独立</Tag>
+              ) : (
+                <>
+                  <span className="text-[10px] text-text-secondary shrink-0">连续性</span>
+                  <Tooltip title={videoReference?.continuityReason || '按相邻镜头剧情信号判断'}>
+                    <Tag
+                      color={continuitySelection === 'inherit' ? 'blue' : continuitySelection === 'auto' ? 'gold' : 'default'}
+                      className="!m-0 !text-[10px] cursor-help"
+                    >
+                      {continuitySelection === 'auto'
+                        ? (autoUsePreviousTailFrame ? '自动继承' : '自动独立')
+                        : continuitySelection === 'inherit' ? '手动继承' : '手动独立'}
+                      <InfoCircleOutlined className="ml-0.5" />
+                    </Tag>
+                  </Tooltip>
+                  {videoReference?.continuityReason && (
+                    <span
+                      className="text-[10px] text-text-tertiary truncate max-w-[150px]"
+                      title={videoReference.continuityReason}
+                    >
+                      {videoReference.continuityReason}
+                    </span>
+                  )}
+                  <Segmented
+                    size="small"
+                    className="shot-mode-seg shot-continuity-seg"
+                    value={continuitySelection}
+                    onChange={handleContinuitySelectionChange}
+                    disabled={isCapturingTailFrame || !onVideoReferenceModeChange && !onCapturePreviousTailFrame}
+                    options={[
+                      { value: 'auto', label: '自动' },
+                      { value: 'inherit', label: '继承尾帧' },
+                      { value: 'independent', label: '本镜独立' },
+                    ]}
+                  />
+                  {continuitySelection !== 'auto' && onVideoReferenceModeChange && (
+                    <Button
+                      type="text"
+                      size="small"
+                      className="!h-[20px] !px-1 !text-[10px]"
+                      disabled={isCapturingTailFrame}
+                      onClick={() => void handleChangeVideoReferenceMode('auto', autoUsePreviousTailFrame)}
+                    >
+                      恢复自动
+                    </Button>
+                  )}
+                  {videoReference?.usePreviousTailFrame && (
+                    <Tooltip title={tailFrameSourceChanged
+                      ? '上一镜视频已有新版本，当前尾帧来源已过期；可重新截取'
+                      : (tailFramePreview ? '取消本镜对上一镜尾帧的继承' : '清除尾帧继承并改为本镜独立')}>
+                      <Button
+                        type="text"
+                        size="small"
+                        className="!h-[20px] !px-1 !text-[10px]"
+                        icon={<UndoOutlined />}
+                        disabled={isCapturingTailFrame || !onVideoReferenceModeChange}
+                        onClick={() => void handleChangeVideoReferenceMode('manual', false)}
+                      >
+                        取消继承
+                      </Button>
+                    </Tooltip>
+                  )}
+                  {onCapturePreviousTailFrame && (
+                    <Tooltip title={!previousVideoAvailable
+                      ? '上一镜没有已完成的真实视频，请先生成上一镜视频'
+                      : tailFramePreview ? '从上一镜当前视频重新截取真实尾帧' : '截取上一镜当前视频的真实尾帧'}>
+                      <Button
+                        type="text"
+                        size="small"
+                        className="!h-[20px] !px-1 !text-[10px]"
+                        icon={isCapturingTailFrame
+                          ? <ReloadOutlined spin />
+                          : tailFramePreview ? <ReloadOutlined /> : <CameraOutlined />}
+                        disabled={isCapturingTailFrame || !previousVideoAvailable}
+                        onClick={() => void handleCaptureTailFrame(Boolean(tailFramePreview))}
+                      >
+                        {isCapturingTailFrame ? '截取中...' : tailFramePreview ? '重新截取' : '截取尾帧'}
+                      </Button>
+                    </Tooltip>
+                  )}
+                  {tailFramePreview && (
+                    <Tooltip title={`来源：${videoReference?.sourceShotId || `上一镜 #${index}`}${tailFrameSourceChanged ? '（视频已更新）' : ''}`}>
+                      <span className="flex items-center gap-1 shrink-0">
+                        <span className="text-[10px] text-text-tertiary">源 #{index}</span>
+                        <img
+                          src={tailFramePreview}
+                          alt="上一镜尾帧"
+                          className={`shot-continuity-preview ${tailFrameSourceChanged ? 'stale' : ''}`}
+                        />
+                      </span>
+                    </Tooltip>
+                  )}
+                  {!tailFramePreview && autoUsePreviousTailFrame && !previousVideoAvailable && (
+                    <span className="text-[10px] text-status-warning truncate" title="上一镜没有已完成的真实视频，请先生成上一镜视频">
+                      待上一镜视频
+                    </span>
+                  )}
+                </>
+              )}
+            </div>
             <div className="flex items-center justify-between gap-2 px-2 py-1 bg-bg-surface/30">
               <div className="flex items-center gap-2">
                 <span className="text-[10px] text-text-secondary">视频模式</span>

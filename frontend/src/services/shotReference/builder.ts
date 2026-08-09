@@ -26,6 +26,7 @@ import { DEFAULT_MAX_REFS } from './types';
  */
 const PRIORITY = {
   ANCHOR: 100,
+  PREVIOUS_VIDEO_TAIL: 120,
   SCENE: 80,
   CHARACTER_LEAD: 70,
   CHARACTER_SUPPORT: 60,
@@ -51,6 +52,9 @@ export function buildShotReferenceBundle(params: BuildParams): ShotReferenceBund
   const items: ShotReferenceItem[] = [];
   const mentionFallbacks: Array<{ mentionToken: string; label: string }> = [];
   const seen = new Set<string>();
+
+  // 0. 视频连续性尾帧：必须排在所有其它视觉参考之前；只由视频 plan 显式启用。
+  pushPreviousVideoTailFrame(params, normalized, items, seen);
 
   // 1. 锚点：grid-anchor 或 shot-anchor，单选
   pushAnchor(normalized, items, seen);
@@ -254,6 +258,26 @@ function pushPreviousStoryboardAnchor(params: BuildParams, items: ShotReferenceI
     });
     return;
   }
+}
+
+function pushPreviousVideoTailFrame(
+  params: BuildParams,
+  shot: Shot,
+  items: ShotReferenceItem[],
+  seen: Set<string>,
+): void {
+  if (!params.options?.includePreviousVideoTail) return;
+  const reference = shot.videoReference;
+  if (!reference?.usePreviousTailFrame || !reference.referenceFrame) return;
+  pushItem(items, seen, {
+    kind: 'previous-video-tail',
+    id: `${reference.sourceShotId || 'previous'}#video-tail`,
+    label: '上一分镜视频尾帧（连续性主参考）',
+    source: reference.referenceFrame,
+    mentionToken: '@previous_tail_frame',
+    priority: PRIORITY.PREVIOUS_VIDEO_TAIL,
+    assetId: reference.sourceShotId,
+  });
 }
 
 function pickSelectedShotImage(shot: Shot): StoredMediaAsset | undefined {

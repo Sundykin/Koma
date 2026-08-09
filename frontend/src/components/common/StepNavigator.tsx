@@ -3,7 +3,10 @@ import { EditorStep, EpisodeStepProgress } from '../../types';
 import { Check, Lock } from 'lucide-react';
 import { Tooltip } from 'antd';
 import { useTranslation } from 'react-i18next';
-import { listEditorSteps } from '../../workflow/editorStepRegistry';
+import {
+  listEditorSteps,
+  resolveEditorNavigatorStepId,
+} from '../../workflow/editorStepRegistry';
 
 interface StepNavigatorProps {
   currentStep: EditorStep;
@@ -55,11 +58,12 @@ export const StepNavigator: React.FC<StepNavigatorProps> = ({
   // 数据驱动：从 editorStepRegistry 读取
   const steps = listEditorSteps();
   const stepOrder = steps.map((s) => s.id);
-  const _currentIndex = stepOrder.indexOf(currentStep);
+  const currentNavigatorStep = resolveEditorNavigatorStepId(currentStep);
+  const _currentIndex = stepOrder.indexOf(currentNavigatorStep);
 
   // 判断步骤是否可点击
   const isStepClickable = (stepId: string, index: number): boolean => {
-    if (stepId === currentStep) return true;
+    if (stepId === currentNavigatorStep) return true;
     // 当前步骤之前的步骤始终可以返回
     if (index < _currentIndex) return true;
     if (isStepCompleted(stepId, stepProgress, scriptText)) return true;
@@ -89,7 +93,7 @@ export const StepNavigator: React.FC<StepNavigatorProps> = ({
         {/* 步骤条 */}
         <div className="flex items-center flex-1 min-w-0">
           {steps.map((step, index) => {
-            const isActive = step.id === currentStep;
+            const isActive = step.id === currentNavigatorStep;
             const isCompleted = isStepCompleted(step.id, stepProgress, scriptText);
             const clickable = isStepClickable(step.id, index);
             const isLocked = !clickable && !isActive;

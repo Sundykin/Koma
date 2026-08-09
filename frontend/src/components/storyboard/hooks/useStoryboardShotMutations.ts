@@ -16,6 +16,11 @@ import { useShotAssetSync } from '../../../hooks/useShotAssetSync';
 import { clampDurationToSpec, type VideoDurationSpec } from '../../../providers/itv/durationSpec';
 import { findVersionNumberForVideoAsset } from '../../../utils/shotVersionSelection';
 import { suggestCalibratedDuration } from '../../../services/shotFreshness';
+import {
+  normalizeShotContinuity,
+  normalizeShotVideoReference,
+} from '../../../services/shotContinuity';
+import { resolveShotTailFrameReference } from '../../../workflow/shotRenderWorkflow';
 
 export type EditableShotImageMode = Exclude<ShotImageMode, 'grid'>;
 
@@ -55,6 +60,8 @@ export function mergeShots(target: Shot, source: Shot, durationSpec: VideoDurati
 }
 
 export interface StoryboardShotMutationsDeps {
+  projectId: string;
+  episodeId?: string;
   shots: Shot[];
   shotsRef: React.MutableRefObject<Shot[]>;
   shotMetas: ShotMeta[];
@@ -75,7 +82,7 @@ export interface StoryboardShotMutationsDeps {
 
 export function useStoryboardShotMutations(deps: StoryboardShotMutationsDeps) {
   const {
-    shots, shotsRef, shotMetas, characters, scenes, props,
+    projectId, episodeId, shots, shotsRef, shotMetas, characters, scenes, props,
     saveAllShots, itvDurationSpec,
     generatingImagePrompts, generatingVideoPrompts,
     message,
@@ -385,6 +392,130 @@ export function useStoryboardShotMutations(deps: StoryboardShotMutationsDeps) {
     saveAllShots(updatedShots);
   }, [shots, saveAllShots]);
 
+  /**
+   * 项目分镜视频连续性模式切换。
+   *
+   * 自动模式保留自动判断字段；选择自动继承时会立即校验/复用上一镜尾帧，
+   * 选择手动独立时清除旧尾帧，避免它继续进入视频请求。
+   */
+  const handleVideoReferenceModeChange = useCallback(async (
+    shotId: string,
+    mode: 'auto' | 'manual',
+    usePreviousTailFrame: boolean,
+  ) => {
+    const currentShots = shotsRef.current;
+    const shotIndex = currentShots.findIndex(s => s.id === shotId);
+    if (shotIndex < 0) return;
+    const shot = currentShots[shotIndex];
+    const normalizedSequence = normalizeShotContinuity(currentShots);
+    const normalizedShot = normalizedSequence[shotIndex] || shot;
+    const normalizedReference = normalizeShotVideoReference(
+      shot.videoReference || normalizedShot.videoReference,
+    ) || {
+      mode: 'auto' as const,
+      usePreviousTailFrame: false,
+      autoUsePreviousTailFrame: false,
+    };
+    const autoUsePreviousTailFrame = normalizedReference.autoUsePreviousTailFrame
+      ?? normalizedShot.videoReference?.autoUsePreviousTailFrame
+      ?? false;
+    const effectiveUse = mode === 'auto' ? autoUsePreviousTailFrame : usePreviousTailFrame;
+    const previousShot = currentShots[shotIndex - 1];
+    const baseReference = {
+      ...normalizedReference,
+      mode,
+      usePreviousTailFrame: effectiveUse,
+      autoUsePreviousTailFrame,
+      sourceShotId: previousShot?.id || normalizedReference.sourceShotId,
+    };
+
+    // 独立镜头不保留尾帧资源，避免“看起来取消了继承”但请求仍然携带旧帧。
+    if (!effectiveUse) {
+      const updatedShots = currentShots.map(candidate => candidate.id === shotId
+        ? {
+          ...candidate,
+          videoReference: {
+            ...baseReference,
+            referenceFrame: undefined,
+            capturedAt: undefined,
+            sourceVideoKey: undefined,
+          },
+        }
+        : candidate);
+      await saveAllShots(updatedShots);
+      return;
+    }
+
+    // 自动恢复需要重新校验上一镜当前视频版本；resolve helper 会在版本键未变时复用缓存。
+    const preparedShot: Shot = { ...shot, videoReference: baseReference };
+    const resolved = await resolveShotTailFrameReference({
+      projectId,
+      episodeId,
+      shot: preparedShot,
+      allShots: currentShots,
+    });
+    await saveAllShots(currentShots.map(candidate => candidate.id === shotId ? resolved : candidate));
+  }, [projectId, episodeId, saveAllShots, shotsRef]);
+
+  /**
+   * 用户手动截取/重新截取上一镜真实视频尾帧。
+   * 预检只负责给出可操作错误；真正的视频版本解析和 FFmpeg 抽帧由工作流统一完成。
+   */
+  const handleCapturePreviousTailFrame = useCallback(async (
+    shotId: string,
+    forceRefresh = false,
+  ) => {
+    const currentShots = shotsRef.current;
+    const shotIndex = currentShots.findIndex(s => s.id === shotId);
+    if (shotIndex < 0) throw new Error('分镜不存在');
+    const predecessor = currentShots[shotIndex - 1];
+    if (!predecessor) throw new Error('首镜没有上一镜，无法截取尾帧');
+    const predecessorHasVideo = (predecessor.media?.videos || []).some(video => (
+      video.kind === 'video' && Boolean(video.localPath || video.remoteUrl)
+    ));
+    if (!predecessorHasVideo) {
+      throw new Error(`上一镜 #${shotIndex} 没有已完成的真实视频，请先生成上一镜视频`);
+    }
+
+    const normalizedShot = normalizeShotContinuity(currentShots)[shotIndex] || currentShots[shotIndex];
+    const existing = normalizeShotVideoReference(
+      currentShots[shotIndex].videoReference || normalizedShot.videoReference,
+    ) || normalizedShot.videoReference!;
+    const originalMode = existing.mode;
+    // 从自动模式切换到手动继承时，先让 resolver 按 sourceVideoKey 判断缓存是否有效；
+    // 已经是手动模式则遵守“手动帧稳定，除非明确重新截取”的契约。
+    const preparedShot: Shot = {
+      ...currentShots[shotIndex],
+      videoReference: {
+        ...existing,
+        mode: originalMode === 'manual' ? 'manual' : 'auto',
+        usePreviousTailFrame: true,
+        sourceShotId: predecessor.id,
+      },
+    };
+    const resolved = await resolveShotTailFrameReference({
+      projectId,
+      episodeId,
+      shot: preparedShot,
+      allShots: currentShots,
+      forceRefresh: forceRefresh || originalMode === 'manual' && !existing.referenceFrame,
+    });
+    const resolvedReference = normalizeShotVideoReference(resolved.videoReference);
+    if (!resolvedReference?.referenceFrame) {
+      throw new Error('未能提取上一镜真实尾帧，请检查视频文件后重试');
+    }
+    const manualShot: Shot = {
+      ...resolved,
+      videoReference: {
+        ...resolvedReference,
+        mode: 'manual',
+        usePreviousTailFrame: true,
+        sourceShotId: predecessor.id,
+      },
+    };
+    await saveAllShots(currentShots.map(candidate => candidate.id === shotId ? manualShot : candidate));
+  }, [projectId, episodeId, saveAllShots, shotsRef]);
+
   const handleShotVideoModeChange = useCallback((shotId: string, mode: 'multi-ref' | 'first-frame') => {
     const updatedShots = shots.map(s =>
       s.id === shotId ? { ...s, videoMode: mode } : s
@@ -452,5 +583,7 @@ export function useStoryboardShotMutations(deps: StoryboardShotMutationsDeps) {
     handleBulkVideoModeChange,
     handleBulkDurationChange,
     handleBulkCalibrateDurations,
+    handleVideoReferenceModeChange,
+    handleCapturePreviousTailFrame,
   };
 }

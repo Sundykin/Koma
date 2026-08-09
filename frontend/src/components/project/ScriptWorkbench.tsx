@@ -43,6 +43,8 @@ export interface ScriptWorkbenchRef {
   flushSave: () => Promise<Episode | null>;
   /** 触发当前剧集的剧本解析（先 flushSave 再 submitScriptAnalysisTask） */
   analyze: () => Promise<void>;
+  /** 将当前编辑内容确认成可进入解析链路的生产稿。 */
+  markScriptReady: () => Promise<void>;
 }
 
 export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchProps>(({
@@ -397,7 +399,8 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
   useImperativeHandle(ref, () => ({
     flushSave,
     analyze: handleAnalyze,
-  }), [flushSave, handleAnalyze]);
+    markScriptReady: handleMarkScriptReady,
+  }), [flushSave, handleAnalyze, handleMarkScriptReady]);
 
   // 空状态
   if (!episode) {

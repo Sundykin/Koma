@@ -87,6 +87,19 @@ describe('compileShotPromptToBundle — 基础 token 翻译', () => {
     expect(result.compiledPrompt).toBe('继承 @Image 1，当前板 @Image 2 中 @Image 3 情绪递进');
     expect(result.debug.unmappedTokens).toEqual([]);
   });
+
+  it('@previous_tail_frame 编译为最高优先级尾帧的位置', () => {
+    const bdl = bundle([
+      item({ kind: 'previous-video-tail', mentionToken: '@previous_tail_frame' }),
+      item({ kind: 'shot-anchor', mentionToken: '@shot_anchor' }),
+    ]);
+    const result = compileShotPromptToBundle({
+      prompt: '从 @previous_tail_frame 的人物末态继续，本镜构图参考 @shot_anchor',
+      bundle: bdl,
+    });
+    expect(result.compiledPrompt).toBe('从 @Image 1 的人物末态继续，本镜构图参考 @Image 2');
+    expect(result.debug.unmappedTokens).toEqual([]);
+  });
 });
 
 describe('compileShotPromptToBundle — 已经是 @Image N / @图片N 的处理', () => {

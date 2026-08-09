@@ -21,6 +21,10 @@ import {
   buildShotBreakdownDialogueModeDirective,
   formatProjectNarrativeMode,
 } from './narrativeMode';
+import {
+  normalizeShotContinuity,
+  type ShotContinuityPayload,
+} from './shotContinuity';
 
 const logger = createLogger('ShotAnalysis');
 const SHOT_ANALYSIS_LLM_TIMEOUT_MS = 300_000;
@@ -111,7 +115,7 @@ export interface PresetAssets {
 }
 
 // 分镜 JSON Schema（不含 description，后续手动生成提示词）
-const _SHOTS_SCHEMA = {
+export const _SHOTS_SCHEMA = {
   type: 'object',
   properties: {
     shots: {
@@ -128,6 +132,12 @@ const _SHOTS_SCHEMA = {
           emotion: { type: 'string', description: '情绪氛围' },
           props: { type: 'array', items: { type: 'string' }, description: '涉及的道具名' },
           scenes: { type: 'array', items: { type: 'string' }, description: '涉及的场景名' },
+          continuity: {
+            type: 'string',
+            enum: ['inherit', 'independent'],
+            description: '相对上一镜是否需要延续人物站位、动作和空间状态',
+          },
+          continuityReason: { type: 'string', description: '连续性判断的简短剧情依据' },
         },
         required: ['scriptContent', 'shotType'],
       },
@@ -135,6 +145,13 @@ const _SHOTS_SCHEMA = {
   },
   required: ['shots'],
 };
+
+export function normalizeGeneratedShotContinuity(
+  shots: Shot[],
+  payloads: ShotContinuityPayload[],
+): Shot[] {
+  return normalizeShotContinuity(shots, payloads);
+}
 
 export class ShotAnalysisService {
   private ctx: import('./CreationContext').CreationContext;
@@ -230,7 +247,11 @@ export class ShotAnalysisService {
         const progressBase = 20 + Math.floor((chunk.index / Math.max(chunks.length, 1)) * 55);
         TaskManager.updateTask(taskId, { progress: progressBase });
         const chunkShots = await this.generateShotPayloadsForChunk(traceId, chunk);
-        parsedShotPayloads.push(...chunkShots);
+        parsedShotPayloads.push(...chunkShots.map((payload, payloadIndex) => ({
+          ...payload,
+          // 多 chunk 的局部首镜看不到真实上一镜，不能让它的默认 independent 覆盖全局规则。
+          __ignoreContinuitySuggestion: chunks.length > 1 && payloadIndex === 0,
+        })));
       }
 
       TaskManager.updateTask(taskId, { progress: 75 });
@@ -294,36 +315,48 @@ export class ShotAnalysisService {
       // 分镜拆解时 description 为 undefined，后续手动生成
       // 时长按当前项目选择的 ITV 渠道 spec 吸附（grok 渠道 → 6/10/12/16/20；seedance → 4-15 范围），
       // 之前一律走 normalizeShotDuration（grok 枚举）会把 seedance 渠道的有效值 5 强制吸到 6
-      const shots: Shot[] = parsedShotPayloads.map((s, index) => ({
-        id: `shot_${Date.now()}_${index}`,
-        scriptLines: buildScriptLines(s),
-        shotType: s.shotType || 'medium',
-        cameraMovement: s.cameraMovement || 'static',
-        duration: clampDurationToSpec(s.duration, this.ctx.itvDurationSpec),
-        description: undefined,  // 后续手动生成提示词
-        characters: (s.characters || [])
+      const shotEntries = parsedShotPayloads.map((payload, index) => ({
+        payload,
+        shot: {
+          id: `shot_${Date.now()}_${index}`,
+          scriptLines: buildScriptLines(payload),
+          shotType: payload.shotType || 'medium',
+          cameraMovement: payload.cameraMovement || 'static',
+          duration: clampDurationToSpec(payload.duration, this.ctx.itvDurationSpec),
+          characters: (payload.characters || [])
           .map((name: string) => {
             const match = fuzzyMatchAsset(name, characters);
             return match ? getCharId(match) : undefined;
           })
           .filter((id: string | undefined): id is string => id !== undefined),
-        dialogue: s.dialogue || '',
-        emotion: s.emotion || '',
-        props: (s.props || [])
+          dialogue: payload.dialogue || '',
+          emotion: payload.emotion || '',
+          props: (payload.props || [])
           .map((name: string) => {
             const match = fuzzyMatchAsset(name, props);
             return match ? getPropId(match) : undefined;
           })
           .filter((id: string | undefined): id is string => id !== undefined),
-        scenes: (s.scenes || [])
+          scenes: (payload.scenes || [])
           .map((name: string) => {
             const match = fuzzyMatchAsset(name, scenes);
             return match ? match.id : undefined;
           })
           .filter((id: string | undefined): id is string => id !== undefined),
-        confirmed: false,
-        episodeId,
-      })).filter(shot => shot.scriptLines.length > 0); // Phase 2 方案 A：彻底丢弃空分镜
+          confirmed: false,
+        } satisfies Shot,
+      })).filter(entry => entry.shot.scriptLines.length > 0); // Phase 2 方案 A：彻底丢弃空分镜
+
+      // 必须在所有 chunk 合并、空镜过滤且最终 Shot ID 固定之后判断相邻连续性。
+      const shots = normalizeGeneratedShotContinuity(
+        shotEntries.map(entry => entry.shot),
+        shotEntries.map(entry => ({
+          continuity: entry.payload.continuity,
+          usePreviousTailFrame: entry.payload.usePreviousTailFrame,
+          continuityReason: entry.payload.continuityReason,
+          ignoreContinuitySuggestion: entry.payload.__ignoreContinuitySuggestion,
+        })),
+      );
 
       // 覆盖率校验仅适用于解说模式的"行号切分"（文本不改写，可逐行核对）；
       // 剧情模式是创作式拆解（description 是新文本），跳过逐行覆盖率检查

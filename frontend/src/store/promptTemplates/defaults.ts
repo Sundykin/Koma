@@ -87,6 +87,9 @@ export const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 - dialogue: 角色台词，格式为"角色名（情绪）：台词内容"，具体生成尺度必须遵守项目叙事模式
 - emotion: 画面情绪氛围
 - props: 出现的道具名列表
+- scenes: 出现的场景名列表
+- continuity: 相对上一镜是否需要延续人物站位、动作和空间状态（inherit/independent）
+- continuityReason: 连续性判断的一句话剧情依据
 
 {{dialogueModeDirective}}
 
@@ -100,6 +103,9 @@ export const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 4. 当同一段里出现“新动作 / 新视线目标 / 新道具状态 / 新场景空间 / 新说话人 / 情绪转折 / 时间推进”时，应优先拆成新的分镜，不要为了减少数量而合并。
 5. 如果剧本文本很长，也必须继续输出完整 shots 数组直到覆盖末尾；宁可分镜多，也不要丢失细节。
 6. 输出前自检：把所有 shot.scriptContent 连起来，应能覆盖原剧本的主干顺序；若发现遗漏，必须补齐后再返回。
+
+【视频连续性判断】
+每个非首镜必须输出 continuity 与 continuityReason。同一时空中的连续动作、视线、人物站位或机位承接填 inherit；明确转场、场景切换、时间跳跃、闪回或平行叙事填 independent。首镜填 independent。该建议只描述剧情关系，不代表已有视频。
 
 注意：不需要生成画面描述(description)提示词，这将在后续步骤生成。`,
     variables: [
@@ -266,6 +272,7 @@ export const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 4. 不许出现空分镜（scriptLineIndices 为空）。
 5. dialogue 字段由项目叙事模式决定：剧情模式可从第一人称推文解说改写少量真实对白；解说模式只保留显式对白或极少必要短反应。
 6. 自检：把所有分镜的 scriptLineIndices 按顺序拼起来 = [1, 2, ..., N]，无遗漏、无重复、无乱序。
+7. 每个非首镜判断与上一镜的视频连续性：同一时空的连续动作、视线、人物站位或机位承接填 continuity=inherit；明确转场、场景切换、时间跳跃、闪回或平行叙事填 independent。首镜填 independent，并用 continuityReason 简述依据。
 
 【输出 JSON】
 \`\`\`json
@@ -280,7 +287,9 @@ export const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
       "characters": ["已知角色名称"],
       "emotion": "情绪标签",
       "props": ["已知道具名称"],
-      "scenes": ["已知场景名称"]
+      "scenes": ["已知场景名称"],
+      "continuity": "inherit/independent",
+      "continuityReason": "同一场景内动作紧接上一镜"
     }
   ]
 }
@@ -290,6 +299,8 @@ export const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 - \`scriptLineIndices\`：1-based 字幕行号数组，必须连续（如 [3,4,5]），代表本分镜归属哪些行；下游会用这些索引从原剧本切片，不会读取其它字段去重建文本
 - 其它字段（shotType / cameraMovement / duration / dialogue / characters / scenes / props / emotion）描述本分镜的镜头语言与元素归属
 - \`dialogue\`：必须遵守项目叙事模式；剧情模式中可为第一人称推文素材生成短对白，解说模式不要强行补对白
+- \`continuity\`：同一时空的动作、视线、人物站位或机位承接填 inherit；转场、场景/时间变化、闪回或平行叙事填 independent；首镜填 independent
+- \`continuityReason\`：用一句可展示给用户的剧情依据说明判断
 `,
     variables: [
       variable('script'),
@@ -342,6 +353,7 @@ script 是**一段完整的自然行文**（不是逐行标签），它是后续
 2. 每镜 duration 必须容纳该镜全部台词 + 旁白的朗读时长：**按每 4–5 个汉字 ≈ 1 秒估算，duration 不得小于朗读估算时长**；台词多的镜头宁可给足时长，也不得让配音溢出；台词量达到两段完整对白且无法压缩时，拆成两个镜头。
 3. 每镜 script 一小段完整行文（1–4 句画面 + 引号台词），画面要素按上述规范写全。
 4. 剧本中的台词与关键情节必须全部覆盖到某个分镜，不得遗漏、不得概括性合并。
+5. 每个非首镜判断与上一镜的视频连续性：同一时空的连续动作、视线、人物站位或机位承接填 continuity=inherit；明确转场、场景切换、时间跳跃、闪回或平行叙事填 independent。首镜填 independent，并用 continuityReason 简述依据。
 
 【情绪词列表】
 高兴、愤怒、悲伤、恐惧、反感、低落、惊讶、自然、急切、平静、激动、呵斥、关心、严肃
@@ -375,7 +387,9 @@ script 是**一段完整的自然行文**（不是逐行标签），它是后续
       "characters": ["宁卓"],
       "scenes": ["废弃戏台"],
       "props": ["长剑"],
-      "emotion": "严肃"
+      "emotion": "严肃",
+      "continuity": "independent",
+      "continuityReason": "本段首镜，建立新的雨夜戏台空间"
     }
   ]
 }
@@ -384,6 +398,8 @@ script 是**一段完整的自然行文**（不是逐行标签），它是后续
 字段说明：
 - script：分镜脚本，多行文本。无标记行 = 画面行（场景/动作/构图/光线）；[台词·角色名] 行 = 该角色的台词；[旁白] 行 = 画外音
 - dialogue 字段已废弃，一律省略；台词就写在 script 的台词行里
+- continuity：相对上一镜的视频末态关系，只能是 inherit / independent
+- continuityReason：说明动作、视线、场景、时间或转场关系的一句话理由
 `,
     variables: [
       variable('script'),

@@ -80,6 +80,14 @@ export interface ShotListEditorProps {
   onInsertBelow: (shotId: string) => void;
   onShotImageModeChange: (shotId: string, mode: Exclude<ShotImageMode, 'grid'>) => void;
   onStoryboardInheritPreviousChange?: (shotId: string, enabled: boolean) => void;
+  /** 项目视频连续性模式（自动 / 手动继承 / 手动独立） */
+  onVideoReferenceModeChange?: (
+    shotId: string,
+    mode: 'auto' | 'manual',
+    usePreviousTailFrame: boolean,
+  ) => void | Promise<void>;
+  /** 截取或重新截取上一镜真实视频尾帧 */
+  onCapturePreviousTailFrame?: (shotId: string, forceRefresh?: boolean) => void | Promise<void>;
   onShotVideoModeChange?: (shotId: string, mode: 'multi-ref' | 'first-frame') => void;
   onBulkVideoModeChange?: (mode: 'multi-ref' | 'first-frame') => void;
   /** 批量统一分镜时长（秒） */
@@ -161,6 +169,8 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   onInsertBelow,
   onShotImageModeChange,
   onStoryboardInheritPreviousChange,
+  onVideoReferenceModeChange,
+  onCapturePreviousTailFrame,
   onShotVideoModeChange,
   onBulkVideoModeChange,
   onBulkImageModeChange,
@@ -391,6 +401,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
           prevShotSize={prevShotSize}
           prevLightTone={prevLightTone}
           prevSameScene={prevSameScene}
+          previousShot={prevShot}
           characters={characters}
           scenes={scenes}
           props={props}
@@ -410,6 +421,8 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
           onDurationChange={onDurationChange}
           onImageModeChange={onShotImageModeChange}
           onStoryboardInheritPreviousChange={onStoryboardInheritPreviousChange}
+          onVideoReferenceModeChange={onVideoReferenceModeChange}
+          onCapturePreviousTailFrame={onCapturePreviousTailFrame}
           onVideoModeChange={onShotVideoModeChange}
           onCharactersChange={onCharactersChange}
           onScenesChange={onScenesChange}

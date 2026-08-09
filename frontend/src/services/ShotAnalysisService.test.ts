@@ -1,5 +1,24 @@
 import { describe, expect, it } from 'vitest';
-import { buildShotCoverageReport, splitScriptForShotAnalysis } from './ShotAnalysisService';
+import type { Shot } from '../types';
+import {
+  _SHOTS_SCHEMA,
+  buildShotCoverageReport,
+  normalizeGeneratedShotContinuity,
+  splitScriptForShotAnalysis,
+} from './ShotAnalysisService';
+
+function makeShot(id: string, overrides: Partial<Shot> = {}): Shot {
+  return {
+    id,
+    scriptLines: [{ id: `${id}-line`, text: '人物继续向前走' }],
+    shotType: 'medium',
+    cameraMovement: 'tracking',
+    duration: 6,
+    characters: ['hero'],
+    scenes: ['road'],
+    ...overrides,
+  };
+}
 
 describe('buildShotCoverageReport', () => {
   it('reports full coverage when shot scriptLines preserve all script units', () => {
@@ -39,5 +58,48 @@ describe('splitScriptForShotAnalysis', () => {
     expect(chunks.length).toBeGreaterThan(1);
     expect(chunks.join('')).toBe(script);
     expect(chunks.every(chunk => chunk.length <= 2600)).toBe(true);
+  });
+});
+
+describe('shot analysis continuity metadata', () => {
+  it('advertises optional continuity fields in the structured schema', () => {
+    const properties = _SHOTS_SCHEMA.properties.shots.items.properties;
+    expect(properties.continuity).toMatchObject({ enum: ['inherit', 'independent'] });
+    expect(properties.continuityReason.type).toBe('string');
+    expect(_SHOTS_SCHEMA.properties.shots.items.required).not.toContain('continuity');
+  });
+
+  it('ignores a chunk-first independent suggestion after global merge', () => {
+    const normalized = normalizeGeneratedShotContinuity(
+      [makeShot('a'), makeShot('b')],
+      [
+        { continuity: 'independent', continuityReason: '首镜' },
+        {
+          continuity: 'independent',
+          continuityReason: '局部 chunk 首镜',
+          ignoreContinuitySuggestion: true,
+        },
+      ],
+    );
+
+    expect(normalized[1].videoReference).toMatchObject({
+      mode: 'auto',
+      usePreviousTailFrame: true,
+      autoUsePreviousTailFrame: true,
+      sourceShotId: 'a',
+    });
+  });
+
+  it('falls back deterministically for missing or invalid LLM continuity values', () => {
+    const normalized = normalizeGeneratedShotContinuity(
+      [makeShot('a'), makeShot('b'), makeShot('c', {
+        scenes: ['office'],
+        scriptLines: [{ id: 'c-line', text: '次日，画面切到办公室' }],
+      })],
+      [{}, { continuity: 'maybe' }, { continuity: { invalid: true } }],
+    );
+
+    expect(normalized[1].videoReference?.usePreviousTailFrame).toBe(true);
+    expect(normalized[2].videoReference?.usePreviousTailFrame).toBe(false);
   });
 });

@@ -30,6 +30,36 @@ function createShot(partial?: Partial<Shot>): Shot {
 }
 
 describe('compileShotVideoGenerationRequest', () => {
+  it('编译 previous_tail_frame 并保持尾帧为请求第一张参考图', () => {
+    const tail = image('https://example.com/previous-tail.jpg');
+    const current = image('https://example.com/current.png');
+    const shot = createShot({
+      videoReference: {
+        mode: 'auto',
+        usePreviousTailFrame: true,
+        sourceShotId: 'shot-prev',
+        referenceFrame: tail,
+      },
+      media: { images: [current], currentImageIndex: 0 },
+    });
+    const plan = collectShotVideoPlan({
+      shot,
+      characters: [],
+      scenes: [],
+      props: [],
+      modelCapabilities: ['video.reference-to-video', 'video.image-to-video'],
+    });
+    const compiled = compileShotVideoGenerationRequest({
+      plan,
+      prompt: '从 @previous_tail_frame 继续，并参考 @shot_anchor',
+      aspectRatio: '16:9',
+      duration: 6,
+      providerType: 'koma-suihe-itv',
+    });
+    expect(compiled.prompt).toBe('从 @Image 1 继续，并参考 @Image 2');
+    expect(compiled.request.referenceImages).toEqual([tail, current]);
+  });
+
   it('用单一 bundle 顺序编译 grid_anchor / 角色 / 场景 / 道具，并保持 request 引用顺序一致', () => {
     const gridImage = image('https://example.com/grid.png');
     const sceneImage = image('https://example.com/scene.png');

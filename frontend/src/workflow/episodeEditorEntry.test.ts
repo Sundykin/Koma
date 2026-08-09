@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { resolveEpisodeEditorEntry } from './episodeEditorEntry';
+import { listEditorStepIds } from './editorStepRegistry';
 import type { EpisodeStepProgress } from '../types';
 
 describe('resolveEpisodeEditorEntry', () => {
@@ -12,7 +13,7 @@ describe('resolveEpisodeEditorEntry', () => {
 
     const entry = resolveEpisodeEditorEntry(stepProgress, { mode: 'start-production' });
 
-    // 4 步流程下首步是 'script'；start-production 模式无脑跳到首步
+    // 三步主流程下首步是 'script'（项目）；start-production 模式无脑跳到首步
     expect(entry.initialStep).toBe('script');
     expect(entry.stepProgress).toEqual(stepProgress);
   });
@@ -24,10 +25,21 @@ describe('resolveEpisodeEditorEntry', () => {
       video: 'pending',
     };
 
-    // 剧本非空 → 'script' 视为已完成；assets 已完成 → 第一个未完成是 'storyboard'
+    // 剧本非空 → 'script' 视为已完成；隐藏 assets 不参与主步骤顺序
     expect(
       resolveEpisodeEditorEntry(stepProgress, { scriptText: '剧本内容' }).initialStep,
     ).toBe('storyboard');
+  });
+
+  it('does not force legacy assets into the resumed main flow', () => {
+    const stepProgress: EpisodeStepProgress = {
+      assets: 'pending',
+      storyboard: 'completed',
+      video: 'pending',
+    };
+
+    expect(resolveEpisodeEditorEntry(stepProgress, { scriptText: '已有剧本' }).initialStep).toBe('video');
+    expect(listEditorStepIds()).not.toContain('assets');
   });
 
   it('resume-progress: lands on script step when script is empty', () => {

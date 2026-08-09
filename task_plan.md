@@ -1448,3 +1448,37 @@
 | Error | Attempt | Resolution |
 |------|---------|------------|
 | jsdom 没有 `PointerEvent` 导致新增取消连线测试失败 | 1 | 取消连线合成事件改为 `window.PointerEvent ?? window.MouseEvent` |
+
+## Session: 2026-08-08 Project Continuous Production Actions
+
+### Goal
+- 仅优化 Koma“项目”生产工作台，不修改 Linghui。
+- 将缺失角色/场景/道具素材的批量补全直接放进项目页，并允许用户明确“跳过素材，生成分镜”。
+- 保留原资产管理行为、任务持久化/恢复与剧集上下文，防止重复提交。
+
+### Scope
+- OpenSpec：`add-project-continuous-production-actions`。
+- 项目级资产生成共享工作流、`AssetManagerPanel`、生产 readiness、`ProjectOverview` 与对应测试。
+- Electron 仅通过 `127.0.0.1:9333` 验证，不使用普通浏览器。
+- 不恢复或修改 `stash@{0}` 中隔离的 Linghui 误改。
+
+### Phases
+| Phase | Status | Description |
+|---|---|---|
+| 1. OpenSpec & Existing Flow Audit | complete | 校验变更文档并读取共享工作流所需的现有实现、任务 API 与测试边界 |
+| 2. Shared Asset Workflow | in_progress | 抽取缺失素材收集、并发重试、参考图远程化、生成持久化与任务去重 |
+| 3. Project Workbench Integration | pending | 项目页原地补素材、进度/结果/重试和跳过素材生成分镜 |
+| 4. Tests & Static Validation | pending | 新增单元/组件测试，运行回归、TypeScript 和前后端构建 |
+| 5. Electron Verification | pending | 通过 9333 验证原地补全、去重、任务恢复、跳过动作和尾帧功能回归 |
+
+### Acceptance Criteria
+- 项目页可直接补齐当前剧集引用但缺图的素材，无需先进入资产管理子视图。
+- 同一剧集的活动 `asset-generation` 任务只会被复用，不重复提交；兼容旧项目级活动任务。
+- 缺素材且尚无分镜时仍提供明确的“跳过素材，生成分镜”。
+- 切换项目步骤后能恢复活动任务进度；完成后刷新项目 readiness 和资产概览。
+- 目标测试、TypeScript、frontend/Electron build、OpenSpec strict validate 和 Electron 9333 验证通过。
+
+### Error Log
+| Error | Attempt | Resolution |
+|---|---|---|
+| None yet | 0 | N/A |

@@ -84,6 +84,7 @@ export type {
   Scene,
   Prop,
   ShotVideo,
+  ShotVideoReference,
   Shot,
   ShotImageMode,
   ShotScriptLine,

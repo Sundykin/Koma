@@ -185,6 +185,47 @@ interface ShotRowMetadata {
   inheritPreviousStoryboard?: boolean;
   promptScriptHash?: string;
   voiceScriptHash?: string;
+  videoReference?: Shot['videoReference'];
+}
+
+function parseStoredImageAsset(value: unknown): StoredMediaAsset | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const record = value as Record<string, unknown>;
+  if (record.kind !== 'image') return undefined;
+  const localPath = typeof record.localPath === 'string' && record.localPath.trim() ? record.localPath : undefined;
+  const remoteUrl = typeof record.remoteUrl === 'string' && record.remoteUrl.trim() ? record.remoteUrl : undefined;
+  if (!localPath && !remoteUrl) return undefined;
+  return {
+    ...(record as unknown as StoredMediaAsset),
+    kind: 'image',
+    localPath,
+    remoteUrl,
+    createdAt: typeof record.createdAt === 'number' && Number.isFinite(record.createdAt)
+      ? record.createdAt
+      : Date.now(),
+  };
+}
+
+function parseShotVideoReference(value: unknown): Shot['videoReference'] {
+  if (!value || typeof value !== 'object') return undefined;
+  const record = value as Record<string, unknown>;
+  if ((record.mode !== 'auto' && record.mode !== 'manual')
+    || typeof record.usePreviousTailFrame !== 'boolean') return undefined;
+  const compactString = (item: unknown) => typeof item === 'string' && item.trim() ? item.trim() : undefined;
+  return {
+    mode: record.mode,
+    usePreviousTailFrame: record.usePreviousTailFrame,
+    autoUsePreviousTailFrame: typeof record.autoUsePreviousTailFrame === 'boolean'
+      ? record.autoUsePreviousTailFrame
+      : undefined,
+    continuityReason: compactString(record.continuityReason),
+    sourceShotId: compactString(record.sourceShotId),
+    referenceFrame: parseStoredImageAsset(record.referenceFrame),
+    capturedAt: typeof record.capturedAt === 'number' && Number.isFinite(record.capturedAt)
+      ? record.capturedAt
+      : undefined,
+    sourceVideoKey: compactString(record.sourceVideoKey),
+  };
 }
 
 function parseShotRowMetadata(raw?: string | null): ShotRowMetadata {
@@ -203,6 +244,7 @@ function parseShotRowMetadata(raw?: string | null): ShotRowMetadata {
       voiceScriptHash: typeof meta.voiceScriptHash === 'string' && meta.voiceScriptHash
         ? meta.voiceScriptHash
         : undefined,
+      videoReference: parseShotVideoReference(meta.videoReference),
     };
   } catch {
     return {};
@@ -219,6 +261,10 @@ function buildShotRowMetadata(shot: Shot): string | undefined {
   }
   if (typeof shot.voiceScriptHash === 'string' && shot.voiceScriptHash) {
     meta.voiceScriptHash = shot.voiceScriptHash;
+  }
+  const videoReference = parseShotVideoReference(shot.videoReference);
+  if (videoReference) {
+    meta.videoReference = videoReference;
   }
   return Object.keys(meta).length ? JSON.stringify(meta) : undefined;
 }
@@ -651,6 +697,7 @@ export function shotRowToEntity(
     inheritPreviousStoryboard: metadata.inheritPreviousStoryboard,
     promptScriptHash: metadata.promptScriptHash,
     voiceScriptHash: metadata.voiceScriptHash,
+    videoReference: metadata.videoReference,
     dialogue: row.dialogue ?? undefined,
     emotion: row.emotion ?? undefined,
     confirmed: intToBool(row.confirmed),

@@ -116,6 +116,21 @@ describe('projectPersistenceHelpers', () => {
       duration: 4,
       imageMode: 'storyboard',
       inheritPreviousStoryboard: false,
+      videoReference: {
+        mode: 'manual',
+        usePreviousTailFrame: true,
+        autoUsePreviousTailFrame: false,
+        continuityReason: '导演决定延续动作',
+        sourceShotId: 'shot-0',
+        referenceFrame: {
+          kind: 'image',
+          localPath: '/tmp/shot-0-tail.png',
+          mimeType: 'image/png',
+          createdAt: 10,
+        },
+        capturedAt: 12,
+        sourceVideoKey: 'shot-0:/tmp/shot-0.mp4:99',
+      },
       characters: ['char-1'],
       scenes: ['scene-1'],
       props: ['prop-1'],
@@ -155,6 +170,19 @@ describe('projectPersistenceHelpers', () => {
       scriptLines: [expect.objectContaining({ text: '主角靠墙喘息' })],
       imageMode: 'storyboard',
       inheritPreviousStoryboard: false,
+      videoReference: {
+        mode: 'manual',
+        usePreviousTailFrame: true,
+        autoUsePreviousTailFrame: false,
+        continuityReason: '导演决定延续动作',
+        sourceShotId: 'shot-0',
+        referenceFrame: expect.objectContaining({
+          kind: 'image',
+          localPath: '/tmp/shot-0-tail.png',
+        }),
+        capturedAt: 12,
+        sourceVideoKey: 'shot-0:/tmp/shot-0.mp4:99',
+      },
       characters: ['char-1'],
       scenes: ['scene-1'],
       props: ['prop-1'],
@@ -219,6 +247,25 @@ describe('projectPersistenceHelpers', () => {
       model: 'seedance-2.0',
       currentVersion: 1,
     }));
+  });
+
+  it('ignores malformed shot video-reference metadata', () => {
+    const row = shotToRow({
+      id: 'shot-invalid-ref',
+      scriptLines: [{ id: 'l1', text: '镜头' }],
+      shotType: 'medium',
+      cameraMovement: 'static',
+      duration: 4,
+      characters: [],
+    }, 'project-1', 0);
+    row.metadata_json = JSON.stringify({
+      videoReference: { mode: 'linghui', usePreviousTailFrame: 'yes' },
+      promptScriptHash: 'valid-hash',
+    });
+
+    const shot = shotRowToEntity(row, [], [], [], []);
+    expect(shot.videoReference).toBeUndefined();
+    expect(shot.promptScriptHash).toBe('valid-hash');
   });
 
   it('builds episodes, analysis, assets and csv refs with structured semantics', () => {

@@ -106,7 +106,7 @@
   },
   "editor": {
     "title": "编辑器",
-    "stepScript": "剧本",
+    "stepScript": "项目",
     "stepAssets": "角色场景",
     "stepStoryboard": "AI分镜",
     "stepVideo": "后期剪辑",

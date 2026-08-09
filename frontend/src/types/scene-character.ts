@@ -102,6 +102,23 @@ export interface ShotVideo {
 export type ShotVideoMode = 'multi-ref' | 'first-frame';
 
 /**
+ * 项目 AI 分镜的视频连续性引用。
+ *
+ * `autoUsePreviousTailFrame` 始终保留自动判断，`mode=manual` 只覆盖当前生效值，
+ * 因此用户可以在不重新调用 LLM 的情况下恢复自动。
+ */
+export interface ShotVideoReference {
+  mode: 'auto' | 'manual';
+  usePreviousTailFrame: boolean;
+  autoUsePreviousTailFrame?: boolean;
+  continuityReason?: string;
+  sourceShotId?: string;
+  referenceFrame?: StoredMediaAsset;
+  capturedAt?: number;
+  sourceVideoKey?: string;
+}
+
+/**
  * 分镜内的字幕行块。
  *
  * 两种叙事模式产出不同的行结构：
@@ -152,6 +169,8 @@ export interface Shot {
   /** 故事板模式下是否把上一张故事板图片作为连续性参考；未设置时默认继承。 */
   inheritPreviousStoryboard?: boolean;
   videoMode?: ShotVideoMode; // 视频推理模式（默认 'multi-ref'）
+  /** 项目视频生成使用的上一镜真实视频尾帧；与 Linghui 数据模型无关。 */
+  videoReference?: ShotVideoReference;
   media?: ShotMediaState; // 结构化媒体槽位
   // 关联资产
   characters: string[];  // 涉及的角色ID

@@ -143,4 +143,47 @@ describe('ffmpegManager', () => {
       sharpenAmount: 0.6,
     });
   });
+
+  it('extracts and caches a real tail frame from the media end window', async () => {
+    const ffmpeg = {
+      getCacheDir: vi.fn()
+        .mockResolvedValueOnce('/tmp/koma-ffmpeg')
+        .mockResolvedValueOnce('/tmp/koma-ffmpeg/video-tail-frames'),
+      isAvailable: vi.fn().mockResolvedValue(true),
+      getInfo: vi.fn().mockResolvedValue({ duration: 5000, hasVideo: true }),
+      ensureDir: vi.fn().mockResolvedValue(undefined),
+      extractFrames: vi.fn().mockResolvedValue(['/tmp/tail/frame_000001.jpg']),
+    };
+    (window as typeof window & { electronAPI?: unknown }).electronAPI = { ffmpeg };
+
+    await expect(ffmpegManager.getTailFrame('/tmp/shot.mp4', 'shot-b', {
+      sourceVideoKey: 'shot-a:v1',
+    })).resolves.toBe('/tmp/tail/frame_000001.jpg');
+    await expect(ffmpegManager.getTailFrame('/tmp/shot.mp4', 'shot-b', {
+      sourceVideoKey: 'shot-a:v1',
+    })).resolves.toBe('/tmp/tail/frame_000001.jpg');
+
+    expect(ffmpeg.getInfo).toHaveBeenCalledWith('/tmp/shot.mp4');
+    expect(ffmpeg.extractFrames).toHaveBeenCalledWith(expect.objectContaining({
+      input: '/tmp/shot.mp4',
+      startTime: 4.92,
+      endTime: 5,
+      fps: 1,
+    }));
+    expect(ffmpeg.extractFrames).toHaveBeenCalledTimes(1);
+  });
+
+  it('never substitutes a poster frame when the predecessor has no video', async () => {
+    const ffmpeg = {
+      getCacheDir: vi.fn().mockResolvedValue('/tmp/koma-ffmpeg'),
+      isAvailable: vi.fn().mockResolvedValue(true),
+      getInfo: vi.fn().mockResolvedValue({ duration: 0, hasVideo: false }),
+      getPosterFrame: vi.fn(),
+    };
+    (window as typeof window & { electronAPI?: unknown }).electronAPI = { ffmpeg };
+
+    await expect(ffmpegManager.getTailFrame('/tmp/not-video.mp4', 'shot-b'))
+      .rejects.toThrow('没有已完成的真实视频');
+    expect(ffmpeg.getPosterFrame).not.toHaveBeenCalled();
+  });
 });

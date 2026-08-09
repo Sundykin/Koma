@@ -3,13 +3,12 @@
  * 三栏式工作台布局：左侧剧集导航(360px) | 中间剧本编辑区 | 右侧资产面板(340px)
  */
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { Button, Tooltip, App } from 'antd';
-import { LoadingOutlined } from '@ant-design/icons';
+import { App } from 'antd';
 import {
   Package, ChevronLeft, ChevronRight,
-  PanelLeftClose, PanelRightClose, Sparkles,
+  PanelLeftClose, PanelRightClose,
 } from 'lucide-react';
-import type { Project, Episode } from '../../types';
+import type { Project, Episode, EpisodeAnalysis, Shot } from '../../types';
 import type { EpisodeEditorEntryOptions } from '../../workflow/episodeEditorEntry';
 import { EpisodeManager, EpisodeManagerRef } from './EpisodeManager';
 import { ProjectAssetOverview, type ProjectAssetOverviewRef } from './ProjectAssetOverview';
@@ -17,11 +16,22 @@ import { ScriptWorkbench, type ScriptWorkbenchRef } from './ScriptWorkbench';
 import { ScriptImportDialog } from './ScriptImportDialog';
 import { listEpisodes, loadEpisode } from '../../store/projectStore';
 import { createLogger } from '../../store/logger';
+import { loadEpisodeAnalysis, loadEpisodeShots, loadCharacters, loadScenes, loadProps } from '../../store/projectStore';
+import { useTasks, useTaskTransitions } from '../../hooks';
+import { submitShotAnalysisTask } from '../../services/analysisTaskClient';
+import { serializeMediaSelection } from '../../providers/channel/resolver';
+import {
+  buildProjectProductionReadiness,
+  type ProductionNextActionType,
+} from '../../services/projectProductionReadiness';
+import { ProjectProductionReadinessPanel } from './ProjectProductionReadinessPanel';
 
 const logger = createLogger('ProjectOverview');
 
 interface ProjectOverviewProps {
   project: Project;
+  /** 从其他编辑步骤返回项目工作台时优先恢复该剧集。 */
+  activeEpisodeId?: string;
   onEnterEpisode: (episode: Episode, options?: EpisodeEditorEntryOptions) => void;
   onProjectUpdate: (updates: Partial<Project>) => void;
   /**
@@ -35,14 +45,21 @@ interface ProjectOverviewProps {
    * 信号模式而非函数 ref：避免把 dialog 提到 EditorView 后还要重新搭刷新通道。
    */
   openImportSignal?: number;
+  /** 在统一项目步骤内打开完整资产编辑器（兼容旧 assets step）。 */
+  onOpenAssets?: () => void;
+  /** 在统一项目步骤内打开当前剧集分镜。 */
+  onOpenStoryboard?: () => void;
 }
 
 export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
   project,
+  activeEpisodeId,
   onEnterEpisode,
   onProjectUpdate: _onProjectUpdate,
   onScriptChange,
   openImportSignal,
+  onOpenAssets,
+  onOpenStoryboard,
 }) => {
   const { message } = App.useApp();
   const episodeManagerRef = useRef<EpisodeManagerRef>(null);
@@ -56,6 +73,15 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
 
   // 当前选中的剧集（用于中间区域剧本编辑）
   const [selectedEpisode, setSelectedEpisode] = useState<Episode | null>(null);
+  const [episodeAnalysis, setEpisodeAnalysis] = useState<EpisodeAnalysis | null>(null);
+  const [episodeShots, setEpisodeShots] = useState<Shot[]>([]);
+  const [productionAssets, setProductionAssets] = useState<{
+    characters: import('../../types').Character[];
+    scenes: import('../../types').Scene[];
+    props: import('../../types').Prop[];
+  }>({ characters: [], scenes: [], props: [] });
+  const [productionLoading, setProductionLoading] = useState(false);
+  const [isStartingShots, setIsStartingShots] = useState(false);
 
   // 最新值 refs：让"按 project.id 触发一次"的初始化 effect 读到当前回调与选中态，
   // 避免把每轮渲染都重建的父级回调加进依赖导致重复拉取剧集列表
@@ -66,14 +92,55 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
   const onScriptChangeRef = useRef(onScriptChange);
   onScriptChangeRef.current = onScriptChange;
 
-  // 触发当前剧本解析（按钮在右侧资产面板顶部，逻辑由 ScriptWorkbench 通过 ref 暴露）
-  const handleAnalyzeClick = useCallback(() => {
-    if (!selectedEpisode) {
-      message.warning('请先选择剧集');
+  const loadProductionData = useCallback(async () => {
+    const current = selectedEpisodeRef.current;
+    if (!current) {
+      setEpisodeAnalysis(null);
+      setEpisodeShots([]);
+      setProductionAssets({ characters: [], scenes: [], props: [] });
+      setProductionLoading(false);
       return;
     }
-    scriptWorkbenchRef.current?.analyze();
-  }, [selectedEpisode, message]);
+
+    setProductionLoading(true);
+    try {
+      const [analysis, shots, characters, scenes, props] = await Promise.all([
+        loadEpisodeAnalysis(project.id, current.id),
+        loadEpisodeShots(project.id, current.id),
+        loadCharacters(project.id),
+        loadScenes(project.id),
+        loadProps(project.id),
+      ]);
+      if (selectedEpisodeRef.current?.id !== current.id) return;
+      setEpisodeAnalysis(analysis);
+      setEpisodeShots(shots.length > 0 ? shots : (analysis?.shots || []));
+      setProductionAssets({ characters, scenes, props });
+    } catch (error) {
+      logger.error('加载生产就绪度失败:', error);
+    } finally {
+      if (selectedEpisodeRef.current?.id === current.id) setProductionLoading(false);
+    }
+  }, [project.id]);
+
+  useEffect(() => {
+    void loadProductionData();
+  }, [loadProductionData, selectedEpisode?.id]);
+
+  const productionTasks = useTasks({
+    scope: `project:${project.id}`,
+    targetKind: 'episode',
+    targetId: selectedEpisode?.id,
+  }).filter((task) => task.type === 'script-analysis' || task.type === 'shot-analysis');
+
+  const readiness = React.useMemo(() => buildProjectProductionReadiness({
+    episode: selectedEpisode,
+    analysis: episodeAnalysis,
+    characters: productionAssets.characters,
+    scenes: productionAssets.scenes,
+    props: productionAssets.props,
+    shots: episodeShots,
+    tasks: productionTasks,
+  }), [episodeAnalysis, episodeShots, productionAssets, productionTasks, selectedEpisode]);
 
   // 初始加载时自动选中第一集
   useEffect(() => {
@@ -82,10 +149,12 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
       try {
         const episodes = await listEpisodes(project.id);
         if (cancelled || episodes.length === 0 || selectedEpisodeRef.current) return;
-        setSelectedEpisode(episodes[0]);
+        const preferred = activeEpisodeId ? episodes.find((item) => item.id === activeEpisodeId) : null;
+        const target = preferred || episodes[0];
+        setSelectedEpisode(target);
         // 同步到外层，让后续步骤的 ctx.activeEpisode 对齐
-        onEnterEpisodeRef.current(episodes[0]);
-        onScriptChangeRef.current?.(episodes[0].scriptText || '');
+        onEnterEpisodeRef.current(target);
+        onScriptChangeRef.current?.(target.scriptText || '');
       } catch (err) {
         logger.error('加载剧集失败:', err);
       }
@@ -94,7 +163,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [project.id]);
+  }, [activeEpisodeId, project.id]);
 
   // 点击剧集：先保存当前内容，再从磁盘加载最新数据后切换
   const handleEpisodeSelect = useCallback(async (episode: Episode) => {
@@ -118,6 +187,79 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
     setSelectedEpisode(prev => prev ? { ...prev, scriptText: text } : prev);
     onScriptChange?.(text);
   }, [onScriptChange]);
+
+  const handleOpenAssets = useCallback(() => {
+    if (!selectedEpisode) {
+      message.warning('请先选择剧集');
+      return;
+    }
+    onOpenAssets?.();
+  }, [message, onOpenAssets, selectedEpisode]);
+
+  const handleOpenStoryboard = useCallback(() => {
+    if (!selectedEpisode) {
+      message.warning('请先选择剧集');
+      return;
+    }
+    onOpenStoryboard?.();
+  }, [message, onOpenStoryboard, selectedEpisode]);
+
+  const handleReadinessAction = useCallback(async (action: ProductionNextActionType) => {
+    if (!selectedEpisode) return;
+    if (action === 'mark-script-ready') {
+      await scriptWorkbenchRef.current?.markScriptReady();
+      return;
+    }
+    if (action === 'analyze-script') {
+      await scriptWorkbenchRef.current?.analyze();
+      return;
+    }
+    if (action !== 'generate-shots') return;
+    const savedEpisode = await scriptWorkbenchRef.current?.flushSave();
+    const script = (savedEpisode?.scriptText || selectedEpisode.scriptText)?.trim();
+    if (!script) {
+      message.warning('请先输入剧本内容');
+      return;
+    }
+    setIsStartingShots(true);
+    try {
+      const { deduped } = await submitShotAnalysisTask({
+        projectId: project.id,
+        episodeId: selectedEpisode.id,
+        episodeName: selectedEpisode.title || `第${selectedEpisode.number}集`,
+        script,
+        llmSelection: serializeMediaSelection(project.mediaSelections?.llm),
+        styleSnapshot: project.styleSnapshot,
+      });
+      message.info(deduped ? '当前剧集已有分镜任务在进行中' : '分镜生成任务已启动，可继续编辑剧本');
+    } catch (error: any) {
+      logger.error('启动分镜生成失败:', error);
+      message.error(error?.message || '启动分镜生成失败，请重试');
+    } finally {
+      setIsStartingShots(false);
+    }
+  }, [message, project.id, project.mediaSelections?.llm, project.styleSnapshot, selectedEpisode]);
+
+  useTaskTransitions(
+    {
+      scope: `project:${project.id}`,
+      type: 'script-analysis',
+      targetKind: 'episode',
+      targetId: selectedEpisode?.id,
+      to: ['completed', 'failed', 'cancelled'],
+    },
+    () => { void loadProductionData(); },
+  );
+  useTaskTransitions(
+    {
+      scope: `project:${project.id}`,
+      type: 'shot-analysis',
+      targetKind: 'episode',
+      targetId: selectedEpisode?.id,
+      to: ['completed', 'failed', 'cancelled'],
+    },
+    () => { void loadProductionData(); },
+  );
 
   const handleImported = useCallback((episodes: Episode[]) => {
     episodeManagerRef.current?.refresh();
@@ -225,37 +367,13 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
               <PanelRightClose className="w-4 h-4" />
             </button>
           </div>
-          {/* 解析剧本入口（取代原工具栏的解析按钮，挂到资产面板上方） */}
-          <div className="px-3 py-2 border-b border-border-subtle/80">
-            <Tooltip
-              title={!selectedEpisode
-                ? '请先选择剧集'
-                : !(selectedEpisode.scriptText && selectedEpisode.scriptText.trim())
-                  ? '当前剧集还没有剧本内容'
-                  : !selectedEpisode.scriptReady
-                    ? '剧本还未推文化（字幕行格式）— 请先点击"推文文案"，或工具栏"标记为字幕格式"绕过'
-                    : isAnalyzing
-                      ? '正在解析中...'
-                      : '解析当前剧集，提取角色 / 场景 / 道具'}
-            >
-              <Button
-                type="primary"
-                size="small"
-                block
-                icon={isAnalyzing ? <LoadingOutlined spin /> : <Sparkles className="w-3.5 h-3.5" />}
-                onClick={handleAnalyzeClick}
-                disabled={
-                  !selectedEpisode
-                  || !(selectedEpisode.scriptText && selectedEpisode.scriptText.trim())
-                  || !selectedEpisode.scriptReady
-                  || isAnalyzing
-                }
-                className="bg-accent-hover hover:!bg-accent border-none"
-              >
-                {isAnalyzing ? '解析中...' : '解析剧本'}
-              </Button>
-            </Tooltip>
-          </div>
+          <ProjectProductionReadinessPanel
+            readiness={readiness}
+            onAction={handleReadinessAction}
+            onOpenAssets={handleOpenAssets}
+            onOpenStoryboard={handleOpenStoryboard}
+            busy={productionLoading || isStartingShots || isAnalyzing}
+          />
           {/* Asset Content */}
           <div className="flex-1 overflow-hidden">
             <ProjectAssetOverview ref={assetOverviewRef} projectId={project.id} />

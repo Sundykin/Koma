@@ -112,7 +112,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
     // 'script' 步：必须先解析剧本才能进入下一步
     const blockedByAnalysis = editorStep === 'script' && !scriptAnalysisReady;
     const tooltip = blockedByAnalysis
-      ? '请先点击右侧资产面板的「解析剧本」完成解析'
+      ? '请先在右侧生产进度中完成剧本解析'
       : undefined;
 
     const button = (

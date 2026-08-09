@@ -23,6 +23,7 @@ export type ShotReferenceKind =
   | 'grid-anchor'    // grid 模式的 3×3 九宫格整图（shot.media.gridImage，不拆分）
   | 'storyboard-anchor' // storyboard 模式的当前故事板整图
   | 'previous-storyboard-anchor' // 上一分镜故事板整图，用于故事板连续性
+  | 'previous-video-tail' // 上一分镜真实视频尾帧，用于视频连续性
   | 'scene'          // 场景资产图（按 shot.scenes 顺序）
   | 'character'      // 角色资产图（按 shot.characters 顺序，主角在前）
   | 'prop'           // 道具资产图（按 shot.props 顺序）
@@ -46,6 +47,7 @@ export interface ShotReferenceItem {
    *  - grid-anchor: '@grid_anchor'
    *  - storyboard-anchor: '@storyboard_anchor'
    *  - previous-storyboard-anchor: '@previous_storyboard_anchor'
+   *  - previous-video-tail: '@previous_tail_frame'
    *  - scene:       '@scene_<sceneId>'
    *  - character:   '@char_<characterId>'
    *  - prop:        '@prop_<propId>'
@@ -100,6 +102,8 @@ export interface ShotReferenceBundle {
 export interface ShotReferenceBundleOptions {
   /** 模型可接受的最大引用图数量。grok2 multipart edit ≤ 4，gemini 较多，seedance 视模型而定。 */
   maxRefs?: number;
+  /** 仅视频请求启用；生图/分镜图 prompt 不应把视频尾帧当作参考。 */
+  includePreviousVideoTail?: boolean;
 }
 
 /** 没声明 maxRefs 时的安全兜底。多数 provider 实测 4-6 张可靠。 */
