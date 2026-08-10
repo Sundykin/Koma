@@ -569,3 +569,179 @@ describe('ShotPromptService storyboard prompt variables', () => {
     expect(result).not.toContain('按第一镜建立');
   });
 });
+
+type ChatMessage = { role: string; content: string };
+
+/** 跑一次视频提示词推理，返回落库结果 + LLM 实际收到的 user 段。 */
+async function runVideoPrompt(options: {
+  shot: Shot;
+  characters: Character[];
+  chatResult: string;
+}): Promise<{ result: string; userMessage: string }> {
+  const { ShotPromptService } = await import('./ShotPromptService');
+  const projectStore = await import('../store/projectStore');
+
+  vi.mocked(projectStore.loadScenes).mockResolvedValue([{ id: 'scene_room', name: '叶赎居所' }] as any);
+  vi.mocked(projectStore.loadProps).mockResolvedValue([]);
+  vi.mocked(projectStore.loadEpisodeShots).mockResolvedValue([]);
+
+  const chat = vi.fn(async (_messages: ChatMessage[]) => options.chatResult);
+  const service = new ShotPromptService(createContext({
+    llmProvider: { chat, stream: vi.fn() } as unknown as CreationContext['llmProvider'],
+  }));
+  const { videoPrompt } = await service.generateDualShotPrompts(
+    options.shot,
+    options.characters,
+    '',
+    { image: false, video: true },
+  );
+  const messages = chat.mock.calls[0]?.[0] ?? [];
+  return {
+    result: videoPrompt,
+    userMessage: messages.find(m => m.role === 'user')?.content ?? '',
+  };
+}
+
+/** 多参模式的普通分镜（避免走宫格 / 故事板分支）。 */
+function createVideoShot(partial?: Partial<Shot>): Shot {
+  return createStoryboardShot({
+    id: 'shot-current',
+    imageMode: 'normal',
+    videoMode: 'multi-ref',
+    duration: 10,
+    ...partial,
+  });
+}
+
+const YESHU: Character = { id: 'char_yeshu', name: '叶赎', role: 'protagonist', prompt: '青年修士' } as Character;
+
+describe('ShotPromptService 视频提示词的上一镜尾帧承接', () => {
+  /** 已截取并绑定上一镜真实尾帧的分镜。 */
+  function createShotWithTailFrame(): Shot {
+    return createVideoShot({
+      videoReference: {
+        mode: 'manual',
+        usePreviousTailFrame: true,
+        sourceShotId: 'shot-prev',
+        referenceFrame: createImageAsset('/tmp/prev-tail.jpg'),
+        capturedAt: 1,
+      },
+    } as Partial<Shot>);
+  }
+
+  const runWithTailFrame = (chatResult: string) => runVideoPrompt({
+    shot: createShotWithTailFrame(),
+    characters: [YESHU],
+    chatResult,
+  });
+
+  it('把尾帧承接约束和 @previous_tail_frame 映射符送进推理输入', async () => {
+    const { userMessage } = await runWithTailFrame('画面描述：叶赎抬头。\n精确时长：10秒');
+
+    expect(userMessage).toContain('【尾帧承接约束');
+    expect(userMessage).toContain('承接上一分镜：@previous_tail_frame 上一分镜尾帧');
+    // mappingSchemaNote 的"只能使用清单内对象"不得再把尾帧排除在外
+    expect(userMessage).toContain('- 上一分镜尾帧：`@previous_tail_frame 上一分镜尾帧`');
+  });
+
+  it('LLM 漏写承接句时，落库的视频提示词兜底补上尾帧引用', async () => {
+    const { result } = await runWithTailFrame('画面描述：叶赎抬头看向光幕。\n精确时长：10秒');
+
+    expect(result.startsWith('承接上一分镜：@previous_tail_frame 上一分镜尾帧')).toBe(true);
+    expect(result).toContain('画面描述：叶赎抬头看向光幕。');
+  });
+
+  it('LLM 已写承接句时不重复追加', async () => {
+    const llmOutput = [
+      '承接上一分镜：@previous_tail_frame 上一分镜尾帧 —— 叶赎仍侧身站在窗前，右手停在半抬处。',
+      '画面描述：叶赎抬头看向光幕。',
+      '精确时长：10秒',
+    ].join('\n');
+    const { result } = await runWithTailFrame(llmOutput);
+
+    expect(result.match(/@previous_tail_frame/g)).toHaveLength(1);
+    expect(result).toBe(llmOutput);
+  });
+
+  it('未绑定尾帧的分镜不注入承接约束，也不改写推理结果', async () => {
+    const { result, userMessage } = await runVideoPrompt({
+      shot: createVideoShot(),
+      characters: [YESHU],
+      chatResult: '画面描述：叶赎抬头。\n精确时长：10秒',
+    });
+
+    expect(userMessage).not.toContain('【尾帧承接约束');
+    expect(result).not.toContain('@previous_tail_frame');
+  });
+});
+
+describe('ShotPromptService 视频提示词的角色音色映射', () => {
+  const VOICED: Character = { ...YESHU, voiceId: 'builtin-koma-voice-cherry' } as Character;
+
+  it('把音色映射约束和 @char_<id>-音色 送进推理输入', async () => {
+    const promptTemplates = await import('../store/promptTemplates');
+    const { userMessage } = await runVideoPrompt({
+      shot: createVideoShot(),
+      characters: [VOICED],
+      chatResult: '角色提示词：@char_yeshu 叶赎 抬头。\n精确时长：10秒',
+    });
+
+    expect(userMessage).toContain('【音色映射约束');
+    // 映射符清单要带上音色，"只能使用清单内对象"才不会把音色映射符一起挡掉
+    expect(userMessage).toContain('`@char_yeshu 叶赎 音色 @char_yeshu-音色`');
+    // 模板里的资产基准库同样带音色，baseline 与最终输出格式保持一致
+    expect(promptTemplates.resolvePromptTemplate).toHaveBeenCalledWith(
+      'shot_video_10s_multi',
+      expect.objectContaining({
+        characters: expect.stringContaining('- @char_yeshu 叶赎 音色 @char_yeshu-音色：'),
+      }),
+    );
+  });
+
+  it('LLM 漏写音色映射符时，在角色首次出现处就地补齐', async () => {
+    const { result } = await runVideoPrompt({
+      shot: createVideoShot(),
+      characters: [VOICED],
+      chatResult: '角色提示词：@char_yeshu 叶赎 抬头看向光幕。\n精确时长：10秒',
+    });
+
+    expect(result).toContain('角色提示词：@char_yeshu 叶赎 音色 @char_yeshu-音色 抬头看向光幕。');
+    expect(result.match(/@char_yeshu-音色/g)).toHaveLength(1);
+  });
+
+  it('正文完全没提到该角色时，音色兜底行插在精确时长之前', async () => {
+    const { result } = await runVideoPrompt({
+      shot: createVideoShot(),
+      characters: [VOICED],
+      chatResult: '画面描述：空镜，窗外雨声。\n精确时长：10秒',
+    });
+
+    expect(result).toContain('音色提示词：@char_yeshu 叶赎 音色 @char_yeshu-音色');
+    expect(result.trim().endsWith('精确时长：10秒')).toBe(true);
+  });
+
+  it('LLM 已写音色映射符时不重复补', async () => {
+    const llmOutput = [
+      '角色提示词：@char_yeshu 叶赎 音色 @char_yeshu-音色，抬头看向光幕。',
+      '精确时长：10秒',
+    ].join('\n');
+    const { result } = await runVideoPrompt({
+      shot: createVideoShot(),
+      characters: [VOICED],
+      chatResult: llmOutput,
+    });
+
+    expect(result).toBe(llmOutput);
+  });
+
+  it('角色未绑定音色时不注入音色约束，也不改写推理结果', async () => {
+    const { result, userMessage } = await runVideoPrompt({
+      shot: createVideoShot(),
+      characters: [YESHU],
+      chatResult: '角色提示词：@char_yeshu 叶赎 抬头。\n精确时长：10秒',
+    });
+
+    expect(userMessage).not.toContain('【音色映射约束');
+    expect(result).not.toContain('-音色');
+  });
+});

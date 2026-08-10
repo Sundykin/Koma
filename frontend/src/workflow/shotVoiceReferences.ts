@@ -12,6 +12,7 @@ import type { Character, ProviderAssetInput } from '../types';
 import { loadVoiceLibrary, findVoiceProfile, resolveVoiceSampleUrl } from '../services/voiceLibrary/voiceLibraryService';
 import { resolveProviderAssetInput } from '../services/mediaAssetResolver';
 import { formatReferencePlaceholder } from '../services/promptCompilation/imageIndexProtocol';
+import { normalizeMentionId } from '../editor/mentionTypes';
 import { createLogger } from '../store/logger';
 
 const logger = createLogger('ShotVoiceReference');
@@ -84,4 +85,39 @@ export async function buildShotVoiceReferencePlan(params: {
     references,
     promptSuffix: ['【音色参考】', ...lines].join('\n'),
   };
+}
+
+// 视频提示词里的角色音色复合映射符：`@char_<id>-音色`（推理阶段由 ShotPromptService 写入）。
+// 前面可能带一个"音色"字面标签（`@char_x 周明 音色 @char_x-音色`），一并吃掉，
+// 剥离时不会留下孤零零的"音色"两个字。
+const CHAR_VOICE_MENTION_RE = /(?:\s*音色)?\s*@char_([A-Za-z0-9_一-鿿-]+?)-音色/g;
+
+/**
+ * 把视频提示词里的 `@char_<id>-音色` 编译成协议占位符（`@Audio N` / `<音频 N>`），
+ * N 与 plan.references 顺序一致，也就是 metadata.komaVoiceReferences 的顺序。
+ *
+ * 必须在 compileShotPromptToBundle 之前跑：图像编译器的 `@char_<id>` 正则会把
+ * `@char_abc-音色` 前半段吃掉，编出 `@Image N-音色` 这种废 token。
+ * 没有对应音频参考的角色（未绑音色 / 音色没有示例音频）直接剥离 token。
+ */
+export function compileShotVoiceMentions(params: {
+  prompt: string;
+  plan: ShotVoiceReferencePlan;
+  promptProtocol?: string;
+}): { prompt: string; unresolvedMentions: string[] } {
+  // mention 里的 id 是去掉 `char_` 前缀的形式（createMentionString 的约定），
+  // 而 plan.references 用的是完整 character.id，这里统一归一后再查表。
+  const indexByMentionId = new Map(
+    params.plan.references.map((ref, index) => [normalizeMentionId('char', ref.characterId), index + 1] as const),
+  );
+  const unresolvedMentions: string[] = [];
+  const prompt = params.prompt.replace(CHAR_VOICE_MENTION_RE, (_match, mentionId: string) => {
+    const index = indexByMentionId.get(mentionId);
+    if (!index) {
+      unresolvedMentions.push(`@char_${mentionId}-音色`);
+      return '';
+    }
+    return ` 音色 ${formatReferencePlaceholder(params.promptProtocol, 'audio', index)}`;
+  });
+  return { prompt, unresolvedMentions };
 }

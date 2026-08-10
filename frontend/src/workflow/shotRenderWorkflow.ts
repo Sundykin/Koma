@@ -44,7 +44,7 @@ import {
   resolveShotVideoCapabilitySupport,
 } from './shotVideoPlan';
 import { compileShotVideoGenerationRequest } from './videoGenerationRequests';
-import { buildShotVoiceReferencePlan } from './shotVoiceReferences';
+import { buildShotVoiceReferencePlan, compileShotVoiceMentions } from './shotVoiceReferences';
 import { resolveConfiguredChannelModel } from '../providers/channel/resolver';
 import { getModelMaxReferenceImages } from '../providers/itv/modelCatalog';
 import type { StyleSnapshotLike } from '../utils/promptNormalize';
@@ -430,6 +430,37 @@ export async function shotRenderWorkflow(
           getDurationSpecForITVSelection(effectiveITVSelection, settings.channelConfigs || []),
         )
       : normalizeVideoDurationSeconds(normalizedShot.duration);
+    // 音色参考（音画同出模型）：绑定音色的角色把示例音频挂进请求，
+    // 并在提示词末尾追加协议对应的占位行（<音频 N> / @Audio N，每类参考从 1 开始编号）。
+    // 必须排在 compileShotVideoGenerationRequest 之前：提示词里的 @char_<id>-音色 要先
+    // 按这里的参考顺序编译成音频占位符，否则会被图像编译器啃成 `@Image N-音色`。
+    const itvChannelPromptProtocol = (selectedItvContext?.channelConfig?.providerConfig as Record<string, unknown> | undefined)
+      ?.promptProtocol as string | undefined;
+    const fallbackProtocol = providerType === 'comfyui-itv' ? 'minimax-image-tag' : undefined;
+    const voicePromptProtocol = itvChannelPromptProtocol ?? fallbackProtocol;
+    const voicePlan = await buildShotVoiceReferencePlan({
+      shotCharacters: normalizedShot.characters || [],
+      characters,
+      promptProtocol: voicePromptProtocol,
+    }).catch((err) => {
+      logger.warn('音色参考构建失败，跳过', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return { references: [], promptSuffix: '' };
+    });
+    const voiceMentionCompilation = compileShotVoiceMentions({
+      prompt: videoPrompt,
+      plan: voicePlan,
+      promptProtocol: voicePromptProtocol,
+    });
+    videoPrompt = voiceMentionCompilation.prompt;
+    if (voiceMentionCompilation.unresolvedMentions.length > 0) {
+      logger.warn('视频提示词中的角色音色映射符没有对应音频参考，已剥离', {
+        shotId: normalizedShot.id,
+        mentions: voiceMentionCompilation.unresolvedMentions,
+      });
+    }
+
     const compiledVideoRequest = compileShotVideoGenerationRequest({
       plan: resolvedVideoPlan,
       prompt: videoPrompt,
@@ -440,21 +471,6 @@ export async function shotRenderWorkflow(
       providerType,
     });
 
-    // 音色参考（音画同出模型）：绑定音色的角色把示例音频挂进请求，
-    // 并在提示词末尾追加协议对应的占位行（<音频 N> / @Audio N，每类参考从 1 开始编号）
-    const itvChannelPromptProtocol = (selectedItvContext?.channelConfig?.providerConfig as Record<string, unknown> | undefined)
-      ?.promptProtocol as string | undefined;
-    const fallbackProtocol = providerType === 'comfyui-itv' ? 'minimax-image-tag' : undefined;
-    const voicePlan = await buildShotVoiceReferencePlan({
-      shotCharacters: normalizedShot.characters || [],
-      characters,
-      promptProtocol: itvChannelPromptProtocol ?? fallbackProtocol,
-    }).catch((err) => {
-      logger.warn('音色参考构建失败，跳过', {
-        error: err instanceof Error ? err.message : String(err),
-      });
-      return { references: [], promptSuffix: '' };
-    });
     if (voicePlan.references.length > 0) {
       const mergedPrompt = `${compiledVideoRequest.prompt}\n${voicePlan.promptSuffix}`;
       compiledVideoRequest.prompt = mergedPrompt;

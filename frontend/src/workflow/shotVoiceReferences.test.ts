@@ -12,7 +12,7 @@ vi.mock('../services/mediaAssetResolver', () => ({
   resolveProviderAssetInput: vi.fn(),
 }));
 
-import { buildShotVoiceReferencePlan } from './shotVoiceReferences';
+import { buildShotVoiceReferencePlan, compileShotVoiceMentions } from './shotVoiceReferences';
 import {
   loadVoiceLibrary,
   resolveVoiceSampleUrl,
@@ -97,5 +97,53 @@ describe('buildShotVoiceReferencePlan', () => {
     });
     expect(plan.references).toHaveLength(0);
     expect(loadVoiceLibrary).not.toHaveBeenCalled();
+  });
+});
+
+describe('compileShotVoiceMentions', () => {
+  const plan = {
+    references: [
+      { characterId: 'char_1', characterName: '宁卓', asset: {} as any },
+      { characterId: 'char_2', characterName: '叶赎', asset: {} as any },
+    ],
+    promptSuffix: '',
+  };
+
+  it('按音色参考顺序把 @char_<id>-音色 编译成协议占位符', () => {
+    const { prompt } = compileShotVoiceMentions({
+      prompt: '角色提示词：@char_1 宁卓 音色 @char_1-音色，@char_2 叶赎 音色 @char_2-音色。',
+      plan,
+      promptProtocol: 'minimax-image-tag',
+    });
+
+    expect(prompt).toBe('角色提示词：@char_1 宁卓 音色 <音频 1>，@char_2 叶赎 音色 <音频 2>。');
+  });
+
+  it('默认协议下编译成 @Audio N', () => {
+    const { prompt } = compileShotVoiceMentions({
+      prompt: '@char_2 叶赎 音色 @char_2-音色 开口。',
+      plan,
+    });
+
+    expect(prompt).toBe('@char_2 叶赎 音色 @Audio 2 开口。');
+  });
+
+  it('没有对应音频参考的角色音色映射符连同"音色"标签一起剥离', () => {
+    const { prompt, unresolvedMentions } = compileShotVoiceMentions({
+      prompt: '@char_9 路人 音色 @char_9-音色 开口。',
+      plan,
+    });
+
+    expect(prompt).toBe('@char_9 路人 开口。');
+    expect(unresolvedMentions).toEqual(['@char_9-音色']);
+  });
+
+  it('不误伤普通角色映射符', () => {
+    const { prompt } = compileShotVoiceMentions({
+      prompt: '@char_1 宁卓 抬头，@char_11 另一人 走过。',
+      plan,
+    });
+
+    expect(prompt).toBe('@char_1 宁卓 抬头，@char_11 另一人 走过。');
   });
 });
