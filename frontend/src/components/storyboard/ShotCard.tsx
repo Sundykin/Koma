@@ -175,6 +175,8 @@ export interface ShotCardProps {
    * 不传则用 ALLOWED_VIDEO_DURATIONS 兜底（向后兼容）。
    */
   durationSpec?: VideoDurationSpec;
+  /** 当前 ITV 渠道能否承载视频参考；false 时「延长上一镜视频」档位置灰 */
+  videoExtendSupported?: boolean;
   /**
    * 单镜头视频生成进度。父组件按 shotId 维护一个 Map，传当前 shot 对应的项；
    * 不在生成中时为 undefined。用于在视频结果区域渲染百分比 + 阶段文本。
@@ -239,6 +241,7 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
   onInsertAbove,
   onInsertBelow,
   durationSpec,
+  videoExtendSupported = true,
   videoProgress,
 }) => {
   const { message } = App.useApp();
@@ -1105,17 +1108,32 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
                           options={[
                             { value: 'auto', label: <Tooltip title="自动判断连续性"><span data-testid="continuity-opt-auto"><ThunderboltOutlined /></span></Tooltip> },
                             { value: 'inherit', label: <Tooltip title="继承上一镜尾帧：抽一帧当参考图，锁死起始画面"><span data-testid="continuity-opt-inherit"><LinkOutlined /></span></Tooltip> },
-                            { value: 'extend', label: <Tooltip title="延长上一镜视频：整段上一镜成片作全能参考，模型自己读运镜和动作末态续拍，连贯度更高、消耗更多额度"><span data-testid="continuity-opt-extend"><ForwardOutlined /></span></Tooltip> },
+                            {
+                              value: 'extend',
+                              disabled: !videoExtendSupported,
+                              label: (
+                                <Tooltip title={videoExtendSupported
+                                  ? '延长上一镜视频：整段上一镜成片作全能参考，模型自己读运镜和动作末态续拍，连贯度更高、消耗更多额度'
+                                  : '当前项目的视频模型只有图片参考位，不能上传视频参考。要用延长承接请在项目设置里换成支持全能参考的视频渠道（Koma 即梦 / 穗禾直连 / ComfyUI）。'}>
+                                  <span data-testid="continuity-opt-extend"><ForwardOutlined /></span>
+                                </Tooltip>
+                              ),
+                            },
                             { value: 'independent', label: <Tooltip title="本镜独立"><span data-testid="continuity-opt-independent"><DisconnectOutlined /></span></Tooltip> },
                           ]}
                         />
                       </Tooltip>
                       {continuitySelection === 'extend' && (
-                        <Tooltip title={previousVideoAvailable
-                          ? `延长来源：上一镜 #${index} 的当前成片（渲染时整段直传，无需截帧）`
-                          : '延长模式需要上一镜已有成片视频，请先生成上一镜视频'}>
-                          <span data-testid="continuity-extend-hint" className={`text-[10px] px-0.5 ${previousVideoAvailable ? 'text-text-tertiary' : 'text-status-warning'}`}>
-                            延长#{index}
+                        <Tooltip title={!videoExtendSupported
+                          ? '当前项目的视频模型只有图片参考位，这一镜的延长承接不会生效——出片时会自动降级为普通生成。换成支持全能参考的视频渠道（Koma 即梦 / 穗禾直连 / ComfyUI）后即可生效。'
+                          : previousVideoAvailable
+                            ? `延长来源：上一镜 #${index} 的当前成片（渲染时整段直传，无需截帧）`
+                            : '延长模式需要上一镜已有成片视频，请先生成上一镜视频'}>
+                          <span
+                            data-testid="continuity-extend-hint"
+                            className={`text-[10px] px-0.5 ${videoExtendSupported && previousVideoAvailable ? 'text-text-tertiary' : 'text-status-warning'}`}
+                          >
+                            {videoExtendSupported ? `延长#${index}` : '延长不支持'}
                           </span>
                         </Tooltip>
                       )}

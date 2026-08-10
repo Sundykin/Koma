@@ -55,6 +55,7 @@ import {
   getDurationSpecForProviderType,
   specToInputBounds,
 } from '../../providers/itv/durationSpec';
+import { supportsReferenceKind } from '../../providers/itv/referenceCapabilities';
 import { getModelMaxReferenceImages } from '../../providers/itv/modelCatalog';
 import './Storyboard.scss';
 import './ShotListEditor.scss';
@@ -416,6 +417,14 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       getDurationSpecForModel(ctx?.model.id)
       ?? getDurationSpecForProviderType(ctx?.channelConfig.providerType)
     );
+  }, [effectiveSettings, itvSelection]);
+
+  // 当前 ITV 渠道能不能承载视频参考——决定「延长上一镜视频」这一档可不可选。
+  // 与 shotRenderWorkflow 取 providerType 的方式保持一致（runtime 优先，回落渠道配置）。
+  const videoExtendSupported = useMemo(() => {
+    const ctx = resolveConfiguredChannelModel(effectiveSettings, 'itv', itvSelection);
+    const providerType = ctx?.definition.runtimeProviderType || ctx?.channelConfig.providerType;
+    return supportsReferenceKind(providerType, 'video');
   }, [effectiveSettings, itvSelection]);
 
   const shotVideoSupportMap = useMemo(() => {
@@ -974,6 +983,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             onBulkDurationChange={handleBulkDurationChange}
             onBulkCalibrateDurations={handleBulkCalibrateDurations}
             durationSpec={itvDurationSpec}
+            videoExtendSupported={videoExtendSupported}
           />
           </DndContext>
         </StoryboardStudio>

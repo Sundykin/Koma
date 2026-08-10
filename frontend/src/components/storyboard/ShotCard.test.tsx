@@ -187,6 +187,60 @@ describe('ShotCard video continuity controls', () => {
     await waitFor(() => expect(onCapture).toHaveBeenCalledWith('shot-next', true));
   });
 
+  it('supports switching to previous-video extend mode', async () => {
+    const onMode = vi.fn().mockResolvedValue(undefined);
+    const previous = {
+      ...createShot('shot-prev'),
+      media: { videos: [{ kind: 'video' as const, remoteUrl: 'https://example.com/prev.mp4', createdAt: 1 }] },
+    };
+    const shot = createShot('shot-next', {
+      mode: 'manual',
+      usePreviousTailFrame: true,
+      sourceShotId: 'shot-prev',
+      referenceFrame: { kind: 'image', remoteUrl: 'https://example.com/tail.jpg', createdAt: 2 },
+    });
+
+    renderCard(shot, previous, { onVideoReferenceModeChange: onMode });
+
+    fireEvent.click(screen.getByTestId('continuity-opt-extend'));
+    await waitFor(() => expect(onMode).toHaveBeenCalledWith('shot-next', 'manual', true, 'video-extend'));
+  });
+
+  it('渠道不支持视频参考时置灰延长档位', () => {
+    const previous = {
+      ...createShot('shot-prev'),
+      media: { videos: [{ kind: 'video' as const, remoteUrl: 'https://example.com/prev.mp4', createdAt: 1 }] },
+    };
+    const shot = createShot('shot-next', {
+      mode: 'manual',
+      usePreviousTailFrame: true,
+      sourceShotId: 'shot-prev',
+      referenceFrame: { kind: 'image', remoteUrl: 'https://example.com/tail.jpg', createdAt: 2 },
+    });
+
+    renderCard(shot, previous, { videoExtendSupported: false });
+
+    const item = screen.getByTestId('continuity-opt-extend').closest('.ant-segmented-item');
+    expect(item).toHaveClass('ant-segmented-item-disabled');
+  });
+
+  it('已选延长但渠道不支持时给出降级警告', () => {
+    const previous = {
+      ...createShot('shot-prev'),
+      media: { videos: [{ kind: 'video' as const, remoteUrl: 'https://example.com/prev.mp4', createdAt: 1 }] },
+    };
+    const shot = createShot('shot-next', {
+      mode: 'manual',
+      usePreviousTailFrame: true,
+      continuity: 'video-extend',
+      sourceShotId: 'shot-prev',
+    });
+
+    renderCard(shot, previous, { videoExtendSupported: false });
+
+    expect(screen.getByTestId('continuity-extend-hint')).toHaveTextContent('延长不支持');
+  });
+
   it('disables capture and warns when predecessor has no real video', () => {
     const previous = createShot('shot-prev');
     const shot = createShot('shot-next', {

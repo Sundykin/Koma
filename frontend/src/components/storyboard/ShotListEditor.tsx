@@ -99,6 +99,8 @@ export interface ShotListEditorProps {
   onBulkImageModeChange?: (mode: Exclude<ShotImageMode, 'grid'>) => void;
   /** 当前项目选择的 ITV 渠道时长规格，透传给 ShotCard 决定时长控件渲染方式 */
   durationSpec?: import('../../providers/itv/durationSpec').VideoDurationSpec;
+  /** 当前 ITV 渠道能否承载视频参考；false 时「延长上一镜视频」档位置灰 */
+  videoExtendSupported?: boolean;
   /** 单镜头视频生成进度（按 shotId 聚合），透传给 ShotCard 渲染百分比与阶段文本 */
   videoProgressMap?: Map<string, { progress: number; step: string }>;
 }
@@ -170,6 +172,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   onBulkDurationChange,
   onBulkCalibrateDurations,
   durationSpec,
+  videoExtendSupported,
   videoProgressMap,
 }) => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -353,6 +356,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
           onInsertAbove={onInsertAbove}
           onInsertBelow={onInsertBelow}
           durationSpec={durationSpec}
+          videoExtendSupported={videoExtendSupported}
           videoProgress={videoProgressMap?.get(shot.id)}
         />
       );
@@ -404,6 +408,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
       onInsertAbove,
       onInsertBelow,
       durationSpec,
+      videoExtendSupported,
       videoProgressMap,
     ],
   );
