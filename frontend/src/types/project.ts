@@ -142,16 +142,6 @@ export interface ProjectMeta {
   stylePresetId?: string; // 选中的全局风格 ID
   styleSnapshot?: ProjectStyleSnapshot;
   /**
-   * 视频提示词模板档位选择（项目级）。
-   * 模板池：multi-ref 含 [6,10,15,20]、first-frame 含 [6,10,16,20]，每模式都可单独勾选。
-   * 不设置 / 数组空时回退到默认全选。运行时按 shot.duration 在勾选档位中找最近的档位匹配模板，
-   * 避免落空（详见 ShotPromptService.selectVideoTemplateKey）。
-   */
-  videoPromptDurationSelections?: {
-    multiRef?: number[];
-    firstFrame?: number[];
-  };
-  /**
    * 项目级 TTS 偏好（生成配音时使用，覆盖 channel.defaultVoice）：
    *  - voiceId: Koma TTS 内置音色 id（如 'cherry'）。空时走 channel 默认。
    *  - speed: 语速倍数（OpenAI 兼容字段 speed，0.25-4.0）。默认 1.2。

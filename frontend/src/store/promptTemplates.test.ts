@@ -66,16 +66,7 @@ describe('default shot breakdown prompt templates', () => {
 });
 
 describe('storyboard image/video prompt visual templates', () => {
-  const videoTemplateTypes: PromptTemplateType[] = [
-    'shot_video_6s_multi',
-    'shot_video_10s_multi',
-    'shot_video_15s_multi',
-    'shot_video_20s_multi',
-    'shot_video_6s_firstframe',
-    'shot_video_10s_firstframe',
-    'shot_video_16s_firstframe',
-    'shot_video_20s_firstframe',
-  ];
+  const videoTemplateTypes: PromptTemplateType[] = ['shot_video_multi', 'shot_video_firstframe'];
 
   it('生图模板输出与视频模板对应的画面结构字段', () => {
     const imageTemplate = getDefaultTemplate('shot_image_prompt_generation').template;
@@ -224,11 +215,9 @@ describe('storyboard image/video prompt visual templates', () => {
       expect(template).toContain('不得另起第二套逐镜头结构');
     }
 
-    for (const type of ['shot_video_6s_multi', 'shot_video_10s_multi', 'shot_video_15s_multi', 'shot_video_20s_multi'] as const) {
-      const template = getDefaultTemplate(type).template;
-      expect(template).toContain('内部参考，严禁原样输出');
-      expect(template).toContain('不得在 `精确时长` 后追加 `镜头 1：`');
-    }
+    const multiTemplate = getDefaultTemplate('shot_video_multi').template;
+    expect(multiTemplate).toContain('内部参考，严禁原样输出');
+    expect(multiTemplate).toContain('不得在 `精确时长` 后追加 `镜头 1：`');
   });
 
   it('生图推理模板声明台词和视频结构参考变量', () => {
@@ -242,11 +231,9 @@ describe('storyboard image/video prompt visual templates', () => {
   });
 
   it('首帧延展视频模板声明道具变量，避免道具提示词缺上下文', () => {
-    for (const type of ['shot_video_6s_firstframe', 'shot_video_10s_firstframe', 'shot_video_16s_firstframe', 'shot_video_20s_firstframe'] as const) {
-      const template = getDefaultTemplate(type);
-      expect(template.template).toContain('- 道具：{{props}}');
-      expect(template.variables.map((variable) => variable.name)).toContain('props');
-      expect(template.variables.map((variable) => variable.name)).toContain('dialogueModeDirective');
-    }
+    const template = getDefaultTemplate('shot_video_firstframe');
+    expect(template.template).toContain('- 道具：{{props}}');
+    expect(template.variables.map((variable) => variable.name)).toContain('props');
+    expect(template.variables.map((variable) => variable.name)).toContain('dialogueModeDirective');
   });
 });

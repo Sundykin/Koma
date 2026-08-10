@@ -8,8 +8,7 @@ import { createLogger } from '../../store/logger';
 
 const logger = createLogger('TTSPreview');
 import {
-  Drawer, Form, Input, Tabs, Select, Button, Space, Checkbox, Tooltip,
-  App as AntApp,
+  Drawer, Form, Input, Tabs, Select, Button, Space,
   Slider,
 } from 'antd';
 import { PlayCircleOutlined, PauseCircleOutlined } from '@ant-design/icons';
@@ -28,9 +27,8 @@ import {
   getAllThemePresets,
   type ThemePresetCatalogItem,
 } from '../../config/themePresets';
-import { VIDEO_TEMPLATE_BUCKETS } from '../../services/ShotPromptService';
 import {
-  isAllowedDurationForSpec,
+  formatSpecPromptHint,
   type VideoDurationSpec,
 } from '../../providers/itv/durationSpec';
 import styles from './ProjectSettingsModal.module.scss';
@@ -42,9 +40,8 @@ interface ProjectSettingsModalProps {
   onSave: (updates: Partial<Project>) => void;
   onGoToGlobalSettings?: () => void;
   /**
-   * 当前项目选择的 ITV 渠道时长规格（如 grok enum 6/10/12/16/20、即梦 range 4-15）。
-   * 用于在"提示词模板"档位 checkbox 上把不在 spec 范围内的档位标灰 + 提示。
-   * 不传则不灰显（视为不限制）。
+   * 当前项目选择的 ITV 渠道时长规格（如 grok enum 6/12/16/20、即梦 range 4-15）。
+   * 「视频提示词」页签用它展示"当前模型能出多长"，推理时的时长也按它吸附。
    */
   itvDurationSpec?: VideoDurationSpec;
 }
@@ -57,7 +54,6 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
   onGoToGlobalSettings,
   itvDurationSpec,
 }) => {
-  const { message } = AntApp.useApp();
   const [form] = Form.useForm();
   const [activeTab, setActiveTab] = useState('basic');
   const [mediaSelections, setMediaSelections] = useState<
@@ -65,13 +61,6 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
   >({});
   const [themePresets, setThemePresets] = useState<ThemePresetCatalogItem[]>([]);
 
-  // 视频提示词档位勾选：默认全选；nullable 表示"未配置"（保存时也按全选写回）
-  const [multiRefSelections, setMultiRefSelections] = useState<number[]>(
-    VIDEO_TEMPLATE_BUCKETS['multi-ref'].map((b) => b.duration),
-  );
-  const [firstFrameSelections, setFirstFrameSelections] = useState<number[]>(
-    VIDEO_TEMPLATE_BUCKETS['first-frame'].map((b) => b.duration),
-  );
   // TTS 项目级偏好（音色 + 语速）。默认 cherry / 1.2 倍速。
   const [ttsVoiceId, setTtsVoiceId] = useState<string>('cherry');
   const [ttsSpeed, setTtsSpeed] = useState<number>(1.2);
@@ -108,19 +97,6 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
         stylePresetId: project.stylePresetId || project.styleSnapshot?.sourcePresetId || DEFAULT_THEME_PRESET_ID,
       });
       setMediaSelections(project.mediaSelections || {});
-      // 视频提示词档位：取项目已配置；缺省 = 全选
-      const cfg = (project as { videoPromptDurationSelections?: { multiRef?: number[]; firstFrame?: number[] } })
-        .videoPromptDurationSelections;
-      setMultiRefSelections(
-        cfg?.multiRef && cfg.multiRef.length > 0
-          ? cfg.multiRef
-          : VIDEO_TEMPLATE_BUCKETS['multi-ref'].map((b) => b.duration),
-      );
-      setFirstFrameSelections(
-        cfg?.firstFrame && cfg.firstFrame.length > 0
-          ? cfg.firstFrame
-          : VIDEO_TEMPLATE_BUCKETS['first-frame'].map((b) => b.duration),
-      );
       // TTS 偏好：项目里有就用项目里的；缺省 cherry + 1.2 倍速
       setTtsVoiceId(typeof project.ttsVoiceId === 'string' && project.ttsVoiceId.trim()
         ? project.ttsVoiceId.trim()
@@ -144,10 +120,6 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
         theme: undefined,
         stylePrompt: undefined,
         mediaSelections,
-        videoPromptDurationSelections: {
-          multiRef: multiRefSelections,
-          firstFrame: firstFrameSelections,
-        },
         ttsVoiceId,
         ttsSpeed,
       } as Partial<Project>);
@@ -221,15 +193,7 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
     {
       key: 'video-prompt',
       label: '视频提示词',
-      children: (
-        <VideoPromptSelectionTab
-          multiRefSelections={multiRefSelections}
-          firstFrameSelections={firstFrameSelections}
-          onMultiRefChange={setMultiRefSelections}
-          onFirstFrameChange={setFirstFrameSelections}
-          itvDurationSpec={itvDurationSpec}
-        />
-      ),
+      children: <VideoPromptDurationTab itvDurationSpec={itvDurationSpec} />,
     },
     {
       key: 'tts',
@@ -271,10 +235,6 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
     </Drawer>
   );
 };
-
-// ================================================================
-// 视频提示词档位选择 Tab
-// ================================================================
 
 /* ========== TTS 偏好 Tab ========== */
 
@@ -456,90 +416,46 @@ const TTSPreferenceTab: React.FC<TTSPreferenceTabProps> = ({ voiceId, speed, onV
   );
 };
 
-interface VideoPromptSelectionTabProps {
-  multiRefSelections: number[];
-  firstFrameSelections: number[];
-  onMultiRefChange: (next: number[]) => void;
-  onFirstFrameChange: (next: number[]) => void;
+/**
+ * 视频提示词时长说明（只读）。
+ *
+ * 早期这里是"时长档位勾选"：模板池写死 multi-ref [6,10,15,20] / first-frame
+ * [6,10,16,20]，用户勾选启用哪几档，推理时把分镜时长吸附到最近的一档。结果是
+ * 12 秒的镜头按 10 秒的协议推、25 秒按 20 秒推，模板里的"总时长 X 秒"跟实际下发
+ * 给视频模型的时长对不上。现在档位整体取消，时长直接取分镜时长按模型 spec 吸附，
+ * 这个页签只剩"当前模型能出多长"的说明。
+ */
+interface VideoPromptDurationTabProps {
   itvDurationSpec?: VideoDurationSpec;
 }
 
-const VideoPromptSelectionTab: React.FC<VideoPromptSelectionTabProps> = ({
-  multiRefSelections,
-  firstFrameSelections,
-  onMultiRefChange,
-  onFirstFrameChange,
-  itvDurationSpec,
-}) => {
-  const renderMode = (
-    label: string,
-    description: string,
-    bucket: ReadonlyArray<{ duration: number; key: string }>,
-    selected: number[],
-    onChange: (next: number[]) => void,
-  ) => {
-    const toggle = (duration: number, checked: boolean) => {
-      const set = new Set(selected);
-      if (checked) set.add(duration);
-      else set.delete(duration);
-      // 全空时回退到全选，避免运行时落空
-      const next = Array.from(set).sort((a, b) => a - b);
-      onChange(next.length > 0 ? next : bucket.map((b) => b.duration));
-    };
-    return (
-      <div className={styles.modeBlock}>
-        <div className={styles.modeTitle}>{label}</div>
-        <div className={styles.modeDescription}>{description}</div>
-        <Space wrap>
-          {bucket.map(({ duration }) => {
-            const isSelected = selected.includes(duration);
-            const inSpec = itvDurationSpec ? isAllowedDurationForSpec(duration, itvDurationSpec) : true;
-            const checkbox = (
-              <Checkbox
-                checked={isSelected}
-                onChange={(e) => toggle(duration, e.target.checked)}
-                className={inSpec ? undefined : styles.disabledDuration}
-              >
-                {duration}s
-              </Checkbox>
-            );
-            if (!inSpec) {
-              return (
-                <Tooltip
-                  key={duration}
-                  title="当前 ITV 渠道的时长规格不包含该档位；选中后该档位仍会用于推理，但实际镜头时长可能被模型规范化"
-                >
-                  {checkbox}
-                </Tooltip>
-              );
-            }
-            return <span key={duration}>{checkbox}</span>;
-          })}
-        </Space>
-      </div>
-    );
-  };
+const VideoPromptDurationTab: React.FC<VideoPromptDurationTabProps> = ({ itvDurationSpec }) => {
+  const capability = itvDurationSpec
+    ? formatSpecPromptHint(itvDurationSpec)
+    : '未识别到当前项目视频模型的时长规格，推理会按 4–30 秒兜底区间处理';
 
   return (
     <>
       <div className={styles.tabIntro}>
-        勾选每种模式启用的时长档位（默认全选）。运行时按分镜时长在勾选档位中找<strong>最近</strong>的档位匹配模板，
-        不要求严格相等。<strong>清空所有勾选会自动回退到全选</strong>避免落空。
+        视频提示词不再分时长档位。推理时直接使用<strong>每个分镜自己的时长</strong>，
+        按当前项目所选视频模型的能力吸附成模型真正接受的秒数（兜底区间 4–30 秒），
+        再写进提示词的"总时长"与"精确时长"字段。
       </div>
-      {renderMode(
-        '参考模式（multi-ref）',
-        '使用 @角色 / @场景 / @道具 映射，适合需要多张参考图的分镜。模板池：6 / 10 / 15 / 20s。',
-        VIDEO_TEMPLATE_BUCKETS['multi-ref'],
-        multiRefSelections,
-        onMultiRefChange,
-      )}
-      {renderMode(
-        '首帧延展模式（first-frame）',
-        '以单图为锚做微动延展，适合不需要多图引导的稳态镜头。模板池：6 / 10 / 16 / 20s。',
-        VIDEO_TEMPLATE_BUCKETS['first-frame'],
-        firstFrameSelections,
-        onFirstFrameChange,
-      )}
+      <Space direction="vertical" size={12} style={{ width: '100%' }}>
+        <div>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>当前视频模型时长能力</div>
+          <div style={{ color: 'var(--token-text-secondary)' }}>{capability}</div>
+        </div>
+        <div>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>两套推理协议</div>
+          <div style={{ color: 'var(--token-text-secondary)' }}>
+            参考模式（multi-ref）：使用 @角色 / @场景 / @道具 映射，适合需要多张参考图的分镜。<br />
+            首帧延展模式（first-frame）：以单图为锚做微动延展，适合不需要多图引导的稳态镜头。<br />
+            两套协议的正文都可以在「设置 → Prompt 模板 → 视频提示词推理」里直接改。
+          </div>
+        </div>
+      </Space>
     </>
   );
 };
+

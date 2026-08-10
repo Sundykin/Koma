@@ -67,16 +67,6 @@ export interface CreationContext {
    */
   itvDurationSpec: VideoDurationSpec;
 
-  /**
-   * 项目级视频推理模板档位勾选（mode × 时长矩阵）。
-   * 见 ProjectMeta.videoPromptDurationSelections；ShotPromptService.selectVideoTemplateKey
-   * 在勾选档位里找跟 shot.duration 最近的档位匹配模板。
-   */
-  videoPromptDurationSelections?: {
-    multiRef?: number[];
-    firstFrame?: number[];
-  };
-
   /** 进度回调 */
   onProgress?: (phase: string, progress: number, detail?: string) => void;
 }
@@ -142,7 +132,6 @@ export async function createCreationContext(
     llmConfig,
     llmProvider,
     itvDurationSpec,
-    videoPromptDurationSelections: (projectMeta as { videoPromptDurationSelections?: { multiRef?: number[]; firstFrame?: number[] } } | null)?.videoPromptDurationSelections,
     onProgress: options?.onProgress,
   };
 }

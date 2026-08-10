@@ -23,6 +23,15 @@ export type VideoDurationSpec =
   | { kind: 'range'; min: number; max: number; step: number; default: number };
 
 /**
+ * 分镜时长的通用兜底区间（秒）。
+ *
+ * 下限 4：低于 4 秒没有主流视频模型支持，也写不出有动作推进的提示词。
+ * 上限 30：目前能力最强的模型一次大致到这个量级，再长应该拆镜而不是硬推。
+ * 只在识别不到具体模型 spec 时使用；识别得到就以模型自己的 spec 为准。
+ */
+export const FALLBACK_DURATION_RANGE = { min: 4, max: 30, step: 1 } as const;
+
+/**
  * 兜底 spec：保留历史 grok-imagine 风格枚举。
  * 找不到 provider 或 selection 没设时使用。
  */

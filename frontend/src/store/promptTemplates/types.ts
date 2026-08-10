@@ -19,14 +19,8 @@ export type PromptTemplateType =
   | 'shot_breakdown_drama'     // 剧情模式分镜拆解（小说/结构化剧本 → 真正的分镜描述 + 声音行）
   | 'shot_image_prompt_generation' // 分镜图片提示词生成
   | 'storyboard_shot_prompt_generation' // 故事板分镜提示词生成（电影级制作方案板）
-  | 'shot_video_6s_multi'          // 分镜视频提示词 · 多参模式 · 6 秒
-  | 'shot_video_10s_multi'         // 分镜视频提示词 · 多参模式 · 10 秒
-  | 'shot_video_15s_multi'         // 分镜视频提示词 · 多参模式 · 15 秒
-  | 'shot_video_20s_multi'         // 分镜视频提示词 · 多参模式 · 20 秒
-  | 'shot_video_6s_firstframe'     // 分镜视频提示词 · 首帧延展模式 · 6 秒
-  | 'shot_video_10s_firstframe'    // 分镜视频提示词 · 首帧延展模式 · 10 秒
-  | 'shot_video_16s_firstframe'    // 分镜视频提示词 · 首帧延展模式 · 16 秒
-  | 'shot_video_20s_firstframe'    // 分镜视频提示词 · 首帧延展模式 · 20 秒
+  | 'shot_video_multi'             // 分镜视频提示词 · 多参模式（时长由变量注入）
+  | 'shot_video_firstframe'        // 分镜视频提示词 · 首帧延展模式（时长由变量注入）
   // 推理约束段（拼在推理模板之后送进 user 区，按分镜实际情况条件注入）
   | 'shot_directive_mapping_schema'    // 映射符约定（@char/@scene/@prop/锚点/音色的输出格式）
   | 'shot_directive_spatial_anchored'  // 空间锚定 · 有锚定图（图就是空间真相）
@@ -66,7 +60,7 @@ export type PromptTemplateType =
 // - tweet          推文文案：剧本→旁白脚本、旁白→分镜化解说。
 // - inference-image  图片提示词推理：分镜图（含九宫格）的 image prompt 生成。
 // - inference-video  视频提示词推理：分镜视频的 video prompt 生成
-//                  （按时长 × multi-ref / first-frame 模式 5 模板）。
+//                  （multi-ref / first-frame 两套协议；时长由 durationSeconds 变量注入）。
 // - tti            文生图直拼：定妆照、场景图、道具图、分镜图、九宫格图等
 //                  直接喂给 TTI 模型的提示词组装模板。
 // - itv            图生视频直拼：分镜视频、角色/道具动态视频，直接喂 ITV 模型。
@@ -92,7 +86,7 @@ export const PROMPT_CATEGORY_META: Record<PromptTemplateCategory, { label: strin
   extraction:       { label: '实体提取',     description: '从剧本提取角色 / 场景 / 道具清单',                    order: 4 },
   tweet:            { label: '推文文案',     description: '剧本 → 旁白；旁白 → 分镜化解说',                      order: 5 },
   'inference-image':{ label: '图片提示词推理', description: '分镜静态画面提示词（含九宫格）',                    order: 6 },
-  'inference-video':{ label: '视频提示词推理', description: '分镜视频提示词（按时长 × 多参 / 首帧 5 模板）',      order: 7 },
+  'inference-video':{ label: '视频提示词推理', description: '分镜视频提示词（多参 / 首帧两套协议，时长按模型能力注入）', order: 7 },
   'inference-directive': { label: '推理约束段', description: '拼在推理模板之后的约束块，按分镜实际情况条件注入', order: 8 },
   tti:              { label: 'TTI 直拼',     description: '文生图模型的直接输入提示词（定妆 / 场景图等）',       order: 9 },
   itv:              { label: 'ITV 直拼',     description: '图生视频模型的直接输入提示词（分镜视频等）',          order: 10 },

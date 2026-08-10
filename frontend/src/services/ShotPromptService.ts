@@ -11,6 +11,11 @@ import { loadProject, loadScenes, loadProps, updateShot, loadEpisodeShots } from
 import { createLogger } from '../store/logger';
 import { createMentionString } from '../editor/mentionTypes';
 import { runWithConcurrency } from '../utils/concurrency';
+import {
+  clampDurationToSpec,
+  FALLBACK_DURATION_RANGE,
+  type VideoDurationSpec,
+} from '../providers/itv/durationSpec';
 import type { StyleSnapshotLike } from '../utils/promptNormalize';
 import { runWithTask } from './taskRunner';
 import type { TaskSubType } from './TaskManager';
@@ -385,11 +390,9 @@ export class ShotPromptService {
     allEpisodeShots?: Shot[],
   ): Promise<string> {
     const videoMode: ShotVideoMode = shot.videoMode || 'multi-ref';
-    const projectSelections = this.ctx.videoPromptDurationSelections;
-    const modeSelections = videoMode === 'first-frame'
-      ? projectSelections?.firstFrame
-      : projectSelections?.multiRef;
-    const templateKey = selectVideoTemplateKey(shot.duration, videoMode, modeSelections);
+    const templateKey = VIDEO_TEMPLATE_BY_MODE[videoMode];
+    // 时长直接用分镜时长，按项目所选视频模型的 spec 吸附——不再往固定档位上靠
+    const durationSeconds = resolvePromptDurationSeconds(shot.duration, this.ctx.itvDurationSpec);
 
     // 邻接分镜上下文：按需 load 同剧集的所有分镜，定位 prev2 / prev1 / next
     const adjacency = await this.loadAdjacentShots(shot, allEpisodeShots);
@@ -402,6 +405,7 @@ export class ShotPromptService {
     const videoScriptContent = buildShotVideoScriptContent(shot, characterNames, this.ctx.projectMode, characterNameById);
     const explicitDialogueText = resolveShotDialogueText(shot, characterNameById);
     const templateVariables: Record<string, string> = {
+      durationSeconds: String(durationSeconds),
       scriptContent: videoScriptContent,
       characters: formatCharacterMappingBaseline(shotCharacters, videoMode, referenceBundle),
       scenes: formatSceneMappingBaseline(shotScenes, videoMode),
@@ -863,72 +867,46 @@ export class ShotPromptService {
  * 字数控制交给模板里给 LLM 的软约束（"应尽量精简，强烈建议控制在 4000 以内"），
  * 截断会切掉句尾导致语意残缺，宁可让 LLM 自己写得短一些。
  */
-// ========== 模板池 + 档位选择 ==========
+// ========== 模板选择 + 时长解析 ==========
+
+/** 视频推理模板：只按模式分两套，时长不再分档位。 */
+const VIDEO_TEMPLATE_BY_MODE: Record<ShotVideoMode, PromptTemplateType> = {
+  'multi-ref': 'shot_video_multi',
+  'first-frame': 'shot_video_firstframe',
+};
 
 /**
- * 模板池：按 (mode × 时长) 维护对应的 PromptTemplateType。
- * 时长档位是模板的"内置档位"，与视频模型 spec（如 grok enum / 即梦 range）独立。
+ * 推理时长的兜底上下限。
  *
- *   - multi-ref：6 / 10 / 15 / 20s（4 档）
- *   - first-frame：6 / 10 / 16 / 20s（4 档）
- *
- * 项目级配置（ProjectMeta.videoPromptDurationSelections）从中各自勾选启用的档位；
- * 默认全选。运行时按 shot.duration 在勾选档位中找最近的档位匹配模板，避免落空。
+ * 下限 4 秒：低于 4 秒的镜头没有哪个主流视频模型支持，也写不出有动作推进的提示词。
+ * 上限 30 秒：目前能力最强的模型一次也就到这个量级；再长应该拆镜而不是硬推。
+ * 真正的可用区间由项目所选视频模型的 VideoDurationSpec 决定，这两个值只在
+ * spec 缺失（没配渠道 / 解析失败）时兜底。
  */
-export const VIDEO_TEMPLATE_BUCKETS = {
-  'multi-ref': [
-    { duration: 6, key: 'shot_video_6s_multi' as const },
-    { duration: 10, key: 'shot_video_10s_multi' as const },
-    { duration: 15, key: 'shot_video_15s_multi' as const },
-    { duration: 20, key: 'shot_video_20s_multi' as const },
-  ],
-  'first-frame': [
-    { duration: 6, key: 'shot_video_6s_firstframe' as const },
-    { duration: 10, key: 'shot_video_10s_firstframe' as const },
-    { duration: 16, key: 'shot_video_16s_firstframe' as const },
-    { duration: 20, key: 'shot_video_20s_firstframe' as const },
-  ],
-} as const;
-
-/** 默认勾选 = 当前模式下的全部档位 */
-export function getDefaultVideoTemplateSelections(mode: ShotVideoMode): number[] {
-  return VIDEO_TEMPLATE_BUCKETS[mode].map((b) => b.duration);
-}
+export const MIN_PROMPT_DURATION_SECONDS = FALLBACK_DURATION_RANGE.min;
+export const MAX_PROMPT_DURATION_SECONDS = FALLBACK_DURATION_RANGE.max;
 
 /**
- * 选模板：在 mode 对应的模板池中，按"项目级勾选档位"过滤后，找跟 shot.duration
- * 距离最近的档位。距离平局时取较小档位（避免不必要的拉长）。
+ * 解析送进模板的 `{{durationSeconds}}`。
  *
- * 当 selections 为空 / 未提供 / 与当前模板池没有交集时，回退到模式默认全选档位 —
- * 防止因配置异常导致落空。
+ * 旧实现是"在 6/10/15/20 四个档位里找最近的一档"——分镜写 12 秒会被推成 10 秒的
+ * 协议，写 25 秒会被推成 20 秒，模板里的"总时长 X 秒"跟实际下发给视频模型的时长
+ * 对不上。现在直接用分镜时长，按所选视频模型的 spec 吸附到它真正接受的值，
+ * 再夹到 4–30 兜底区间。
  */
-function selectVideoTemplateKey(
-  duration: number,
-  mode: ShotVideoMode,
-  selections?: number[],
-): PromptTemplateType {
-  const bucket = VIDEO_TEMPLATE_BUCKETS[mode];
-  const allDurations = bucket.map((b) => b.duration);
-  const requested = Array.isArray(selections) && selections.length > 0
-    ? selections.filter((d) => allDurations.includes(d))
-    : [];
-  const enabled = requested.length > 0 ? requested : allDurations;
-  const target = typeof duration === 'number' && duration > 0 ? duration : 6;
-
-  // 在 enabled 中找最近的档位；平局取较小档位
-  let best = enabled[0];
-  let bestDist = Math.abs(best - target);
-  for (const d of enabled.slice(1)) {
-    const dist = Math.abs(d - target);
-    if (dist < bestDist || (dist === bestDist && d < best)) {
-      best = d;
-      bestDist = dist;
-    }
-  }
-  const matched = bucket.find((b) => b.duration === best);
-  if (matched) return matched.key;
-  // 理论上不会到这（enabled 始终命中 bucket 至少 1 项），保留兜底
-  return bucket[0].key;
+export function resolvePromptDurationSeconds(
+  duration: unknown,
+  spec?: VideoDurationSpec,
+): number {
+  const raw = typeof duration === 'number' && Number.isFinite(duration) && duration > 0
+    ? duration
+    : MIN_PROMPT_DURATION_SECONDS;
+  const snapped = spec ? clampDurationToSpec(raw, spec) : raw;
+  const bounded = Math.min(
+    Math.max(snapped, MIN_PROMPT_DURATION_SECONDS),
+    MAX_PROMPT_DURATION_SECONDS,
+  );
+  return Math.round(bounded);
 }
 
 /**

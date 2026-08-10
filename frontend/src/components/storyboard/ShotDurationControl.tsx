@@ -16,8 +16,11 @@ import { Button, Dropdown, InputNumber, Tooltip } from 'antd';
 import type { MenuProps } from 'antd';
 import type { InputNumberRef } from '@rc-component/input-number';
 import { DownOutlined } from '@ant-design/icons';
-import { ALLOWED_VIDEO_DURATIONS, normalizeVideoDurationSeconds } from '../../utils/videoDuration';
-import { clampDurationToSpec, type VideoDurationSpec } from '../../providers/itv/durationSpec';
+import {
+  clampDurationToSpec,
+  FALLBACK_DURATION_RANGE,
+  type VideoDurationSpec,
+} from '../../providers/itv/durationSpec';
 
 interface ShotDurationControlProps {
   value: number;
@@ -69,16 +72,18 @@ export const ShotDurationControl: React.FC<ShotDurationControlProps> = ({
     );
   }
 
-  // range / 兜底：点击进入行内编辑
-  const min = durationSpec?.kind === 'range' ? durationSpec.min : ALLOWED_VIDEO_DURATIONS[0];
-  const max = durationSpec?.kind === 'range' ? durationSpec.max : ALLOWED_VIDEO_DURATIONS[ALLOWED_VIDEO_DURATIONS.length - 1];
-  const step = durationSpec?.kind === 'range' ? durationSpec.step : 1;
+  // range / 兜底：点击进入行内编辑。
+  // 没有 spec 时不再吸附到历史白名单 [6,10,12,16,20]——那会把 12 秒之外的自由时长
+  // 强行拉回档位；现在按通用区间 4–30 秒自由填整数。
+  const min = durationSpec?.kind === 'range' ? durationSpec.min : FALLBACK_DURATION_RANGE.min;
+  const max = durationSpec?.kind === 'range' ? durationSpec.max : FALLBACK_DURATION_RANGE.max;
+  const step = durationSpec?.kind === 'range' ? durationSpec.step : FALLBACK_DURATION_RANGE.step;
 
   const commit = (raw: number | null) => {
     const n = typeof raw === 'number' && Number.isFinite(raw) ? raw : value;
     const next = durationSpec?.kind === 'range'
       ? clampDurationToSpec(n, durationSpec)
-      : normalizeVideoDurationSeconds(n, value);
+      : Math.round(Math.min(Math.max(n, FALLBACK_DURATION_RANGE.min), FALLBACK_DURATION_RANGE.max));
     if (next !== value) onChange(next);
     setEditing(false);
   };

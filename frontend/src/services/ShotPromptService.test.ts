@@ -8,6 +8,7 @@ import {
 } from './ShotPromptService';
 import type { ShotReferenceBundle } from './shotReference/types';
 import type { Character, Shot, StoredMediaAsset } from '../types';
+import type { VideoDurationSpec } from '../providers/itv/durationSpec';
 import type { CreationContext } from './CreationContext';
 
 vi.mock('../store/projectStore', () => ({
@@ -721,7 +722,7 @@ describe('ShotPromptService 视频提示词的角色音色映射', () => {
     expect(userMessage).toContain('`@char_yeshu 叶赎 音色 @char_yeshu-音色`');
     // 模板里的资产基准库同样带音色，baseline 与最终输出格式保持一致
     expect(promptTemplates.resolvePromptTemplate).toHaveBeenCalledWith(
-      'shot_video_10s_multi',
+      'shot_video_multi',
       expect.objectContaining({
         characters: expect.stringContaining('- @char_yeshu 叶赎 音色 @char_yeshu-音色：'),
       }),
@@ -856,5 +857,70 @@ describe('推理约束段全部由可编辑模板驱动', () => {
 
     expect(result).toContain('画面描述：x');
     expect(userMessage).toContain('resolved prompt');
+  });
+});
+
+describe('视频推理时长按模型能力解析（取消档位）', () => {
+  it('range 模型：分镜时长直接用，只夹到模型区间', async () => {
+    const { resolvePromptDurationSeconds } = await import('./ShotPromptService');
+    const seedance: VideoDurationSpec = { kind: 'range', min: 4, max: 15, step: 1, default: 5 };
+
+    // 12 秒不再被推成 10 秒档位
+    expect(resolvePromptDurationSeconds(12, seedance)).toBe(12);
+    expect(resolvePromptDurationSeconds(4, seedance)).toBe(4);
+    // 超过模型上限 → 夹到上限，不是"最近档位 20"
+    expect(resolvePromptDurationSeconds(25, seedance)).toBe(15);
+  });
+
+  it('enum 模型：吸附到模型真正接受的枚举值', async () => {
+    const { resolvePromptDurationSeconds } = await import('./ShotPromptService');
+    const grok: VideoDurationSpec = { kind: 'enum', values: [6, 12, 16, 20], default: 6 };
+
+    expect(resolvePromptDurationSeconds(13, grok)).toBe(12);
+    expect(resolvePromptDurationSeconds(30, grok)).toBe(20);
+  });
+
+  it('无 spec：按 4–30 兜底区间自由取值', async () => {
+    const {
+      resolvePromptDurationSeconds,
+      MIN_PROMPT_DURATION_SECONDS,
+      MAX_PROMPT_DURATION_SECONDS,
+    } = await import('./ShotPromptService');
+
+    expect(MIN_PROMPT_DURATION_SECONDS).toBe(4);
+    expect(MAX_PROMPT_DURATION_SECONDS).toBe(30);
+    expect(resolvePromptDurationSeconds(23)).toBe(23);
+    expect(resolvePromptDurationSeconds(2)).toBe(4);
+    expect(resolvePromptDurationSeconds(120)).toBe(30);
+    expect(resolvePromptDurationSeconds(undefined)).toBe(4);
+  });
+
+  it('推理时把解析后的秒数注入模板，模板只按模式选两套之一', async () => {
+    const promptTemplates = await import('../store/promptTemplates');
+    const projectStore = await import('../store/projectStore');
+    const { ShotPromptService } = await import('./ShotPromptService');
+
+    vi.mocked(projectStore.loadScenes).mockResolvedValue([]);
+    vi.mocked(projectStore.loadProps).mockResolvedValue([]);
+    vi.mocked(projectStore.loadEpisodeShots).mockResolvedValue([]);
+
+    const service = new ShotPromptService(createContext({
+      itvDurationSpec: { kind: 'range', min: 4, max: 15, step: 1, default: 5 },
+      llmProvider: {
+        chat: vi.fn(async () => '画面描述：x\n精确时长：13秒'),
+        stream: vi.fn(),
+      } as unknown as CreationContext['llmProvider'],
+    }));
+    await service.generateDualShotPrompts(
+      createStoryboardShot({ id: 's', imageMode: 'normal', videoMode: 'multi-ref', duration: 13 }),
+      [],
+      '',
+      { image: false, video: true },
+    );
+
+    expect(promptTemplates.resolvePromptTemplate).toHaveBeenCalledWith(
+      'shot_video_multi',
+      expect.objectContaining({ durationSeconds: '13' }),
+    );
   });
 });
