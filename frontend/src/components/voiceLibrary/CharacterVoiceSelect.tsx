@@ -129,7 +129,12 @@ export const CharacterVoiceSelect: React.FC<CharacterVoiceSelectProps> = ({
         size={size}
         showSearch
         optionFilterProp="label"
-        style={{ flex: 1 }}
+        // minWidth:0 必须给：flex item 默认 min-width:auto，未选音色时长占位文案会把
+        // Select 的内容宽撑到容器之外，压住右侧的试听 / 上传音色按钮（点不到）。
+        style={{ flex: 1, minWidth: 0 }}
+        // 触发器可能被挤得很窄，下拉不跟随它的宽度，否则音色名全被截断
+        popupMatchSelectWidth={false}
+        styles={{ popup: { root: { minWidth: 200 } } }}
       />
       <Button
         size={size}

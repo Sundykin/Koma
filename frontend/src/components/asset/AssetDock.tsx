@@ -24,6 +24,7 @@ import {
   CloseOutlined,
   TeamOutlined,
   AudioOutlined,
+  CloudUploadOutlined,
 } from '@ant-design/icons';
 import { v4 as uuidv4 } from 'uuid';
 import type { Character, Scene, Prop, ProjectStyleSnapshot, StoredMediaAsset } from '../../types';
@@ -667,16 +668,17 @@ export const AssetDock: React.FC<AssetDockProps> = ({
           <div className="flex-1 min-w-0" key={`${c.id}-voice-${voiceLibVersion}`}>
             <CharacterVoiceSelect
               value={c.voiceId}
-              placeholder="绑定音色（配音/视频声音参考）"
+              placeholder="绑定音色"
               onChange={(voiceId) => handleFieldSave('character', c.id, { voiceId })}
             />
           </div>
-          <Tooltip title="上传音色样本音频到音色库，并绑定到该角色">
+          {/* 上传自定义音色：与是否已选音色无关，未绑定时也要能直接传样本 */}
+          <Tooltip title="上传自定义音色样本音频，上传后自动绑定到该角色">
             <button
               onClick={() => setVoiceUpload({ characterId: c.id, name: `${c.name}的音色`, filePath: '', submitting: false })}
               className="shrink-0 w-8 h-8 flex items-center justify-center text-text-secondary hover:text-accent hover:bg-bg-hover rounded cursor-pointer"
             >
-              <AudioOutlined className="text-[12px]" />
+              <CloudUploadOutlined className="text-[13px]" />
             </button>
           </Tooltip>
           <Input
