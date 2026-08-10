@@ -18,13 +18,25 @@ vi.mock('../store/projectStore', () => ({
   updateShot: vi.fn(),
 }));
 
-vi.mock('../store/promptTemplates', () => ({
-  resolvePromptTemplate: vi.fn(async (templateId: string) => ({
-    prompt: templateId === 'shot_prompt_system' ? 'system prompt' : 'resolved prompt',
-    source: 'default',
-    template: { id: templateId },
-  })),
-}));
+// 业务模板一律打桩成 'resolved prompt'（本文件不测模板正文）；但 inference-directive
+// 约束段要用真实默认模板渲染——它们的措辞就是被测行为的一部分。
+vi.mock('../store/promptTemplates', async () => {
+  const { DEFAULT_TEMPLATES } = await import('../store/promptTemplates/defaults');
+  return {
+    resolvePromptTemplate: vi.fn(async (templateId: string, variables: Record<string, string> = {}) => {
+      let prompt: string;
+      if (templateId.startsWith('shot_directive_')) {
+        prompt = Object.entries(variables).reduce(
+          (acc, [key, value]) => acc.split(`{{${key}}}`).join(value ?? ''),
+          (DEFAULT_TEMPLATES as Record<string, { template: string }>)[templateId].template,
+        );
+      } else {
+        prompt = templateId === 'shot_prompt_system' ? 'system prompt' : 'resolved prompt';
+      }
+      return { prompt, source: 'default', template: { id: templateId } };
+    }),
+  };
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -761,5 +773,88 @@ describe('ShotPromptService 视频提示词的角色音色映射', () => {
 
     expect(userMessage).not.toContain('【音色映射约束');
     expect(result).not.toContain('-音色');
+  });
+});
+
+describe('推理约束段全部由可编辑模板驱动', () => {
+  const VOICED: Character = {
+    id: 'char_yeshu', name: '叶赎', role: 'protagonist', prompt: '青年修士',
+    voiceId: 'builtin-koma-voice-cherry',
+  } as Character;
+
+  /** 有尾帧 + 有音色 + 有场景 → 五段约束会全部注入。 */
+  function createFullyLoadedShot(): Shot {
+    return createStoryboardShot({
+      id: 'shot-current',
+      imageMode: 'normal',
+      videoMode: 'multi-ref',
+      duration: 10,
+      videoReference: {
+        mode: 'manual',
+        usePreviousTailFrame: true,
+        sourceShotId: 'shot-prev',
+        referenceFrame: createImageAsset('/tmp/prev-tail.jpg'),
+        capturedAt: 1,
+      },
+    } as Partial<Shot>);
+  }
+
+  it('五段约束都走 resolvePromptTemplate，用户改模板即改推理输入', async () => {
+    const promptTemplates = await import('../store/promptTemplates');
+    await runVideoPrompt({
+      shot: createFullyLoadedShot(),
+      characters: [VOICED],
+      chatResult: '画面描述：x\n精确时长：10秒',
+    });
+
+    const resolvedIds = vi.mocked(promptTemplates.resolvePromptTemplate).mock.calls.map(c => c[0]);
+    expect(resolvedIds).toEqual(expect.arrayContaining([
+      'shot_directive_mapping_schema',
+      'shot_directive_spatial_multiref',
+      'shot_directive_tail_frame',
+      'shot_directive_voice_mention',
+      'shot_directive_output_boundary',
+    ]));
+  });
+
+  it('用户改写约束模板后，改动直接出现在送给 LLM 的 user 段里', async () => {
+    const promptTemplates = await import('../store/promptTemplates');
+    vi.mocked(promptTemplates.resolvePromptTemplate).mockImplementation(async (id: string) => ({
+      prompt: id === 'shot_directive_tail_frame'
+        ? '【我自己写的尾帧规则】只写一次 @previous_tail_frame。'
+        : (id === 'shot_prompt_system' ? 'system prompt' : 'resolved prompt'),
+      source: 'custom',
+      template: { id },
+    }) as any);
+
+    const { userMessage } = await runVideoPrompt({
+      shot: createFullyLoadedShot(),
+      characters: [VOICED],
+      chatResult: '画面描述：x\n精确时长：10秒',
+    });
+
+    expect(userMessage).toContain('【我自己写的尾帧规则】');
+    expect(userMessage).not.toContain('【尾帧承接约束');
+  });
+
+  it('约束模板解析失败时只跳过该段，推理不中断', async () => {
+    const promptTemplates = await import('../store/promptTemplates');
+    vi.mocked(promptTemplates.resolvePromptTemplate).mockImplementation(async (id: string) => {
+      if (id === 'shot_directive_voice_mention') throw new Error('模板被删了');
+      return {
+        prompt: id === 'shot_prompt_system' ? 'system prompt' : 'resolved prompt',
+        source: 'default',
+        template: { id },
+      } as any;
+    });
+
+    const { result, userMessage } = await runVideoPrompt({
+      shot: createFullyLoadedShot(),
+      characters: [VOICED],
+      chatResult: '画面描述：x\n精确时长：10秒',
+    });
+
+    expect(result).toContain('画面描述：x');
+    expect(userMessage).toContain('resolved prompt');
   });
 });

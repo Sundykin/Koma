@@ -27,6 +27,13 @@ export type PromptTemplateType =
   | 'shot_video_10s_firstframe'    // 分镜视频提示词 · 首帧延展模式 · 10 秒
   | 'shot_video_16s_firstframe'    // 分镜视频提示词 · 首帧延展模式 · 16 秒
   | 'shot_video_20s_firstframe'    // 分镜视频提示词 · 首帧延展模式 · 20 秒
+  // 推理约束段（拼在推理模板之后送进 user 区，按分镜实际情况条件注入）
+  | 'shot_directive_mapping_schema'    // 映射符约定（@char/@scene/@prop/锚点/音色的输出格式）
+  | 'shot_directive_spatial_anchored'  // 空间锚定 · 有锚定图（图就是空间真相）
+  | 'shot_directive_spatial_multiref'  // 空间锚定 · 多参考模式（场景描述作为空间基线）
+  | 'shot_directive_tail_frame'        // 尾帧承接（已绑定上一镜真实视频尾帧时注入）
+  | 'shot_directive_voice_mention'     // 音色映射（角色绑定了音色时注入）
+  | 'shot_directive_output_boundary'   // 最终输出边界（只返回提示词正文）
   | 'grid_shot_prompt_generation'  // 九宫格分镜提示词生成（将单个分镜扩展为9个连续画面）
   | 'grid_4_shot_prompt_generation' // 四宫格分镜提示词生成（将单个分镜扩展为4个连续画面，更细粒度的镜头控制）
   | 'character_extraction'     // 角色提取
@@ -72,6 +79,7 @@ export type PromptTemplateCategory =
   | 'tweet'
   | 'inference-image'
   | 'inference-video'
+  | 'inference-directive'
   | 'tti'
   | 'itv';
 
@@ -85,8 +93,9 @@ export const PROMPT_CATEGORY_META: Record<PromptTemplateCategory, { label: strin
   tweet:            { label: '推文文案',     description: '剧本 → 旁白；旁白 → 分镜化解说',                      order: 5 },
   'inference-image':{ label: '图片提示词推理', description: '分镜静态画面提示词（含九宫格）',                    order: 6 },
   'inference-video':{ label: '视频提示词推理', description: '分镜视频提示词（按时长 × 多参 / 首帧 5 模板）',      order: 7 },
-  tti:              { label: 'TTI 直拼',     description: '文生图模型的直接输入提示词（定妆 / 场景图等）',       order: 8 },
-  itv:              { label: 'ITV 直拼',     description: '图生视频模型的直接输入提示词（分镜视频等）',          order: 9 },
+  'inference-directive': { label: '推理约束段', description: '拼在推理模板之后的约束块，按分镜实际情况条件注入', order: 8 },
+  tti:              { label: 'TTI 直拼',     description: '文生图模型的直接输入提示词（定妆 / 场景图等）',       order: 9 },
+  itv:              { label: 'ITV 直拼',     description: '图生视频模型的直接输入提示词（分镜视频等）',          order: 10 },
 };
 
 // Prompt 模板接口

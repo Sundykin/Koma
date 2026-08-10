@@ -342,7 +342,7 @@ export class ShotPromptService {
     const systemPrompt = resolvedSystemPrompt.prompt;
 
     // 图片提示词同样追加映射约定，确保 LLM 输出 `@<id> <名称>` 格式（与视频提示词一致）。
-    const mappingSchemaNote = buildMappingSchemaNote(
+    const mappingSchemaNote = await buildMappingSchemaNote(
       shotCharacters,
       shotScenes,
       shotProps,
@@ -435,40 +435,34 @@ export class ShotPromptService {
     // @char_<id> / @scene_<id> / @prop_<id>。在 user 区追加一段映射约定，让 LLM 输出
     // 时直接使用项目协议形式，下游 mention 解析才能正确识别。
     // 同时附带 referenceBundle，让映射约定能根据有图/无图模式注入 @图（锚点）的引用指引。
-    const mappingSchemaNote = buildMappingSchemaNote(
-      shotCharacters,
-      shotScenes,
-      shotProps,
-      referenceBundle,
-    );
     const dialogueGuardNote = buildDialogueGuardNote(
       videoScriptContent,
       characterNames,
       explicitDialogueText,
       this.ctx.projectMode,
     );
-    // 空间锚定约束：
-    //  · 有 imagePrompt（锚定图 / 宫格）→ 图就是空间真相，让 LLM 不要写方位词
-    //  · 无 imagePrompt（多参考模式）→ 由 @scene / @char / @prop 引用图组合构成画面，
-    //    把场景描述作为空间基线，禁止 AI 凭空编造空间关系
-    // 两种情况下，只要 shot 引用了 @scene，都把场景描述继承进来作为空间真相
-    const spatialAnchorDirective = buildSpatialAnchorDirective(shot, shotScenes, referenceBundle);
-    // 尾帧承接：用户截过上一镜真实尾帧时，强制推理结果从尾帧的末态继续（放在空间锚定
-    // 之后，优先级更高——尾帧是真实成片帧，比图像提示词描述的姿态更接近画面真相）。
-    const tailFrameContinuityDirective = buildTailFrameContinuityDirective(referenceBundle);
-    // 音色映射：绑定了音色的角色要在角色说明里带上 @char_<id>-音色，音画同出模型和
-    // 渲染期的音色参考编译都靠这个映射符定位"谁说话用哪条音色"。
-    const voiceMentionDirective = buildVoiceMentionDirective(shotCharacters);
-    const finalOutputBoundary = [
-      '【最终输出边界】',
-      '只返回最终可直接提交给视频模型的提示词正文。',
-      '禁止输出【自检】、输出前自检、检查清单、规则复述、解释说明、Markdown checkbox。',
-      '如果有显式直接对白，必须进入最终"对白提示词"或对应台词字段；不要因为压缩字数删除台词。',
-      this.ctx.projectMode === 'drama'
-        ? '剧情模式下，第一人称叙述 / 转述句需要改写成真实可拍剧情和少量正确人称对白，禁止把原叙述句逐字塞进对白或旁白。'
-        : '解说模式下，不要主动把第一人称解说改成大量角色对白；无显式对白时对白提示词写“无”或只写极短反应。',
-      '只能输出一套最终字段结构。`shotsSection` / 镜头结构约束只用于内部规划，不得作为第二套逐镜头段落输出；如果有镜头细节，必须合并进 `角色动作提示词`、`画面描述`、`光影氛围提示词` 等对应字段。',
-    ].join('\n');
+    // 约束段全部走 inference-directive 模板（PromptStudio 可编辑）。代码只决定注不注入
+    // 以及往里塞什么数据；并发解析，避免 5 次串行 IO 拖慢推理入口。
+    //  · 空间锚定：有 imagePrompt（锚定图 / 宫格）→ 图就是空间真相；无 → 场景描述作基线
+    //  · 尾帧承接：截过上一镜真实尾帧时要求从尾帧末态继续
+    //  · 音色映射：绑定音色的角色要带 @char_<id>-音色
+    const [
+      mappingSchemaNote,
+      spatialAnchorDirective,
+      tailFrameContinuityDirective,
+      voiceMentionDirective,
+      finalOutputBoundary,
+    ] = await Promise.all([
+      buildMappingSchemaNote(shotCharacters, shotScenes, shotProps, referenceBundle),
+      buildSpatialAnchorDirective(shot, shotScenes, referenceBundle),
+      buildTailFrameContinuityDirective(referenceBundle),
+      buildVoiceMentionDirective(shotCharacters),
+      resolveDirective('shot_directive_output_boundary', {
+        narrativeModeRule: this.ctx.projectMode === 'drama'
+          ? '剧情模式下，第一人称叙述 / 转述句需要改写成真实可拍剧情和少量正确人称对白，禁止把原叙述句逐字塞进对白或旁白。'
+          : '解说模式下，不要主动把第一人称解说改成大量角色对白；无显式对白时对白提示词写“无”或只写极短反应。',
+      }),
+    ]);
 
     // 与图片路径对齐：把 LLM 实际拿到的 scriptContent 打出来，方便排查"合并分镜后
     // 视频推理只剩末尾一段"类问题。
@@ -996,16 +990,12 @@ function formatCharacterIdentityWithVoice(character: Character): string {
  *
  * 这里要求推理输出里每个有台词的角色都写全 `@char_<id> <角色名> 音色 @char_<id>-音色`。
  */
-function buildVoiceMentionDirective(shotCharacters: Character[]): string {
+async function buildVoiceMentionDirective(shotCharacters: Character[]): Promise<string> {
   const voiced = shotCharacters.filter(hasBoundVoice);
   if (!voiced.length) return '';
-  return [
-    '【音色映射约束（本分镜角色已绑定音色）】',
-    '`@char_<id>` 只是形象参考图，不含声音；声音由复合映射符 `@char_<id>-音色` 指定，两者都写全，下游才能把台词切到正确音色。',
-    '1) `角色提示词` 里每个已绑定音色的角色**首次出现**时写完整形式 `@char_<id> <角色名> 音色 @char_<id>-音色`；`对白提示词` 里该角色的台词前再标注一次 `@char_<id>-音色`。其余位置只写 `@char_<id> <角色名>`，不要反复带音色符。',
-    '2) 音色符不要写成 `@char_<id> 的音色` / `音色：<音色名>` / `@Audio N`；后面跟空格或标点，不要直接连汉字。清单外的角色不要编造音色符。',
-    `已绑定音色：${voiced.map(c => `\`${formatCharacterIdentityWithVoice(c)}\``).join('；')}`,
-  ].join('\n');
+  return resolveDirective('shot_directive_voice_mention', {
+    voiceRoster: voiced.map(c => `\`${formatCharacterIdentityWithVoice(c)}\``).join('；'),
+  });
 }
 
 /**
@@ -1220,16 +1210,34 @@ function findPreviousTailFrameItem(bundle: ShotReferenceBundle): ShotReferenceIt
  * 浪费 token 且摊薄模型注意力 —— 现在明确限定"全文只出现一次"，
  * 多写的由 dedupePreviousTailFrameMentions 降级成纯文本。
  */
-function buildTailFrameContinuityDirective(referenceBundle: ShotReferenceBundle): string {
+async function buildTailFrameContinuityDirective(referenceBundle: ShotReferenceBundle): Promise<string> {
   if (!findPreviousTailFrameItem(referenceBundle)) return '';
-  const mention = `${PREVIOUS_TAIL_FRAME_MENTION} ${PREVIOUS_TAIL_FRAME_LABEL}`;
-  return [
-    '【尾帧承接约束（本分镜已绑定上一分镜真实视频尾帧）】',
-    `\`${PREVIOUS_TAIL_FRAME_MENTION}\` 是上一分镜成片的**真实最后一帧**，就是本镜第 0 秒的画面真相。`,
-    `1) **正文第一行固定为承接句**：\`${TAIL_FRAME_CONTINUITY_PREFIX}：${mention} —— <起始状态>\`；起始状态覆盖人物站位与朝向、动作末态、视线落点、持物、景别机位、光影色温。`,
-    '2) **禁止重置起始状态**：不得挪动人物位置、换姿态 / 持物 / 服装、重新布光，除非【输入文案】明确写了移动或换装。承接只约束起始状态，动作仍要往前推进，不得重演上一镜已完成的动作。',
-    `3) \`${PREVIOUS_TAIL_FRAME_MENTION}\` **全文只允许出现这一次**。后续字段要提到上一镜画面时写纯文字「上一镜尾帧」，不要重复映射符，也不要写成 \`@Image N\`。`,
-  ].join('\n');
+  return resolveDirective('shot_directive_tail_frame', {
+    tailFrameMention: PREVIOUS_TAIL_FRAME_MENTION,
+    tailFrameLabel: PREVIOUS_TAIL_FRAME_LABEL,
+  });
+}
+
+/**
+ * 解析一段「推理约束段」模板。
+ *
+ * 这些段落用户可以在 PromptStudio 里改；解析失败（模板被删 / 变量写错）不能连带
+ * 让整条推理挂掉——退化成不注入该段，并留日志。
+ */
+async function resolveDirective(
+  templateId: PromptTemplateType,
+  variables: Record<string, string>,
+): Promise<string> {
+  try {
+    const resolved = await resolvePromptTemplate(templateId, variables);
+    return resolved.prompt.trim();
+  } catch (err) {
+    logger.warn('推理约束段解析失败，本次跳过该段', {
+      templateId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return '';
+  }
 }
 
 /**
@@ -1288,82 +1296,62 @@ function ensureTailFrameContinuityInVideoPrompt(
  * 只要 shot 关联了 @scene，无论是否有 imagePrompt，都会把场景描述继承进来作为
  * 辅助空间锚点 —— 防止 AI 在场景图细节之外猜测房间布局 / 家具位置 / 距离关系。
  */
-function buildSpatialAnchorDirective(
+async function buildSpatialAnchorDirective(
   shot: Shot,
   shotScenes: Scene[],
   referenceBundle: ShotReferenceBundle,
-): string {
+): Promise<string> {
   const hasGeneratedShotImage = referenceBundle.hasShotImage;
   const hasScenes = shotScenes.length > 0;
   if (!hasGeneratedShotImage && !hasScenes) return '';
+
+  const sceneBaseline = hasScenes
+    ? [
+      '',
+      hasGeneratedShotImage
+        ? '**场景空间基线（继承自 @scene，作为对生成图的语义辅助；以图为准，下方文字仅用于理解场景类型，不要复述）：**'
+        : '**场景空间基线（继承自 @scene，本分镜的空间真相；只能引用此处出现过的区域 / 标志物作为站位参照，禁止编造）：**',
+      ...shotScenes.map((scene) => {
+        const mention = createMentionString('scene', scene.id);
+        const desc = (scene.prompt || '').trim();
+        return `  - ${mention} ${scene.name}：${desc || '（无空间描述，此场景无法提供空间锚点）'}`;
+      }),
+    ].join('\n')
+    : '';
+
+  if (!hasGeneratedShotImage) {
+    return resolveDirective('shot_directive_spatial_multiref', { sceneBaseline });
+  }
 
   const isGridMode = shot.imageMode === 'grid'
     || shot.imageMode === 'grid-9'
     || shot.imageMode === 'grid-4';
   const isStoryboardMode = shot.imageMode === 'storyboard';
 
-  const lines: string[] = [];
-
-  if (hasGeneratedShotImage) {
-    lines.push('【图像锚定约束（本分镜已有真实生成图，视频模型会直接读图作参考）】');
-    lines.push('');
-    lines.push('**第一原则**：图像提示词所建立的人物**姿态 / 动作 / 持物 / 视线方向 / 互动关系**就是画面真相，视频提示词每一镜的**起始状态必须严格继承**，禁止改写或颠覆。最常见且必须避免的冲突示例：');
-    lines.push('  · 图说"坐在床沿"，视频写成"站立"——禁止；');
-    lines.push('  · 图说"端着水杯递出"，视频写成"双手放下 / 空手"——禁止；');
-    lines.push('  · 图说"两人面对面对峙"，视频写成"并排坐"或"背对"——禁止；');
-    lines.push('  · 图说"右手抬起推拒"，视频写成"双手插兜 / 双手交叉"——禁止；');
-    lines.push('  · 改写图已确立的视线方向、持物方式、肢体朝向——禁止。');
-    lines.push('');
-    lines.push('**屏幕方位词**（画面左 / 右 / 中央 / 前景 / 背景 / 几何坐标 / 座位编号）由生图与机位决定，视频提示词**不要重复描述**——但**允许直接引用图像提示词里已经出现的姿态词**（例如"坐在床沿""端着水杯""位于其对侧"），因为那是图的真相，不是文本凭空编造。');
-    lines.push('');
-    lines.push('视频提示词应在"图像提示词建立的姿态"基础上，描述**动作如何展开**：');
-    lines.push('  · 起始姿态（取自图像提示词对应镜头）→ 动作过程（运动、视线、表情、手势变化）→ 收束姿态（接续图像提示词或本单元末态）；');
-    lines.push('  · 镜头语言：推 / 拉 / 摇 / 移 / 切 / 跟随 / 景别变化 / 焦距变化；');
-    lines.push('  · 时间推进与节奏；');
-    lines.push('  · 情绪 / 表情 / 视线变化；');
-    lines.push('  · 不要凭空发明图里不存在的人物 / 道具 / 空间关系（例如图里没桌子，就不要写"绕到桌后"）。');
-    if (isGridMode) {
-      lines.push('');
-      lines.push('**宫格模式（关键）**：图像提示词已按 cell 分别写好每一格的画面（cell 1 = 镜头 01、cell 2 = 镜头 02、cell 3 = 镜头 03、cell 4 = 镜头 04 ……）。视频提示词的**镜头 N 起始姿态 = 图像提示词镜头 N 的姿态描述**，必须严格对应：');
-      lines.push('  · 不得在 cell 之间互换姿态（例如把镜头 01 的"坐"挪到镜头 03）；');
-      lines.push('  · 不得引入图像提示词没规定过的中间状态；');
-      lines.push('  · cell 之间的过渡只能靠运镜（推 / 拉 / 摇 / 切）与时间推进。');
-    }
-    if (isStoryboardMode) {
-      lines.push('');
-      lines.push('**故事板模式（关键）**：当前图是多面板制作方案板，不是单一首帧。视频提示词必须从故事板中提炼当前分镜的关键动作链与情绪推进，不能把整张故事板版式、边框、箭头或制作表文本当作视频画面内容。');
-      lines.push('  · 保持人物、场景、道具和光影连续性；');
-      lines.push('  · 只使用故事板中的剧情面板作为参考，不生成面板边框、编号、说明文字；');
-      lines.push('  · 若有上一故事板参考，只继承连续性，不重复上一分镜已完成的动作。');
-    }
-    lines.push('');
-    lines.push('**本分镜的图像提示词原文（请对照阅读，将其作为每一镜起始姿态的真相依据；不要复述图里的"画面左 / 右"等屏幕方位词）：**');
-    lines.push('```');
-    lines.push((shot.imagePrompt || '').trim());
-    lines.push('```');
-  } else {
-    // 多参考模式：没有锚定图，画面由 @scene / @char / @prop 引用图组合构成
-    lines.push('【空间锚定约束（多参考模式：本分镜无锚定图，画面由 @scene / @char / @prop 引用图组合构成）】');
-    lines.push('');
-    lines.push('视频模型会综合各 mention 引用图组装画面，文本 LLM **不要凭空猜测空间关系**。具体来说：');
-    lines.push('  · 角色 / 道具的位置参照只能基于下方"场景空间基线"里**已经出现的区域 / 标志物 / 距离**；场景基线之外的空间关系**禁止编造**（房间布局、家具具体位置、相对距离都由场景图承担）；');
-    lines.push('  · **不要写**屏幕方位词（画面左 / 右 / 中央 / 前景 / 背景），屏幕构图由镜头语言和景别决定，不属于文本约束范围；');
-    lines.push('  · 重点写：谁在做什么动作 / 与谁产生什么交互 / 镜头如何运动 / 时间如何推进；位置交给场景图、人物图与镜头语言共同决定。');
-  }
-
-  if (hasScenes) {
-    lines.push('');
-    lines.push(hasGeneratedShotImage
-      ? '**场景空间基线（继承自 @scene，作为对生成图的语义辅助；以图为准，下方文字仅用于理解场景类型，不要复述）：**'
-      : '**场景空间基线（继承自 @scene，本分镜的空间真相；只能引用此处出现过的区域 / 标志物作为站位参照，禁止编造）：**');
-    for (const scene of shotScenes) {
-      const mention = createMentionString('scene', scene.id);
-      const desc = (scene.prompt || '').trim();
-      lines.push(`  - ${mention} ${scene.name}：${desc || '（无空间描述，此场景无法提供空间锚点）'}`);
-    }
-  }
-
-  return lines.join('\n');
+  return resolveDirective('shot_directive_spatial_anchored', {
+    gridModeRule: isGridMode
+      ? [
+        '',
+        '**宫格模式（关键）**：图像提示词已按 cell 分别写好每一格的画面（cell 1 = 镜头 01、cell 2 = 镜头 02、cell 3 = 镜头 03、cell 4 = 镜头 04 ……）。视频提示词的**镜头 N 起始姿态 = 图像提示词镜头 N 的姿态描述**，必须严格对应：',
+        '  · 不得在 cell 之间互换姿态（例如把镜头 01 的"坐"挪到镜头 03）；',
+        '  · 不得引入图像提示词没规定过的中间状态；',
+        '  · cell 之间的过渡只能靠运镜（推 / 拉 / 摇 / 切）与时间推进。',
+        '',
+      ].join('\n')
+      : '',
+    storyboardModeRule: isStoryboardMode
+      ? [
+        '',
+        '**故事板模式（关键）**：当前图是多面板制作方案板，不是单一首帧。视频提示词必须从故事板中提炼当前分镜的关键动作链与情绪推进，不能把整张故事板版式、边框、箭头或制作表文本当作视频画面内容。',
+        '  · 保持人物、场景、道具和光影连续性；',
+        '  · 只使用故事板中的剧情面板作为参考，不生成面板边框、编号、说明文字；',
+        '  · 若有上一故事板参考，只继承连续性，不重复上一分镜已完成的动作。',
+        '',
+      ].join('\n')
+      : '',
+    imagePromptText: (shot.imagePrompt || '').trim(),
+    sceneBaseline,
+  });
 }
 
 /**
@@ -1379,71 +1367,54 @@ function buildSpatialAnchorDirective(
  * - 有图模式（含 shot-anchor / grid-anchor）下额外强调：必须在每个镜头描述中至少出现
  *   一次 `@图 @shot_anchor`（或 `@图 @grid_anchor`），把锚定图作为剧情连贯性基准。
  */
-function buildMappingSchemaNote(
+async function buildMappingSchemaNote(
   shotCharacters: Character[],
   shotScenes: Scene[],
   shotProps: Prop[],
   referenceBundle: ShotReferenceBundle,
-): string {
+): Promise<string> {
   const anchorItem = referenceBundle.items.find(
     item => item.kind === 'shot-anchor' || item.kind === 'grid-anchor' || item.kind === 'storyboard-anchor',
   );
   const tailFrameItem = findPreviousTailFrameItem(referenceBundle);
+  const hasVoicedCharacter = shotCharacters.some(hasBoundVoice);
 
-  const lines: string[] = [];
-  lines.push('【映射符约定（覆盖模板示例中的 "@Image N" 写法，最终输出必须遵守本节）】');
-  lines.push('');
-  lines.push('1) 正文里指代角色 / 场景 / 道具 / 锚定图时，**必须使用 `@<id> <名称>` 格式**——mention 协议字符串在前，空格分隔，再跟该对象的中文名称。示例：');
-  lines.push('   - 角色：`@char_<id> <角色名>`，例如 `@char_abc123 周明`');
-  lines.push('   - 场景：`@scene_<id> <场景名>`，例如 `@scene_xyz789 教室`');
-  lines.push('   - 道具：`@prop_<id> <道具名>`，例如 `@prop_def456 钥匙`');
-  if (shotCharacters.some(hasBoundVoice)) {
-    lines.push('   - 角色音色：`@char_<id>-音色`（跟在角色身份后面写成 `@char_abc123 周明 音色 @char_abc123-音色`）');
-  }
-  if (anchorItem) {
-    lines.push(`   - 分镜锚定图：\`${anchorItem.mentionToken} ${anchorItem.label}\``);
-  }
-  if (tailFrameItem) {
-    lines.push(`   - 上一分镜尾帧：\`${PREVIOUS_TAIL_FRAME_MENTION} ${PREVIOUS_TAIL_FRAME_LABEL}\``);
-  }
-  lines.push('');
-  lines.push('2) **禁止**以下其它格式：`名称 @Image 1`、`@Image 2 名称`、`@角色 名称`、`@场景 名称`、`@道具 名称`、`@（角色场景道具）名称`，也禁止单独出现 `@Image N` 或单独出现中文名。模板正文里所有 `@Image N` 仅为示例占位，最终输出必须替换成 `@<id> <名称>` 形式。');
-  lines.push('');
-  lines.push('3) 同一对象**每次出现都必须重复**写完整的 `@<id> <名称>`：不允许写"如前所述"省略，不允许只写 `@<id>`，也不允许只写中文名。');
-  lines.push('');
-  if (anchorItem) {
-    lines.push(`4) **本分镜处于"有图模式"**：每个镜头描述至少出现一次 \`${anchorItem.mentionToken} ${anchorItem.label}\`，用作画面 / 姿态 / 空间 / 光影的锚定基准；若是九宫格 / 四宫格锚定，需说明本镜头对应锚定图中的哪个 cell。`);
-  } else {
-    lines.push('4) 本分镜处于"无图模式"（references 中没有分镜锚定图），不要使用 `@shot_anchor` / `@grid_anchor` / `@storyboard_anchor`，所有视觉锚点完全靠 `@char_<id>` / `@scene_<id>` / `@prop_<id>` 描述。');
-  }
-  const referencedCharacters = referenceBundle.items.filter(item => item.kind === 'character');
-  if (referencedCharacters.length > 0) {
-    lines.push('');
-    lines.push('5) **角色参考图优先于文字**：已在 references 中出现的角色，外貌 / 发型 / 脸型 / 眼睛 / 体型 / 常规服装 / 常规配饰全部由参考图决定。最终 `角色提示词` 只允许写 `@char_<id> <角色名>` + 本镜头动作、姿态、朝向、视线、表情、手部和临时状态变化；禁止写“身穿…… / 银白色长发 / 大眼睛 / 脸颊 / 白色短靴 / 水晶吊坠”等静态样貌描述。剧情关键配饰或物件应放入 `道具提示词`，不要混入角色外貌。');
-  }
-  lines.push('');
-  if (tailFrameItem) {
-    lines.push('');
-    lines.push(`6) **本分镜继承了上一分镜真实视频尾帧**：\`${PREVIOUS_TAIL_FRAME_MENTION}\` 是合法映射符（已在 references 中），必须按 \`${PREVIOUS_TAIL_FRAME_MENTION} ${PREVIOUS_TAIL_FRAME_LABEL}\` 形式引用，用作起始画面的连续性真相。`);
-  }
-  lines.push('');
-  lines.push('本分镜可用映射符清单（**只能**使用这里列出的对象，禁止虚构或引用未列出的资产）：');
-  // 角色带上音色映射符：`@char_<id>` 是形象图，`@char_<id>-音色` 是声音，两者都在清单里
-  // 列出来，"只能使用清单内对象"才不会把音色映射符一起挡掉。
-  lines.push(formatMappingList('角色', shotCharacters.map(c => ({
-    name: c.name,
-    mention: createMentionString('char', c.id),
-    suffix: hasBoundVoice(c) ? ` 音色 ${createMentionString('char', c.id, 'voice')}` : '',
-  }))));
-  lines.push(formatMappingList('场景', shotScenes.map(s => ({ name: s.name, mention: createMentionString('scene', s.id) }))));
-  lines.push(formatMappingList('道具', shotProps.map(p => ({ name: p.name, mention: createMentionString('prop', p.id) }))));
-  if (anchorItem) {
-    lines.push(`- 分镜锚定图：\`${anchorItem.mentionToken} ${anchorItem.label}\``);
-  }
-  if (tailFrameItem) {
-    lines.push(`- 上一分镜尾帧：\`${PREVIOUS_TAIL_FRAME_MENTION} ${PREVIOUS_TAIL_FRAME_LABEL}\``);
-  }
-  return lines.join('\n');
+  const mentionFormatLines = [
+    '   - 角色：`@char_<id> <角色名>`，例如 `@char_abc123 周明`',
+    '   - 场景：`@scene_<id> <场景名>`，例如 `@scene_xyz789 教室`',
+    '   - 道具：`@prop_<id> <道具名>`，例如 `@prop_def456 钥匙`',
+    ...(hasVoicedCharacter
+      ? ['   - 角色音色：`@char_<id>-音色`（跟在角色身份后面写成 `@char_abc123 周明 音色 @char_abc123-音色`）']
+      : []),
+    ...(anchorItem ? [`   - 分镜锚定图：\`${anchorItem.mentionToken} ${anchorItem.label}\``] : []),
+    ...(tailFrameItem
+      ? [`   - 上一分镜尾帧：\`${PREVIOUS_TAIL_FRAME_MENTION} ${PREVIOUS_TAIL_FRAME_LABEL}\``]
+      : []),
+  ].join('\n');
+
+  const mappingList = [
+    // 角色带上音色映射符：`@char_<id>` 是形象图，`@char_<id>-音色` 是声音，两者都在清单里
+    // 列出来，"只能使用清单内对象"才不会把音色映射符一起挡掉。
+    formatMappingList('角色', shotCharacters.map(c => ({
+      name: c.name,
+      mention: createMentionString('char', c.id),
+      suffix: hasBoundVoice(c) ? ` 音色 ${createMentionString('char', c.id, 'voice')}` : '',
+    }))),
+    formatMappingList('场景', shotScenes.map(s => ({ name: s.name, mention: createMentionString('scene', s.id) }))),
+    formatMappingList('道具', shotProps.map(p => ({ name: p.name, mention: createMentionString('prop', p.id) }))),
+    ...(anchorItem ? [`- 分镜锚定图：\`${anchorItem.mentionToken} ${anchorItem.label}\``] : []),
+    ...(tailFrameItem
+      ? [`- 上一分镜尾帧：\`${PREVIOUS_TAIL_FRAME_MENTION} ${PREVIOUS_TAIL_FRAME_LABEL}\``]
+      : []),
+  ].join('\n');
+
+  return resolveDirective('shot_directive_mapping_schema', {
+    mentionFormatLines,
+    anchorModeRule: anchorItem
+      ? `**本分镜处于"有图模式"**：每个镜头描述至少出现一次 \`${anchorItem.mentionToken} ${anchorItem.label}\`，用作画面 / 姿态 / 空间 / 光影的锚定基准；若是九宫格 / 四宫格锚定，需说明本镜头对应锚定图中的哪个 cell。`
+      : '本分镜处于"无图模式"（references 中没有分镜锚定图），不要使用 `@shot_anchor` / `@grid_anchor` / `@storyboard_anchor`，所有视觉锚点完全靠 `@char_<id>` / `@scene_<id>` / `@prop_<id>` 描述。',
+    mappingList,
+  });
 }
 
 function formatMappingList(

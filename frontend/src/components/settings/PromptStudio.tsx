@@ -223,7 +223,8 @@ export const PromptStudio: React.FC = () => {
     const lower = searchText.trim().toLowerCase();
     const groups: Record<PromptTemplateCategory, PromptTemplate[]> = {
       global: [], system: [], script: [], analysis: [], extraction: [],
-      tweet: [], 'inference-image': [], 'inference-video': [], tti: [], itv: [],
+      tweet: [], 'inference-image': [], 'inference-video': [],
+      'inference-directive': [], tti: [], itv: [],
     };
     for (const t of Object.values(templates)) {
       if (lower) {

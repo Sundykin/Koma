@@ -5,6 +5,7 @@
 import type { PromptTemplateType, PromptTemplate } from './types';
 import { variable } from './variables';
 import { VIDEO_REASONING_TEMPLATE_CONTENT } from '../templates/videoReasoning';
+import { SHOT_DIRECTIVE_TEMPLATE_CONTENT } from '../templates/directives';
 
 export const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
   // ========== 全局约束模板（自动注入到 TTI / ITV 模板） ==========
@@ -418,6 +419,16 @@ script 是**一段完整的自然行文**（不是逐行标签），它是后续
 9. **跨镜头一致**：已有角色参考图时，人物外观（穿着 / 发型 / 体型 / 常规配饰）只继承参考图，不在提示词里复述或改写；剧情关键持物写入道具或动作。同一场景内的家具 / 陈设 / 光照在不同分镜间保持稳定，不得引入新元素。
 10. **输出结构**：直接输出下面字段，字段为空写“无”，不要前言、解释、自检、Markdown checkbox。字段之间用中文句号或分号连接，可保留字段名，方便后续视频提示词对应。
 
+## 出图公式（每条画面描述都要覆盖这 6 层）
+
+**【艺术风格/媒介】+【景别与视角】+【主体描述】+【环境场景】+【光影与色调】+【画质与质感修饰词】**
+
+- **禁止主观评价词**：漂亮 / 帅气 / 很酷 / 唯美 / 高级感 / 有质感 —— 模型无法理解抽象评价，必须换成可见特征（"高级感"→"低饱和冷灰色调 + 大面积留白 + 硬边阴影"）。
+- **视角要具体**：45 度侧拍 / 过肩 / 低角度仰拍 / 俯拍 / 眼平，配景别（远景 / 全景 / 中景 / 近景 / 特写 / 大特写）。
+- **光影要给情绪指向**：暖金 / 琥珀 = 温暖怀旧；冷蓝 = 孤立不安；红橙 = 紧张危险；青绿 = 病态诡异；低饱和褪色 = 疲惫绝望。写清光源位置、色温、明暗比与阴影形状。
+- **景深服务叙事**：浅景深 = 隔离 / 亲密 / 聚焦单人；深景深 = 交代环境信息与人物关系。
+- **质感修饰词**要落到物理细节：皮肤毛孔纹理、布料织纹、金属划痕、胶片颗粒感、湿润反光。
+
 ## 输出字段
 
 整体画风：[继承风格前缀；如明确，则写具体风格]
@@ -431,6 +442,7 @@ script 是**一段完整的自然行文**（不是逐行标签），它是后续
 情绪提示词：[角色名：可见情绪，用眉眼、嘴角、肩颈、手指、身体倾斜外化]
 光影氛围提示词：[光源方向、色温、明暗交替、灰尘/粒子/雾气等可见物理氛围]
 呼应提示词：[与上/下分镜的视觉反差、伏笔或末帧承接；无则“无”]
+画质与防崩约束：4K 超高清、细节清晰、锐度清晰、无模糊、无重影；人物结构正常、面部清晰不变形、五官稳定、比例自然、手指数量正确
 负面约束：不生成多余角色，不生成无关文字，不改角色服装和场景结构，避免畸形手、错位眼、穿模、透视扭曲
 
 ## 引用列表
@@ -649,6 +661,143 @@ script 是**一段完整的自然行文**（不是逐行标签），它是后续
       variable('nextShotInfo', { required: false }),
       variable('referenceTable', { required: false }),
       variable('gridSequenceNotice', { required: false }),
+    ],
+    isCustom: false,
+  },
+
+  // ========== 推理约束段（拼在推理模板之后送进 user 区） ==========
+  //
+  // 这些段落原先硬编码在 ShotPromptService 里，PromptStudio 改不到。现在统一
+  // 落成模板：代码只决定「注不注入」以及往变量里塞哪些计算结果，文案全部可编辑。
+  // 条件变量（gridModeRule / tailFrameRule 等）在不适用时由代码传空串。
+
+  shot_directive_mapping_schema: {
+    id: 'shot_directive_mapping_schema',
+    category: 'inference-directive',
+    name: '推理约束 · 映射符约定',
+    description: '规定 @char_/@scene_/@prop_/锚点/音色 在推理输出里的书写格式与可用清单；图片与视频推理共用',
+    template: SHOT_DIRECTIVE_TEMPLATE_CONTENT.shot_directive_mapping_schema,
+    variables: [
+      variable('mentionFormatLines', {
+        label: '映射符格式示例行',
+        description: '按本分镜实际持有的资产类型生成的格式示例（角色 / 场景 / 道具 / 锚定图 / 音色）。',
+        format: '多行 `   - xxx` 列表',
+      }),
+      variable('anchorModeRule', {
+        label: '锚定图模式规则',
+        description: '有锚定图时要求每镜引用锚点；无锚定图时禁止输出 @shot_anchor 等。',
+        format: '一段文字',
+      }),
+      variable('mappingList', {
+        label: '可用映射符清单',
+        description: '本分镜实际绑定的角色 / 场景 / 道具 / 锚定图 / 尾帧清单。',
+        format: '多行 `- 类别：`xxx`` 列表',
+      }),
+    ],
+    isCustom: false,
+  },
+
+  shot_directive_spatial_anchored: {
+    id: 'shot_directive_spatial_anchored',
+    category: 'inference-directive',
+    name: '推理约束 · 空间锚定（有锚定图）',
+    description: '本分镜已有真实生成图时注入：图里的姿态就是空间真相，视频词只写动作如何展开',
+    template: SHOT_DIRECTIVE_TEMPLATE_CONTENT.shot_directive_spatial_anchored,
+    variables: [
+      variable('gridModeRule', {
+        label: '宫格模式补充规则',
+        description: '九宫格 / 四宫格模式下要求镜头 N 对应 cell N，其它模式为空串。',
+        format: '一段文字或空串',
+        required: false,
+      }),
+      variable('storyboardModeRule', {
+        label: '故事板模式补充规则',
+        description: '故事板模式下要求只取剧情面板、不画版式边框，其它模式为空串。',
+        format: '一段文字或空串',
+        required: false,
+      }),
+      variable('imagePromptText', {
+        label: '本分镜图像提示词原文',
+        description: '作为每一镜起始姿态的真相依据贴给 LLM 对照。',
+        format: '多行文本',
+        required: false,
+      }),
+      variable('sceneBaseline', {
+        label: '场景空间基线',
+        description: '本分镜 @scene 的空间描述；无场景时为空串。',
+        format: '多行文本或空串',
+        required: false,
+      }),
+    ],
+    isCustom: false,
+  },
+
+  shot_directive_spatial_multiref: {
+    id: 'shot_directive_spatial_multiref',
+    category: 'inference-directive',
+    name: '推理约束 · 空间锚定（多参考模式）',
+    description: '本分镜无锚定图时注入：画面由 @scene/@char/@prop 引用图组合，禁止凭空编造空间关系',
+    template: SHOT_DIRECTIVE_TEMPLATE_CONTENT.shot_directive_spatial_multiref,
+    variables: [
+      variable('sceneBaseline', {
+        label: '场景空间基线',
+        description: '本分镜 @scene 的空间描述，是多参考模式下唯一的空间真相。',
+        format: '多行文本或空串',
+        required: false,
+      }),
+    ],
+    isCustom: false,
+  },
+
+  shot_directive_tail_frame: {
+    id: 'shot_directive_tail_frame',
+    category: 'inference-directive',
+    name: '推理约束 · 尾帧承接',
+    description: '已截取并绑定上一镜真实视频尾帧时注入：首行写承接句，且全文只引用一次尾帧映射符',
+    template: SHOT_DIRECTIVE_TEMPLATE_CONTENT.shot_directive_tail_frame,
+    variables: [
+      variable('tailFrameMention', {
+        label: '尾帧映射符',
+        description: '固定为 @previous_tail_frame。',
+        format: 'mention 字符串',
+      }),
+      variable('tailFrameLabel', {
+        label: '尾帧中文名',
+        description: '跟在映射符后面的中文名，默认「上一分镜尾帧」。',
+        format: '短语',
+      }),
+    ],
+    isCustom: false,
+  },
+
+  shot_directive_voice_mention: {
+    id: 'shot_directive_voice_mention',
+    category: 'inference-directive',
+    name: '推理约束 · 音色映射',
+    description: '本分镜角色绑定了音色时注入：角色身份要带 @char_<id>-音色，台词才能切到正确音色',
+    template: SHOT_DIRECTIVE_TEMPLATE_CONTENT.shot_directive_voice_mention,
+    variables: [
+      variable('voiceRoster', {
+        label: '已绑定音色的角色清单',
+        description: '形如 `@char_x 叶赎 音色 @char_x-音色` 的角色列表。',
+        format: '分号分隔的清单',
+      }),
+    ],
+    isCustom: false,
+  },
+
+  shot_directive_output_boundary: {
+    id: 'shot_directive_output_boundary',
+    category: 'inference-directive',
+    name: '推理约束 · 最终输出边界',
+    description: '视频推理收尾约束：只返回提示词正文，禁止自检 / 解释 / 第二套逐镜头结构',
+    template: SHOT_DIRECTIVE_TEMPLATE_CONTENT.shot_directive_output_boundary,
+    variables: [
+      variable('narrativeModeRule', {
+        label: '叙事模式收尾规则',
+        description: '剧情模式与解说模式对第一人称叙述的不同处理要求。',
+        format: '一段文字',
+      }),
     ],
     isCustom: false,
   },
