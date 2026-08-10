@@ -88,6 +88,28 @@ describe('MiniMaxH3ITVProvider', () => {
     expect(off.useH3ContextIR).toBe(false);
   });
 
+  it('上游 error 是对象时 getTaskSnapshot 返回可读错误而非 [object Object]', async () => {
+    const provider = new MiniMaxH3ITVProvider({
+      provider: 'minimax-h3-itv',
+      apiKey: 'sk-test',
+    });
+    vi.mocked(safeFetch).mockResolvedValue({
+      ok: true,
+      text: async () => JSON.stringify({
+        task: {
+          id: 't1',
+          status: 'failed',
+          error: { code: '2013', message: 'media url unreachable' },
+        },
+      }),
+    } as never);
+
+    const snap = await provider.getTaskSnapshot('t1');
+    expect(snap.state).toBe('failed');
+    expect(snap.error).toBe('[2013] media url unreachable');
+    expect(snap.error).not.toContain('[object Object]');
+  });
+
   it('H3-Context-IR 增强：创建任务→轮询→返回 content.prompt；失败静默返回 undefined', async () => {
     const provider = new MiniMaxH3ITVProvider({
       provider: 'minimax-h3-itv',

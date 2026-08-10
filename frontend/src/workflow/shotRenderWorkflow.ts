@@ -681,7 +681,18 @@ export async function shotRenderWorkflow(
       success: true,
     };
   } catch (err: any) {
-    const errorMessage = err instanceof Error ? err.message : String(err && (err.message ?? err)) || JSON.stringify(err);
+    let errorMessage: string;
+    if (err instanceof Error) {
+      errorMessage = err.message;
+    } else if (err && typeof err === 'object') {
+      const record = err as Record<string, unknown>;
+      errorMessage = typeof record.message === 'string' && record.message
+        ? record.message
+        : (() => { try { return JSON.stringify(err).slice(0, 400); } catch { return String(err); } })();
+    } else {
+      errorMessage = String(err);
+    }
+    if (!errorMessage || errorMessage === '[object Object]') errorMessage = '未知错误（上游未返回可读信息）';
     logger.error(`分镜 ${normalizedShot.id} 视频生成失败`, { error: errorMessage });
     return {
       shotId: normalizedShot.id,

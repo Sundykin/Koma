@@ -60,6 +60,26 @@ interface H3ContentItem {
   role?: H3Role;
 }
 
+/** MiniMax 上游的 error 可能是 string / {code,message} / 更深嵌套对象，统一可读化。 */
+function formatMiniMaxError(error: unknown): string {
+  if (!error) return '任务失败';
+  if (typeof error === 'string') return error;
+  if (typeof error === 'object') {
+    const record = error as Record<string, unknown>;
+    const code = typeof record.code === 'string' || typeof record.code === 'number' ? String(record.code) : '';
+    const message = typeof record.message === 'string' ? record.message : '';
+    if (message && code) return `[${code}] ${message}`;
+    if (message) return message;
+    if (code) return `[${code}]`;
+    try {
+      return JSON.stringify(error).slice(0, 400);
+    } catch {
+      return String(error);
+    }
+  }
+  return String(error);
+}
+
 interface H3TaskResponse {
   task?: {
     id?: string;
@@ -388,7 +408,7 @@ export class MiniMaxH3ITVProvider implements ITVProvider {
       return { state: 'succeeded', progress: 100, output: { source: resultUrl, taskId } };
     }
     if (state === 'failed') {
-      return { state: 'failed', progress: 0, error: task.error ? String(task.error) : '任务失败' };
+      return { state: 'failed', progress: 0, error: formatMiniMaxError(task.error) };
     }
     return { state, progress: status === 'processing' ? 50 : undefined };
   }
