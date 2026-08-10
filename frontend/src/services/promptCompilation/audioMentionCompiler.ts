@@ -1,5 +1,6 @@
 /**
- * 把 prompt 里的音色 mention 编译成 @Audio N 占位符 + 一份 audioBindings 元数据。
+ * 把 prompt 里的音色 mention 编译成当前协议的音频占位符（@Audio N / <音频 N> /
+ * @audio_file_N）+ 一份 audioBindings 元数据。
  *
  * 输入端识别两种 mention（都来自 editor/mentionTypes 的 parseMentions）：
  *   - @voice_<profileId>         直接指向 VoiceProfile.id
@@ -17,6 +18,7 @@
  * Koma 即梦协议（@audio_file_N）目前没有 voice mention 用例，等真有再扩。
  */
 import { parseMentions, type ParsedMention } from '../../editor/mentionTypes';
+import { formatReferencePlaceholder } from './imageIndexProtocol';
 import {
   resolveCharacterVoiceMention,
   resolveVoiceMention,
@@ -59,8 +61,11 @@ interface PendingReplacement {
 export function compileAudioMentions(params: {
   prompt: string;
   ctx: VoiceResolveContext;
+  /** 渠道提示词协议；不传按 grok 风格 @Audio N 兜底 */
+  promptProtocol?: string;
 }): AudioMentionCompilationResult {
-  const { prompt, ctx } = params;
+  const { prompt, ctx, promptProtocol } = params;
+  const audioPlaceholder = (index: number) => formatReferencePlaceholder(promptProtocol, 'audio', index);
   const mentions = parseMentions(prompt);
   const replacements: PendingReplacement[] = [];
 
@@ -97,7 +102,7 @@ export function compileAudioMentions(params: {
         continue;
       }
       const idx = upsertBinding(resolved, mention);
-      replacements.push({ from: mention.from, to: mention.to, replacement: `@Audio ${idx}` });
+      replacements.push({ from: mention.from, to: mention.to, replacement: audioPlaceholder(idx) });
       continue;
     }
 
@@ -109,7 +114,7 @@ export function compileAudioMentions(params: {
         continue;
       }
       const idx = upsertBinding(resolved, mention, mention.id);
-      replacements.push({ from: mention.from, to: mention.to, replacement: `@Audio ${idx}` });
+      replacements.push({ from: mention.from, to: mention.to, replacement: audioPlaceholder(idx) });
       continue;
     }
 

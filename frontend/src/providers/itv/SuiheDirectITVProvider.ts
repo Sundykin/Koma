@@ -5,7 +5,8 @@
  * 协议（对齐穗禾开放 API 文档）：
  *   - POST /v1/videos/generations，**multipart/form-data**（官方推荐）：
  *     文本字段 prompt / model / ratio / duration / video_resolution / watermark；
- *     首尾帧 first_frame / end_frame，全能参考 image_file / image_file_2…image_file_10
+ *     首尾帧 first_frame / end_frame，全能参考 image_file / image_file_2…image_file_10、
+ *     video_file / video_file_2…video_file_3、audio_file / audio_file_2…audio_file_3
  *     均为原始文件直传，由穗禾完成中转与可拉取编排。
  *     （出现 image_file* 字段时服务端自动推断 function_mode=omni_reference，无需显式传。）
  *   - 创作接口为异步任务：受理（表单模式多为 202）后取 **task_id**（UUID）——
@@ -42,6 +43,9 @@ const logger = createLogger('SuiheDirectITV');
 const SUIHE_VIDEO_GENERATIONS_PATH = '/v1/videos/generations';
 const SUIHE_TASKS_PATH = '/v1/tasks';
 const SUIHE_MODELS_PATH = '/v1/models';
+
+/** 全能参考视频上限：video_file（主）+ video_file_2 / video_file_3 */
+const SUIHE_MAX_OMNI_VIDEOS = 3;
 
 /** 全能参考图上限：image_file（主）+ image_file_2…image_file_10（附加 9） */
 const SUIHE_MAX_OMNI_IMAGES = 10;
@@ -233,6 +237,27 @@ export class SuiheDirectITVProvider implements ITVProvider {
       }
     }
 
+    // 视频参考（上一镜延长）：渲染工作流经 metadata.komaVideoReferences 传入，
+    // 与 audio_file 同一套全能参考字段族：video_file / video_file_2 / video_file_3（上限 3）。
+    // 提示词里的 @video_file_N 占位符与这里的字段名一一对应。
+    const videoRefs = (request.metadata?.komaVideoReferences as ProviderAssetInput[] | undefined) ?? [];
+    let uploadedVideoRefs = 0;
+    for (const ref of videoRefs.slice(0, SUIHE_MAX_OMNI_VIDEOS)) {
+      if (!ref?.value) continue;
+      const field = uploadedVideoRefs === 0 ? 'video_file' : `video_file_${uploadedVideoRefs + 1}`;
+      try {
+        const { bytes, mimeType } = await fetchReferenceBytes(ref);
+        if (!bytes || bytes.length === 0) continue;
+        form.append(field, new Blob([bytes], { type: mimeType }), `video-ref-${uploadedVideoRefs + 1}.${extFromMime(mimeType)}`);
+        uploadedVideoRefs += 1;
+      } catch (error) {
+        logger.warn('延长参考视频读取失败，跳过', {
+          field,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
     // 音色参考（音画同出）：渲染工作流经 metadata.komaVoiceReferences 传入，
     // 直传到穗禾全能参考的 audio_file / audio_file_2 / audio_file_3（上限 3）
     const voiceRefs = (request.metadata?.komaVoiceReferences as ProviderAssetInput[] | undefined) ?? [];
@@ -262,6 +287,7 @@ export class SuiheDirectITVProvider implements ITVProvider {
       videoResolution,
       uploadedFrames,
       uploadedOmniImages,
+      uploadedVideoRefs,
       uploadedVoiceRefs,
       promptPreview: String(request.prompt || '').slice(0, 80),
     });

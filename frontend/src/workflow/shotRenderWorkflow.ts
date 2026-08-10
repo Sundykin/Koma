@@ -52,7 +52,12 @@ import type { StyleSnapshotLike } from '../utils/promptNormalize';
 import { normalizeVideoDurationSeconds } from '../utils/videoDuration';
 import { clampDurationToSpec, getDurationSpecForITVSelection } from '../providers/itv/durationSpec';
 import { ffmpegManager } from '../services/ffmpegManager';
-import { normalizeShotContinuity, usesPreviousTailFrame } from '../services/shotContinuity';
+import {
+  normalizeShotContinuity,
+  usesPreviousTailFrame,
+  usesPreviousVideoExtend,
+} from '../services/shotContinuity';
+import { supportsReferenceKind } from '../providers/itv/referenceCapabilities';
 
 const logger = createLogger('ShotRender');
 
@@ -438,21 +443,27 @@ export async function shotRenderWorkflow(
     const itvChannelPromptProtocol = (selectedItvContext?.channelConfig?.providerConfig as Record<string, unknown> | undefined)
       ?.promptProtocol as string | undefined;
     const fallbackProtocol = providerType === 'comfyui-itv' ? 'minimax-image-tag' : undefined;
-    const voicePromptProtocol = itvChannelPromptProtocol ?? fallbackProtocol;
-    const voicePlan = await buildShotVoiceReferencePlan({
-      shotCharacters: normalizedShot.characters || [],
-      characters,
-      promptProtocol: voicePromptProtocol,
-    }).catch((err) => {
-      logger.warn('音色参考构建失败，跳过', {
-        error: err instanceof Error ? err.message : String(err),
-      });
-      return { references: [], promptSuffix: '' };
-    });
+    // 渠道提示词协议：图片 / 视频 / 音频三类占位符统一按它渲染
+    const promptProtocol = itvChannelPromptProtocol ?? fallbackProtocol;
+    // 渠道不支持音频参考时直接不构建：否则提示词里会出现 @Audio N，请求里却没有音频，
+    // 模型会照着不存在的参考编。
+    const channelSupportsAudioReference = supportsReferenceKind(providerType, 'audio');
+    const voicePlan = channelSupportsAudioReference
+      ? await buildShotVoiceReferencePlan({
+        shotCharacters: normalizedShot.characters || [],
+        characters,
+        promptProtocol: promptProtocol,
+      }).catch((err) => {
+        logger.warn('音色参考构建失败，跳过', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return { references: [], promptSuffix: '' };
+      })
+      : { references: [], promptSuffix: '' };
     const voiceMentionCompilation = compileShotVoiceMentions({
       prompt: videoPrompt,
       plan: voicePlan,
-      promptProtocol: voicePromptProtocol,
+      promptProtocol: promptProtocol,
     });
     videoPrompt = voiceMentionCompilation.prompt;
     if (voiceMentionCompilation.unresolvedMentions.length > 0) {
@@ -464,16 +475,25 @@ export async function shotRenderWorkflow(
 
     // 上一镜视频延长承接：整段上一镜成片作为全能参考，提示词首部声明"将 @video_file_1 延长 N 秒"。
     // 同样必须排在图像编译之前——@previous_video_clip 不是图像 mention，留到那一步会被剥掉。
-    const videoExtendPlan = await buildShotVideoExtendPlan({
-      shot: normalizedShot,
-      allShots: episodeShots,
-      durationSeconds: videoDuration,
-      promptProtocol: voicePromptProtocol,
-    });
+    const channelSupportsVideoReference = supportsReferenceKind(providerType, 'video');
+    if (!channelSupportsVideoReference && usesPreviousVideoExtend(normalizedShot)) {
+      logger.warn('当前视频渠道不支持视频参考，延长承接降级为普通生成', {
+        shotId: normalizedShot.id,
+        providerType,
+      });
+    }
+    const videoExtendPlan = channelSupportsVideoReference
+      ? await buildShotVideoExtendPlan({
+        shot: normalizedShot,
+        allShots: episodeShots,
+        durationSeconds: videoDuration,
+        promptProtocol: promptProtocol,
+      })
+      : { promptPrefix: '' };
     const extendCompilation = compileShotVideoExtendMentions({
       prompt: videoPrompt,
       plan: videoExtendPlan,
-      promptProtocol: voicePromptProtocol,
+      promptProtocol: promptProtocol,
     });
     videoPrompt = extendCompilation.prompt;
     if (extendCompilation.stripped) {
@@ -494,6 +514,7 @@ export async function shotRenderWorkflow(
       aspectRatio: params.aspectRatio || params.project?.aspectRatio || '16:9',
       capability: effectiveVideoCapability,
       providerType,
+      promptProtocol: promptProtocol,
     });
 
     if (videoExtendPlan.reference) {

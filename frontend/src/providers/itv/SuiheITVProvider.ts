@@ -341,12 +341,26 @@ export class SuiheITVProvider implements ITVProvider {
       functionMode = 'omni_reference';
     }
 
+    // 一旦进了 omni_reference（分类资产 / 音色参考 / 延长参考任一触发），prompt 里的
+    // 图片占位符就是 @image_file_N，图必须走 metadata.image_urls 才对得上字段名；
+    // 继续塞 body.images 会让网关按 first_frame/frame_N 命名，占位符全部失配。
+    const useClassifiedImages = hasKomaClassified
+      || voiceAudioUrls.length > 0
+      || extendVideoUrls.length > 0;
     if (hasKomaClassified) {
       // Koma 即梦分类协议：URL 按 kind 拆 metadata，避免和 images[] 双写。
       if (komaAssets?.image_urls?.length) metadata.image_urls = komaAssets.image_urls;
       if (komaAssets?.video_urls?.length) metadata.video_urls = komaAssets.video_urls;
-    } else if (imageUrls.length > 0) {
-      body.images = imageUrls;
+    }
+    if (imageUrls.length > 0) {
+      if (useClassifiedImages) {
+        metadata.image_urls = [
+          ...((metadata.image_urls as string[] | undefined) ?? []),
+          ...imageUrls,
+        ];
+      } else {
+        body.images = imageUrls;
+      }
     }
     // video_urls 与 audio_urls 同样按"分类资产 + 延长参考"合并写出
     const mergedVideoUrls = [

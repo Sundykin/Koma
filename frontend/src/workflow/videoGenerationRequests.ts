@@ -128,6 +128,8 @@ export function compileShotVideoGenerationRequest(params: {
   motionPrompt?: string;
   capability?: VideoGenerationCapability;
   providerType?: string;
+  /** 渠道提示词协议：图片 / 视频 / 音频占位符都按它渲染 */
+  promptProtocol?: string;
 }): CompiledVideoGenerationRequest {
   // 阶段 4：bundle-aware 编译。把 prompt 中的 @shot_anchor / @grid_anchor /
   // @char_xxx / @scene_xxx / @prop_xxx / @user_<idx> 全部翻译为 @Image N，N 严格
@@ -137,6 +139,7 @@ export function compileShotVideoGenerationRequest(params: {
   const compiledPromptResult = compileShotPromptToBundle({
     prompt: params.prompt,
     bundle: params.plan.bundle,
+    promptProtocol: params.promptProtocol,
   });
   const finalPrompt = compiledPromptResult.compiledPrompt;
 

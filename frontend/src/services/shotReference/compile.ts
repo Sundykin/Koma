@@ -1,5 +1,6 @@
 /**
- * 把分镜提示词中的 mention token 编译成 `@Image N` —— N 严格对应 bundle.items 的位置。
+ * 把分镜提示词中的 mention token 编译成当前渠道协议的图片占位符 —— 序号严格对应
+ * bundle.items 的位置（@Image N / <图片 N> / @image_file_N，按 promptProtocol 渲染）。
  *
  * 这一层是生图 / 生视频共用的 grok-image-index 协议落地点。LLM 推理时面对的是
  * `@shot_anchor` / `@grid_anchor` / `@storyboard_anchor` /
@@ -12,6 +13,7 @@
  */
 import type { MediaAssetSource } from '../../types';
 import type { ShotReferenceBundle, ShotReferenceItem } from './types';
+import { formatReferencePlaceholder } from '../promptCompilation/imageIndexProtocol';
 import {
   compileAudioMentions,
   type AudioBinding,
@@ -70,8 +72,15 @@ export function compileShotPromptToBundle(params: {
    * 不传则不做 voice / @char_-音色 编译，向后兼容老的纯图像调用方。
    */
   voiceContext?: VoiceResolveContext;
+  /**
+   * 当前渠道的提示词协议（grok-image-index / minimax-image-tag / koma-jimeng）。
+   * 图片、视频、音频三类占位符统一由 formatReferencePlaceholder 按协议渲染——
+   * 不传按 grok 风格（@Image N / @Audio N）兜底，与历史行为一致。
+   */
+  promptProtocol?: string;
 }): CompiledBundlePrompt {
-  const { prompt, bundle, voiceContext } = params;
+  const { prompt, bundle, voiceContext, promptProtocol } = params;
+  const imagePlaceholder = (index: number) => formatReferencePlaceholder(promptProtocol, 'image', index);
   const items = bundle.items;
   const tokenToIndex = new Map<string, number>();
   items.forEach((item, idx) => {
@@ -93,7 +102,7 @@ export function compileShotPromptToBundle(params: {
   // 必须放在图像 mention 之前，否则 @char_xxx-音色 会被下面的 MENTION_RE 当成普通 char
   // mention 误编译为 @Image N。
   const audioResult: AudioMentionCompilationResult = voiceContext
-    ? compileAudioMentions({ prompt, ctx: voiceContext })
+    ? compileAudioMentions({ prompt, ctx: voiceContext, promptProtocol })
     : { compiledPrompt: prompt, audioBindings: [], unresolvedMentions: [] };
 
   // 第一遍：替换语义 mention token 为 @Image N
@@ -110,7 +119,7 @@ export function compileShotPromptToBundle(params: {
       });
     }
     tokenAuditTrail.push({ token, index: idx });
-    return `@Image ${idx}`;
+    return imagePlaceholder(idx);
   });
 
   // 第二遍：清理越界的 @Image N / @图片N（N 大于 bundle.items 长度），避免 LLM 引用了被裁
@@ -122,7 +131,7 @@ export function compileShotPromptToBundle(params: {
       overflowImageNumbers.push(n);
       return ''; // 越界——剥离，避免 provider 困惑
     }
-    return `@Image ${n}`; // 归一化协议（@图片N / @ImageN → @Image N）
+    return imagePlaceholder(n); // 归一化协议（@图片N / @ImageN → 当前协议的图片占位符）
   });
 
   // 折叠 mention 剥离后的多余空白
