@@ -102,6 +102,8 @@ function getTypeLabel(type: MentionType): string {
       return '上一故事板';
     case 'previous_tail':
       return '上一镜尾帧';
+    case 'previous_video':
+      return '上一镜视频';
     default:
       return '';
   }

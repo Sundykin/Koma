@@ -180,9 +180,9 @@ describe('ShotCard video continuity controls', () => {
     });
 
     fireEvent.click(screen.getByTestId('continuity-opt-independent'));
-    await waitFor(() => expect(onMode).toHaveBeenCalledWith('shot-next', 'manual', false));
+    await waitFor(() => expect(onMode).toHaveBeenCalledWith('shot-next', 'manual', false, 'tail-frame'));
     fireEvent.click(screen.getByTestId('continuity-opt-auto'));
-    await waitFor(() => expect(onMode).toHaveBeenCalledWith('shot-next', 'auto', true));
+    await waitFor(() => expect(onMode).toHaveBeenCalledWith('shot-next', 'auto', true, 'tail-frame'));
     fireEvent.click(screen.getByTestId('continuity-capture'));
     await waitFor(() => expect(onCapture).toHaveBeenCalledWith('shot-next', true));
   });

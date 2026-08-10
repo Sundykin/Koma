@@ -45,6 +45,8 @@ export function normalizeShotVideoReference(value: unknown): ShotVideoReference 
       ? record.capturedAt
       : undefined,
     sourceVideoKey: compactText(record.sourceVideoKey),
+    // 缺省视为尾帧承接：历史数据没有这个字段
+    continuity: record.continuity === 'video-extend' ? 'video-extend' : 'tail-frame',
   };
 }
 
@@ -174,11 +176,28 @@ export function normalizeShotContinuity(
         referenceFrame: sourceChanged ? undefined : existing?.referenceFrame,
         capturedAt: sourceChanged ? undefined : existing?.capturedAt,
         sourceVideoKey: sourceChanged ? undefined : existing?.sourceVideoKey,
+        // 承接方式是用户显式选择，重排 / 重算连续性都不该把它冲掉
+        continuity: existing?.continuity ?? 'tail-frame',
       },
     };
   });
 }
 
+/**
+ * 是否走「上一镜尾帧」承接。
+ *
+ * 注意：延长模式（continuity === 'video-extend'）同样置 usePreviousTailFrame=true
+ * 表示"承接上一镜"，但它不抽帧、不需要图片参考——所以这里要把它排除掉，
+ * 否则会白跑一遍 ffmpeg 抽帧，还会把尾帧塞进 references 占掉一个图位。
+ */
 export function usesPreviousTailFrame(shot: Pick<Shot, 'videoReference'>): boolean {
-  return Boolean(normalizeShotVideoReference(shot.videoReference)?.usePreviousTailFrame);
+  const reference = normalizeShotVideoReference(shot.videoReference);
+  if (!reference?.usePreviousTailFrame) return false;
+  return reference.continuity !== 'video-extend';
+}
+
+/** 是否走「上一镜整段视频延长」承接。 */
+export function usesPreviousVideoExtend(shot: Pick<Shot, 'videoReference'>): boolean {
+  const reference = normalizeShotVideoReference(shot.videoReference);
+  return Boolean(reference?.usePreviousTailFrame && reference.continuity === 'video-extend');
 }

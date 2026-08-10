@@ -107,6 +107,16 @@ export type ShotVideoMode = 'multi-ref' | 'first-frame';
  * `autoUsePreviousTailFrame` 始终保留自动判断，`mode=manual` 只覆盖当前生效值，
  * 因此用户可以在不重新调用 LLM 的情况下恢复自动。
  */
+/**
+ * 承接上一分镜的方式。
+ *  - 'tail-frame'   截上一镜成片的真实尾帧当图片参考（@previous_tail_frame），
+ *                   适合需要精确锁死起始画面、或上一镜视频本身有瑕疵只想取一帧的场景。
+ *  - 'video-extend' 把上一镜**整段视频**作为全能参考交给模型，提示词声明"基于该视频延长生成"。
+ *                   运镜惯性、动作节奏、光影漂移都由模型自己从视频里读，连贯度高于单帧承接，
+ *                   代价是消耗更多额度、且上一镜视频质量直接影响本镜。
+ */
+export type ShotContinuityMode = 'tail-frame' | 'video-extend';
+
 export interface ShotVideoReference {
   mode: 'auto' | 'manual';
   usePreviousTailFrame: boolean;
@@ -116,6 +126,8 @@ export interface ShotVideoReference {
   referenceFrame?: StoredMediaAsset;
   capturedAt?: number;
   sourceVideoKey?: string;
+  /** 承接方式；缺省视为 'tail-frame'（历史数据全是尾帧模式）。 */
+  continuity?: ShotContinuityMode;
 }
 
 /**

@@ -11,7 +11,7 @@ import type { DragEndEvent } from '@dnd-kit/core';
 import type {
   Shot, ShotScriptLine, Character, Scene, Prop, StoredMediaAsset, ShotMeta,
 } from '../../../types';
-import type { ShotImageMode } from '../../../types';
+import type { ShotContinuityMode, ShotImageMode } from '../../../types';
 import { useShotAssetSync } from '../../../hooks/useShotAssetSync';
 import { clampDurationToSpec, type VideoDurationSpec } from '../../../providers/itv/durationSpec';
 import { findVersionNumberForVideoAsset } from '../../../utils/shotVersionSelection';
@@ -402,6 +402,7 @@ export function useStoryboardShotMutations(deps: StoryboardShotMutationsDeps) {
     shotId: string,
     mode: 'auto' | 'manual',
     usePreviousTailFrame: boolean,
+    continuity: ShotContinuityMode = 'tail-frame',
   ) => {
     const currentShots = shotsRef.current;
     const shotIndex = currentShots.findIndex(s => s.id === shotId);
@@ -426,6 +427,7 @@ export function useStoryboardShotMutations(deps: StoryboardShotMutationsDeps) {
       mode,
       usePreviousTailFrame: effectiveUse,
       autoUsePreviousTailFrame,
+      continuity,
       sourceShotId: previousShot?.id || normalizedReference.sourceShotId,
     };
 
@@ -443,6 +445,22 @@ export function useStoryboardShotMutations(deps: StoryboardShotMutationsDeps) {
         }
         : candidate);
       await saveAllShots(updatedShots);
+      return;
+    }
+
+    // 延长模式不抽帧：整段上一镜视频在渲染期直传，旧尾帧留着只会白占一个参考图位。
+    if (continuity === 'video-extend') {
+      await saveAllShots(currentShots.map(candidate => candidate.id === shotId
+        ? {
+          ...candidate,
+          videoReference: {
+            ...baseReference,
+            referenceFrame: undefined,
+            capturedAt: undefined,
+            sourceVideoKey: undefined,
+          },
+        }
+        : candidate));
       return;
     }
 
@@ -490,6 +508,10 @@ export function useStoryboardShotMutations(deps: StoryboardShotMutationsDeps) {
         ...existing,
         mode: originalMode === 'manual' ? 'manual' : 'auto',
         usePreviousTailFrame: true,
+        // 截尾帧这个动作本身就等于选择尾帧承接。不强制改回来的话，从"延长模式"切回
+        // "继承尾帧"会永远失败：resolver 里的 usesPreviousTailFrame 看到残留的
+        // continuity='video-extend' 就直接返回，永远抽不出帧。
+        continuity: 'tail-frame',
         sourceShotId: predecessor.id,
       },
     };
@@ -510,6 +532,7 @@ export function useStoryboardShotMutations(deps: StoryboardShotMutationsDeps) {
         ...resolvedReference,
         mode: 'manual',
         usePreviousTailFrame: true,
+        continuity: 'tail-frame',
         sourceShotId: predecessor.id,
       },
     };

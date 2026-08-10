@@ -150,6 +150,8 @@ function getTypeLabel(type: MentionType): string {
       return '上一故事板';
     case 'previous_tail':
       return '上一镜尾帧';
+    case 'previous_video':
+      return '上一镜视频';
     default:
       return '';
   }
@@ -196,6 +198,11 @@ function getTypeColor(type: MentionType): { bg: string; text: string } {
       return {
         bg: 'color-mix(in srgb, #14b8a6 20%, transparent)',
         text: '#0f766e',
+      };
+    case 'previous_video':
+      return {
+        bg: 'color-mix(in srgb, #6366f1 20%, transparent)',
+        text: '#4338ca',
       };
     default:
       return {

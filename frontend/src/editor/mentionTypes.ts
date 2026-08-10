@@ -4,7 +4,7 @@
 
 // Mention 项目类型
 export type AssetMentionType = 'char' | 'prop' | 'scene' | 'voice';
-export type AnchorMentionType = 'shot' | 'grid' | 'storyboard' | 'previous_storyboard' | 'previous_tail';
+export type AnchorMentionType = 'shot' | 'grid' | 'storyboard' | 'previous_storyboard' | 'previous_tail' | 'previous_video';
 export type MentionType = AssetMentionType | AnchorMentionType;
 
 /**
@@ -39,12 +39,13 @@ export interface ParsedMention {
 // 匹配格式:
 //  - 资产:        @char_xxx / @prop_xxx / @scene_xxx / @voice_xxx
 //  - 复合属性:    @char_xxx-音色  或  @char_xxx-voice
-//  - 分镜锚点:    @shot_anchor / @grid_anchor / @storyboard_anchor / @previous_storyboard_anchor / @previous_tail_frame
+//  - 分镜锚点:    @shot_anchor / @grid_anchor / @storyboard_anchor / @previous_storyboard_anchor
+//  - 上一镜承接:  @previous_tail_frame（尾帧图）/ @previous_video_clip（整段视频，延长模式）
 //
 // id 字符集放宽到包含 CJK 区段，让 `@char_abc-音色` 整体被匹配到，
 // 真正的 property 拆分由 stripPropertySuffix 在后续 post-process 阶段完成。
 export const MENTION_REGEX =
-  /@(char|prop|scene|voice)_([a-zA-Z0-9_一-鿿-]+)|@(shot|grid|storyboard|previous_storyboard)_anchor\b|@(previous_tail)_frame\b/g;
+  /@(char|prop|scene|voice)_([a-zA-Z0-9_一-鿿-]+)|@(shot|grid|storyboard|previous_storyboard)_anchor\b|@(previous_tail)_frame\b|@(previous_video)_clip\b/g;
 
 const PROPERTY_SUFFIX_RE = /^(.*?)-(音色|voice)$/;
 
@@ -67,7 +68,8 @@ export function isAssetMentionType(type: MentionType): type is AssetMentionType 
 }
 
 export function isAnchorMentionType(type: MentionType): type is AnchorMentionType {
-  return type === 'shot' || type === 'grid' || type === 'storyboard' || type === 'previous_storyboard' || type === 'previous_tail';
+  return type === 'shot' || type === 'grid' || type === 'storyboard' || type === 'previous_storyboard'
+    || type === 'previous_tail' || type === 'previous_video';
 }
 
 /**
@@ -79,7 +81,7 @@ export function parseMentions(text: string): ParsedMention[] {
 
   const regex = new RegExp(MENTION_REGEX.source, 'g');
   while ((match = regex.exec(text)) !== null) {
-    const type = (match[1] || match[3] || match[4]) as MentionType;
+    const type = (match[1] || match[3] || match[4] || match[5]) as MentionType;
     const rawId = match[2] || 'anchor';
     const { id, property } = stripPropertySuffix(type, rawId);
     mentions.push({
@@ -123,6 +125,9 @@ export function createMentionString(
   if (type === 'previous_tail') {
     return '@previous_tail_frame';
   }
+  if (type === 'previous_video') {
+    return '@previous_video_clip';
+  }
   if (isAnchorMentionType(type)) {
     return `@${type}_anchor`;
   }
@@ -146,6 +151,9 @@ export function parseMentionId(
   }
   if (/@previous_tail_frame\b/.test(mentionStr)) {
     return { type: 'previous_tail', id: 'anchor' };
+  }
+  if (/@previous_video_clip\b/.test(mentionStr)) {
+    return { type: 'previous_video', id: 'anchor' };
   }
 
   const match = mentionStr.match(/@(char|prop|scene|voice)_([a-zA-Z0-9_一-鿿-]+)/);

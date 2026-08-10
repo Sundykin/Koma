@@ -45,6 +45,7 @@ import {
 } from './shotVideoPlan';
 import { compileShotVideoGenerationRequest } from './videoGenerationRequests';
 import { buildShotVoiceReferencePlan, compileShotVoiceMentions } from './shotVoiceReferences';
+import { buildShotVideoExtendPlan, compileShotVideoExtendMentions } from './shotVideoExtendReference';
 import { resolveConfiguredChannelModel } from '../providers/channel/resolver';
 import { getModelMaxReferenceImages } from '../providers/itv/modelCatalog';
 import type { StyleSnapshotLike } from '../utils/promptNormalize';
@@ -461,6 +462,30 @@ export async function shotRenderWorkflow(
       });
     }
 
+    // 上一镜视频延长承接：整段上一镜成片作为全能参考，提示词首部声明"将 @video_file_1 延长 N 秒"。
+    // 同样必须排在图像编译之前——@previous_video_clip 不是图像 mention，留到那一步会被剥掉。
+    const videoExtendPlan = await buildShotVideoExtendPlan({
+      shot: normalizedShot,
+      allShots: episodeShots,
+      durationSeconds: videoDuration,
+      promptProtocol: voicePromptProtocol,
+    });
+    const extendCompilation = compileShotVideoExtendMentions({
+      prompt: videoPrompt,
+      plan: videoExtendPlan,
+      promptProtocol: voicePromptProtocol,
+    });
+    videoPrompt = extendCompilation.prompt;
+    if (extendCompilation.stripped) {
+      logger.warn('视频提示词声明了上一镜延长，但没有可用的上一镜成片，已降级为普通生成', {
+        shotId: normalizedShot.id,
+      });
+    }
+    if (videoExtendPlan.reference) {
+      // 声明句放在最前面：Seedance 系模型对"将 @视频X 延长 N 秒"这类指令是按首句意图解析的
+      videoPrompt = `${videoExtendPlan.promptPrefix}\n${videoPrompt}`;
+    }
+
     const compiledVideoRequest = compileShotVideoGenerationRequest({
       plan: resolvedVideoPlan,
       prompt: videoPrompt,
@@ -470,6 +495,25 @@ export async function shotRenderWorkflow(
       capability: effectiveVideoCapability,
       providerType,
     });
+
+    if (videoExtendPlan.reference) {
+      compiledVideoRequest.request = {
+        ...compiledVideoRequest.request,
+        metadata: {
+          ...(compiledVideoRequest.request.metadata ?? {}),
+          komaVideoReferences: [{
+            sourceShotId: videoExtendPlan.sourceShotId,
+            transport: videoExtendPlan.reference.transport,
+            value: videoExtendPlan.reference.value,
+            mimeType: videoExtendPlan.reference.mimeType,
+          }],
+        },
+      };
+      logger.info('已附加上一镜视频延长参考', {
+        shotId: normalizedShot.id,
+        sourceShotId: videoExtendPlan.sourceShotId,
+      });
+    }
 
     if (voicePlan.references.length > 0) {
       const mergedPrompt = `${compiledVideoRequest.prompt}\n${voicePlan.promptSuffix}`;

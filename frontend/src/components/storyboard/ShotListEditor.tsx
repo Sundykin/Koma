@@ -9,7 +9,7 @@ import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
 import { StoryboardLayout } from './StoryboardLayout';
 import { ShotListHeader } from './ShotListHeader';
 import type { MentionItem } from '../../editor';
-import type { Shot, ShotImageMode, ShotScriptLine, Character, Scene, Prop, StoredMediaAsset } from '../../types';
+import type { Shot, ShotContinuityMode, ShotImageMode, ShotScriptLine, Character, Scene, Prop, StoredMediaAsset } from '../../types';
 import { getMediaAssetDisplaySource } from '../../types';
 import { getPrimaryShotSize, detectShotLightTone, isSameScene } from '../../services/photographyElements';
 import { ShotCard } from './ShotCard';
@@ -75,11 +75,12 @@ export interface ShotListEditorProps {
   onInsertBelow: (shotId: string) => void;
   onShotImageModeChange: (shotId: string, mode: Exclude<ShotImageMode, 'grid'>) => void;
   onStoryboardInheritPreviousChange?: (shotId: string, enabled: boolean) => void;
-  /** 项目视频连续性模式（自动 / 手动继承 / 手动独立） */
+  /** 项目视频连续性模式（自动 / 继承尾帧 / 延长上一镜视频 / 本镜独立） */
   onVideoReferenceModeChange?: (
     shotId: string,
     mode: 'auto' | 'manual',
     usePreviousTailFrame: boolean,
+    continuity?: ShotContinuityMode,
   ) => void | Promise<void>;
   /** 截取或重新截取上一镜真实视频尾帧 */
   onCapturePreviousTailFrame?: (shotId: string, forceRefresh?: boolean) => void | Promise<void>;

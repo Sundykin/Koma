@@ -19,6 +19,11 @@ import {
 import type { StyleSnapshotLike } from '../utils/promptNormalize';
 import { runWithTask } from './taskRunner';
 import type { TaskSubType } from './TaskManager';
+import { usesPreviousVideoExtend } from './shotContinuity';
+import {
+  PREVIOUS_VIDEO_LABEL,
+  PREVIOUS_VIDEO_MENTION,
+} from '../workflow/shotVideoExtendReference';
 import { buildShotReferenceBundle } from './shotReference/builder';
 import {
   renderGridSequenceNotice,
@@ -454,12 +459,14 @@ export class ShotPromptService {
       mappingSchemaNote,
       spatialAnchorDirective,
       tailFrameContinuityDirective,
+      videoExtendDirective,
       voiceMentionDirective,
       finalOutputBoundary,
     ] = await Promise.all([
       buildMappingSchemaNote(shotCharacters, shotScenes, shotProps, referenceBundle),
       buildSpatialAnchorDirective(shot, shotScenes, referenceBundle),
       buildTailFrameContinuityDirective(referenceBundle),
+      buildVideoExtendDirective(shot, adjacency.prev1),
       buildVoiceMentionDirective(shotCharacters),
       resolveDirective('shot_directive_output_boundary', {
         narrativeModeRule: this.ctx.projectMode === 'drama'
@@ -490,6 +497,7 @@ export class ShotPromptService {
           mappingSchemaNote,
           spatialAnchorDirective,
           tailFrameContinuityDirective,
+          videoExtendDirective,
           voiceMentionDirective,
           finalOutputBoundary,
         ]
@@ -507,14 +515,17 @@ export class ShotPromptService {
     });
 
     return ensureVoiceMentionsInVideoPrompt(
-      ensureTailFrameContinuityInVideoPrompt(
-        ensureExplicitDialogueInVideoPrompt(
-          sanitizeVideoPromptResult(result),
-          explicitDialogueText,
-          characterNames,
-          this.ctx.projectMode,
+      ensureVideoExtendInVideoPrompt(
+        ensureTailFrameContinuityInVideoPrompt(
+          ensureExplicitDialogueInVideoPrompt(
+            sanitizeVideoPromptResult(result),
+            explicitDialogueText,
+            characterNames,
+            this.ctx.projectMode,
+          ),
+          referenceBundle,
         ),
-        referenceBundle,
+        shot,
       ),
       shotCharacters,
     );
@@ -1216,6 +1227,56 @@ async function resolveDirective(
     });
     return '';
   }
+}
+
+/**
+ * 视频提示词的"延长承接约束"。
+ *
+ * 与尾帧承接互斥：尾帧模式给的是一张图（锁死起始画面），延长模式给的是整段上一镜
+ * 成片（运镜惯性、动作节奏、光影漂移都由模型自己从视频里读）。两者同时注入会让
+ * 模型在"从图起手"和"从视频续拍"之间摇摆，所以由调用方二选一。
+ */
+async function buildVideoExtendDirective(shot: Shot, previousShot?: Shot): Promise<string> {
+  if (!usesPreviousVideoExtend(shot)) return '';
+  const previousDuration = typeof previousShot?.duration === 'number' && previousShot.duration > 0
+    ? `${Math.round(previousShot.duration)} 秒处`
+    : '结尾处';
+  return resolveDirective('shot_directive_video_extend', {
+    previousVideoMention: PREVIOUS_VIDEO_MENTION,
+    previousVideoLabel: PREVIOUS_VIDEO_LABEL,
+    durationHint: previousDuration,
+  });
+}
+
+/** 延长模式同样只允许引用一次；多余的降级成纯文本，理由同尾帧去重。 */
+function dedupePreviousVideoMentions(prompt: string): string {
+  const pattern = new RegExp(
+    `${escapeRegExp(PREVIOUS_VIDEO_MENTION)}(?:\\s*${escapeRegExp(PREVIOUS_VIDEO_LABEL)})?`,
+    'g',
+  );
+  let seen = false;
+  return prompt.replace(pattern, (match) => {
+    if (!seen) {
+      seen = true;
+      return match;
+    }
+    return '上一镜';
+  });
+}
+
+/**
+ * 兜底：延长模式下 LLM 漏写延长声明时，在最前面补一行。
+ * 落库的可编辑提示词自带声明，用户在提示词框里能直接看到 / 改这条承接关系。
+ */
+function ensureVideoExtendInVideoPrompt(prompt: string, shot: Shot): string {
+  if (!usesPreviousVideoExtend(shot)) return prompt;
+  const trimmed = prompt.trim();
+  if (!trimmed) return prompt;
+  if (trimmed.includes(PREVIOUS_VIDEO_MENTION)) return dedupePreviousVideoMentions(trimmed);
+  return [
+    `延长上一分镜视频：${PREVIOUS_VIDEO_MENTION} ${PREVIOUS_VIDEO_LABEL} —— 机位、景别、运镜方向与光影全部延续上一镜，不重新开场、不重演已完成的动作，只把剧情继续往前推进。`,
+    trimmed,
+  ].join('\n');
 }
 
 /**

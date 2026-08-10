@@ -21,26 +21,36 @@ vi.mock('../store/projectStore', () => ({
 
 // 业务模板一律打桩成 'resolved prompt'（本文件不测模板正文）；但 inference-directive
 // 约束段要用真实默认模板渲染——它们的措辞就是被测行为的一部分。
-vi.mock('../store/promptTemplates', async () => {
-  const { DEFAULT_TEMPLATES } = await import('../store/promptTemplates/defaults');
-  return {
-    resolvePromptTemplate: vi.fn(async (templateId: string, variables: Record<string, string> = {}) => {
-      let prompt: string;
-      if (templateId.startsWith('shot_directive_')) {
-        prompt = Object.entries(variables).reduce(
-          (acc, [key, value]) => acc.split(`{{${key}}}`).join(value ?? ''),
-          (DEFAULT_TEMPLATES as Record<string, { template: string }>)[templateId].template,
-        );
-      } else {
-        prompt = templateId === 'shot_prompt_system' ? 'system prompt' : 'resolved prompt';
-      }
-      return { prompt, source: 'default', template: { id: templateId } };
-    }),
-  };
-});
+vi.mock('../store/promptTemplates', () => ({
+  resolvePromptTemplate: vi.fn(),
+}));
 
-beforeEach(() => {
+/** 默认解析实现：约束段渲染真实默认模板，其余业务模板打桩。 */
+async function defaultResolveImplementation(
+  templateId: string,
+  variables: Record<string, string> = {},
+) {
+  const { DEFAULT_TEMPLATES } = await import('../store/promptTemplates/defaults');
+  let prompt: string;
+  if (templateId.startsWith('shot_directive_')) {
+    prompt = Object.entries(variables).reduce(
+      (acc, [key, value]) => acc.split(`{{${key}}}`).join(value ?? ''),
+      (DEFAULT_TEMPLATES as Record<string, { template: string }>)[templateId].template,
+    );
+  } else {
+    prompt = templateId === 'shot_prompt_system' ? 'system prompt' : 'resolved prompt';
+  }
+  return { prompt, source: 'default', template: { id: templateId } };
+}
+
+beforeEach(async () => {
   vi.clearAllMocks();
+  // clearAllMocks 只清调用记录不清实现——单个用例覆写过 implementation 后必须在这里复位，
+  // 否则会漏给后面的用例（约束段全变成 'resolved prompt'）。
+  const promptTemplates = await import('../store/promptTemplates');
+  vi.mocked(promptTemplates.resolvePromptTemplate).mockImplementation(
+    defaultResolveImplementation as never,
+  );
 });
 
 function createStoryboardShot(partial?: Partial<Shot>): Shot {
@@ -922,5 +932,80 @@ describe('视频推理时长按模型能力解析（取消档位）', () => {
       'shot_video_multi',
       expect.objectContaining({ durationSeconds: '13' }),
     );
+  });
+});
+
+describe('上一分镜视频延长承接', () => {
+  /** 手动选了「延长上一镜视频」的分镜 */
+  function createExtendingShot(): Shot {
+    return createStoryboardShot({
+      id: 'shot-current',
+      imageMode: 'normal',
+      videoMode: 'multi-ref',
+      duration: 10,
+      videoReference: {
+        mode: 'manual',
+        usePreviousTailFrame: true,
+        continuity: 'video-extend',
+        sourceShotId: 'shot-prev',
+      },
+    } as Partial<Shot>);
+  }
+
+  const runExtend = (chatResult: string) => runVideoPrompt({
+    shot: createExtendingShot(),
+    characters: [YESHU],
+    chatResult,
+  });
+
+  it('注入延长约束，且不注入尾帧约束（两者互斥）', async () => {
+    const { userMessage } = await runExtend('画面描述：x\n精确时长：10秒');
+
+    expect(userMessage).toContain('【视频延长承接约束');
+    expect(userMessage).toContain('@previous_video_clip');
+    expect(userMessage).toContain('不要重新开场');
+    expect(userMessage).not.toContain('【尾帧承接约束');
+  });
+
+  it('LLM 漏写延长声明时兜底补上首行', async () => {
+    const { result } = await runExtend('画面描述：叶赎继续走向书架。\n精确时长：10秒');
+
+    expect(result.startsWith('延长上一分镜视频：@previous_video_clip 上一分镜视频')).toBe(true);
+    expect(result).toContain('画面描述：叶赎继续走向书架。');
+  });
+
+  it('延长映射符同样全文只保留一次', async () => {
+    const { result } = await runExtend([
+      '延长上一分镜视频：@previous_video_clip 上一分镜视频 —— 叶赎继续走。',
+      '画面描述：承接 @previous_video_clip 上一分镜视频 的机位。',
+      '精确时长：10秒',
+    ].join('\n'));
+
+    expect(result.match(/@previous_video_clip/g)).toHaveLength(1);
+    expect(result).toContain('画面描述：承接 上一镜 的机位。');
+  });
+
+  it('尾帧模式下不注入延长约束', async () => {
+    const { result, userMessage } = await runVideoPrompt({
+      shot: createStoryboardShot({
+        id: 'shot-current',
+        imageMode: 'normal',
+        videoMode: 'multi-ref',
+        duration: 10,
+        videoReference: {
+          mode: 'manual',
+          usePreviousTailFrame: true,
+          continuity: 'tail-frame',
+          referenceFrame: createImageAsset('/tmp/tail.jpg'),
+          sourceShotId: 'shot-prev',
+        },
+      } as Partial<Shot>),
+      characters: [YESHU],
+      chatResult: '画面描述：x\n精确时长：10秒',
+    });
+
+    expect(userMessage).not.toContain('【视频延长承接约束');
+    expect(userMessage).toContain('【尾帧承接约束');
+    expect(result).not.toContain('@previous_video_clip');
   });
 });

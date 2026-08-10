@@ -192,6 +192,11 @@ export const mentionTheme = EditorView.baseTheme({
     backgroundColor: 'color-mix(in srgb, #14b8a6 20%, transparent)',
     color: '#0f766e',
   },
+  // @previous_video_clip：上一镜整段视频（延长模式的全能参考）。用靛蓝区分于尾帧的青色。
+  '.mention-previous_video': {
+    backgroundColor: 'color-mix(in srgb, #6366f1 20%, transparent)',
+    color: '#4338ca',
+  },
   // @voice_xxx：直接指向某个音色
   '.mention-voice': {
     backgroundColor: 'color-mix(in srgb, #b794f6 22%, transparent)',

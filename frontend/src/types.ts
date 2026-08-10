@@ -85,6 +85,7 @@ export type {
   Prop,
   ShotVideo,
   ShotVideoReference,
+  ShotContinuityMode,
   Shot,
   ShotImageMode,
   ShotScriptLine,

@@ -200,8 +200,13 @@ export class SuiheITVProvider implements ITVProvider {
    * 音色参考音频 → 公网 URL 列表：remote-url 直传；data-url 解字节后上传图床
    * （与图片同一 komaapi 上传通道，wav/mp3 均可）。单条失败跳过不影响整体。
    */
-  private async resolveVoiceReferenceUrls(
+  /**
+   * 把本地素材（data URL）传图床换成公网 URL，远程 URL 原样透传。
+   * 音色参考（audio_urls）和上一镜延长参考（video_urls）共用这条路径。
+   */
+  private async resolveMediaReferenceUrls(
     refs: Array<{ transport?: string; value?: string; mimeType?: string }>,
+    kind: 'audio' | 'video',
   ): Promise<string[]> {
     const urls: string[] = [];
     for (const ref of refs.slice(0, 3)) {
@@ -216,17 +221,20 @@ export class SuiheITVProvider implements ITVProvider {
         const { uploadBytesToImageHostingWithRetry } = await import('../../services/imageHostingService');
         const { parseDataUrl } = await import('../../utils/encoding');
         const { mimeType, bytes } = parseDataUrl(value);
-        const ext = (mimeType || ref.mimeType || 'audio/wav').includes('mpeg') ? 'mp3' : 'wav';
+        const resolvedMime = mimeType || ref.mimeType || (kind === 'video' ? 'video/mp4' : 'audio/wav');
+        const ext = kind === 'video'
+          ? (resolvedMime.includes('webm') ? 'webm' : 'mp4')
+          : (resolvedMime.includes('mpeg') ? 'mp3' : 'wav');
         const result = await uploadBytesToImageHostingWithRetry(bytes, {
-          filename: `koma-voice-ref-${Date.now()}.${ext}`,
+          filename: `koma-${kind}-ref-${Date.now()}.${ext}`,
         });
         if (result?.success && result.url) {
           urls.push(result.url);
         } else {
-          logger.warn('音色参考音频上传图床失败，跳过', { error: result?.error });
+          logger.warn(`${kind === 'video' ? '延长参考视频' : '音色参考音频'}上传图床失败，跳过`, { error: result?.error });
         }
       } catch (error) {
-        logger.warn('音色参考音频上传图床异常，跳过', {
+        logger.warn(`${kind === 'video' ? '延长参考视频' : '音色参考音频'}上传图床异常，跳过`, {
           error: error instanceof Error ? error.message : String(error),
         });
       }
@@ -315,10 +323,21 @@ export class SuiheITVProvider implements ITVProvider {
     // 音色参考（音画同出）：渲染工作流经 metadata.komaVoiceReferences 传入，
     // 本地音频先上传图床拿公网 URL，并入 metadata.audio_urls 让网关分发到 audio_file_N。
     // @audio_file_N 占位符与 audio_urls 顺序一一对应（每类参考从 1 开始编号）。
-    const voiceAudioUrls = await this.resolveVoiceReferenceUrls(
+    const voiceAudioUrls = await this.resolveMediaReferenceUrls(
       (request.metadata?.komaVoiceReferences as Array<{ transport?: string; value?: string; mimeType?: string }> | undefined) ?? [],
+      'audio',
     );
     if (voiceAudioUrls.length > 0) {
+      functionMode = 'omni_reference';
+    }
+
+    // 上一镜视频延长参考：整段成片作为 video_file_N 全能参考。提示词首句已经写了
+    // "将 @video_file_1 延长 N 秒"，字段名必须匹配，所以同样强制 omni_reference。
+    const extendVideoUrls = await this.resolveMediaReferenceUrls(
+      (request.metadata?.komaVideoReferences as Array<{ transport?: string; value?: string; mimeType?: string }> | undefined) ?? [],
+      'video',
+    );
+    if (extendVideoUrls.length > 0) {
       functionMode = 'omni_reference';
     }
 
@@ -328,6 +347,14 @@ export class SuiheITVProvider implements ITVProvider {
       if (komaAssets?.video_urls?.length) metadata.video_urls = komaAssets.video_urls;
     } else if (imageUrls.length > 0) {
       body.images = imageUrls;
+    }
+    // video_urls 与 audio_urls 同样按"分类资产 + 延长参考"合并写出
+    const mergedVideoUrls = [
+      ...((metadata.video_urls as string[] | undefined) ?? []),
+      ...extendVideoUrls,
+    ];
+    if (mergedVideoUrls.length > 0) {
+      metadata.video_urls = mergedVideoUrls;
     }
     // audio_urls 统一按"分类资产 + 音色参考"合并写出（音色参考已由上方上传图床解析为公网 URL）
     const mergedAudioUrls = [...(komaAssets?.audio_urls ?? []), ...voiceAudioUrls];

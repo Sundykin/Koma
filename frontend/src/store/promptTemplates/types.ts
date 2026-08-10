@@ -26,6 +26,7 @@ export type PromptTemplateType =
   | 'shot_directive_spatial_anchored'  // 空间锚定 · 有锚定图（图就是空间真相）
   | 'shot_directive_spatial_multiref'  // 空间锚定 · 多参考模式（场景描述作为空间基线）
   | 'shot_directive_tail_frame'        // 尾帧承接（已绑定上一镜真实视频尾帧时注入）
+  | 'shot_directive_video_extend'      // 视频延长承接（整段上一镜视频作全能参考时注入）
   | 'shot_directive_voice_mention'     // 音色映射（角色绑定了音色时注入）
   | 'shot_directive_output_boundary'   // 最终输出边界（只返回提示词正文）
   | 'grid_shot_prompt_generation'  // 九宫格分镜提示词生成（将单个分镜扩展为9个连续画面）

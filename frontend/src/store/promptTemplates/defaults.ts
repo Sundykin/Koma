@@ -655,6 +655,33 @@ script 是**一段完整的自然行文**（不是逐行标签），它是后续
     isCustom: false,
   },
 
+  shot_directive_video_extend: {
+    id: 'shot_directive_video_extend',
+    category: 'inference-directive',
+    name: '推理约束 · 视频延长承接',
+    description: '本分镜选择"上一镜视频延长"承接时注入：整段上一镜成片作全能参考，首行写延长声明，禁止重新开场与重演',
+    template: SHOT_DIRECTIVE_TEMPLATE_CONTENT.shot_directive_video_extend,
+    variables: [
+      variable('previousVideoMention', {
+        label: '上一镜视频映射符',
+        description: '固定为 @previous_video_clip；渲染期会编译成 @video_file_N / @Video N。',
+        format: 'mention 字符串',
+      }),
+      variable('previousVideoLabel', {
+        label: '上一镜视频中文名',
+        description: '跟在映射符后面的中文名，默认「上一分镜视频」。',
+        format: '短语',
+      }),
+      variable('durationHint', {
+        label: '上一镜结束时刻描述',
+        description: '用于"本镜第 0 秒就是上一镜的第 X 秒"这句话，由上一镜时长推出。',
+        format: '短语',
+        example: '12 秒处',
+      }),
+    ],
+    isCustom: false,
+  },
+
   shot_directive_voice_mention: {
     id: 'shot_directive_voice_mention',
     category: 'inference-directive',

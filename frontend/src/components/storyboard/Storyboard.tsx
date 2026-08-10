@@ -807,7 +807,9 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         const wantInherit = ref?.mode === 'manual'
           ? ref.usePreviousTailFrame
           : (ref?.autoUsePreviousTailFrame ?? ref?.usePreviousTailFrame ?? false);
-        if (wantInherit && !ref?.referenceFrame) {
+        // 延长模式不抽帧：整段上一镜视频在渲染期直传
+        const isVideoExtend = ref?.continuity === 'video-extend';
+        if (wantInherit && !isVideoExtend && !ref?.referenceFrame) {
           await handleCapturePreviousTailFrame(shotId, false);
         }
         // 尾帧作主图：本镜还没有图片时，把截到的尾帧设为本镜锚定图

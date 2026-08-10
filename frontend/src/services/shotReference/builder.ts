@@ -269,6 +269,8 @@ function pushPreviousVideoTailFrame(
   if (!params.options?.includePreviousVideoTail) return;
   const reference = shot.videoReference;
   if (!reference?.usePreviousTailFrame || !reference.referenceFrame) return;
+  // 延长模式承接的是整段视频（渲染期走 video_urls），尾帧不该再占一个图位
+  if (reference.continuity === 'video-extend') return;
   pushItem(items, seen, {
     kind: 'previous-video-tail',
     id: `${reference.sourceShotId || 'previous'}#video-tail`,

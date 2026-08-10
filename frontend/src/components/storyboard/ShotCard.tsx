@@ -37,11 +37,12 @@ import {
   ThunderboltOutlined,
   LinkOutlined,
   DisconnectOutlined,
+  ForwardOutlined,
   FlagOutlined,
   WarningOutlined,
   RocketOutlined,
 } from '@ant-design/icons';
-import type { Shot, ShotImageMode, ShotScriptLine, Character, Scene, Prop, StoredMediaAsset } from '../../types';
+import type { Shot, ShotContinuityMode, ShotImageMode, ShotScriptLine, Character, Scene, Prop, StoredMediaAsset } from '../../types';
 import { buildShotVoiceSegments } from '../../types';
 import { ShotScriptLines } from './ShotScriptLines';
 import { ShotScriptParagraph } from './ShotScriptParagraph';
@@ -135,6 +136,7 @@ export interface ShotCardProps {
     shotId: string,
     mode: 'auto' | 'manual',
     usePreviousTailFrame: boolean,
+    continuity?: ShotContinuityMode,
   ) => void | Promise<void>;
   onCapturePreviousTailFrame?: (shotId: string, forceRefresh?: boolean) => void | Promise<void>;
   /** 串行化连续生成：截尾帧 → 视频提示词 → 生成视频 */
@@ -390,7 +392,9 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
   const continuitySelection = isFirst
     ? 'independent'
     : videoReference?.mode === 'manual'
-      ? (videoReference.usePreviousTailFrame ? 'inherit' : 'independent')
+      ? (videoReference.usePreviousTailFrame
+        ? (videoReference.continuity === 'video-extend' ? 'extend' : 'inherit')
+        : 'independent')
       : 'auto';
   const tailFrameSourceChanged = Boolean(
     videoReference?.referenceFrame
@@ -420,9 +424,19 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
       });
     }
 
+    // 上一镜整段视频：延长模式下可在视频提示词里 @previous_video_clip 引用
+    if (videoReference?.usePreviousTailFrame && videoReference.continuity === 'video-extend') {
+      extraItems.push({
+        id: 'anchor',
+        type: 'previous_video',
+        name: '上一分镜视频',
+        description: '上一分镜整段成片，作为全能参考交给模型做延长续拍（运镜惯性/动作末态/光影都从它继续）。',
+      });
+    }
+
     // 上一镜真实视频尾帧：已绑定继承时可在生图/生视频提示词里 @previous_tail_frame 引用
     const tailAsset = videoReference?.referenceFrame;
-    if (videoReference?.usePreviousTailFrame && tailAsset) {
+    if (videoReference?.usePreviousTailFrame && videoReference.continuity !== 'video-extend' && tailAsset) {
       const rawTailSrc = getMediaAssetDisplaySource(tailAsset);
       const tailPreview = rawTailSrc
         ? (rawTailSrc.startsWith('http') || rawTailSrc.startsWith('data:')
@@ -655,14 +669,16 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
   const handleChangeVideoReferenceMode = useCallback(async (
     mode: 'auto' | 'manual',
     usePreviousTailFrame: boolean,
+    continuity: ShotContinuityMode = 'tail-frame',
   ) => {
     if (!onVideoReferenceModeChange) return;
     setIsCapturingTailFrame(true);
     try {
-      await onVideoReferenceModeChange(shot.id, mode, usePreviousTailFrame);
+      await onVideoReferenceModeChange(shot.id, mode, usePreviousTailFrame, continuity);
       message.success(mode === 'auto'
         ? '已恢复自动连续性判断'
-        : usePreviousTailFrame ? '已设为手动继承' : '已设为本镜独立');
+        : !usePreviousTailFrame ? '已设为本镜独立'
+          : continuity === 'video-extend' ? '已设为延长上一镜视频' : '已设为继承上一镜尾帧');
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       message.error(errorMessage || '更新视频连续性失败');
@@ -675,6 +691,11 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
     if (isFirst) return;
     if (value === 'inherit') {
       void handleCaptureTailFrame(false);
+      return;
+    }
+    if (value === 'extend') {
+      // 延长模式不抽帧：整段上一镜视频在渲染期直传，这里只落库承接方式
+      void handleChangeVideoReferenceMode('manual', true, 'video-extend');
       return;
     }
     if (value === 'independent') {
@@ -1071,7 +1092,9 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
                       <Tooltip
                         title={`连续性：${continuitySelection === 'auto'
                           ? (autoUsePreviousTailFrame ? '自动继承' : '自动独立')
-                          : continuitySelection === 'inherit' ? '手动继承' : '手动独立'}${videoReference?.continuityReason ? ` · ${videoReference.continuityReason}` : ''}`}
+                          : continuitySelection === 'inherit' ? '继承上一镜尾帧'
+                            : continuitySelection === 'extend' ? '延长上一镜视频'
+                              : '本镜独立'}${videoReference?.continuityReason ? ` · ${videoReference.continuityReason}` : ''}`}
                       >
                         <Segmented
                           size="small"
@@ -1081,11 +1104,21 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
                           disabled={isCapturingTailFrame || !onVideoReferenceModeChange && !onCapturePreviousTailFrame}
                           options={[
                             { value: 'auto', label: <Tooltip title="自动判断连续性"><span data-testid="continuity-opt-auto"><ThunderboltOutlined /></span></Tooltip> },
-                            { value: 'inherit', label: <Tooltip title="继承上一镜尾帧"><span data-testid="continuity-opt-inherit"><LinkOutlined /></span></Tooltip> },
+                            { value: 'inherit', label: <Tooltip title="继承上一镜尾帧：抽一帧当参考图，锁死起始画面"><span data-testid="continuity-opt-inherit"><LinkOutlined /></span></Tooltip> },
+                            { value: 'extend', label: <Tooltip title="延长上一镜视频：整段上一镜成片作全能参考，模型自己读运镜和动作末态续拍，连贯度更高、消耗更多额度"><span data-testid="continuity-opt-extend"><ForwardOutlined /></span></Tooltip> },
                             { value: 'independent', label: <Tooltip title="本镜独立"><span data-testid="continuity-opt-independent"><DisconnectOutlined /></span></Tooltip> },
                           ]}
                         />
                       </Tooltip>
+                      {continuitySelection === 'extend' && (
+                        <Tooltip title={previousVideoAvailable
+                          ? `延长来源：上一镜 #${index} 的当前成片（渲染时整段直传，无需截帧）`
+                          : '延长模式需要上一镜已有成片视频，请先生成上一镜视频'}>
+                          <span data-testid="continuity-extend-hint" className={`text-[10px] px-0.5 ${previousVideoAvailable ? 'text-text-tertiary' : 'text-status-warning'}`}>
+                            延长#{index}
+                          </span>
+                        </Tooltip>
+                      )}
                       {continuitySelection === 'auto' && autoUsePreviousTailFrame && !previousVideoAvailable && (
                         <Tooltip title="连续性判定为继承上一镜，但上一镜还没有已完成的真实视频，请先生成上一镜视频">
                           <span data-testid="continuity-warn"><WarningOutlined className="text-[11px] text-status-warning px-0.5" /></span>
