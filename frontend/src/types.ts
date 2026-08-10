@@ -140,8 +140,8 @@ export type {
 
 // ========== 编辑器步骤（待 P0#3 续刀彻底数据驱动） ==========
 
-// 编辑器当前的步骤状态 (3步流程)
-export type EditorStep = 'script' | 'assets' | 'storyboard' | 'video';
+// 编辑器当前的步骤状态 (3步流程: script → storyboard → video；资产管理已并入 script 步的抽屉)
+export type EditorStep = 'script' | 'storyboard' | 'video';
 
 // ========== 项目素材库 ==========
 

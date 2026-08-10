@@ -260,7 +260,15 @@ export class FFmpegService {
     // 检查候选路径（X_OK 在 win32 上等同存在性检查，没有真正的可执行位概念）
     for (const p of candidates) {
       try {
-        await fs.promises.access(p, isWin ? fs.constants.F_OK : fs.constants.X_OK);
+        // 必须是文件——resources/ffmpeg/ffprobe 本身是目录，目录 X_OK 也会通过，
+        // 直接返回会在 spawn 时 EACCES（之前的表现就是 getInfo 返回 undefined）。
+        const stat = await fs.promises.stat(p);
+        if (!stat.isFile()) continue;
+        if (!isWin) {
+          // 仓库/打包里的二进制可能丢执行位（git 不保留 +x），先尝试补上再校验
+          try { await fs.promises.chmod(p, 0o755); } catch { /* 无权限则按现状检查 */ }
+          await fs.promises.access(p, fs.constants.X_OK);
+        }
         return p;
       } catch {
         // 继续检查下一个

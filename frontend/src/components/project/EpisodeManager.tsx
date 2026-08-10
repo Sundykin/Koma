@@ -4,7 +4,7 @@
  */
 import React, { useState, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { Modal, Form, Input, InputNumber, App, Spin, Empty } from 'antd';
-import { GripVertical, Play, Pencil, Trash2, Plus, Zap } from 'lucide-react';
+import { GripVertical, Pencil, Trash2, Plus, Zap } from 'lucide-react';
 import type { Episode } from '../../types';
 import { createEpisode, saveEpisode, deleteEpisode, listEpisodes } from '../../store/projectStore';
 import { EpisodeSplitService } from '../../services/EpisodeSplitService';
@@ -20,14 +20,6 @@ interface EpisodeManagerProps {
 export interface EpisodeManagerRef {
   refresh: () => void;
 }
-
-const statusConfig: Record<Episode['status'], { label: string; color: string }> = {
-  draft: { label: '草稿', color: 'bg-bg-hover text-text-secondary' },
-  script: { label: '剧本', color: 'bg-status-info/15 text-status-info' },
-  storyboard: { label: '分镜', color: 'bg-accent/15 text-accent' },
-  generating: { label: '生成中', color: 'bg-status-warning/15 text-status-warning' },
-  completed: { label: '已完成', color: 'bg-status-success/15 text-status-success' },
-};
 
 export const EpisodeManager = forwardRef<EpisodeManagerRef, EpisodeManagerProps>(({
   projectId,
@@ -216,7 +208,6 @@ export const EpisodeManager = forwardRef<EpisodeManagerRef, EpisodeManagerProps>
       ) : (
         <div className="flex flex-col">
           {episodes.map((episode) => {
-            const status = statusConfig[episode.status];
             const isSelected = selectedEpisodeId === episode.id;
 
             return (
@@ -237,9 +228,6 @@ export const EpisodeManager = forwardRef<EpisodeManagerRef, EpisodeManagerProps>
                       <span className="text-sm font-medium text-text-primary truncate">
                         第 {episode.number} 集: {episode.title}
                       </span>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${status.color}`}>
-                        {status.label}
-                      </span>
                     </div>
                     <p className="text-xs text-text-tertiary truncate pr-4">
                       {episode.scriptText?.slice(0, 50) || '暂无剧本内容...'}
@@ -249,15 +237,6 @@ export const EpisodeManager = forwardRef<EpisodeManagerRef, EpisodeManagerProps>
 
                 {/* Right: Actions */}
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onEpisodeSelect?.(episode);
-                    }}
-                    className="p-1.5 text-accent hover:text-accent border border-accent/50 hover:border-accent rounded-md transition-colors"
-                  >
-                    <Play className="w-3.5 h-3.5" />
-                  </button>
                   <button
                     onClick={(e) => handleEditClick(episode, e)}
                     className="p-1.5 text-text-secondary hover:text-text-primary hover:bg-bg-hover rounded-md transition-colors"

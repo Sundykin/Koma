@@ -100,6 +100,8 @@ function getTypeLabel(type: MentionType): string {
       return '故事板锚点';
     case 'previous_storyboard':
       return '上一故事板';
+    case 'previous_tail':
+      return '上一镜尾帧';
     default:
       return '';
   }

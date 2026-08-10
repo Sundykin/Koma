@@ -36,14 +36,19 @@ function aliasKeys(aliases: string | undefined): Set<string> {
 interface MergeableAsset {
   id: string;
   name: string;
+  /** 视觉/小传文本（角色外貌、场景描述等）。已有定妆照/预览图时必须保旧值，
+   * 否则新描述会与已生成的视觉资产静默打架（跨集视觉漂移源头）。 */
+  prompt?: string;
   aliases?: string;
   createdAt?: number;
-  media?: unknown;
+  media?: { costumePhoto?: unknown; previewImage?: unknown } | unknown;
 }
 
 /**
  * 合并新实体进既有清单（不改动入参数组）。
  * 命中既有项时：保留既有 id/createdAt/media，其余字段取新值；
+ * 例外：既有项已有定妆照/预览图（media.costumePhoto/previewImage）时保留既有 prompt——
+ * 新描述若与已生成图片不一致，下游生图会在"文字设定"与"参考图"之间打架。
  * 别名取并集，且被合并方的旧名若与新名不同则收进别名（防止后续叫法回摆再分裂）。
  */
 export function mergeAssetEntities<T extends MergeableAsset>(existing: T[], newItems: T[]): T[] {
@@ -97,12 +102,17 @@ export function mergeAssetEntities<T extends MergeableAsset>(existing: T[], newI
     pushAliases(item.aliases, item.name);
     if (hit.name !== item.name) mergedAliases.add(hit.name);
 
+    const hitMedia = hit.media as { costumePhoto?: unknown; previewImage?: unknown } | undefined;
+    const hitHasVisual = Boolean(hitMedia?.costumePhoto || hitMedia?.previewImage);
+
     const merged = {
       ...hit,
       ...item,
       id: hit.id,
       createdAt: hit.createdAt ?? item.createdAt,
       media: hit.media ?? item.media,
+      // 已有定妆照/预览图且旧 prompt 非空时保留旧 prompt：新外貌描述与已生成图片会静默打架
+      prompt: hitHasVisual && (hit as T).prompt?.trim() ? (hit as T).prompt : (item as T).prompt,
       aliases: Array.from(mergedAliases).join(','),
     } as T;
 

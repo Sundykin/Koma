@@ -20,7 +20,7 @@
  */
 import type { ComponentType } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import { FileText, Users, Clapperboard, Scissors } from 'lucide-react';
+import { FileText, Clapperboard, Scissors } from 'lucide-react';
 import type {
   Project,
   Episode,
@@ -164,26 +164,15 @@ export function setStepComponent(
   def.Component = Component;
 }
 
-// ========== 内置三步主流程 + 一个兼容步骤 ==========
+// ========== 内置三步主流程 ==========
 
-// 第一步：项目（剧本 + 资产生产工作台）
+// 第一步：项目（剧本 + 资产生产工作台；资产管理以抽屉形式并入本步）
 registerEditorStep({
   id: 'script',
   order: 0,
   icon: FileText,
   labelKey: 'editor.stepScript',
   nextAction: { targetStepId: 'storyboard', labelKey: 'editor.nextStoryboard' },
-});
-
-// 旧的完整资产编辑器保留为项目步骤的按需子视图，不占用主导航节点。
-registerEditorStep({
-  id: 'assets',
-  order: 1,
-  icon: Users,
-  labelKey: 'editor.stepAssets',
-  nextAction: { targetStepId: 'storyboard', labelKey: 'editor.nextStoryboard' },
-  visibleInNavigator: false,
-  navigatorStepId: 'script',
 });
 
 registerEditorStep({

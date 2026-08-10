@@ -32,7 +32,7 @@ describe('normalizeAssetName', () => {
 });
 
 describe('mergeAssetEntities', () => {
-  it('精确名合并：保留既有 id 与 media，新值覆盖其余字段', () => {
+  it('精确名合并：保留既有 id 与 media，新值覆盖其余字段（既有项无 prompt 时取新值）', () => {
     const existing = [asset('c1', '叶赎', { createdAt: 100, media: { costumePhoto: 'x' } })];
     const merged = mergeAssetEntities(existing, [asset('c-new', '叶赎', { prompt: '新描述' })]);
     expect(merged).toHaveLength(1);
@@ -40,6 +40,18 @@ describe('mergeAssetEntities', () => {
     expect(merged[0].media).toEqual({ costumePhoto: 'x' });
     expect(merged[0].prompt).toBe('新描述');
     expect(merged[0].createdAt).toBe(100);
+  });
+
+  it('既有项有定妆照且有 prompt 时保留旧 prompt（防文字设定与参考图打架）', () => {
+    const existing = [asset('c1', '叶赎', { media: { costumePhoto: 'x' }, prompt: '旧外貌' })];
+    const merged = mergeAssetEntities(existing, [asset('c-new', '叶赎', { prompt: '新外貌' })]);
+    expect(merged[0].prompt).toBe('旧外貌');
+  });
+
+  it('既有项无视觉资产时新 prompt 正常覆盖', () => {
+    const existing = [asset('c1', '叶赎', { prompt: '旧外貌' })];
+    const merged = mergeAssetEntities(existing, [asset('c-new', '叶赎', { prompt: '新外貌' })]);
+    expect(merged[0].prompt).toBe('新外貌');
   });
 
   it('规范化名合并：内部后缀差异不再分裂', () => {

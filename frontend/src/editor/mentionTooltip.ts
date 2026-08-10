@@ -148,6 +148,8 @@ function getTypeLabel(type: MentionType): string {
       return '故事板锚点';
     case 'previous_storyboard':
       return '上一故事板';
+    case 'previous_tail':
+      return '上一镜尾帧';
     default:
       return '';
   }
@@ -189,6 +191,11 @@ function getTypeColor(type: MentionType): { bg: string; text: string } {
       return {
         bg: 'color-mix(in srgb, var(--token-accent-base) 22%, transparent)',
         text: 'var(--token-accent-base)',
+      };
+    case 'previous_tail':
+      return {
+        bg: 'color-mix(in srgb, #14b8a6 20%, transparent)',
+        text: '#0f766e',
       };
     default:
       return {

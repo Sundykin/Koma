@@ -5,12 +5,9 @@
  *   - 单镜：flush 队列保存 → 取最新 shot 快照 → generateShotPrompt → 回写
  *   - 批量：活跃任务去重守门 → batchGenerateShotPrompts → 逐条回写 + 聚合进度
  */
-import { useCallback, useState } from 'react';
-import { upgradeShotScript } from '../../../services/shotScriptUpgrade';
-import { extractShotPhotography, shotSizeToShotType } from '../../../services/photographyElements';
-import { runWithConcurrency } from '../../../utils/concurrency';
-import { computeShotScriptHash, computeShotVoiceHash } from '../../../services/shotFreshness';
-import type { Shot, ProjectStyleSnapshot, ShotScriptLine } from '../../../types';
+import { useCallback } from 'react';
+import { computeShotScriptHash } from '../../../services/shotFreshness';
+import type { Shot, ProjectStyleSnapshot } from '../../../types';
 import { generateShotPrompt, batchGenerateShotPrompts } from '../../../services/ShotPromptService';
 import { findActiveTask } from '../../../services/tasksIPC';
 
@@ -224,134 +221,8 @@ export function useStoryboardPrompts(deps: StoryboardPromptsDeps) {
     [runBatchPrompts],
   );
 
-  // 分镜脚本升级（补摄影语言）的进行态
-  const [upgradingShots, setUpgradingShots] = useState<Set<string>>(new Set());
-
-  /** 升级/换拍法单个分镜脚本（mode='upgrade' 补摄影语言，'rewrite' 换画面表达） */
-  const runShotScriptTransform = useCallback(async (shotId: string, mode: 'upgrade' | 'rewrite') => {
-    if (!episodeId) {
-      message.warning('未选择剧集');
-      return;
-    }
-    const shot = shotsRef.current.find(s => s.id === shotId);
-    if (!shot) return;
-    setUpgradingShots(prev => new Set(prev).add(shotId));
-    try {
-      await flushQueuedShotSaves();
-      const result = await upgradeShotScript(projectId, episodeId, shot, llmSelection, { mode });
-      if (result.success && result.scriptLines) {
-        // 脚本景别同步到 shotType 字段（图片提示词推荐景别与脚本一致）
-        const mappedShotType = shotSizeToShotType({ scriptLines: result.scriptLines });
-        const updatedShots = shotsRef.current.map(s => s.id === shotId ? {
-          ...s,
-          scriptLines: result.scriptLines!,
-          ...(mappedShotType ? { shotType: mappedShotType } : {}),
-          // 记录升级前的脚本/台词指纹：升级后指纹不同 → 立即判提示词/配音"待更新"
-          promptScriptHash: computeShotScriptHash(s.scriptLines),
-          voiceScriptHash: computeShotVoiceHash(s),
-        } : s);
-        shotsRef.current = updatedShots;
-        setShots(updatedShots);
-        message.success(mode === 'rewrite' ? '分镜脚本已换拍法（可对比不同画面感）' : '分镜脚本已升级（补全景别/机位/光线）');
-      } else {
-        message.error(result.error || '脚本处理失败');
-      }
-    } catch (err: unknown) {
-      message.error(err instanceof Error ? err.message : String(err));
-    } finally {
-      setUpgradingShots(prev => {
-        const next = new Set(prev);
-        next.delete(shotId);
-        return next;
-      });
-    }
-  }, [projectId, episodeId, llmSelection, flushQueuedShotSaves, message, setShots, shotsRef]);
-
-  /** 升级单个分镜脚本为专业描述（保留剧情/台词，补景别/机位/光线） */
-  const handleUpgradeShotScript = useCallback(async (shotId: string) => {
-    await runShotScriptTransform(shotId, 'upgrade');
-  }, [runShotScriptTransform]);
-
-  /** 换拍法（保持剧情/台词，重写画面表达） */
-  const handleRewriteShotScript = useCallback(async (shotId: string) => {
-    await runShotScriptTransform(shotId, 'rewrite');
-  }, [runShotScriptTransform]);
-
-  /** 批量补全摄影语言：只处理缺景别+机位的分镜，并发 2，成功时更新脚本 */
-  const handleBatchUpgradeShotScripts = useCallback(async (targetShotIds?: string[]) => {
-    if (!episodeId) {
-      message.warning('未选择剧集');
-      return;
-    }
-    await flushQueuedShotSaves();
-    const currentShots = shotsRef.current;
-    const baseShots = targetShotIds
-      ? currentShots.filter(s => targetShotIds.includes(s.id))
-      : currentShots;
-    // 只升级缺景别且缺机位的分镜（画面感不足的）；已有完整摄影语言的不动
-    const targetShots = baseShots.filter(s => {
-      const el = extractShotPhotography(s);
-      return el.shotSizes.length === 0 && el.cameraAngles.length === 0;
-    });
-    if (targetShots.length === 0) {
-      message.info('所选分镜都有摄影语言，无需补全');
-      return;
-    }
-    setUpgradingShots(new Set(targetShots.map(s => s.id)));
-    setBatchProgress({ current: 0, total: targetShots.length, step: '准备补全摄影语言...' });
-    try {
-      const results = (await runWithConcurrency(
-        targetShots.map(shot => async () => {
-          const result = await upgradeShotScript(projectId, episodeId, shot, llmSelection);
-          return { shotId: shot.id, success: result.success, scriptLines: result.scriptLines, error: result.error };
-        }),
-        2,
-      )).map((settled, index) => {
-        const shotId = targetShots[index]?.id ?? '';
-        if (settled.status === 'rejected') {
-          return { shotId, success: false, scriptLines: undefined as ShotScriptLine[] | undefined, error: String(settled.reason) };
-        }
-        return settled.value;
-      });
-
-      const successCount = results.filter(r => r.success).length;
-      // 逐项回写（统一在全部完成后一次更新，避免并发 setShots 竞态）
-      const upgradeById = new Map<string, ShotScriptLine[]>(
-        results
-          .filter((r): r is typeof r & { scriptLines: ShotScriptLine[] } => Boolean(r.success && r.scriptLines))
-          .map(r => [r.shotId, r.scriptLines]),
-      );
-      if (upgradeById.size > 0) {
-        const updatedShots = shotsRef.current.map(s => upgradeById.has(s.id) ? {
-          ...s,
-          scriptLines: upgradeById.get(s.id)!,
-          ...(shotSizeToShotType({ scriptLines: upgradeById.get(s.id)! }) ? { shotType: shotSizeToShotType({ scriptLines: upgradeById.get(s.id)! })! } : {}),
-          promptScriptHash: computeShotScriptHash(s.scriptLines),
-          voiceScriptHash: computeShotVoiceHash(s),
-        } : s);
-        shotsRef.current = updatedShots;
-        setShots(updatedShots);
-      }
-      if (successCount === 0 && results.length > 0) {
-        const firstError = results.find(r => r.error)?.error;
-        message.error(`补全摄影语言全部失败${firstError ? `: ${firstError}` : ''}`);
-      } else {
-        message.success(`补全摄影语言完成: ${successCount}/${results.length} 成功`);
-      }
-    } catch (err: unknown) {
-      message.error(err instanceof Error ? err.message : String(err));
-    } finally {
-      setUpgradingShots(new Set());
-      setBatchProgress(undefined);
-    }
-  }, [projectId, episodeId, llmSelection, flushQueuedShotSaves, message, setShots, shotsRef, setBatchProgress]);
-
   return {
     ensureNoActiveBatch,
-    upgradingShots,
-    handleUpgradeShotScript,
-    handleRewriteShotScript,
-    handleBatchUpgradeShotScripts,
     handleGenerateImagePrompt,
     handleGenerateVideoPrompt,
     handleOptimizeImagePrompt,

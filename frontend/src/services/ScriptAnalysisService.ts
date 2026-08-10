@@ -322,6 +322,9 @@ export class ScriptAnalysisService {
       ? `【全局创作规划】\n${planToStylePrefix(this.creationPlan)}\n${planToRelationshipContext(this.creationPlan)}\n\n`
       : '';
 
+    // 存量资产清单：同名实体沿用原名称与外观描述，防止跨集/跨块外貌漂移
+    const existingAssetsPrefix = this.buildExistingAssetsPrefix(stage);
+
     // 提取阶段的辅助上下文：推文旁白 / 剧情摘要 / 项目视觉风格
     // 三者均为可选，未提供时占位符会被 resolvePromptTemplate 内部清理
     const extractionAuxVariables: Record<string, string> = {
@@ -339,7 +342,7 @@ export class ScriptAnalysisService {
         const styledPrompt = this.appendStyleRequirement(resolvedPrompt.prompt);
         // 并行模式下无法实时共享已识别实体，去重由最终 Map 保证
         const chunkPrompt = buildChunkContextPrompt(
-          planPrefix + styledPrompt, chunk.index, chunk.total, [],
+          planPrefix + existingAssetsPrefix + styledPrompt, chunk.index, chunk.total, [],
         );
         return { chunk, chunkPrompt, resolvedPrompt };
       })
@@ -436,6 +439,31 @@ export class ScriptAnalysisService {
 
   private getResolvedLLMStyleSuffix(): string {
     return this.styleSnapshot?.llmPromptSuffix?.trim() || '';
+  }
+
+  /**
+   * 存量资产清单前缀：把项目已有角色/场景/道具（名称+外观描述）注入提取 prompt，
+   * 让 LLM 对同名实体沿用原描述而不是重写——配合 entityMerge 的"有媒体保旧 prompt"，
+   * 双管齐下消除跨集/跨块的外貌漂移。
+   */
+  private buildExistingAssetsPrefix(stage: AnalysisStage): string {
+    const list: Array<{ name: string; prompt?: string }> =
+      stage === 'characters' ? this.ctx.characters
+      : stage === 'scenes' ? this.ctx.scenes
+      : stage === 'props' ? this.ctx.props
+      : [];
+    if (!list.length) return '';
+    const label = stage === 'characters' ? '角色' : stage === 'scenes' ? '场景' : '道具';
+    const lines = list.slice(0, 40).map(a => {
+      const prompt = a.prompt?.trim();
+      return `- ${a.name}${prompt ? `（已有外观描述：${prompt.slice(0, 200)}）` : ''}`;
+    });
+    return [
+      `【项目已有${label}资产 — 重要】`,
+      `以下${label}已存在于项目资产库。若剧本中的实体与它们指向同一人/物/地点，必须使用完全相同的名称，并原样沿用其已有外观描述，不要重写、增删或"优化"；只有确属新实体时才创作新描述。`,
+      ...lines,
+      '',
+    ].join('\n');
   }
 
   private appendStyleRequirement(prompt: string): string {

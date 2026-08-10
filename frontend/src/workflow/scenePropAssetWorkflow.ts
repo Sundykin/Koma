@@ -31,11 +31,6 @@ import {
 import { compilePropPreviewVideoRequest } from './videoGenerationRequests';
 import type { StyleSnapshotLike } from '../utils/promptNormalize';
 import { normalizeVideoDurationSeconds } from '../utils/videoDuration';
-import {
-  appendStyleAnchorGuard,
-  resolveActiveStyleReferenceAsset,
-} from '../services/styleReferenceResolver';
-import type { ProjectStyleSnapshot } from '../types';
 import { runBatchWithConcurrency } from '../utils/batchRunner';
 
 const BATCH_CONCURRENCY = 3;
@@ -142,12 +137,12 @@ const USER_REFERENCE_GUARDLINES: Record<'scene' | 'prop', string> = {
   scene: [
     '',
     'User-provided scene reference instructions:',
-    'A user-uploaded scene reference image is included in the references AFTER the optional style anchor. Treat it as the binding spatial/composition anchor for this scene: inherit its space layout, key furnishings, openings and material palette; only adapt into the required full-perspective coverage and the project art style. Do not redesign the space.',
+    'A user-uploaded scene reference image is included in the references. Treat it as the binding spatial/composition anchor for this scene: inherit its space layout, key furnishings, openings and material palette; only adapt into the required full-perspective coverage and the project art style. Do not redesign the space.',
   ].join('\n'),
   prop: [
     '',
     'User-provided prop reference instructions:',
-    'A user-uploaded prop reference image is included in the references AFTER the optional style anchor. Treat it as the binding design anchor for this prop: inherit its shape, structure, materials and colors; only adapt the presentation (clean reference plate, project art style). Do not redesign the object.',
+    'A user-uploaded prop reference image is included in the references. Treat it as the binding design anchor for this prop: inherit its shape, structure, materials and colors; only adapt the presentation (clean reference plate, project art style). Do not redesign the object.',
   ].join('\n'),
 };
 
@@ -174,13 +169,9 @@ export async function generateSceneImage(
     );
     const basePrompt = appendCandidateVariationPrompt(resolvedPrompt.prompt, variationPrompt);
     const scenePromptWithRef = userReference ? `${basePrompt}${USER_REFERENCE_GUARDLINES.scene}` : basePrompt;
-    const styleAnchorAsset = await resolveActiveStyleReferenceAsset({
-      project: { styleSnapshot: (styleSnapshot || project?.styleSnapshot) as ProjectStyleSnapshot | undefined },
-      themeId: theme,
-    });
-    const prompt = appendStyleAnchorGuard(scenePromptWithRef, Boolean(styleAnchorAsset));
+    // 仅使用用户手动上传的参考图（如有）。整体风格参考图机制已移除。
+    const prompt = scenePromptWithRef;
     const references = [
-      ...(styleAnchorAsset ? [styleAnchorAsset] : []),
       ...(userReference ? [userReference] : []),
     ];
 
@@ -352,13 +343,9 @@ export async function generatePropImage(
     );
     const basePrompt = appendCandidateVariationPrompt(resolvedPrompt.prompt, variationPrompt);
     const propPromptWithRef = userReference ? `${basePrompt}${USER_REFERENCE_GUARDLINES.prop}` : basePrompt;
-    const styleAnchorAsset = await resolveActiveStyleReferenceAsset({
-      project: { styleSnapshot: (styleSnapshot || project?.styleSnapshot) as ProjectStyleSnapshot | undefined },
-      themeId: theme,
-    });
-    const prompt = appendStyleAnchorGuard(propPromptWithRef, Boolean(styleAnchorAsset));
+    // 仅使用用户手动上传的参考图（如有）。整体风格参考图机制已移除。
+    const prompt = propPromptWithRef;
     const references = [
-      ...(styleAnchorAsset ? [styleAnchorAsset] : []),
       ...(userReference ? [userReference] : []),
     ];
 

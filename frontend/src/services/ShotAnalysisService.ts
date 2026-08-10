@@ -17,6 +17,7 @@ import { appendStyleRequirement, type StyleSnapshotLike } from '../utils/promptN
 
 
 import { clampDurationToSpec, formatSpecPromptHint } from '../providers/itv/durationSpec';
+import { estimateShotSpeechDuration } from './shotFreshness';
 import {
   buildShotBreakdownDialogueModeDirective,
   formatProjectNarrativeMode,
@@ -30,6 +31,23 @@ const logger = createLogger('ShotAnalysis');
 const SHOT_ANALYSIS_LLM_TIMEOUT_MS = 300_000;
 const SHOT_ANALYSIS_CHUNK_THRESHOLD_CHARS = 3500;
 const SHOT_ANALYSIS_CHUNK_TARGET_CHARS = 2400;
+
+/**
+ * 跨块衔接摘要：从本块最后一个分镜 payload 提取一句话概要，
+ * 注入下一块 prompt，让 LLM 知道上文剧情走到哪、谁在场。
+ */
+function summarizePayloadForHandoff(payload: any): string {
+  const dramaLines = (payload?.__dramaScriptLines as Array<{ role: string; text: string; speaker?: string }> | undefined) ?? [];
+  const texts = dramaLines.length
+    ? dramaLines.map(l => (l.role === 'dialogue' && l.speaker ? `${l.speaker}："${l.text}"` : l.text))
+    : ((payload?.__resolvedLines as string[] | undefined) ?? []);
+  const firstLine = (texts[0] || '').slice(0, 60);
+  const rest = texts.length > 1 ? `……（共 ${texts.length} 行）` : '';
+  const chars = (payload?.characters || []).join('、');
+  const scns = (payload?.scenes || []).join('、');
+  const cast = [chars && `角色：${chars}`, scns && `场景：${scns}`].filter(Boolean).join('；');
+  return `画面：${firstLine}${rest}${cast ? `；出场 ${cast}` : ''}`;
+}
 
 interface ScriptAnalysisChunk {
   index: number;
@@ -242,16 +260,27 @@ export class ShotAnalysisService {
       });
 
       const parsedShotPayloads: any[] = [];
+      // 跨块衔接上下文：上一块末尾原文 + 上一块最后一镜摘要，注入下一块的 prompt，
+      // 解决"每块 LLM 只见本块文本"导致的跨块剧情断裂（边界动作/对话被打断）。
+      let prevChunkContext: { tailText: string; lastShotSummary: string } | undefined;
       for (const chunk of chunks) {
         checkCancel();
         const progressBase = 20 + Math.floor((chunk.index / Math.max(chunks.length, 1)) * 55);
         TaskManager.updateTask(taskId, { progress: progressBase });
-        const chunkShots = await this.generateShotPayloadsForChunk(traceId, chunk);
+        const chunkShots = await this.generateShotPayloadsForChunk(traceId, chunk, prevChunkContext);
         parsedShotPayloads.push(...chunkShots.map((payload, payloadIndex) => ({
           ...payload,
-          // 多 chunk 的局部首镜看不到真实上一镜，不能让它的默认 independent 覆盖全局规则。
-          __ignoreContinuitySuggestion: chunks.length > 1 && payloadIndex === 0,
+          // 多 chunk 的局部首镜：没有注入上文时才忽略它的连续性建议；
+          // 注入后 LLM 能看到上一段结尾，建议有效，予以保留。
+          __ignoreContinuitySuggestion: chunks.length > 1 && payloadIndex === 0 && !prevChunkContext,
         })));
+        const lastPayload = chunkShots[chunkShots.length - 1];
+        if (lastPayload) {
+          prevChunkContext = {
+            tailText: chunk.text.slice(-300),
+            lastShotSummary: summarizePayloadForHandoff(lastPayload),
+          };
+        }
       }
 
       TaskManager.updateTask(taskId, { progress: 75 });
@@ -297,6 +326,8 @@ export class ShotAnalysisService {
       // 剧情模式：scriptLines = 分镜脚本的行结构（无标记行=分镜描述；带 [旁白]/[台词·角色]
       // 标记的行按对应类型解析，说话人名映射 characterId）；解说模式行是纯字幕文本，全部为旁白行。
       const isDrama = this.ctx.projectMode === 'drama';
+      // 资产名映射失败的名字汇总：不再静默丢弃——记日志 + 写进任务 result 供 UI 提示
+      const unmatchedAssetNames = new Set<string>();
       const buildScriptLines = (s: any): Shot['scriptLines'] => {
         if (!isDrama) {
           const texts = (s.__resolvedLines as string[] | undefined) || [];
@@ -306,6 +337,7 @@ export class ShotAnalysisService {
         return parsedLines.map(line => {
           if (line.role === 'dialogue') {
             const speaker = line.speaker ? fuzzyMatchAsset(line.speaker, characters) : undefined;
+            if (line.speaker && !speaker) unmatchedAssetNames.add(line.speaker);
             return createScriptLine(line.text, 'dialogue', speaker ? getCharId(speaker) : undefined);
           }
           return createScriptLine(line.text, line.role);
@@ -315,37 +347,50 @@ export class ShotAnalysisService {
       // 分镜拆解时 description 为 undefined，后续手动生成
       // 时长按当前项目选择的 ITV 渠道 spec 吸附（grok 渠道 → 6/10/12/16/20；seedance → 4-15 范围），
       // 之前一律走 normalizeShotDuration（grok 枚举）会把 seedance 渠道的有效值 5 强制吸到 6
-      const shotEntries = parsedShotPayloads.map((payload, index) => ({
-        payload,
-        shot: {
-          id: `shot_${Date.now()}_${index}`,
-          scriptLines: buildScriptLines(payload),
-          shotType: payload.shotType || 'medium',
-          cameraMovement: payload.cameraMovement || 'static',
-          duration: clampDurationToSpec(payload.duration, this.ctx.itvDurationSpec),
-          characters: (payload.characters || [])
-          .map((name: string) => {
-            const match = fuzzyMatchAsset(name, characters);
-            return match ? getCharId(match) : undefined;
-          })
-          .filter((id: string | undefined): id is string => id !== undefined),
-          dialogue: payload.dialogue || '',
-          emotion: payload.emotion || '',
-          props: (payload.props || [])
-          .map((name: string) => {
-            const match = fuzzyMatchAsset(name, props);
-            return match ? getPropId(match) : undefined;
-          })
-          .filter((id: string | undefined): id is string => id !== undefined),
-          scenes: (payload.scenes || [])
-          .map((name: string) => {
-            const match = fuzzyMatchAsset(name, scenes);
-            return match ? match.id : undefined;
-          })
-          .filter((id: string | undefined): id is string => id !== undefined),
-          confirmed: false,
-        } satisfies Shot,
-      })).filter(entry => entry.shot.scriptLines.length > 0); // Phase 2 方案 A：彻底丢弃空分镜
+      const shotEntries = parsedShotPayloads.map((payload, index) => {
+        const scriptLines = buildScriptLines(payload);
+        const baseDuration = clampDurationToSpec(payload.duration, this.ctx.itvDurationSpec);
+        // 时长自动校准前置：台词/旁白朗读估算超过当前时长时，向上吸附到能容纳的合法时长，
+        // 避免拆解产物天然配音溢出（此前完全靠用户事后手动"批量校准"）
+        const speechEstimate = estimateShotSpeechDuration({ scriptLines });
+        const duration = speechEstimate > baseDuration
+          ? clampDurationToSpec(Math.ceil(speechEstimate * 1.2), this.ctx.itvDurationSpec)
+          : baseDuration;
+        return {
+          payload,
+          shot: {
+            id: `shot_${Date.now()}_${index}`,
+            scriptLines,
+            shotType: payload.shotType || 'medium',
+            cameraMovement: payload.cameraMovement || 'static',
+            duration,
+            characters: (payload.characters || [])
+            .map((name: string) => {
+              const match = fuzzyMatchAsset(name, characters);
+              if (!match) unmatchedAssetNames.add(String(name));
+              return match ? getCharId(match) : undefined;
+            })
+            .filter((id: string | undefined): id is string => id !== undefined),
+            dialogue: payload.dialogue || '',
+            emotion: payload.emotion || '',
+            props: (payload.props || [])
+            .map((name: string) => {
+              const match = fuzzyMatchAsset(name, props);
+              if (!match) unmatchedAssetNames.add(String(name));
+              return match ? getPropId(match) : undefined;
+            })
+            .filter((id: string | undefined): id is string => id !== undefined),
+            scenes: (payload.scenes || [])
+            .map((name: string) => {
+              const match = fuzzyMatchAsset(name, scenes);
+              if (!match) unmatchedAssetNames.add(String(name));
+              return match ? match.id : undefined;
+            })
+            .filter((id: string | undefined): id is string => id !== undefined),
+            confirmed: false,
+          } satisfies Shot,
+        };
+      }).filter(entry => entry.shot.scriptLines.length > 0); // Phase 2 方案 A：彻底丢弃空分镜
 
       // 必须在所有 chunk 合并、空镜过滤且最终 Shot ID 固定之后判断相邻连续性。
       const shots = normalizeGeneratedShotContinuity(
@@ -386,10 +431,19 @@ export class ShotAnalysisService {
       await saveEpisodeShots(this.ctx.projectId, episodeId, shots);
 
       if (cancellation.signal.aborted) return;
+      if (unmatchedAssetNames.size > 0) {
+        logger.warn('部分资产名未能匹配到项目资产，已跳过归属（台词仍保留）', {
+          traceId,
+          unmatched: Array.from(unmatchedAssetNames),
+        });
+      }
       TaskManager.updateTask(taskId, {
         status: 'completed',
         progress: 100,
-        result: { shotsCount: shots.length },
+        result: {
+          shotsCount: shots.length,
+          ...(unmatchedAssetNames.size > 0 ? { unmatchedAssetNames: Array.from(unmatchedAssetNames) } : {}),
+        },
       });
     } catch (error: unknown) {
       // 已被 cancel：状态已是 cancelled，不要覆盖成 failed
@@ -412,12 +466,23 @@ export class ShotAnalysisService {
     traceId: string,
     chunk: ScriptAnalysisChunk,
     options: { durationConstraint: string; durationDefault: string; chunkLabel: string },
+    prevContext?: { tailText: string; lastShotSummary: string },
   ): Promise<any[]> {
     const { characters, scenes, props } = this.ctx;
     const scriptForPrompt = chunk.total > 1
       ? [
+        ...(prevContext
+          ? [
+            '【上一段结尾（仅供衔接参考，不在拆解范围内，禁止重复拆解）】',
+            prevContext.tailText,
+            `【上一段最后一个分镜】${prevContext.lastShotSummary}`,
+            '',
+          ]
+          : []),
         `【当前拆解范围${options.chunkLabel}】`,
-        '只拆解下面这一段剧本；不要补写其他分段内容。本段内必须完整覆盖到末尾。',
+        prevContext
+          ? '只拆解下面这一段剧本；不要补写其他分段内容。本段开头要自然承接上一段结尾的剧情与人物状态，不要重复已有剧情；本段内必须完整覆盖到末尾。'
+          : '只拆解下面这一段剧本；不要补写其他分段内容。本段内必须完整覆盖到末尾。',
         chunk.text,
       ].join('\n')
       : chunk.text;
@@ -441,6 +506,7 @@ export class ShotAnalysisService {
     const systemPrompt = [
       '你是一个专业的影视分镜师。把剧本拆解成真正的分镜：每镜写一段专业的分镜脚本',
       '（画面行无标记：场景/动作/构图/光线；声音行必须带标记：[台词·角色名] / [旁白]，一行一条）。',
+      '剧情模式的听觉主体是人物台词——默认不要写 [旁白]，仅当剧情明确需要内心独白或叙述声音时才写。',
       '画面行只写摄影机能拍到的当下内容；严禁复述角色设定、外貌清单、背景故事、',
       '世界观介绍与心理活动，严禁照抄参考资料中的资产描述。台词与关键情节必须全部覆盖，',
       '不得遗漏。只输出 JSON，不要任何解释。',
@@ -452,37 +518,21 @@ export class ShotAnalysisService {
       chunkIndex: chunk.index + 1,
       chunkTotal: chunk.total,
       scriptLength: chunk.text.length,
+      hasPrevContext: Boolean(prevContext),
       userPromptHead: styledPrompt.slice(0, 200),
     });
 
-    const result = await this.ctx.llmProvider.chat(
-      [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: styledPrompt },
-      ],
-      {
-        traceId: chunkTraceId,
-        source: 'shot-analysis',
-        operation: chunk.total > 1 ? 'breakdown-drama-chunk' : 'breakdown-drama',
-        taskKind: 'structured',
-        taskProfileId: 'shot-breakdown',
-        stream: true,
-        timeoutMs: SHOT_ANALYSIS_LLM_TIMEOUT_MS,
-        responseFormat: 'json_object',
-      },
-    );
+    const { shots: rawShots, parseMethod } = await this.callBreakdownLLMWithRetry({
+      traceId: chunkTraceId,
+      systemPrompt,
+      userPrompt: styledPrompt,
+      operation: chunk.total > 1 ? 'breakdown-drama-chunk' : 'breakdown-drama',
+    });
 
-    if (result.trim().length === 0) {
-      throw new Error('LLM 返回内容为空，请检查所选 LLM 渠道的模型名 / 接口路径 / 配额是否可用');
-    }
-
-    const parseResult = parseLLMJSONWithMeta<{ shots: any[] }>(result);
-    const parsed = parseResult.data;
-    const rawShots = Array.isArray(parsed.shots) ? parsed.shots : [];
     logger.info('剧情模式分镜 JSON 解析成功', {
       traceId: chunkTraceId,
       shotsCount: rawShots.length,
-      parseMethod: parseResult.method,
+      parseMethod,
     });
 
     return rawShots.map((s) => {
@@ -499,6 +549,7 @@ export class ShotAnalysisService {
   private async generateShotPayloadsForChunk(
     traceId: string,
     chunk: ScriptAnalysisChunk,
+    prevContext?: { tailText: string; lastShotSummary: string },
   ): Promise<any[]> {
     const durationSpec = this.ctx.itvDurationSpec;
     const durationConstraint = formatSpecPromptHint(durationSpec);
@@ -513,7 +564,7 @@ export class ShotAnalysisService {
         durationConstraint,
         durationDefault,
         chunkLabel,
-      });
+      }, prevContext);
     }
 
     const projectNarrativeMode = formatProjectNarrativeMode(this.ctx.projectMode);
@@ -526,8 +577,18 @@ export class ShotAnalysisService {
     const numberedScript = chunkLines.map((line, idx) => `[${idx + 1}] ${line}`).join('\n');
     const scriptForPrompt = chunk.total > 1
       ? [
+        ...(prevContext
+          ? [
+            '【上一段结尾（仅供衔接参考，没有行号、不在拆解范围内，禁止重复拆解）】',
+            prevContext.tailText,
+            `【上一段最后一个分镜】${prevContext.lastShotSummary}`,
+            '',
+          ]
+          : []),
         `【当前拆解范围${chunkLabel}】`,
-        '只拆解下面这一段字幕行；不要补写其他分段内容。本段内必须连续不重不漏覆盖到末行。',
+        prevContext
+          ? '只拆解下面带行号的这一段字幕行；不要补写其他分段内容。开头要自然承接上一段结尾的剧情，不要重复已有剧情。本段内必须连续不重不漏覆盖到末行。'
+          : '只拆解下面这一段字幕行；不要补写其他分段内容。本段内必须连续不重不漏覆盖到末行。',
         numberedScript,
       ].join('\n')
       : numberedScript;
@@ -567,69 +628,26 @@ export class ShotAnalysisService {
       scriptLength: chunk.text.length,
       systemPromptLength: systemPrompt.length,
       userPromptLength: styledPrompt.length,
+      hasPrevContext: Boolean(prevContext),
       userPromptHead: styledPrompt.slice(0, 200),
     });
 
-    const llmStart = Date.now();
-    const result = await this.ctx.llmProvider.chat(
-      [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: styledPrompt },
-      ],
-      {
-        traceId: chunkTraceId,
-        source: 'shot-analysis',
-        operation: chunk.total > 1 ? 'breakdown-chunk' : 'breakdown',
-        taskKind: 'structured',
-        taskProfileId: 'shot-breakdown',
-        stream: true,
-        timeoutMs: SHOT_ANALYSIS_LLM_TIMEOUT_MS,
-        responseFormat: 'json_object',
-      },
-    );
-
-    logger.info('LLM 返回完成', {
+    const { shots: rawShots, parseMethod } = await this.callBreakdownLLMWithRetry({
+      traceId: chunkTraceId,
+      systemPrompt,
+      userPrompt: styledPrompt,
+      operation: chunk.total > 1 ? 'breakdown-chunk' : 'breakdown',
+    });
+    logger.info('JSON 解析成功', {
       traceId: chunkTraceId,
       parentTraceId: traceId,
-      durationMs: Date.now() - llmStart,
-      responseLength: result.length,
-      responseHead: result.slice(0, 200),
-      responseTail: result.length > 200 ? result.slice(-200) : '',
+      shotsCount: rawShots.length,
+      parseMethod,
     });
 
-    // 主进程已会把 0 字节流转成 EMPTY_RESPONSE 错误抛上来；这里再补一道兜底，
-    // 防止某些自定义 provider 路径绕过了主进程守卫
-    if (result.trim().length === 0) {
-      logger.error('LLM 返回内容为空（兜底）', { traceId: chunkTraceId, parentTraceId: traceId });
-      throw new Error('LLM 返回内容为空，请检查所选 LLM 渠道的模型名 / 接口路径 / 配额是否可用');
-    }
-
-    try {
-      const parseResult = parseLLMJSONWithMeta<{ shots: any[] }>(result);
-      const parsed = parseResult.data;
-      const shotsCount = parsed.shots?.length ?? 0;
-      logger.info('JSON 解析成功', {
-        traceId: chunkTraceId,
-        parentTraceId: traceId,
-        shotsCount,
-        parseMethod: parseResult.method,
-        rawLength: parseResult.rawLength,
-        cleanedLength: parseResult.cleanedLength,
-        repairedLength: parseResult.repairedLength,
-      });
-      if (parseResult.method !== 'direct') {
-        logger.warn('分镜 JSON 经过修复后解析成功，结果可能是不完整的半截数组，请核对 shotsCount 与剧本覆盖率', {
-          traceId: chunkTraceId,
-          parentTraceId: traceId,
-          parseMethod: parseResult.method,
-          shotsCount,
-          responseTail: result.slice(-300),
-        });
-      }
-      const rawShots = Array.isArray(parsed.shots) ? parsed.shots : [];
-
-      // Phase 2 方案 A：把 LLM 的 scriptLineIndices（1-based 局部行号）翻译成原文字幕行
-      // 全程只做"切片 + 去重 + 越界过滤"，不做任何文本改写
+    // Phase 2 方案 A：把 LLM 的 scriptLineIndices（1-based 局部行号）翻译成原文字幕行
+    // 全程只做"切片 + 去重 + 越界过滤"，不做任何文本改写
+    {
       const usedIndices = new Set<number>();
       const resolvedShots = rawShots.map((s) => {
         const indicesRaw = Array.isArray(s.scriptLineIndices) ? s.scriptLineIndices : [];
@@ -669,20 +687,82 @@ export class ShotAnalysisService {
       }
 
       return resolvedShots;
-    } catch (parseErr) {
-      const errMsg = parseErr instanceof Error ? parseErr.message : String(parseErr);
-      logger.error('分镜 JSON 解析失败', { traceId: chunkTraceId, parentTraceId: traceId, error: errMsg, responseLength: result.length });
-      const CHUNK = 1000;
-      for (let i = 0; i < result.length; i += CHUNK) {
-        logger.error('原始响应片段', {
-          traceId: chunkTraceId,
-          parentTraceId: traceId,
-          range: `${i}-${Math.min(i + CHUNK, result.length)}`,
-          content: result.slice(i, i + CHUNK),
+    }
+  }
+
+  /**
+   * 分镜拆解 LLM 调用 + JSON 解析，块级重试（最多 2 次）：
+   * - 空返回 / 解析彻底失败 → 重试，第二次在 prompt 末尾追加严格 JSON 提示；
+   * - jsonrepair 修复成功（method !== 'direct'）视为"可能是半截数组"，也先重试一次求完整；
+   * - 重试后仍是修复结果则接受（半截数组也比整块作废强），并 warn。
+   */
+  private async callBreakdownLLMWithRetry(params: {
+    traceId: string;
+    systemPrompt: string;
+    userPrompt: string;
+    operation: string;
+  }): Promise<{ shots: any[]; parseMethod: string }> {
+    const maxAttempts = 2;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const userPrompt = attempt === 1
+        ? params.userPrompt
+        : `${params.userPrompt}\n\n【重要】上次输出不是合法、完整的 JSON（可能截断或夹杂解释文字）。请严格只输出一个完整 JSON 对象，覆盖拆解范围内的全部内容，不要任何解释、不要代码块标记。`;
+      const result = await this.ctx.llmProvider.chat(
+        [
+          { role: 'system', content: params.systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        {
+          traceId: params.traceId,
+          source: 'shot-analysis',
+          operation: attempt > 1 ? `${params.operation}-retry` : params.operation,
+          taskKind: 'structured',
+          taskProfileId: 'shot-breakdown',
+          stream: true,
+          timeoutMs: SHOT_ANALYSIS_LLM_TIMEOUT_MS,
+          responseFormat: 'json_object',
+        },
+      );
+
+      if (result.trim().length === 0) {
+        if (attempt < maxAttempts) {
+          logger.warn('LLM 返回内容为空，重试一次', { traceId: params.traceId, attempt });
+          continue;
+        }
+        throw new Error('LLM 返回内容为空，请检查所选 LLM 渠道的模型名 / 接口路径 / 配额是否可用');
+      }
+
+      try {
+        const parseResult = parseLLMJSONWithMeta<{ shots: any[] }>(result);
+        const shots = Array.isArray(parseResult.data?.shots) ? parseResult.data.shots : [];
+        if (parseResult.method === 'direct') {
+          return { shots, parseMethod: parseResult.method };
+        }
+        if (attempt < maxAttempts) {
+          logger.warn('分镜 JSON 需修复才能解析（可能是半截数组），重试一次求完整输出', {
+            traceId: params.traceId,
+            attempt,
+            parseMethod: parseResult.method,
+            shotsCount: shots.length,
+          });
+          continue;
+        }
+        logger.warn('分镜 JSON 重试后仍需修复，接受修复结果（可能不完整）', {
+          traceId: params.traceId,
+          parseMethod: parseResult.method,
+          shotsCount: shots.length,
+        });
+        return { shots, parseMethod: parseResult.method };
+      } catch (parseErr) {
+        if (attempt === maxAttempts) throw parseErr;
+        logger.warn('分镜 JSON 解析失败，重试一次', {
+          traceId: params.traceId,
+          attempt,
+          error: parseErr instanceof Error ? parseErr.message : String(parseErr),
         });
       }
-      throw parseErr;
     }
+    throw new Error('分镜 LLM 输出解析失败');
   }
 
   private appendStyleRequirement(prompt: string): string {

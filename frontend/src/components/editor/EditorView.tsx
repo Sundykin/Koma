@@ -15,6 +15,7 @@ import {
 } from '../../workflow/editorStepRegistry';
 import { loadEpisodeAnalysis } from '../../store/projectStore';
 import { useTaskTransitions } from '../../hooks';
+import { AssetDock } from '../asset/AssetDock';
 // 副作用 import：把各步骤 Component 注入到 registry
 import './steps';
 
@@ -112,7 +113,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
     // 'script' 步：必须先解析剧本才能进入下一步
     const blockedByAnalysis = editorStep === 'script' && !scriptAnalysisReady;
     const tooltip = blockedByAnalysis
-      ? '请先在右侧生产进度中完成剧本解析'
+      ? '请先完成剧本解析'
       : undefined;
 
     const button = (
@@ -218,6 +219,18 @@ export const EditorView: React.FC<EditorViewProps> = ({
             <Button type="link" onClick={() => onViewChange('projects')}>返回项目列表</Button>
           </div>
         )}
+        {/* 项目资产入口：角色/场景/道具悬浮在右缘，所有步骤常驻 */}
+        <AssetDock
+          projectId={activeProject.id}
+          episodeId={activeEpisode?.id}
+          episodeName={activeEpisode?.title ?? (activeEpisode ? `第${activeEpisode.number}集` : undefined)}
+          script={scriptText}
+          llmSelection={llmSelection}
+          aspectRatio={activeProject.aspectRatio || '16:9'}
+          ttiSelection={ttiSelection}
+          itvSelection={itvSelection}
+          styleSnapshot={styleSnapshot}
+        />
       </div>
     </div>
   );

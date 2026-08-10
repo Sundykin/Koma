@@ -9,7 +9,7 @@ import React from 'react';
 import { Button, Tooltip, Dropdown } from 'antd';
 import type { MenuProps } from 'antd';
 import { ThunderboltOutlined, HighlightOutlined, LoadingOutlined, SaveOutlined, DownOutlined } from '@ant-design/icons';
-import { Check, Loader2, MessageSquareQuote, AlertTriangle, BadgeCheck } from 'lucide-react';
+import { Check, Loader2, MessageSquareQuote, AlertTriangle, BadgeCheck, Package } from 'lucide-react';
 import type { Episode } from '../../types';
 
 interface InlineProjectToolbarProps {
@@ -29,6 +29,10 @@ interface InlineProjectToolbarProps {
   onTweetCopy: () => void;
   /** A 项绕过入口：手动标记剧本已为字幕格式（直接导入字幕文件等场景） */
   onMarkScriptReady?: () => void;
+  /** 解析资产：AI 从当前剧本提取角色/场景/道具（script-analysis 任务） */
+  onAnalyzeAssets?: () => void;
+  /** 解析资产任务进行中 */
+  isAnalyzing?: boolean;
 }
 
 export const InlineProjectToolbar: React.FC<InlineProjectToolbarProps> = ({
@@ -45,14 +49,16 @@ export const InlineProjectToolbar: React.FC<InlineProjectToolbarProps> = ({
   onRandomGenerate,
   onTweetCopy,
   onMarkScriptReady,
+  onAnalyzeAssets,
+  isAnalyzing = false,
 }) => {
   const anyBusy = isGenerating || isPolishing || isTweetGenerating;
   const isDrama = narrativeMode === 'drama';
-  // 剧情模式：把小说解析成结构化剧本（旁白/台词标注说话人）；解说模式：推文化成字幕
+  // 剧情模式：把小说改写成专业分场剧本；解说模式：推文化成字幕
   const parseLabel = isDrama ? '解析剧本' : '推文化';
   const parseBusyLabel = isDrama ? '解析中...' : '改写中...';
   const parseTooltip = isDrama
-    ? 'AI 把小说解析成结构化剧本（旁白 + 带说话人的人物台词），覆盖剧本编辑器内容'
+    ? 'AI 把小说改写成专业分场剧本（场头 + 动作行 + 带说话人的台词），覆盖剧本编辑器内容'
     : (scriptReady ? 'AI 重新推文化（覆盖剧本编辑器内容）' : 'AI 改写为推文文案（覆盖剧本编辑器内容，完成后自动标记为字幕格式）');
 
   return (
@@ -136,6 +142,29 @@ export const InlineProjectToolbar: React.FC<InlineProjectToolbarProps> = ({
             />
           </Dropdown>
         </div>
+        {/* 解析资产：从当前剧本提取角色/场景/道具到项目资产库（右侧悬浮资产面板可查看编辑） */}
+        {onAnalyzeAssets && (
+          <Tooltip
+            title={
+              !episode
+                ? '请先选择剧集'
+                : !hasScript
+                  ? '请先输入剧本内容'
+                  : 'AI 从当前剧本提取角色/场景/道具资产；提取结果在右侧悬浮资产面板（右缘图标）中查看与编辑'
+            }
+          >
+            <Button
+              type="text"
+              size="small"
+              icon={isAnalyzing ? <LoadingOutlined spin /> : <Package className="w-4 h-4" />}
+              onClick={onAnalyzeAssets}
+              disabled={!episode || !hasScript || anyBusy || isAnalyzing}
+              className="text-text-secondary hover:text-accent"
+            >
+              {isAnalyzing ? '解析资产中...' : '解析资产'}
+            </Button>
+          </Tooltip>
+        )}
       </div>
 
       {/* Right: 推文化状态徽章 + 保存状态 + 保存按钮 */}

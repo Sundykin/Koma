@@ -436,6 +436,8 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
         onRandomGenerate={handleRandomGenerate}
         onTweetCopy={handleTweetCopy}
         onMarkScriptReady={handleMarkScriptReady}
+        onAnalyzeAssets={handleAnalyze}
+        isAnalyzing={isAnalyzing}
       />
 
       {/* 剧本编辑器 */}
@@ -462,7 +464,7 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
                     : streamingMode === 'polish'
                       ? '润色结果会实时预览，完成后再覆盖当前剧本。'
                       : (project.mode ?? 'narration') === 'drama'
-                        ? '结构化剧本（旁白 + 带说话人的台词）会实时预览，完成后覆盖剧本编辑器并自动保存。'
+                        ? '分场剧本（场头 + 动作行 + 带说话人的台词）会实时预览，完成后覆盖剧本编辑器并自动保存。'
                         : '推文文案会实时预览，完成后会覆盖当前剧本编辑器内容并自动保存。'}
                 </p>
               </div>

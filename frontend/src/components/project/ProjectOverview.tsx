@@ -1,30 +1,20 @@
 /**
  * 项目概览页面
- * 三栏式工作台布局：左侧剧集导航(360px) | 中间剧本编辑区 | 右侧资产面板(340px)
+ * 两栏式工作台布局：左侧剧集导航(360px) | 中间剧本编辑区
+ * 项目资产通过右侧悬浮按钮 + 抽屉打开（见 ScriptStep）
  */
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { App } from 'antd';
 import {
-  Package, ChevronLeft, ChevronRight,
-  PanelLeftClose, PanelRightClose,
+  ChevronRight,
+  PanelLeftClose,
 } from 'lucide-react';
-import type { Project, Episode, EpisodeAnalysis, Shot } from '../../types';
+import type { Project, Episode } from '../../types';
 import type { EpisodeEditorEntryOptions } from '../../workflow/episodeEditorEntry';
 import { EpisodeManager, EpisodeManagerRef } from './EpisodeManager';
-import { ProjectAssetOverview, type ProjectAssetOverviewRef } from './ProjectAssetOverview';
 import { ScriptWorkbench, type ScriptWorkbenchRef } from './ScriptWorkbench';
 import { ScriptImportDialog } from './ScriptImportDialog';
 import { listEpisodes, loadEpisode } from '../../store/projectStore';
 import { createLogger } from '../../store/logger';
-import { loadEpisodeAnalysis, loadEpisodeShots, loadCharacters, loadScenes, loadProps } from '../../store/projectStore';
-import { useTasks, useTaskTransitions } from '../../hooks';
-import { submitShotAnalysisTask } from '../../services/analysisTaskClient';
-import { serializeMediaSelection } from '../../providers/channel/resolver';
-import {
-  buildProjectProductionReadiness,
-  type ProductionNextActionType,
-} from '../../services/projectProductionReadiness';
-import { ProjectProductionReadinessPanel } from './ProjectProductionReadinessPanel';
 
 const logger = createLogger('ProjectOverview');
 
@@ -45,10 +35,6 @@ interface ProjectOverviewProps {
    * 信号模式而非函数 ref：避免把 dialog 提到 EditorView 后还要重新搭刷新通道。
    */
   openImportSignal?: number;
-  /** 在统一项目步骤内打开完整资产编辑器（兼容旧 assets step）。 */
-  onOpenAssets?: () => void;
-  /** 在统一项目步骤内打开当前剧集分镜。 */
-  onOpenStoryboard?: () => void;
 }
 
 export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
@@ -58,30 +44,15 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
   onProjectUpdate: _onProjectUpdate,
   onScriptChange,
   openImportSignal,
-  onOpenAssets,
-  onOpenStoryboard,
 }) => {
-  const { message } = App.useApp();
   const episodeManagerRef = useRef<EpisodeManagerRef>(null);
   const scriptWorkbenchRef = useRef<ScriptWorkbenchRef>(null);
-  const assetOverviewRef = useRef<ProjectAssetOverviewRef>(null);
 
   const [leftCollapsed, setLeftCollapsed] = useState(false);
-  const [rightCollapsed, setRightCollapsed] = useState(false);
   const [scriptImportVisible, setScriptImportVisible] = useState(false);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   // 当前选中的剧集（用于中间区域剧本编辑）
   const [selectedEpisode, setSelectedEpisode] = useState<Episode | null>(null);
-  const [episodeAnalysis, setEpisodeAnalysis] = useState<EpisodeAnalysis | null>(null);
-  const [episodeShots, setEpisodeShots] = useState<Shot[]>([]);
-  const [productionAssets, setProductionAssets] = useState<{
-    characters: import('../../types').Character[];
-    scenes: import('../../types').Scene[];
-    props: import('../../types').Prop[];
-  }>({ characters: [], scenes: [], props: [] });
-  const [productionLoading, setProductionLoading] = useState(false);
-  const [isStartingShots, setIsStartingShots] = useState(false);
 
   // 最新值 refs：让"按 project.id 触发一次"的初始化 effect 读到当前回调与选中态，
   // 避免把每轮渲染都重建的父级回调加进依赖导致重复拉取剧集列表
@@ -91,56 +62,6 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
   onEnterEpisodeRef.current = onEnterEpisode;
   const onScriptChangeRef = useRef(onScriptChange);
   onScriptChangeRef.current = onScriptChange;
-
-  const loadProductionData = useCallback(async () => {
-    const current = selectedEpisodeRef.current;
-    if (!current) {
-      setEpisodeAnalysis(null);
-      setEpisodeShots([]);
-      setProductionAssets({ characters: [], scenes: [], props: [] });
-      setProductionLoading(false);
-      return;
-    }
-
-    setProductionLoading(true);
-    try {
-      const [analysis, shots, characters, scenes, props] = await Promise.all([
-        loadEpisodeAnalysis(project.id, current.id),
-        loadEpisodeShots(project.id, current.id),
-        loadCharacters(project.id),
-        loadScenes(project.id),
-        loadProps(project.id),
-      ]);
-      if (selectedEpisodeRef.current?.id !== current.id) return;
-      setEpisodeAnalysis(analysis);
-      setEpisodeShots(shots.length > 0 ? shots : (analysis?.shots || []));
-      setProductionAssets({ characters, scenes, props });
-    } catch (error) {
-      logger.error('加载生产就绪度失败:', error);
-    } finally {
-      if (selectedEpisodeRef.current?.id === current.id) setProductionLoading(false);
-    }
-  }, [project.id]);
-
-  useEffect(() => {
-    void loadProductionData();
-  }, [loadProductionData, selectedEpisode?.id]);
-
-  const productionTasks = useTasks({
-    scope: `project:${project.id}`,
-    targetKind: 'episode',
-    targetId: selectedEpisode?.id,
-  }).filter((task) => task.type === 'script-analysis' || task.type === 'shot-analysis');
-
-  const readiness = React.useMemo(() => buildProjectProductionReadiness({
-    episode: selectedEpisode,
-    analysis: episodeAnalysis,
-    characters: productionAssets.characters,
-    scenes: productionAssets.scenes,
-    props: productionAssets.props,
-    shots: episodeShots,
-    tasks: productionTasks,
-  }), [episodeAnalysis, episodeShots, productionAssets, productionTasks, selectedEpisode]);
 
   // 初始加载时自动选中第一集
   useEffect(() => {
@@ -188,82 +109,8 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
     onScriptChange?.(text);
   }, [onScriptChange]);
 
-  const handleOpenAssets = useCallback(() => {
-    if (!selectedEpisode) {
-      message.warning('请先选择剧集');
-      return;
-    }
-    onOpenAssets?.();
-  }, [message, onOpenAssets, selectedEpisode]);
-
-  const handleOpenStoryboard = useCallback(() => {
-    if (!selectedEpisode) {
-      message.warning('请先选择剧集');
-      return;
-    }
-    onOpenStoryboard?.();
-  }, [message, onOpenStoryboard, selectedEpisode]);
-
-  const handleReadinessAction = useCallback(async (action: ProductionNextActionType) => {
-    if (!selectedEpisode) return;
-    if (action === 'mark-script-ready') {
-      await scriptWorkbenchRef.current?.markScriptReady();
-      return;
-    }
-    if (action === 'analyze-script') {
-      await scriptWorkbenchRef.current?.analyze();
-      return;
-    }
-    if (action !== 'generate-shots') return;
-    const savedEpisode = await scriptWorkbenchRef.current?.flushSave();
-    const script = (savedEpisode?.scriptText || selectedEpisode.scriptText)?.trim();
-    if (!script) {
-      message.warning('请先输入剧本内容');
-      return;
-    }
-    setIsStartingShots(true);
-    try {
-      const { deduped } = await submitShotAnalysisTask({
-        projectId: project.id,
-        episodeId: selectedEpisode.id,
-        episodeName: selectedEpisode.title || `第${selectedEpisode.number}集`,
-        script,
-        llmSelection: serializeMediaSelection(project.mediaSelections?.llm),
-        styleSnapshot: project.styleSnapshot,
-      });
-      message.info(deduped ? '当前剧集已有分镜任务在进行中' : '分镜生成任务已启动，可继续编辑剧本');
-    } catch (error: any) {
-      logger.error('启动分镜生成失败:', error);
-      message.error(error?.message || '启动分镜生成失败，请重试');
-    } finally {
-      setIsStartingShots(false);
-    }
-  }, [message, project.id, project.mediaSelections?.llm, project.styleSnapshot, selectedEpisode]);
-
-  useTaskTransitions(
-    {
-      scope: `project:${project.id}`,
-      type: 'script-analysis',
-      targetKind: 'episode',
-      targetId: selectedEpisode?.id,
-      to: ['completed', 'failed', 'cancelled'],
-    },
-    () => { void loadProductionData(); },
-  );
-  useTaskTransitions(
-    {
-      scope: `project:${project.id}`,
-      type: 'shot-analysis',
-      targetKind: 'episode',
-      targetId: selectedEpisode?.id,
-      to: ['completed', 'failed', 'cancelled'],
-    },
-    () => { void loadProductionData(); },
-  );
-
   const handleImported = useCallback((episodes: Episode[]) => {
     episodeManagerRef.current?.refresh();
-    assetOverviewRef.current?.refresh();
     setSelectedEpisode(episodes.length > 0 ? episodes[0] : null);
   }, []);
 
@@ -282,7 +129,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
 
   return (
     <div className="h-full flex flex-col bg-bg-app overflow-hidden">
-      {/* Three-Column Body（项目标识与项目设置已合并到顶部 StepNavigator） */}
+      {/* Two-Column Body（项目标识与项目设置已合并到顶部 StepNavigator） */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left: EpisodePanel - 360px */}
         <div className={`bg-bg-surface flex flex-col transition-all duration-300 ${
@@ -329,55 +176,13 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
             project={project}
             episode={selectedEpisode}
             onScriptChange={handleScriptChange}
-            onAnalyzingChange={setIsAnalyzing}
+            onAnalyzingChange={() => undefined}
             onEpisodeUpdate={(updates) => {
               // 把 ScriptWorkbench 内部刚写回 DB 的字段（如 scriptReady）合并到本地剧集状态，
               // 解析按钮 disabled 守门 / 状态徽章 / 下游派生才能立刻生效
               setSelectedEpisode(prev => prev ? { ...prev, ...updates } : prev);
             }}
           />
-        </div>
-
-        {/* Right Collapse Button */}
-        {rightCollapsed && (
-          <div className="flex items-center border-l border-border-subtle">
-            <button
-              onClick={() => setRightCollapsed(false)}
-              className="h-full px-1 text-text-tertiary hover:text-text-secondary hover:bg-bg-elevated transition-colors"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-          </div>
-        )}
-
-        {/* Right: AssetPanel - 340px */}
-        <div className={`bg-bg-surface flex flex-col transition-all duration-300 ${
-          rightCollapsed ? 'w-0 overflow-hidden' : 'w-[340px]'
-        }`}>
-          {/* Panel Header - 48px */}
-          <div className="h-12 px-4 flex items-center justify-between border-b border-border-subtle/80">
-            <span className="text-sm font-medium text-text-secondary flex items-center gap-2">
-              <Package className="w-4 h-4" />
-              项目资产
-            </span>
-            <button
-              onClick={() => setRightCollapsed(true)}
-              className="p-1.5 text-text-tertiary hover:text-text-secondary hover:bg-bg-elevated rounded transition-colors"
-            >
-              <PanelRightClose className="w-4 h-4" />
-            </button>
-          </div>
-          <ProjectProductionReadinessPanel
-            readiness={readiness}
-            onAction={handleReadinessAction}
-            onOpenAssets={handleOpenAssets}
-            onOpenStoryboard={handleOpenStoryboard}
-            busy={productionLoading || isStartingShots || isAnalyzing}
-          />
-          {/* Asset Content */}
-          <div className="flex-1 overflow-hidden">
-            <ProjectAssetOverview ref={assetOverviewRef} projectId={project.id} />
-          </div>
         </div>
       </div>
 

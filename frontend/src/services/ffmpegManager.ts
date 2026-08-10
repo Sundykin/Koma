@@ -271,6 +271,11 @@ class FFmpegManager {
     }
 
     const info = await api.getInfo(filePath);
+    // ee-core 会把主进程 handler 的异常吞成 undefined（见 ee-core socket/ipcServer），
+    // 这里兜底成可读错误，避免下游出现 "reading 'hasVideo' of undefined"。
+    if (!info) {
+      throw new Error('读取媒体信息失败：ffprobe 执行出错或文件无法解析');
+    }
     this.mediaInfoCache.set(filePath, info);
     return info;
   }
@@ -433,8 +438,9 @@ class FFmpegManager {
     }
 
     const durationSec = info.duration / 1000;
-    const offsetMs = Math.max(50, Math.min(120, options?.tailOffsetMs ?? 80));
-    const windowSec = Math.min(durationSec, offsetMs / 1000);
+    // 片尾安全窗口：抽最后 ~0.5s、fps=10 再取最后一帧。
+    // 旧实现只抽片尾前 ~80ms 且 fps=1，窗口内经常一帧都落不到（"未能提取真实尾帧"）。
+    const windowSec = Math.min(durationSec, 0.5);
     const startTime = Math.max(0, durationSec - windowSec);
     const rootDir = await api.getCacheDir('video-tail-frames');
     const outputDir = `${rootDir}/${Math.abs(hashCode(cacheKey)).toString(36)}`;
@@ -442,7 +448,7 @@ class FFmpegManager {
     const frames = await api.extractFrames({
       input: inputPath,
       outputDir,
-      fps: 1,
+      fps: 10,
       startTime,
       endTime: durationSec,
       width,

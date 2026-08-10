@@ -19,14 +19,9 @@ export interface ProjectStyleSnapshot {
   sourcePresetId: string;
   createdAt: number;
   /**
-   * 风格参考图（"画风锚"）。生成角色 / 场景 / 道具图时会作为 references[0] 注入，
-   * provider 走图生图分支，让模型严格继承画风（色调 / 笔触 / 光影 / 笔法 / 整体氛围），
-   * 不参考其中的人物 / 物体 / 服装 等具体内容（由 prompt 硬约束实现）。
-   *
-   * 优先级：
-   *   1. 项目级 styleSnapshot.styleReferenceImage（用户在项目设置上传/覆盖）
-   *   2. 全局风格预设默认图（从 ThemePreset.defaultStyleReferenceFile 推 userData 路径）
-   *   3. 都没有 → 不注入风格图，回退到纯 text-to-image
+   * @deprecated 整体「风格参考图（画风锚）」机制已移除：模型有一定概率直接在锚图上改图
+   * 而非迁移画风，达不到参考效果。字段仅为兼容历史项目数据保留，运行时不再读取。
+   * 如需参考图，请使用资产级「使用参考图」手动上传。
    */
   styleReferenceImage?: import('./media').StoredMediaAsset;
 }

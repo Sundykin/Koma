@@ -129,7 +129,7 @@ function renderCard(shot: Shot, previousShot?: Shot, overrides: Partial<React.Co
 }
 
 describe('ShotCard video continuity controls', () => {
-  it('shows the automatic decision, reason, source and tail-frame preview', () => {
+  it('shows the automatic decision, source and tail-frame preview as icons', () => {
     const previous = {
       ...createShot('shot-prev'),
       currentVersion: 1,
@@ -150,11 +150,12 @@ describe('ShotCard video continuity controls', () => {
 
     renderCard(shot, previous);
 
-    expect(screen.getByText('自动继承')).toBeInTheDocument();
-    expect(screen.getByText('同一场景动作延续')).toBeInTheDocument();
+    const group = screen.getByTestId('shot-video-continuity');
+    // 自动模式选中，且不渲染任何文字标签
+    expect(group.querySelector('.ant-segmented-item-selected')?.textContent).not.toMatch(/自动|继承|独立/);
+    expect(screen.getByTestId('continuity-opt-auto').closest('.ant-segmented-item')).toHaveClass('ant-segmented-item-selected');
     expect(screen.getByAltText('上一镜尾帧')).toHaveAttribute('src', 'https://example.com/tail.jpg');
-    expect(screen.getByText('重新截取')).toBeInTheDocument();
-    expect(screen.getByText('源 #1')).toBeInTheDocument();
+    expect(screen.getByTestId('continuity-capture')).toBeInTheDocument();
   });
 
   it('supports manual independent, restore automatic and re-capture actions', async () => {
@@ -178,17 +179,15 @@ describe('ShotCard video continuity controls', () => {
       onCapturePreviousTailFrame: onCapture,
     });
 
-    fireEvent.click(screen.getByText('本镜独立'));
+    fireEvent.click(screen.getByTestId('continuity-opt-independent'));
     await waitFor(() => expect(onMode).toHaveBeenCalledWith('shot-next', 'manual', false));
-    await waitFor(() => expect(screen.getByText('恢复自动').closest('button')).not.toBeDisabled());
-    fireEvent.click(screen.getByText('恢复自动'));
+    fireEvent.click(screen.getByTestId('continuity-opt-auto'));
     await waitFor(() => expect(onMode).toHaveBeenCalledWith('shot-next', 'auto', true));
-    await waitFor(() => expect(screen.getByText('重新截取').closest('button')).not.toBeDisabled());
-    fireEvent.click(screen.getByText('重新截取'));
+    fireEvent.click(screen.getByTestId('continuity-capture'));
     await waitFor(() => expect(onCapture).toHaveBeenCalledWith('shot-next', true));
   });
 
-  it('disables capture and explains when predecessor has no real video', () => {
+  it('disables capture and warns when predecessor has no real video', () => {
     const previous = createShot('shot-prev');
     const shot = createShot('shot-next', {
       mode: 'auto',
@@ -200,8 +199,7 @@ describe('ShotCard video continuity controls', () => {
 
     renderCard(shot, previous);
 
-    const capture = screen.getByText('截取尾帧').closest('button');
-    expect(capture).toBeDisabled();
-    expect(screen.getByText('待上一镜视频')).toBeInTheDocument();
+    expect(screen.getByTestId('continuity-capture')).toBeDisabled();
+    expect(screen.getByTestId('continuity-warn')).toBeInTheDocument();
   });
 });

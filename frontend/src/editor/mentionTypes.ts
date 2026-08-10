@@ -4,7 +4,7 @@
 
 // Mention 项目类型
 export type AssetMentionType = 'char' | 'prop' | 'scene' | 'voice';
-export type AnchorMentionType = 'shot' | 'grid' | 'storyboard' | 'previous_storyboard';
+export type AnchorMentionType = 'shot' | 'grid' | 'storyboard' | 'previous_storyboard' | 'previous_tail';
 export type MentionType = AssetMentionType | AnchorMentionType;
 
 /**
@@ -39,12 +39,12 @@ export interface ParsedMention {
 // 匹配格式:
 //  - 资产:        @char_xxx / @prop_xxx / @scene_xxx / @voice_xxx
 //  - 复合属性:    @char_xxx-音色  或  @char_xxx-voice
-//  - 分镜锚点:    @shot_anchor / @grid_anchor / @storyboard_anchor / @previous_storyboard_anchor
+//  - 分镜锚点:    @shot_anchor / @grid_anchor / @storyboard_anchor / @previous_storyboard_anchor / @previous_tail_frame
 //
 // id 字符集放宽到包含 CJK 区段，让 `@char_abc-音色` 整体被匹配到，
 // 真正的 property 拆分由 stripPropertySuffix 在后续 post-process 阶段完成。
 export const MENTION_REGEX =
-  /@(char|prop|scene|voice)_([a-zA-Z0-9_一-鿿-]+)|@(shot|grid|storyboard|previous_storyboard)_anchor\b/g;
+  /@(char|prop|scene|voice)_([a-zA-Z0-9_一-鿿-]+)|@(shot|grid|storyboard|previous_storyboard)_anchor\b|@(previous_tail)_frame\b/g;
 
 const PROPERTY_SUFFIX_RE = /^(.*?)-(音色|voice)$/;
 
@@ -67,7 +67,7 @@ export function isAssetMentionType(type: MentionType): type is AssetMentionType 
 }
 
 export function isAnchorMentionType(type: MentionType): type is AnchorMentionType {
-  return type === 'shot' || type === 'grid' || type === 'storyboard' || type === 'previous_storyboard';
+  return type === 'shot' || type === 'grid' || type === 'storyboard' || type === 'previous_storyboard' || type === 'previous_tail';
 }
 
 /**
@@ -79,7 +79,7 @@ export function parseMentions(text: string): ParsedMention[] {
 
   const regex = new RegExp(MENTION_REGEX.source, 'g');
   while ((match = regex.exec(text)) !== null) {
-    const type = (match[1] || match[3]) as MentionType;
+    const type = (match[1] || match[3] || match[4]) as MentionType;
     const rawId = match[2] || 'anchor';
     const { id, property } = stripPropertySuffix(type, rawId);
     mentions.push({
@@ -120,6 +120,9 @@ export function createMentionString(
   id: string,
   property?: MentionProperty,
 ): string {
+  if (type === 'previous_tail') {
+    return '@previous_tail_frame';
+  }
   if (isAnchorMentionType(type)) {
     return `@${type}_anchor`;
   }
@@ -140,6 +143,9 @@ export function parseMentionId(
   const anchorMatch = mentionStr.match(/@(shot|grid|storyboard|previous_storyboard)_anchor\b/);
   if (anchorMatch) {
     return { type: anchorMatch[1] as MentionType, id: 'anchor' };
+  }
+  if (/@previous_tail_frame\b/.test(mentionStr)) {
+    return { type: 'previous_tail', id: 'anchor' };
   }
 
   const match = mentionStr.match(/@(char|prop|scene|voice)_([a-zA-Z0-9_一-鿿-]+)/);
@@ -190,6 +196,14 @@ export function resolveBuiltInMentionItem(type: MentionType, id: string): Mentio
       type: 'previous_storyboard',
       name: '上一故事板锚定图',
       description: '上一分镜生成的故事板图，用于继承场景、人物、光影和情绪连续性。',
+    };
+  }
+  if (type === 'previous_tail' && normalizedId === 'anchor') {
+    return {
+      id: 'anchor',
+      type: 'previous_tail',
+      name: '上一镜尾帧',
+      description: '上一分镜真实视频尾帧，生图/生视频的连续性主参考。需要先在连续性里选择继承尾帧。',
     };
   }
   return undefined;

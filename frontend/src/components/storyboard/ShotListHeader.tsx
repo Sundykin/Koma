@@ -51,8 +51,8 @@ interface ShotListHeaderProps {
   onBulkDurationChange?: (duration: number) => void;
   /** 批量校准台词超时长的分镜（补足到朗读估算时长） */
   onBulkCalibrateDurations?: () => void;
-  /** 批量补全摄影语言（升级缺景别/机位的分镜脚本） */
-  onBulkUpgradeScripts?: () => void;
+  /** 批量连续生成（逐镜串行：截尾帧 → 视频提示词 → 出片） */
+  onBatchContinuousFlow?: () => void;
   onAddShot: () => void;
   onBatchDelete: () => void;
 }
@@ -83,7 +83,7 @@ export const ShotListHeader: React.FC<ShotListHeaderProps> = ({
   onBulkImageModeChange,
   onBulkDurationChange,
   onBulkCalibrateDurations,
-  onBulkUpgradeScripts,
+  onBatchContinuousFlow,
   onAddShot,
   onBatchDelete,
 }) => {
@@ -114,6 +114,11 @@ export const ShotListHeader: React.FC<ShotListHeaderProps> = ({
   const videoBatchItems: MenuProps['items'] = [
     { key: 'video-gen', label: t('storyboard.generateEmpty'), onClick: onBatchVideos },
     { key: 'video-regen', label: t('storyboard.regenerateAll'), onClick: onBatchReVideos },
+    ...(onBatchContinuousFlow ? [{
+      key: 'video-continuous-flow',
+      label: '连续生成（逐镜串行：截尾帧 → 视频词 → 出片）',
+      onClick: () => onBatchContinuousFlow(),
+    }] : []),
   ];
   const audioBatchItems: MenuProps['items'] = [
     { key: 'audio-gen', label: t('storyboard.generateEmpty'), onClick: () => onBatchAudios?.() },
@@ -123,16 +128,6 @@ export const ShotListHeader: React.FC<ShotListHeaderProps> = ({
   // 「更多」收 视频模式切换 + 图片模式切换（其它已上提）
   const BULK_DURATION_OPTIONS = [3, 5, 6, 8, 10];
   const moreBatchItems: MenuProps['items'] = [
-    ...(onBulkUpgradeScripts ? [{
-      key: 'bulk-script-upgrade',
-      label: '脚本升级',
-      type: 'group' as const,
-      children: [{
-        key: 'upgrade-photo',
-        label: '批量补全摄影语言',
-        onClick: () => onBulkUpgradeScripts(),
-      }],
-    }] : []),
     ...(onBulkDurationChange ? [{
       key: 'bulk-duration',
       label: '时长切换',

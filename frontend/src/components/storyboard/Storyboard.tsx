@@ -579,10 +579,6 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     handleBatchReGenerateImagePrompts,
     handleBatchGenerateVideoPrompts,
     handleBatchReGenerateVideoPrompts,
-    upgradingShots,
-    handleUpgradeShotScript,
-    handleRewriteShotScript,
-    handleBatchUpgradeShotScripts,
   } = useStoryboardPrompts({
     projectId,
     episodeId,
@@ -795,7 +791,67 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     message,
   });
 
+  // ============ 串行化连续生成工作流 ============
+  // 顺序：判定连续性 →（需要继承时）截取上一镜尾帧 → 生成视频提示词（此时参考表已含
+  // @previous_tail_frame，LLM 推理可直接引用）→ 生成视频。
+  // 尾帧还兼任主图：本镜没有图片时把尾帧设为本镜锚定图；主图提示词/主图生成保持可选。
+  const [continuousFlowRunning, setContinuousFlowRunning] = useState<Set<string>>(new Set());
+  const handleRunContinuousFlow = useCallback(async (shotId: string) => {
+    const runIndex = shotsRef.current.findIndex(s => s.id === shotId);
+    if (runIndex < 0) return;
+    setContinuousFlowRunning(prev => new Set(prev).add(shotId));
+    try {
+      if (runIndex > 0) {
+        const shot = shotsRef.current[runIndex];
+        const ref = shot.videoReference;
+        const wantInherit = ref?.mode === 'manual'
+          ? ref.usePreviousTailFrame
+          : (ref?.autoUsePreviousTailFrame ?? ref?.usePreviousTailFrame ?? false);
+        if (wantInherit && !ref?.referenceFrame) {
+          await handleCapturePreviousTailFrame(shotId, false);
+        }
+        // 尾帧作主图：本镜还没有图片时，把截到的尾帧设为本镜锚定图
+        const afterCapture = shotsRef.current[runIndex];
+        const frame = afterCapture?.videoReference?.referenceFrame;
+        if (frame && !(afterCapture.media?.images?.length)) {
+          handleImagesChange(shotId, [frame], 0);
+        }
+      }
+      // 生成视频提示词：有旧词则优化重生成，让 LLM 在含尾帧的参考表上重写
+      const latest = shotsRef.current[runIndex];
+      if (latest?.videoPrompt?.trim()) {
+        await handleOptimizeVideoPrompt(shotId, latest.videoPrompt);
+      } else {
+        await handleGenerateVideoPrompt(shotId);
+      }
+      await handleRenderShotVideo(shotId);
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : '连续生成失败');
+    } finally {
+      setContinuousFlowRunning(prev => {
+        const next = new Set(prev);
+        next.delete(shotId);
+        return next;
+      });
+    }
+  }, [shotsRef, handleCapturePreviousTailFrame, handleImagesChange, handleGenerateVideoPrompt, handleOptimizeVideoPrompt, handleRenderShotVideo, message]);
 
+  /** 批量连续生成：逐镜串行，每镜都等上一镜出片后再截尾帧/出词/出片 */
+  const handleBatchContinuousFlow = useCallback(async (shotIds?: string[]) => {
+    const targets = (shotIds?.length ? shotsRef.current.filter(s => shotIds.includes(s.id)) : shotsRef.current);
+    if (!targets.length) return;
+    setBatchProgress({ current: 0, total: targets.length, step: '连续生成准备中...' });
+    let done = 0;
+    for (const shot of targets) {
+      setBatchProgress({ current: done, total: targets.length, step: `连续生成 ${done + 1}/${targets.length}` });
+      try {
+        await handleRunContinuousFlow(shot.id);
+      } catch { /* 单镜失败不阻断后续（handler 内已提示） */ }
+      done += 1;
+    }
+    setBatchProgress(undefined);
+    message.success(`连续生成完成：${targets.length} 镜`);
+  }, [shotsRef, handleRunContinuousFlow, setBatchProgress, message]);
 
   // ============ 渲染 ============
 
@@ -866,9 +922,6 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             activeShotId={activeShotId}
             onActiveShotChange={setActiveShotId}
             onScriptLinesChange={handleScriptLinesChange}
-            onUpgradeShotScript={handleUpgradeShotScript}
-            onRewriteShotScript={handleRewriteShotScript}
-            upgradingShots={upgradingShots}
             onImagePromptChange={handleImagePromptChange}
             onVideoPromptChange={handleVideoPromptChange}
             onDurationChange={handleDurationChange}
@@ -910,14 +963,14 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             onStoryboardInheritPreviousChange={handleStoryboardInheritPreviousChange}
             onVideoReferenceModeChange={handleVideoReferenceModeChange}
             onCapturePreviousTailFrame={handleCapturePreviousTailFrame}
+            onRunContinuousFlow={handleRunContinuousFlow}
+            continuousFlowRunning={continuousFlowRunning}
+            onBatchContinuousFlow={(ids) => void handleBatchContinuousFlow(ids)}
             onShotVideoModeChange={handleShotVideoModeChange}
             onBulkVideoModeChange={handleBulkVideoModeChange}
             onBulkImageModeChange={handleBulkImageModeChange}
             onBulkDurationChange={handleBulkDurationChange}
             onBulkCalibrateDurations={handleBulkCalibrateDurations}
-            onBulkUpgradeScripts={() => handleBatchUpgradeShotScripts()}
-            onReGenerateStaleImagePrompts={(ids) => handleBatchReGenerateImagePrompts(ids)}
-            onReGenerateStaleAudios={(ids) => handleBatchReGenerateAudios(ids)}
             durationSpec={itvDurationSpec}
           />
           </DndContext>

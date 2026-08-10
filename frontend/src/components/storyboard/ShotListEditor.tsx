@@ -3,7 +3,7 @@
  * 内联编辑模式，每行一个分镜
  */
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { App as AntApp, Button, Typography, Progress, Modal } from 'antd';
+import { Button, Typography, Progress } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
 import { StoryboardLayout } from './StoryboardLayout';
@@ -11,12 +11,7 @@ import { ShotListHeader } from './ShotListHeader';
 import type { MentionItem } from '../../editor';
 import type { Shot, ShotImageMode, ShotScriptLine, Character, Scene, Prop, StoredMediaAsset } from '../../types';
 import { getMediaAssetDisplaySource } from '../../types';
-import { getPrimaryShotSize, extractShotPhotography, detectShotLightTone, isSameScene } from '../../services/photographyElements';
-import { getShotCurrentVideoSource, getShotCurrentVideoAsset } from '../../utils/mediaSelectors';
-import { StagePlayer } from '../video/StagePlayer';
-import { isShotSpeechOverDuration, isShotPromptStale, isShotVoiceStale, detectInconsistentCharacterVoices } from '../../services/shotFreshness';
-import { findDialogueCharactersMissingVoice, findCharactersNotInShots } from '../../services/shotReference/readiness';
-import { buildProductionReport, formatProductionReport } from '../../services/productionReport';
+import { getPrimaryShotSize, detectShotLightTone, isSameScene } from '../../services/photographyElements';
 import { ShotCard } from './ShotCard';
 
 const { Text } = Typography;
@@ -88,24 +83,18 @@ export interface ShotListEditorProps {
   ) => void | Promise<void>;
   /** 截取或重新截取上一镜真实视频尾帧 */
   onCapturePreviousTailFrame?: (shotId: string, forceRefresh?: boolean) => void | Promise<void>;
+  /** 串行化连续生成：截尾帧 → 视频提示词 → 生成视频（单镜） */
+  onRunContinuousFlow?: (shotId: string) => void | Promise<void>;
+  /** 连续生成进行中的分镜集合 */
+  continuousFlowRunning?: Set<string>;
+  /** 批量连续生成（逐镜串行） */
+  onBatchContinuousFlow?: (shotIds?: string[]) => void;
   onShotVideoModeChange?: (shotId: string, mode: 'multi-ref' | 'first-frame') => void;
   onBulkVideoModeChange?: (mode: 'multi-ref' | 'first-frame') => void;
   /** 批量统一分镜时长（秒） */
   onBulkDurationChange?: (duration: number) => void;
   /** 批量校准台词超时长的分镜 */
   onBulkCalibrateDurations?: () => void;
-  /** 升级分镜脚本（补摄影语言） */
-  onUpgradeShotScript?: (shotId: string) => void;
-  /** 换拍法（保持剧情/台词，重写画面表达） */
-  onRewriteShotScript?: (shotId: string) => void;
-  /** 脚本升级进行中的分镜集合 */
-  upgradingShots?: Set<string>;
-  /** 批量补全摄影语言 */
-  onBulkUpgradeScripts?: () => void;
-  /** 批量重新生成'提示词待更新'分镜的图片提示词 */
-  onReGenerateStaleImagePrompts?: (shotIds: string[]) => void;
-  /** 批量重新配音'配音待更新'分镜 */
-  onReGenerateStaleAudios?: (shotIds: string[]) => void;
   onBulkImageModeChange?: (mode: Exclude<ShotImageMode, 'grid'>) => void;
   /** 当前项目选择的 ITV 渠道时长规格，透传给 ShotCard 决定时长控件渲染方式 */
   durationSpec?: import('../../providers/itv/durationSpec').VideoDurationSpec;
@@ -171,17 +160,14 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   onStoryboardInheritPreviousChange,
   onVideoReferenceModeChange,
   onCapturePreviousTailFrame,
+  onRunContinuousFlow,
+  continuousFlowRunning,
+  onBatchContinuousFlow,
   onShotVideoModeChange,
   onBulkVideoModeChange,
   onBulkImageModeChange,
   onBulkDurationChange,
   onBulkCalibrateDurations,
-  onUpgradeShotScript,
-  onRewriteShotScript,
-  upgradingShots,
-  onBulkUpgradeScripts,
-  onReGenerateStaleImagePrompts,
-  onReGenerateStaleAudios,
   durationSpec,
   videoProgressMap,
 }) => {
@@ -202,8 +188,6 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
     }
 
   }, [shots]);
-
-  const { message } = AntApp.useApp();
 
   // 单选
   const handleSelectChange = useCallback((shotId: string, selected: boolean) => {
@@ -282,24 +266,6 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
     });
   }, [activeShotId]);
 
-  // 成片预览：连续播放所有有视频的分镜（顺序播放）
-  const [episodePreviewOpen, setEpisodePreviewOpen] = useState(false);
-  const [scriptPreviewOpen, setScriptPreviewOpen] = useState(false);
-  const [playIndex, setPlayIndex] = useState(0);
-  // 有视频的分镜（预览用 StagePlayer，内部处理源可播放性）
-  const playableShots = useMemo(
-    () => shots.filter(s => Boolean(getShotCurrentVideoSource(s))),
-    [shots],
-  );
-  const currentPlayShot = playIndex < playableShots.length ? playableShots[playIndex] : undefined;
-
-  // 整集剧本预览文本（所有镜脚本连起来，便于整体阅读/检查衔接）
-  const fullScriptText = useMemo(() => shots.map((s, i) => {
-    const size = getPrimaryShotSize(s);
-    const script = (s.scriptLines ?? []).map(l => l.text).join('\n');
-    return `【#${i + 1}${size ? ` · ${size}` : ''} · ${s.duration || '?'}s】\n${script}`;
-  }).join('\n\n'), [shots]);
-
   // 批量操作已用时长（秒）：batchProgress 活跃时每秒递增，结束归零
   const [batchElapsedSec, setBatchElapsedSec] = useState(0);
   // 预计剩余时间（基于已用时长与完成比例线性估算）
@@ -319,66 +285,6 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
     return () => clearInterval(timer);
   }, [batchActive]);
 
-  // 生产就绪度：缺摄影语言 / 台词超时长 / 视频配音进度（供顶部就绪条展示）
-  const readinessStats = useMemo(() => {
-    let missingPhoto = 0;
-    let overDuration = 0;
-    let videoCount = 0;
-    let audioCount = 0;
-    for (const s of shots) {
-      const el = extractShotPhotography(s);
-      if (el.shotSizes.length === 0 && el.cameraAngles.length === 0) missingPhoto += 1;
-      if (isShotSpeechOverDuration(s)) overDuration += 1;
-      if ((s.media?.videos?.length || 0) > 0) videoCount += 1;
-      if ((s.media?.audios?.length || 0) > 0) audioCount += 1;
-    }
-    // 有台词但没绑音色的角色（视频渲染的音色参考缺失）
-    const missingVoiceChars = findDialogueCharactersMissingVoice(shots, characters);
-    const missingVoice = missingVoiceChars.length;
-    // 提示词/配音待更新（脚本已改，提示词/配音基于旧脚本）
-    let promptStale = 0;
-    let voiceStale = 0;
-    const promptStaleIds: string[] = [];
-    const voiceStaleIds: string[] = [];
-    for (const s of shots) {
-      if (isShotPromptStale(s)) {
-        promptStale += 1;
-        promptStaleIds.push(s.id);
-      }
-      if (isShotVoiceStale(s)) {
-        voiceStale += 1;
-        voiceStaleIds.push(s.id);
-      }
-    }
-    // 角色音色跨镜不一致（同一角色不同镜用不同音色 → 声音跳）
-    const voiceInconsistent = detectInconsistentCharacterVoices(shots).length;
-    // 主要角色未进任何分镜（主角/反派未出场通常是拆解漏分配）
-    const notInShots = findCharactersNotInShots(shots, characters)
-      .filter(c => c.role === 'protagonist' || c.role === 'antagonist')
-      .map(c => c.name);
-    const allReady = missingPhoto === 0 && overDuration === 0 && missingVoice === 0
-      && promptStale === 0 && voiceInconsistent === 0 && videoCount === shots.length;
-    return {
-      missingPhoto, overDuration, videoCount, audioCount,
-      missingVoice, missingVoiceNames: missingVoiceChars.map(v => v.name),
-      promptStale, promptStaleIds, voiceStale, voiceStaleIds,
-      voiceInconsistent, notInShots, allReady,
-    };
-  }, [shots, characters]);
-
-  // 推荐下一步（按生产优先级：拆解覆盖 → 音色 → 脚本 → 提示词 → 时长 → 渲染）
-  const nextStep = useMemo(() => {
-    if (readinessStats.notInShots.length > 0) {
-      return `检查角色未出场：${readinessStats.notInShots.join('、')}`;
-    }
-    if (readinessStats.missingVoice > 0) return '先为缺音色的角色绑定音色';
-    if (readinessStats.missingPhoto > 0) return '先升级缺摄影语言的分镜脚本';
-    if (readinessStats.promptStale > 0) return '重新生成提示词待更新的分镜';
-    if (readinessStats.overDuration > 0) return '校准台词超时长的分镜时长';
-    if (readinessStats.videoCount < shots.length) return `渲染剩余 ${shots.length - readinessStats.videoCount} 个分镜视频`;
-    return undefined;
-  }, [readinessStats, shots.length]);
-
   const renderShotRow = useCallback(
     (index: number, shot: Shot) => {
       const latestShots = shotsForScrollRef.current;
@@ -395,9 +301,6 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
           index={index}
           totalCount={latestShots.length}
           narrativeMode={narrativeMode}
-          onUpgradeShotScript={onUpgradeShotScript}
-          onRewriteShotScript={onRewriteShotScript}
-          upgrading={upgradingShots?.has(shot.id)}
           prevShotSize={prevShotSize}
           prevLightTone={prevLightTone}
           prevSameScene={prevSameScene}
@@ -423,6 +326,8 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
           onStoryboardInheritPreviousChange={onStoryboardInheritPreviousChange}
           onVideoReferenceModeChange={onVideoReferenceModeChange}
           onCapturePreviousTailFrame={onCapturePreviousTailFrame}
+          onRunContinuousFlow={onRunContinuousFlow}
+          continuousFlowRunning={continuousFlowRunning?.has(shot.id)}
           onVideoModeChange={onShotVideoModeChange}
           onCharactersChange={onCharactersChange}
           onScenesChange={onScenesChange}
@@ -483,12 +388,11 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
       onGenerateVideoPrompt,
       onOptimizeImagePrompt,
       onOptimizeVideoPrompt,
-      onUpgradeShotScript,
-      onRewriteShotScript,
-      upgradingShots,
       onGenerateImage,
       onGenerateVideo,
       onGenerateAudio,
+      onRunContinuousFlow,
+      continuousFlowRunning,
       getVideoCapabilityLabel,
       getVideoGenerateDisabledReason,
       onDelete,
@@ -530,166 +434,6 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
           </div>
         )}
 
-        {/* 生产就绪条：一眼看到还有哪些准备工作，可点击批量修复 */}
-        {shots.length > 0 && (
-          <div className="px-3 py-1 bg-bg-surface/40 border-b border-border-subtle flex items-center gap-3 text-[11px] flex-wrap">
-            {readinessStats.allReady ? (
-              <span className="text-status-success font-medium" title="所有分镜已就绪（无质量缺口、视频齐全），可进剪辑/导出">
-                生产就绪 ✓ 可进剪辑
-              </span>
-            ) : (
-              <span className="text-text-secondary font-medium">生产就绪</span>
-            )}
-            {!readinessStats.allReady && nextStep && (
-              <span className="text-status-info" title="按生产优先级推荐的下一步">
-                建议下一步：{nextStep}
-              </span>
-            )}
-            {!readinessStats.allReady && readinessStats.missingPhoto > 0 && onBulkUpgradeScripts && (
-              <button
-                className="text-status-warning hover:opacity-80 cursor-pointer"
-                onClick={() => onBulkUpgradeScripts()}
-                title="一键给缺景别/机位的分镜补全摄影语言"
-              >
-                缺摄影语言 {readinessStats.missingPhoto} 镜（升级）
-              </button>
-            )}
-            {readinessStats.overDuration > 0 && onBulkCalibrateDurations && (
-              <button
-                className="text-status-warning hover:opacity-80 cursor-pointer"
-                onClick={() => onBulkCalibrateDurations()}
-                title="一键校准台词超时长的分镜时长"
-              >
-                台词超时长 {readinessStats.overDuration} 镜（校准）
-              </button>
-            )}
-            {readinessStats.missingVoice > 0 && (
-              <span className="text-status-warning" title="到角色详情绑定音色（视频渲染时声音参考依赖它）">
-                缺音色：{readinessStats.missingVoiceNames.join('、')}
-              </span>
-            )}
-            {readinessStats.promptStale > 0 && (
-              <button
-                className="text-status-warning hover:opacity-80 cursor-pointer"
-                onClick={() => onReGenerateStaleImagePrompts?.(readinessStats.promptStaleIds)}
-                title="脚本已改，提示词基于旧脚本——点击重新生成这些镜的图片提示词"
-              >
-                提示词待更新 {readinessStats.promptStale} 镜（重生成）
-              </button>
-            )}
-            {readinessStats.notInShots.length > 0 && (
-              <span className="text-status-warning" title="主要角色（主角/反派）未进任何分镜，通常是拆解漏分配——检查剧本拆解是否覆盖该角色戏份">
-                角色未出场：{readinessStats.notInShots.join('、')}
-              </span>
-            )}
-            {readinessStats.voiceInconsistent > 0 && (
-              <span className="text-status-warning" title="同一角色在不同镜用了不同音色，声音会跳——检查角色音色绑定">
-                角色音色不一致 {readinessStats.voiceInconsistent}
-              </span>
-            )}
-            {readinessStats.voiceStale > 0 && (
-              <button
-                className="text-status-warning hover:opacity-80 cursor-pointer"
-                onClick={() => onReGenerateStaleAudios?.(readinessStats.voiceStaleIds)}
-                title="台词已改，配音基于旧台词——点击重新生成这些镜的配音"
-              >
-                配音待更新 {readinessStats.voiceStale} 镜（重配音）
-              </button>
-            )}
-            <span className="text-text-tertiary">
-              视频 {readinessStats.videoCount}/{shots.length} · 配音 {readinessStats.audioCount}/{shots.length}
-            </span>
-            <button
-              className="text-text-secondary hover:opacity-80 cursor-pointer"
-              title="连起来看整集分镜脚本（检查整体节奏与衔接）"
-              onClick={() => setScriptPreviewOpen(true)}
-            >
-              剧本预览
-            </button>
-            {playableShots.length > 0 && (
-              <button
-                className="text-text-secondary hover:opacity-80 cursor-pointer"
-                title="连续播放所有已渲染视频，预览成片效果"
-                onClick={() => { setPlayIndex(0); setEpisodePreviewOpen(true); }}
-              >
-                播放整集
-              </button>
-            )}
-            <button
-              className="text-text-secondary hover:opacity-80 cursor-pointer ml-auto"
-              title="复制生产状态报告到剪贴板"
-              onClick={() => {
-                const report = buildProductionReport(shots, characters);
-                const text = formatProductionReport(report);
-                void navigator.clipboard?.writeText(text).then(() => {
-                  message.success('生产报告已复制到剪贴板');
-                }).catch(() => {
-                  message.error('复制失败');
-                });
-              }}
-            >
-              导出报告
-            </button>
-          </div>
-        )}
-
-        {/* 剧本预览 modal */}
-        <Modal
-          open={scriptPreviewOpen}
-          onCancel={() => setScriptPreviewOpen(false)}
-          footer={null}
-          width={720}
-          title="整集分镜剧本"
-          destroyOnClose
-        >
-          <div style={{ maxHeight: 560, overflowY: 'auto', whiteSpace: 'pre-wrap', fontSize: 13, lineHeight: 1.7 }}>
-            {fullScriptText || '（无分镜脚本）'}
-          </div>
-          <div style={{ marginTop: 12, textAlign: 'right' }}>
-            <Button size="small" onClick={() => {
-              void navigator.clipboard?.writeText(fullScriptText).then(() => message.success('整集剧本已复制')).catch(() => undefined);
-            }}>复制整集剧本</Button>
-          </div>
-        </Modal>
-
-        {/* 成片预览 modal */}
-        <Modal
-          open={episodePreviewOpen}
-          onCancel={() => setEpisodePreviewOpen(false)}
-          footer={null}
-          width={800}
-          title={`成片预览 · 第 ${playIndex + 1}/${playableShots.length} 镜${currentPlayShot ? ` · ${getPrimaryShotSize(currentPlayShot) ?? ''}` : ''}`}
-          destroyOnClose
-        >
-          {currentPlayShot && (
-            <>
-              <StagePlayer
-                key={currentPlayShot.id}
-                videoPath={getShotCurrentVideoSource(currentPlayShot)}
-                videoUrl={getShotCurrentVideoAsset(currentPlayShot)?.remoteUrl}
-                className="w-full aspect-video bg-black rounded"
-                autoPlay
-                onEnded={() => {
-                  if (playIndex + 1 < playableShots.length) {
-                    setPlayIndex(i => i + 1);
-                  } else {
-                    setEpisodePreviewOpen(false);
-                  }
-                }}
-              />
-              <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
-                <Button size="small" onClick={() => {
-                  if (playIndex + 1 < playableShots.length) {
-                    setPlayIndex(i => i + 1);
-                  } else {
-                    setEpisodePreviewOpen(false);
-                  }
-                }}>跳过此镜（无法播放时）</Button>
-              </div>
-            </>
-          )}
-        </Modal>
-
         {/* 分镜列表 */}
         {shots.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center">
@@ -727,7 +471,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
               onBulkImageModeChange={onBulkImageModeChange}
               onBulkDurationChange={onBulkDurationChange}
               onBulkCalibrateDurations={onBulkCalibrateDurations}
-            onBulkUpgradeScripts={onBulkUpgradeScripts}
+              onBatchContinuousFlow={onBatchContinuousFlow ? () => onBatchContinuousFlow(hasSelected ? Array.from(selectedIds) : undefined) : undefined}
               onAddShot={onAddShot}
               onBatchDelete={handleBatchDelete}
             />

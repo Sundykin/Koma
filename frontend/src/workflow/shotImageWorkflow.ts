@@ -128,6 +128,8 @@ export async function shotImageWorkflow(params: {
     scenes: normalizedScenes,
     props,
     allShots,
+    // 生图同样消费上一镜尾帧（@previous_tail_frame）：首帧/参考图要从尾帧继续
+    options: { includePreviousVideoTail: true },
   });
   const compiledPromptResult = compileShotPromptToBundle({
     prompt,

@@ -4,8 +4,9 @@
  * 把"项目工作台"（ProjectOverview）作为统一的项目生产步骤：
  *   - 左：剧集导航
  *   - 中：剧本编辑器（含解析 / 推文文案 / 导入剧本）
- *   - 右：项目资产概览
  *   - 顶：项目设置 / 模型选择 / 导入剧本入口
+ *
+ * 项目资产入口（角色/场景/道具悬浮 Dock + 轻量抽屉）由 EditorView 统一常驻渲染。
  *
  * 业务逻辑（剧集管理 / 自动保存 / 解析 / 推文 / 导入剧本 / 模型选择）完全
  * 复用 ProjectOverview，此包装层只把 EditorStepContext 适配成 ProjectOverview 所需 props，
@@ -28,8 +29,6 @@ export const ScriptStep: React.FC<{ ctx: EditorStepContext }> = ({ ctx }) => {
           ctx.onStepChange('script');
         }
       }}
-      onOpenAssets={() => ctx.onStepChange('assets')}
-      onOpenStoryboard={() => ctx.onStepChange('storyboard')}
       onProjectUpdate={(updates: Partial<Project>) => ctx.onProjectUpdate?.(updates)}
       onScriptChange={(text) => ctx.onScriptChange?.(text)}
       openImportSignal={ctx.scriptImportSignal}

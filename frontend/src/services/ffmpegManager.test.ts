@@ -166,9 +166,10 @@ describe('ffmpegManager', () => {
     expect(ffmpeg.getInfo).toHaveBeenCalledWith('/tmp/shot.mp4');
     expect(ffmpeg.extractFrames).toHaveBeenCalledWith(expect.objectContaining({
       input: '/tmp/shot.mp4',
-      startTime: 4.92,
+      // 片尾安全窗口：最后 ~0.5s、fps=10，再取最后一帧（80ms+fps=1 经常抽不到帧）
+      startTime: 4.5,
       endTime: 5,
-      fps: 1,
+      fps: 10,
     }));
     expect(ffmpeg.extractFrames).toHaveBeenCalledTimes(1);
   });

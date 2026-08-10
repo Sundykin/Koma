@@ -28,11 +28,6 @@ import { buildCharacterCostumeTemplateVariables } from './promptVariableBuilders
 import { compileCharacterPreviewVideoRequest } from './videoGenerationRequests';
 import type { StyleSnapshotLike } from '../utils/promptNormalize';
 import { normalizeVideoDurationSeconds } from '../utils/videoDuration';
-import {
-  appendStyleAnchorGuard,
-  resolveActiveStyleReferenceAsset,
-} from '../services/styleReferenceResolver';
-import type { ProjectStyleSnapshot } from '../types';
 
 const logger = createLogger('CharacterAsset');
 
@@ -106,20 +101,15 @@ export async function generateCostumePhoto(
       ? [
           '',
           'User-provided character reference instructions:',
-          'A user-uploaded character reference image is included in the references AFTER the optional style anchor. Treat it as the binding identity/appearance anchor for this character: inherit the person\'s face, hairstyle, body type, clothing and accessories from it; do not redesign or re-randomize the character. Only adapt it into the three-view costume-sheet layout and the project art style.',
+          'A user-uploaded character reference image is included in the references. Treat it as the binding identity/appearance anchor for this character: inherit the person\'s face, hairstyle, body type, clothing and accessories from it; do not redesign or re-randomize the character. Only adapt it into the three-view costume-sheet layout and the project art style.',
         ].join('\n')
       : '';
     const promptWithIdentity = `${basePrompt}${identityGuard}`;
 
-    // 风格锚定参考图（references[0]）：让模型严格继承画风但不继承内容。
-    // 项目级 styleSnapshot.styleReferenceImage 优先，回退到预设默认图。
-    const styleAnchorAsset = await resolveActiveStyleReferenceAsset({
-      project: { styleSnapshot: (styleSnapshot || project?.styleSnapshot) as ProjectStyleSnapshot | undefined },
-      themeId: theme,
-    });
-    const prompt = appendStyleAnchorGuard(promptWithIdentity, Boolean(styleAnchorAsset));
+    // 仅使用用户手动上传的参考图（如有）。整体风格参考图机制已移除：
+    // 模型有一定概率直接在锚图上改图而非迁移画风，达不到参考效果。
+    const prompt = promptWithIdentity;
     const references = [
-      ...(styleAnchorAsset ? [styleAnchorAsset] : []),
       ...(userReference ? [userReference] : []),
     ];
 

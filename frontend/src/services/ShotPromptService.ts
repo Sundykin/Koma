@@ -189,6 +189,8 @@ export class ShotPromptService {
       scenes: shotScenes,
       props: shotProps,
       allShots: allEpisodeShots,
+      // 让 LLM 的参考表能看到上一镜尾帧（@previous_tail_frame），生成提示词时可引用
+      options: { includePreviousVideoTail: true },
     });
     const referenceTable = renderShotReferenceTable(referenceBundle);
     const gridSequenceNotice = renderGridSequenceNotice(referenceBundle);
@@ -214,28 +216,25 @@ export class ShotPromptService {
       shotsMode,
     });
 
-    // 按需并行生成
-    const promises: Promise<string>[] = [];
+    // 串行生成：图片提示词先出，视频提示词以**新**图片提示词为空间锚定依据。
+    // （并行时代码锚定的是旧 imagePrompt，图词与视频词的起始姿态可能互相矛盾）
+    let imagePrompt = shot.imagePrompt || '';
     if (needImage) {
-      promises.push(this.generatePromptByType(
+      imagePrompt = await this.generatePromptByType(
         'image', shot, shotCharacters, shotScenes, shotProps,
         characterRefs, sceneRefs, propRefs, resolvedStylePrefix,
         referenceTable, gridSequenceNotice, shotsSection, referenceBundle, allEpisodeShots,
-      ));
+      );
     }
+    let videoPrompt = shot.videoPrompt || '';
     if (needVideo) {
-      promises.push(this.generatePromptByType(
-        'video', shot, shotCharacters, shotScenes, shotProps,
+      const shotForVideo = needImage ? { ...shot, imagePrompt } : shot;
+      videoPrompt = await this.generatePromptByType(
+        'video', shotForVideo, shotCharacters, shotScenes, shotProps,
         characterRefs, sceneRefs, propRefs, resolvedStylePrefix,
         referenceTable, gridSequenceNotice, shotsSection, referenceBundle, allEpisodeShots,
-      ));
+      );
     }
-
-    const results = await Promise.all(promises);
-
-    let resultIndex = 0;
-    const imagePrompt = needImage ? results[resultIndex++] : (shot.imagePrompt || '');
-    const videoPrompt = needVideo ? results[resultIndex++] : (shot.videoPrompt || '');
 
     return { imagePrompt, videoPrompt };
   }
@@ -279,11 +278,33 @@ export class ShotPromptService {
 
     // 图片路径：与视频提示词共享同一份剧情 + 台词事实，保证生图锚点和后续视频动作/对白对应。
     const templateKey: PromptTemplateType = 'shot_image_prompt_generation';
+
+    // 前后镜上下文：图片推理之前完全没有邻镜信息（跨镜画面一致性只能靠运气）——
+    // 注入上一镜剧情 + 已生成图片提示词（起始姿态/空间关系衔接依据）与下一镜剧情。
+    const shotIndex = allEpisodeShots?.findIndex(s => s.id === shot.id) ?? -1;
+    const prevShot = shotIndex > 0 ? allEpisodeShots![shotIndex - 1] : undefined;
+    const nextShot = shotIndex >= 0 && allEpisodeShots && shotIndex < allEpisodeShots.length - 1
+      ? allEpisodeShots[shotIndex + 1]
+      : undefined;
+    const prevImagePrompt = prevShot?.imagePrompt?.trim();
+    const adjacentShotsInfo = (prevShot || nextShot)
+      ? [
+        `上一镜：${formatShotContextInfo(prevShot, { withPrompt: false, projectMode: this.ctx.projectMode })}${prevImagePrompt ? `\n上一镜图片提示词（起始姿态/空间衔接参考）：${prevImagePrompt.slice(0, 300)}` : ''}`,
+        `下一镜：${formatShotContextInfo(nextShot, { withPrompt: false, projectMode: this.ctx.projectMode })}`,
+      ].join('\n')
+      : '无';
+
     const templateVariables: Record<string, string> = {
       scriptContent: visualScriptContent,
       dialogueText: formatDialogueTextForPrompt(explicitDialogueText, characterNames, this.ctx.projectMode) || '无',
       dialogueModeDirective,
-      characters: shotCharacters.map(c => c.name).join(', ') || '无',
+      // 有定妆照的角色只给名字（外观以参考图为唯一真相）；无定妆照的内联外观设定，
+      // 否则每镜外貌都靠 LLM 即兴发挥 → 跨镜变脸
+      characters: shotCharacters.length
+        ? shotCharacters.map(c => c.media?.costumePhoto
+          ? c.name
+          : `${c.name}（该角色无参考图，外观设定：${c.prompt?.trim() || '未设定'}）`).join('\n')
+        : '无',
       scenes: shotScenes.map(s => s.name).join(', ') || '无',
       props: shotProps.map(p => p.name).join(', ') || '无',
       emotion: shot.emotion || '中性',
@@ -294,6 +315,7 @@ export class ShotPromptService {
       sceneRefs: sceneRefs || '无场景引用',
       propRefs: propRefs || '无道具引用',
       cameraMovementHint: shot.cameraMovement || 'static',
+      adjacentShotsInfo,
       // 阶段 3：让图片提示词模板里也能引用 references 索引表（默认未使用，模板按需渲染）
       referenceTable,
       gridSequenceNotice,
@@ -582,6 +604,7 @@ export class ShotPromptService {
         scenes: shotScenes,
         props: shotProps,
         allShots,
+        options: { includePreviousVideoTail: true },
       });
       logger.info('故事板图片提示词参考集合 bundle 已构建', {
         shotId: shot.id,

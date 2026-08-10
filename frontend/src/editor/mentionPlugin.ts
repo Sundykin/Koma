@@ -186,6 +186,12 @@ export const mentionTheme = EditorView.baseTheme({
     boxShadow: '0 0 0 1px color-mix(in srgb, var(--token-accent-base) 12%, transparent)',
     fontWeight: '700',
   },
+  // @previous_tail_frame：上一镜真实视频尾帧（连续性主参考）。大小与其他 mention 一致，
+  // 用青色区分于角色(蓝)/道具(橙)/场景(绿)/锚点(主题色)/音色(紫)。
+  '.mention-previous_tail': {
+    backgroundColor: 'color-mix(in srgb, #14b8a6 20%, transparent)',
+    color: '#0f766e',
+  },
   // @voice_xxx：直接指向某个音色
   '.mention-voice': {
     backgroundColor: 'color-mix(in srgb, #b794f6 22%, transparent)',

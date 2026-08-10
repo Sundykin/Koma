@@ -19,8 +19,6 @@ export type PromptTemplateType =
   | 'shot_breakdown'           // 分镜拆解
   | 'shot_breakdown_drama'     // 剧情模式分镜拆解（小说/结构化剧本 → 真正的分镜描述 + 声音行）
   | 'shot_image_prompt_generation' // 分镜图片提示词生成
-  | 'shot_script_upgrade'        // 分镜脚本摄影语言补全（旧脚本升级为专业描述）
-  | 'shot_script_rewrite'        // 分镜脚本换拍法（保持剧情台词，重写画面表达）
   | 'storyboard_shot_prompt_generation' // 故事板分镜提示词生成（电影级制作方案板）
   | 'shot_video_6s_multi'          // 分镜视频提示词 · 多参模式 · 6 秒
   | 'shot_video_10s_multi'         // 分镜视频提示词 · 多参模式 · 10 秒

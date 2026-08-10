@@ -6,4 +6,3 @@ export { EpisodeManager } from './EpisodeManager';
 export { EpisodeSplitWizard } from './EpisodeSplitWizard';
 export { ProjectLLMSelector } from './ProjectLLMSelector';
 export { ProjectMediaSelector } from './ProjectMediaSelector';
-export { ProjectAssetOverview } from './ProjectAssetOverview';

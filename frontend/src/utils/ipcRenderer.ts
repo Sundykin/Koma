@@ -36,13 +36,9 @@ export const ipcApiRoute = {
     getVersion: 'controller/app/getVersion',
     openExternal: 'controller/app/openExternal',
     showItemInFolder: 'controller/app/showItemInFolder',
-    getStyleReferenceImagePath: 'controller/app/getStyleReferenceImagePath',
     getKomaTTSVoiceSamplePath: 'controller/app/getKomaTTSVoiceSamplePath',
+    // 风格预设缩略图（仅供创建项目时的风格选择预览；整体风格参考图注入机制已移除）
     getActiveStyleReferenceImagePath: 'controller/app/getActiveStyleReferenceImagePath',
-    saveStyleReferenceImage: 'controller/app/saveStyleReferenceImage',
-    clearStyleReferenceImage: 'controller/app/clearStyleReferenceImage',
-    saveProjectStyleReferenceImage: 'controller/app/saveProjectStyleReferenceImage',
-    clearProjectStyleReferenceImage: 'controller/app/clearProjectStyleReferenceImage',
   },
   // 窗口控制器
   window: {

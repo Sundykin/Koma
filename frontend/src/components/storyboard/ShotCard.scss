@@ -123,14 +123,8 @@
   letter-spacing: 0;
 }
 
-.shot-continuity-row {
-  min-height: 27px;
-  border-bottom: 1px solid color-mix(in srgb, var(--token-border-subtle) 65%, transparent);
-  overflow: hidden;
-}
-
 .shot-continuity-seg.ant-segmented {
-  max-width: 168px;
+  max-width: 96px;
 }
 
 .shot-continuity-preview {

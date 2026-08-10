@@ -13,13 +13,8 @@ describe('unified project editor steps', () => {
     expect(getEditorStep('script')?.nextAction?.targetStepId).toBe('storyboard');
   });
 
-  it('keeps the legacy assets step callable while grouping it under project navigation', () => {
-    expect(getEditorStep('assets')).toMatchObject({
-      id: 'assets',
-      visibleInNavigator: false,
-      navigatorStepId: 'script',
-    });
-    expect(resolveEditorNavigatorStepId('assets')).toBe('script');
+  it('no longer registers the legacy assets step (asset management lives in the project step drawer)', () => {
+    expect(getEditorStep('assets')).toBeUndefined();
     expect(resolveEditorNavigatorStepId('storyboard')).toBe('storyboard');
   });
 });
