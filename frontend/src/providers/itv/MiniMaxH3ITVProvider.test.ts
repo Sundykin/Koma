@@ -12,8 +12,21 @@ vi.mock('../channel/auth', () => ({
 vi.mock('../../services/imageHostingService', () => ({
   uploadBytesToImageHostingWithRetry: vi.fn(),
 }));
+vi.mock('../../services/electronService', () => ({
+  electronService: {
+    isElectron: vi.fn(() => true),
+    fs: {
+      readFileAsBase64: vi.fn(),
+      exists: vi.fn(async () => true),
+      stat: vi.fn(async () => ({ isFile: () => true })),
+      readdir: vi.fn(async () => []),
+      mkdir: vi.fn(),
+    },
+  },
+}));
 
 import { safeFetch } from '../../utils/safeFetch';
+import { electronService } from '../../services/electronService';
 
 function makeRequest(partial: Partial<ITVRequest<unknown, unknown>> = {}): ITVRequest<unknown, unknown> {
   return {
@@ -149,5 +162,53 @@ describe('MiniMaxH3ITVProvider', () => {
 
     const enhanced = await provider.enhancePromptWithContextIR(makeRequest(), 5);
     expect(enhanced).toBeUndefined();
+  });
+});
+
+describe('本地路径素材的归一化', () => {
+  it('localPath 素材直接读字节转 data: URL，不经过图床', async () => {
+    vi.mocked(electronService.isElectron).mockReturnValue(true);
+    vi.mocked(electronService.fs.readFileAsBase64).mockResolvedValue('bW9jay1ieXRlcw==');
+
+    const provider = new MiniMaxH3ITVProvider({
+      provider: 'minimax-h3-itv',
+      apiKey: 'sk-test',
+    });
+    vi.mocked(safeFetch).mockResolvedValue({
+      ok: true,
+      text: async () => JSON.stringify({ task_id: 't2' }),
+    } as never);
+
+    await provider.start({
+      capability: 'video.image-to-video',
+      prompt: '图生视频',
+      primaryImage: { transport: 'remote-url', value: '/tmp/local-frame.png' } as never,
+    } as never);
+
+    // 本用例只有这一次调用（beforeEach 已 clearAllMocks），取最新一次
+    const [, init] = vi.mocked(safeFetch).mock.calls.at(-1)!;
+    const body = JSON.parse(String(init?.body));
+    const imageItem = body.content.find((item: { role?: string }) => item.role === 'first_frame');
+    expect(imageItem?.image_url?.url).toBe('data:image/png;base64,bW9jay1ieXRlcw==');
+  });
+
+  it('本地文件读取失败时素材被跳过，不阻断出片', async () => {
+    vi.mocked(electronService.isElectron).mockReturnValue(true);
+    vi.mocked(electronService.fs.readFileAsBase64).mockRejectedValue(new Error('no such file'));
+
+    const provider = new MiniMaxH3ITVProvider({
+      provider: 'minimax-h3-itv',
+      apiKey: 'sk-test',
+    });
+    vi.mocked(safeFetch).mockResolvedValue({
+      ok: true,
+      text: async () => JSON.stringify({ task_id: 't3' }),
+    } as never);
+
+    const result = await provider.start({
+      capability: 'video.text-to-video',
+      prompt: '只有文本',
+    } as never);
+    expect(result.mode).toBe('async');
   });
 });

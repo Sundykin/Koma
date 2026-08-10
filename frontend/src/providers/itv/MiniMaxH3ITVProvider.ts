@@ -12,6 +12,9 @@
  *   first_frame / last_frame / reference_image / reference_video / reference_audio。
  * 图生视频与多模态参考互斥：content 里出现任一 reference_* 就不能再出现 first/last_frame。
  *
+ * 素材上传：直接传 base64 data: URL（H3 官方 content[].xxx_url 支持），不经过图床——
+ * 本地素材不需要先传公网，避免依赖图床 / 激活链路的可用性。请求体上限 64 MB。
+ *
  * 提示词协议：minimax-image-tag（<图片 N> / <视频 N> / <音频 N>），与上游原生识别的
  * 中文标签一致，编译层产物直接可用。
  */
@@ -93,34 +96,61 @@ interface H3TaskResponse {
   base_resp?: { status_code?: number; status_msg?: string };
 }
 
-/** 把 URL 素材规整成可上传的字符串值（本地文件需先经 imageHostingService 换公网 URL）。 */
-async function toUrlValue(asset: unknown): Promise<string | undefined> {
+/**
+ * 把素材规整成 MiniMax H3 可直接接收的 data: URL（base64）。
+ *
+ * H3 官方接口的 image_url / video_url / audio_url 直接支持 base64（请求体 ≤ 64 MB），
+ * 不走图床——这样本地素材不需要先传公网，也就不依赖图床 / 激活链路的可用性。
+ *   - 已是 data: URL        → 原样透传
+ *   - 远程 URL（http/https）→ 原样透传（留给本来就是外链的素材，省一次下载）
+ *   - 本地文件路径           → 读字节转 data: URL
+ *   - blob: URL              → fetch 后转 data: URL
+ * 任何一步失败都返回 undefined，由调用方跳过该参考并记录。
+ */
+async function toBase64DataUrl(asset: unknown): Promise<string | undefined> {
   const providerAsset = asset as ProviderAssetInput | undefined;
   if (!providerAsset) return undefined;
-  const value = providerAsset.value;
+  let value = providerAsset.value;
   if (!value) return undefined;
-  if (providerAsset.transport === 'remote-url' || /^https?:\/\//i.test(value)) return value;
-  // data URL / 本地路径：H3 只收公网 URL，先传图床
-  if (value.startsWith('data:')) {
+
+  if (value.startsWith('data:')) return value;
+  // 远程素材只在值本身就是 http/https URL 时透传；值为本地路径的走下方读字节转 data URL
+  if (/^https?:\/\//i.test(value)) return value;
+
+  // blob: URL → fetch → data URL
+  if (value.startsWith('blob:')) {
     try {
-      const { uploadBytesToImageHostingWithRetry } = await import('../../services/imageHostingService');
-      const { parseDataUrl } = await import('../../utils/encoding');
-      const { mimeType, bytes } = parseDataUrl(value);
-      const ext = (mimeType || 'application/octet-stream').includes('png') ? 'png'
-        : (mimeType || '').includes('webp') ? 'webp'
-          : (mimeType || '').includes('jpeg') || (mimeType || '').includes('jpg') ? 'jpg'
-            : (mimeType || '').includes('audio') ? 'mp3' : 'mp4';
-      const result = await uploadBytesToImageHostingWithRetry(bytes, {
-        filename: `koma-h3-ref-${Date.now()}.${ext}`,
-      });
-      if (result?.success && result.url) return result.url;
-      logger.warn('H3 参考素材上传图床失败，跳过', { error: result?.error });
-    } catch (error) {
-      logger.warn('H3 参考素材上传图床异常，跳过', {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      const response = await fetch(value);
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      const mimeType = response.headers.get('content-type') || 'application/octet-stream';
+      const { bytesToBase64 } = await import('../../utils/encoding');
+      return `data:${mimeType};base64,${bytesToBase64(bytes)}`;
+    } catch {
+      return undefined;
     }
   }
+
+  // 本地路径 → 读字节 → data URL
+  if (!/^(https?:|data:|blob:)/i.test(value)) {
+    try {
+      const { electronService } = await import('../../services/electronService');
+      if (!electronService.isElectron()) return undefined;
+      const base64 = await electronService.fs.readFileAsBase64(value);
+      if (!base64) return undefined;
+      const ext = (value.split('.').pop() || '').toLowerCase();
+      const mime = ext === 'png' ? 'image/png'
+        : ext === 'webp' ? 'image/webp'
+          : ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg'
+            : ext === 'mp3' ? 'audio/mpeg'
+              : ext === 'wav' ? 'audio/wav'
+                : ext === 'mov' ? 'video/quicktime'
+                  : 'video/mp4';
+      return `data:${mime};base64,${base64}`;
+    } catch {
+      return undefined;
+    }
+  }
+
   return undefined;
 }
 
@@ -131,15 +161,15 @@ async function buildContentItems(request: BaseITVRequest<unknown, unknown>): Pro
     if (text.trim()) items.push({ type: 'text', text: text.trim() });
   };
   const pushImage = async (asset: unknown, role: 'first_frame' | 'last_frame' | 'reference_image') => {
-    const url = await toUrlValue(asset);
+    const url = await toBase64DataUrl(asset);
     if (url) items.push({ type: 'image_url', image_url: { url }, role });
   };
   const pushVideo = async (asset: unknown) => {
-    const url = await toUrlValue(asset);
+    const url = await toBase64DataUrl(asset);
     if (url) items.push({ type: 'video_url', video_url: { url }, role: 'reference_video' });
   };
   const pushAudio = async (asset: unknown) => {
-    const url = await toUrlValue(asset);
+    const url = await toBase64DataUrl(asset);
     if (url) items.push({ type: 'audio_url', audio_url: { url }, role: 'reference_audio' });
   };
 
