@@ -36,6 +36,33 @@ export type PromptTemplateType =
   | 'prop_extraction'          // 道具提取
   | 'tweet_script_generation'  // 推文文案生成（剧本 → 整段连续推文旁白）
   | 'drama_script_parse'       // 剧情模式 · 小说解析为结构化剧本（旁白 + 带说话人的人物台词）
+  // 短剧风格标签卡（题材 / 调性 / 前提装置，条件注入到分镜拆解与提示词推理）
+  | 'genre_card_失忆'
+  | 'genre_card_穿越'
+  | 'genre_card_系统'
+  | 'genre_card_读心'
+  | 'genre_card_重生'
+  | 'genre_card_马甲'
+  | 'genre_card_亲子隐秘'
+  | 'genre_card_仙侠修真'
+  | 'genre_card_动作任务'
+  | 'genre_card_古装权谋'
+  | 'genre_card_复仇打脸'
+  | 'genre_card_家庭关系'
+  | 'genre_card_悬疑规则'
+  | 'genre_card_生活流'
+  | 'genre_card_科幻未来'
+  | 'genre_card_职场喜剧'
+  | 'genre_card_豪门婚恋'
+  | 'genre_card_身份错位'
+  | 'genre_card_悬疑压抑'
+  | 'genre_card_搞笑'
+  | 'genre_card_治愈'
+  | 'genre_card_燃向'
+  | 'genre_card_狗血'
+  | 'genre_card_致郁'
+  | 'drama_genre_analysis'          // 从剧本/小说分析出三轴风格标签
+  | 'shot_directive_genre_tone'     // 推理约束 · 风格标签注入
   // TTI 图片生成模板
   | 'tti_character_costume'    // 角色定妆照（三视图）
   | 'tti_scene_preview'        // 场景预览图
@@ -75,6 +102,7 @@ export type PromptTemplateCategory =
   | 'inference-image'
   | 'inference-video'
   | 'inference-directive'
+  | 'genre-card'
   | 'tti'
   | 'itv';
 
@@ -89,8 +117,9 @@ export const PROMPT_CATEGORY_META: Record<PromptTemplateCategory, { label: strin
   'inference-image':{ label: '图片提示词推理', description: '分镜静态画面提示词（含九宫格）',                    order: 6 },
   'inference-video':{ label: '视频提示词推理', description: '分镜视频提示词（多参 / 首帧两套协议，时长按模型能力注入）', order: 7 },
   'inference-directive': { label: '推理约束段', description: '拼在推理模板之后的约束块，按分镜实际情况条件注入', order: 8 },
-  tti:              { label: 'TTI 直拼',     description: '文生图模型的直接输入提示词（定妆 / 场景图等）',       order: 9 },
-  itv:              { label: 'ITV 直拼',     description: '图生视频模型的直接输入提示词（分镜视频等）',          order: 10 },
+  'genre-card':     { label: '风格标签卡',   description: '题材 / 调性 / 前提装置卡，按项目标签注入到剧情与台词动作推理', order: 9 },
+  tti:              { label: 'TTI 直拼',     description: '文生图模型的直接输入提示词（定妆 / 场景图等）',       order: 10 },
+  itv:              { label: 'ITV 直拼',     description: '图生视频模型的直接输入提示词（分镜视频等）',          order: 11 },
 };
 
 // Prompt 模板接口

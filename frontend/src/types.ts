@@ -72,6 +72,7 @@ export type {
   ThemePreset,
   StorageConfig,
   ProjectMeta,
+  DramaGenreTags,
   RecentProject,
   SaveStatus,
   ProjectSaveState,

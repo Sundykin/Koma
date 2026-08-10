@@ -4,7 +4,7 @@
  * 解决各 workflow 服务重复加载数据、上下文断裂的问题。
  * 一次性加载所有实体数据和 LLM 配置，全链路共享。
  */
-import type { Character, Scene, Prop, ProjectStyleSnapshot, LLMModelConfig } from '../types';
+import type { Character, Scene, Prop, ProjectStyleSnapshot, LLMModelConfig, DramaGenreTags } from '../types';
 import type { LLMProvider } from '../providers/llm/types';
 import { createLLMProvider } from '../providers';
 import { wrapTaskBackedLLM } from '../providers/llm/TaskBackedLLMProvider';
@@ -52,6 +52,8 @@ export interface CreationContext {
   /** 项目标题与题材类型，供分镜故事板等提示词模板直接使用。 */
   projectTitle?: string;
   projectGenre?: string;
+  /** 项目三轴风格标签，注入分镜拆解与提示词推理 */
+  genreTags?: DramaGenreTags;
 
   /** LLM 配置（避免每个服务各自 setLLMConfig） */
   llmConfig: LLMModelConfig;
@@ -129,6 +131,7 @@ export async function createCreationContext(
     projectMode: normalizeProjectNarrativeMode(projectMeta?.mode),
     projectTitle: projectMeta?.title,
     projectGenre: projectMeta?.genre,
+    genreTags: projectMeta?.genreTags,
     llmConfig,
     llmProvider,
     itvDurationSpec,

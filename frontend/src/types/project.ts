@@ -37,6 +37,13 @@ export interface Project {
   thumbnail: string; // 封面图
   status: 'script' | 'storyboard' | 'generating' | 'completed'; // 项目状态
   mediaSelections?: Partial<Record<'llm' | 'tti' | 'itv' | 'tts', MediaModelSelection>>;
+  /**
+   * 短剧风格标签（三轴，项目级）。
+   * 题材决定压力从哪来、调性决定台词与镜头怎么演、前提装置决定主角比别人多什么。
+   * 三轴正交——「科幻」是题材、「搞笑」「狗血」是调性、「重生」「系统」是装置。
+   * 标签会条件注入到分镜拆解与图片 / 视频提示词推理，校准剧情推进与台词动作改写。
+   */
+  genreTags?: DramaGenreTags;
   aspectRatio?: '16:9' | '9:16'; // 项目画面比例（创建时确定，不可更改）
   stylePresetId?: string;   // 选中的全局风格 ID
   styleSnapshot?: ProjectStyleSnapshot; // 项目风格快照
@@ -129,10 +136,27 @@ export interface StorageConfig {
   version: number;        // 存储格式版本
 }
 
+export interface DramaGenreTags {
+  /** 主题材（唯一）；卡名，见 templates/genreCards */
+  genre?: string;
+  /** 辅题材，最多 2 个，只摘 1-2 条注入 */
+  subGenres?: string[];
+  /** 调性，可多个 */
+  tones?: string[];
+  /** 前提装置，可多个，可为空 */
+  premiseDevices?: string[];
+  /** 自动分析给出的判定依据，仅展示用 */
+  reason?: string;
+  /** 最近一次自动分析时间戳；用户手改后清空 */
+  analyzedAt?: number;
+}
+
 export interface ProjectMeta {
   id: string;
   title: string;
   genre: string;
+  /** 短剧风格标签（三轴）；见 DramaGenreTags */
+  genreTags?: DramaGenreTags;
   mode: 'drama' | 'narration';
   createdAt: number;
   updatedAt: number;

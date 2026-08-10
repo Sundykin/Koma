@@ -8,7 +8,8 @@ import { createLogger } from '../../store/logger';
 
 const logger = createLogger('TTSPreview');
 import {
-  Drawer, Form, Input, Tabs, Select, Button, Space,
+  Drawer, Form, Input, Tabs, Select, Button, Space, Tag,
+  App as AntApp,
   Slider,
 } from 'antd';
 import { PlayCircleOutlined, PauseCircleOutlined } from '@ant-design/icons';
@@ -18,7 +19,7 @@ import {
   type KomaTTSVoiceMeta,
 } from '../../providers/tts';
 import { getKomaTTSVoiceSampleUrl } from '../../services/komaTTSVoiceSamples';
-import type { MediaModelSelection, Project } from '../../types';
+import type { DramaGenreTags, MediaModelSelection, Project } from '../../types';
 import { ProjectMediaSelector } from './ProjectMediaSelector';
 import type { ProjectMediaCategoryKey, ProjectMediaRequirement } from './projectMediaSelectionState';
 import {
@@ -31,6 +32,7 @@ import {
   formatSpecPromptHint,
   type VideoDurationSpec,
 } from '../../providers/itv/durationSpec';
+import { listCardsOfKind } from '../../store/templates/genreCards';
 import styles from './ProjectSettingsModal.module.scss';
 
 interface ProjectSettingsModalProps {
@@ -54,12 +56,17 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
   onGoToGlobalSettings,
   itvDurationSpec,
 }) => {
+  const { message } = AntApp.useApp();
   const [form] = Form.useForm();
   const [activeTab, setActiveTab] = useState('basic');
   const [mediaSelections, setMediaSelections] = useState<
     Partial<Record<'llm' | 'tti' | 'itv' | 'tts', MediaModelSelection>>
   >({});
   const [themePresets, setThemePresets] = useState<ThemePresetCatalogItem[]>([]);
+
+  // 短剧风格标签（三轴）：项目级，注入分镜拆解与提示词推理
+  const [genreTags, setGenreTags] = useState<DramaGenreTags>({});
+  const [analyzingTags, setAnalyzingTags] = useState(false);
 
   // TTS 项目级偏好（音色 + 语速）。默认 cherry / 1.2 倍速。
   const [ttsVoiceId, setTtsVoiceId] = useState<string>('cherry');
@@ -97,6 +104,7 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
         stylePresetId: project.stylePresetId || project.styleSnapshot?.sourcePresetId || DEFAULT_THEME_PRESET_ID,
       });
       setMediaSelections(project.mediaSelections || {});
+      setGenreTags(project.genreTags || {});
       // TTS 偏好：项目里有就用项目里的；缺省 cherry + 1.2 倍速
       setTtsVoiceId(typeof project.ttsVoiceId === 'string' && project.ttsVoiceId.trim()
         ? project.ttsVoiceId.trim()
@@ -106,6 +114,34 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
         : 1.2);
     }
   }, [project, open, form]);
+
+  /** 用当前项目剧本自动判定三轴标签；结果只回填表单，保存时才落库。 */
+  const handleAnalyzeTags = useCallback(async () => {
+    if (!project?.id) return;
+    setAnalyzingTags(true);
+    try {
+      const { listEpisodes } = await import('../../store/projectStore');
+      const episodes = await listEpisodes(project.id);
+      // 取前 3 集就够判题材调性了；全集喂进去只是烧 token
+      const joined = episodes
+        .slice(0, 3)
+        .map(episode => (episode.scriptText || '').trim())
+        .filter(Boolean)
+        .join('\n\n');
+      if (!joined) {
+        message.warning('项目还没有剧本内容，无法自动分析；可以先手动选标签');
+        return;
+      }
+      const { analyzeDramaGenreTags } = await import('../../services/DramaGenreAnalysisService');
+      const analyzed = await analyzeDramaGenreTags(joined);
+      setGenreTags(analyzed);
+      message.success('风格标签分析完成，确认无误后点保存');
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : '风格标签分析失败');
+    } finally {
+      setAnalyzingTags(false);
+    }
+  }, [project?.id, message]);
 
   const handleSave = async () => {
     try {
@@ -120,6 +156,7 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
         theme: undefined,
         stylePrompt: undefined,
         mediaSelections,
+        genreTags,
         ttsVoiceId,
         ttsSpeed,
       } as Partial<Project>);
@@ -191,6 +228,18 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
       ),
     },
     {
+      key: 'genre-tags',
+      label: '风格标签',
+      children: (
+        <GenreTagsTab
+          value={genreTags}
+          onChange={setGenreTags}
+          analyzing={analyzingTags}
+          onAnalyze={handleAnalyzeTags}
+        />
+      ),
+    },
+    {
       key: 'video-prompt',
       label: '视频提示词',
       children: <VideoPromptDurationTab itvDurationSpec={itvDurationSpec} />,
@@ -233,6 +282,120 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
         items={tabItems}
       />
     </Drawer>
+  );
+};
+
+
+/* ========== 短剧风格标签 Tab ========== */
+
+interface GenreTagsTabProps {
+  value: DramaGenreTags;
+  onChange: (next: DramaGenreTags) => void;
+  analyzing: boolean;
+  onAnalyze: () => void;
+}
+
+/**
+ * 三轴标签选择。刻意不做成一个扁平多选框——「科幻」是题材、「搞笑」「狗血」是调性、
+ * 「重生」「系统」是装置，混在一起选会让用户以为它们互斥。
+ */
+const GenreTagsTab: React.FC<GenreTagsTabProps> = ({ value, onChange, analyzing, onAnalyze }) => {
+  const options = (kind: 'genre' | 'tone' | 'device') =>
+    listCardsOfKind(kind).map(card => ({
+      value: card.name,
+      label: card.aliases.length ? `${card.name}（${card.aliases.slice(0, 3).join('/')}）` : card.name,
+    }));
+
+  const patch = (next: Partial<DramaGenreTags>) =>
+    // 用户手改后清掉分析时间戳：这套标签不再是"自动判定"的结果
+    onChange({ ...value, ...next, analyzedAt: undefined });
+
+  return (
+    <>
+      <div className={styles.tabIntro}>
+        风格标签会注入到<strong>分镜拆解</strong>和<strong>图片 / 视频提示词推理</strong>：
+        题材决定压力从哪来与集尾钩子往哪长，调性决定台词语气、动作幅度与镜头节奏，
+        前提装置决定主角比别人多什么、代价是什么。三轴正交，可以组合。
+      </div>
+      <Space direction="vertical" size={16} style={{ width: '100%' }}>
+        <Button onClick={onAnalyze} loading={analyzing} block>
+          {analyzing ? '分析中…' : '按项目剧本自动分析标签'}
+        </Button>
+
+        <Form layout="vertical">
+          <Form.Item
+            label="主题材（决定压力从哪来，只能选一个）"
+            extra="按「这部戏的压力主要来自哪里」选，不要按题材词面匹配。"
+          >
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder="未设置"
+              value={value.genre}
+              options={options('genre')}
+              onChange={(genre) => patch({ genre })}
+            />
+          </Form.Item>
+
+          <Form.Item
+            label="辅题材（最多 2 个，只借 1-2 条）"
+            extra="确实存在第二套压力机制时才选；主要矛盾仍归主题材。"
+          >
+            <Select
+              mode="multiple"
+              maxCount={2}
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder="通常不用填"
+              value={value.subGenres || []}
+              options={options('genre').filter(option => option.value !== value.genre)}
+              onChange={(subGenres) => patch({ subGenres })}
+            />
+          </Form.Item>
+
+          <Form.Item label="调性（决定台词与镜头怎么演，可多选）">
+            <Select
+              mode="multiple"
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder="未设置"
+              value={value.tones || []}
+              options={options('tone')}
+              onChange={(tones) => patch({ tones })}
+            />
+          </Form.Item>
+
+          <Form.Item
+            label="前提装置（主角比别人多什么，可多选、可为空）"
+            extra="重生 / 系统 / 马甲这类不是题材，是叠加在题材之上的一层。"
+          >
+            <Select
+              mode="multiple"
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder="没有就留空"
+              value={value.premiseDevices || []}
+              options={options('device')}
+              onChange={(premiseDevices) => patch({ premiseDevices })}
+            />
+          </Form.Item>
+        </Form>
+
+        {value.reason && (
+          <div>
+            <Tag color="blue">{value.analyzedAt ? '自动判定依据' : '上次判定依据（已手改）'}</Tag>
+            <div style={{ marginTop: 6, color: 'var(--token-text-secondary)' }}>{value.reason}</div>
+          </div>
+        )}
+        <div style={{ color: 'var(--token-text-tertiary)', fontSize: 12 }}>
+          每张卡的正文可以在「设置 → Prompt 模板 → 风格标签卡」里直接改。
+        </div>
+      </Space>
+    </>
   );
 };
 

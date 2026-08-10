@@ -18,6 +18,7 @@ import { appendStyleRequirement, type StyleSnapshotLike } from '../utils/promptN
 
 import { clampDurationToSpec, formatSpecPromptHint } from '../providers/itv/durationSpec';
 import { estimateShotSpeechDuration } from './shotFreshness';
+import { buildGenreToneDirective } from './dramaGenreTags';
 import {
   buildShotBreakdownDialogueModeDirective,
   formatProjectNarrativeMode,
@@ -501,7 +502,9 @@ export class ShotAnalysisService {
       durationConstraint: options.durationConstraint,
       durationDefault: options.durationDefault,
     });
-    const styledPrompt = this.appendStyleRequirement(resolvedPrompt.prompt);
+    const styledPrompt = await this.appendGenreToneDirective(
+      this.appendStyleRequirement(resolvedPrompt.prompt),
+    );
 
     const systemPrompt = [
       '你是一个专业的影视分镜师。把剧本拆解成真正的分镜：每镜写一段专业的分镜脚本',
@@ -609,7 +612,9 @@ export class ShotAnalysisService {
       projectNarrativeMode,
       dialogueModeDirective,
     });
-    const styledPrompt = this.appendStyleRequirement(resolvedPrompt.prompt);
+    const styledPrompt = await this.appendGenreToneDirective(
+      this.appendStyleRequirement(resolvedPrompt.prompt),
+    );
 
     const resolvedSystemPrompt = await resolvePromptTemplate('shot_breakdown_system', {
       durationConstraint,
@@ -763,6 +768,16 @@ export class ShotAnalysisService {
       }
     }
     throw new Error('分镜 LLM 输出解析失败');
+  }
+
+  /**
+   * 把项目的三轴风格标签拼到拆解提示词后面。
+   * 题材卡在这一步起的作用最大——它决定每段先给什么结果、集尾钩子往哪长。
+   * 没有标签或解析失败时原样返回，不影响拆解。
+   */
+  private async appendGenreToneDirective(prompt: string): Promise<string> {
+    const directive = await buildGenreToneDirective(this.ctx.genreTags);
+    return directive ? `${prompt}\n\n${directive}` : prompt;
   }
 
   private appendStyleRequirement(prompt: string): string {

@@ -1009,3 +1009,53 @@ describe('上一分镜视频延长承接', () => {
     expect(result).not.toContain('@previous_video_clip');
   });
 });
+
+describe('风格标签注入推理', () => {
+  it('项目定了标签时，视频推理输入里带上题材 / 调性 / 装置卡', async () => {
+    const projectStore = await import('../store/projectStore');
+    vi.mocked(projectStore.loadScenes).mockResolvedValue([]);
+    vi.mocked(projectStore.loadProps).mockResolvedValue([]);
+    vi.mocked(projectStore.loadEpisodeShots).mockResolvedValue([]);
+
+    const { ShotPromptService } = await import('./ShotPromptService');
+    const chat = vi.fn(async (_m: ChatMessage[]) => '画面描述：x\n精确时长：10秒');
+    const service = new ShotPromptService(createContext({
+      genreTags: { genre: '科幻未来', tones: ['搞笑'], premiseDevices: ['重生'] },
+      llmProvider: { chat, stream: vi.fn() } as unknown as CreationContext['llmProvider'],
+    }));
+    await service.generateDualShotPrompts(
+      createStoryboardShot({ id: 's', imageMode: 'normal', videoMode: 'multi-ref', duration: 10 }),
+      [],
+      '',
+      { image: false, video: true },
+    );
+
+    const userMessage = chat.mock.calls[0]?.[0].find(m => m.role === 'user')?.content ?? '';
+    expect(userMessage).toContain('【风格标签');
+    expect(userMessage).toContain('## 主题材：科幻未来');
+    expect(userMessage).toContain('## 调性：搞笑');
+    expect(userMessage).toContain('## 前提装置：重生');
+  });
+
+  it('没有标签时完全不注入', async () => {
+    const projectStore = await import('../store/projectStore');
+    vi.mocked(projectStore.loadScenes).mockResolvedValue([]);
+    vi.mocked(projectStore.loadProps).mockResolvedValue([]);
+    vi.mocked(projectStore.loadEpisodeShots).mockResolvedValue([]);
+
+    const { ShotPromptService } = await import('./ShotPromptService');
+    const chat = vi.fn(async (_m: ChatMessage[]) => '画面描述：x\n精确时长：10秒');
+    const service = new ShotPromptService(createContext({
+      llmProvider: { chat, stream: vi.fn() } as unknown as CreationContext['llmProvider'],
+    }));
+    await service.generateDualShotPrompts(
+      createStoryboardShot({ id: 's', imageMode: 'normal', videoMode: 'multi-ref', duration: 10 }),
+      [],
+      '',
+      { image: false, video: true },
+    );
+
+    const userMessage = chat.mock.calls[0]?.[0].find(m => m.role === 'user')?.content ?? '';
+    expect(userMessage).not.toContain('【风格标签');
+  });
+});

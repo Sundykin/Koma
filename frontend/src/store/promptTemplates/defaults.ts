@@ -6,6 +6,7 @@ import type { PromptTemplateType, PromptTemplate } from './types';
 import { variable } from './variables';
 import { VIDEO_REASONING_TEMPLATE_CONTENT } from '../templates/videoReasoning';
 import { SHOT_DIRECTIVE_TEMPLATE_CONTENT } from '../templates/directives';
+import { DRAMA_GENRE_ANALYSIS_TEMPLATE, GENRE_CARD_CONTENT } from '../templates/genreCards';
 
 export const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
   // ========== 全局约束模板（自动注入到 TTI / ITV 模板） ==========
@@ -1682,6 +1683,279 @@ BGM：{背景音乐风格}
 
 现在请解析上面的【小说原文】，输出分场剧本。`,
     variables: [variable('script')],
+    isCustom: false,
+  },
+
+  drama_genre_analysis: {
+    id: 'drama_genre_analysis',
+    category: 'analysis',
+    name: '短剧风格标签分析',
+    description: '从剧本 / 小说判定三轴风格标签（题材 / 调性 / 前提装置），输出 JSON 供项目设置回填',
+    template: DRAMA_GENRE_ANALYSIS_TEMPLATE,
+    variables: [
+      variable('script'),
+      variable('genreOptions', { label: '可选题材', description: '题材卡清单，由代码按卡片注册表生成。', format: '顿号分隔' }),
+      variable('toneOptions', { label: '可选调性', description: '调性卡清单。', format: '顿号分隔' }),
+      variable('deviceOptions', { label: '可选前提装置', description: '装置卡清单。', format: '顿号分隔' }),
+    ],
+    isCustom: false,
+  },
+
+  shot_directive_genre_tone: {
+    id: 'shot_directive_genre_tone',
+    category: 'inference-directive',
+    name: '推理约束 · 风格标签',
+    description: '项目定了风格标签时注入：把题材卡 / 调性卡 / 装置卡拼进推理输入，校准剧情推进与台词动作',
+    template: SHOT_DIRECTIVE_TEMPLATE_CONTENT.shot_directive_genre_tone,
+    variables: [
+      variable('genreSection', { label: '题材卡段落', description: '主题材整卡 + 辅题材摘录；无标签时为空串。', format: '多行文本', required: false }),
+      variable('toneSection', { label: '调性卡段落', description: '命中的调性卡；无则空串。', format: '多行文本', required: false }),
+      variable('deviceSection', { label: '装置卡段落', description: '命中的前提装置卡；无则空串。', format: '多行文本', required: false }),
+    ],
+    isCustom: false,
+  },
+
+  // ========== 短剧风格标签卡 ==========
+  //
+  // 由项目的三轴标签决定注入哪几张；卡片正文在 PromptStudio 里可直接改。
+
+  genre_card_失忆: {
+    id: 'genre_card_失忆',
+    category: 'genre-card',
+    name: '装置卡 · 失忆',
+    description: '前提装置卡：主角比别人多拥有什么，以及它的边界与代价',
+    template: GENRE_CARD_CONTENT.genre_card_失忆,
+    variables: [],
+    isCustom: false,
+  },
+
+  genre_card_穿越: {
+    id: 'genre_card_穿越',
+    category: 'genre-card',
+    name: '装置卡 · 穿越',
+    description: '前提装置卡：主角比别人多拥有什么，以及它的边界与代价',
+    template: GENRE_CARD_CONTENT.genre_card_穿越,
+    variables: [],
+    isCustom: false,
+  },
+
+  genre_card_系统: {
+    id: 'genre_card_系统',
+    category: 'genre-card',
+    name: '装置卡 · 系统',
+    description: '前提装置卡：主角比别人多拥有什么，以及它的边界与代价',
+    template: GENRE_CARD_CONTENT.genre_card_系统,
+    variables: [],
+    isCustom: false,
+  },
+
+  genre_card_读心: {
+    id: 'genre_card_读心',
+    category: 'genre-card',
+    name: '装置卡 · 读心',
+    description: '前提装置卡：主角比别人多拥有什么，以及它的边界与代价',
+    template: GENRE_CARD_CONTENT.genre_card_读心,
+    variables: [],
+    isCustom: false,
+  },
+
+  genre_card_重生: {
+    id: 'genre_card_重生',
+    category: 'genre-card',
+    name: '装置卡 · 重生',
+    description: '前提装置卡：主角比别人多拥有什么，以及它的边界与代价',
+    template: GENRE_CARD_CONTENT.genre_card_重生,
+    variables: [],
+    isCustom: false,
+  },
+
+  genre_card_马甲: {
+    id: 'genre_card_马甲',
+    category: 'genre-card',
+    name: '装置卡 · 马甲',
+    description: '前提装置卡：主角比别人多拥有什么，以及它的边界与代价',
+    template: GENRE_CARD_CONTENT.genre_card_马甲,
+    variables: [],
+    isCustom: false,
+  },
+
+  genre_card_亲子隐秘: {
+    id: 'genre_card_亲子隐秘',
+    category: 'genre-card',
+    name: '题材卡 · 亲子隐秘',
+    description: '题材卡：压力来源 / 人物策略与信息权限 / 情绪落点 / 场面颗粒 / 集尾钩子 / 禁止漂移',
+    template: GENRE_CARD_CONTENT.genre_card_亲子隐秘,
+    variables: [],
+    isCustom: false,
+  },
+
+  genre_card_仙侠修真: {
+    id: 'genre_card_仙侠修真',
+    category: 'genre-card',
+    name: '题材卡 · 仙侠修真',
+    description: '题材卡：压力来源 / 人物策略与信息权限 / 情绪落点 / 场面颗粒 / 集尾钩子 / 禁止漂移',
+    template: GENRE_CARD_CONTENT.genre_card_仙侠修真,
+    variables: [],
+    isCustom: false,
+  },
+
+  genre_card_动作任务: {
+    id: 'genre_card_动作任务',
+    category: 'genre-card',
+    name: '题材卡 · 动作任务',
+    description: '题材卡：压力来源 / 人物策略与信息权限 / 情绪落点 / 场面颗粒 / 集尾钩子 / 禁止漂移',
+    template: GENRE_CARD_CONTENT.genre_card_动作任务,
+    variables: [],
+    isCustom: false,
+  },
+
+  genre_card_古装权谋: {
+    id: 'genre_card_古装权谋',
+    category: 'genre-card',
+    name: '题材卡 · 古装权谋',
+    description: '题材卡：压力来源 / 人物策略与信息权限 / 情绪落点 / 场面颗粒 / 集尾钩子 / 禁止漂移',
+    template: GENRE_CARD_CONTENT.genre_card_古装权谋,
+    variables: [],
+    isCustom: false,
+  },
+
+  genre_card_复仇打脸: {
+    id: 'genre_card_复仇打脸',
+    category: 'genre-card',
+    name: '题材卡 · 复仇打脸',
+    description: '题材卡：压力来源 / 人物策略与信息权限 / 情绪落点 / 场面颗粒 / 集尾钩子 / 禁止漂移',
+    template: GENRE_CARD_CONTENT.genre_card_复仇打脸,
+    variables: [],
+    isCustom: false,
+  },
+
+  genre_card_家庭关系: {
+    id: 'genre_card_家庭关系',
+    category: 'genre-card',
+    name: '题材卡 · 家庭关系',
+    description: '题材卡：压力来源 / 人物策略与信息权限 / 情绪落点 / 场面颗粒 / 集尾钩子 / 禁止漂移',
+    template: GENRE_CARD_CONTENT.genre_card_家庭关系,
+    variables: [],
+    isCustom: false,
+  },
+
+  genre_card_悬疑规则: {
+    id: 'genre_card_悬疑规则',
+    category: 'genre-card',
+    name: '题材卡 · 悬疑规则',
+    description: '题材卡：压力来源 / 人物策略与信息权限 / 情绪落点 / 场面颗粒 / 集尾钩子 / 禁止漂移',
+    template: GENRE_CARD_CONTENT.genre_card_悬疑规则,
+    variables: [],
+    isCustom: false,
+  },
+
+  genre_card_生活流: {
+    id: 'genre_card_生活流',
+    category: 'genre-card',
+    name: '题材卡 · 生活流',
+    description: '题材卡：压力来源 / 人物策略与信息权限 / 情绪落点 / 场面颗粒 / 集尾钩子 / 禁止漂移',
+    template: GENRE_CARD_CONTENT.genre_card_生活流,
+    variables: [],
+    isCustom: false,
+  },
+
+  genre_card_科幻未来: {
+    id: 'genre_card_科幻未来',
+    category: 'genre-card',
+    name: '题材卡 · 科幻未来',
+    description: '题材卡：压力来源 / 人物策略与信息权限 / 情绪落点 / 场面颗粒 / 集尾钩子 / 禁止漂移',
+    template: GENRE_CARD_CONTENT.genre_card_科幻未来,
+    variables: [],
+    isCustom: false,
+  },
+
+  genre_card_职场喜剧: {
+    id: 'genre_card_职场喜剧',
+    category: 'genre-card',
+    name: '题材卡 · 职场喜剧',
+    description: '题材卡：压力来源 / 人物策略与信息权限 / 情绪落点 / 场面颗粒 / 集尾钩子 / 禁止漂移',
+    template: GENRE_CARD_CONTENT.genre_card_职场喜剧,
+    variables: [],
+    isCustom: false,
+  },
+
+  genre_card_豪门婚恋: {
+    id: 'genre_card_豪门婚恋',
+    category: 'genre-card',
+    name: '题材卡 · 豪门婚恋',
+    description: '题材卡：压力来源 / 人物策略与信息权限 / 情绪落点 / 场面颗粒 / 集尾钩子 / 禁止漂移',
+    template: GENRE_CARD_CONTENT.genre_card_豪门婚恋,
+    variables: [],
+    isCustom: false,
+  },
+
+  genre_card_身份错位: {
+    id: 'genre_card_身份错位',
+    category: 'genre-card',
+    name: '题材卡 · 身份错位',
+    description: '题材卡：压力来源 / 人物策略与信息权限 / 情绪落点 / 场面颗粒 / 集尾钩子 / 禁止漂移',
+    template: GENRE_CARD_CONTENT.genre_card_身份错位,
+    variables: [],
+    isCustom: false,
+  },
+
+  genre_card_悬疑压抑: {
+    id: 'genre_card_悬疑压抑',
+    category: 'genre-card',
+    name: '调性卡 · 悬疑压抑',
+    description: '调性卡：台词语气、动作幅度、节奏、镜头取向与禁止漂移',
+    template: GENRE_CARD_CONTENT.genre_card_悬疑压抑,
+    variables: [],
+    isCustom: false,
+  },
+
+  genre_card_搞笑: {
+    id: 'genre_card_搞笑',
+    category: 'genre-card',
+    name: '调性卡 · 搞笑',
+    description: '调性卡：台词语气、动作幅度、节奏、镜头取向与禁止漂移',
+    template: GENRE_CARD_CONTENT.genre_card_搞笑,
+    variables: [],
+    isCustom: false,
+  },
+
+  genre_card_治愈: {
+    id: 'genre_card_治愈',
+    category: 'genre-card',
+    name: '调性卡 · 治愈',
+    description: '调性卡：台词语气、动作幅度、节奏、镜头取向与禁止漂移',
+    template: GENRE_CARD_CONTENT.genre_card_治愈,
+    variables: [],
+    isCustom: false,
+  },
+
+  genre_card_燃向: {
+    id: 'genre_card_燃向',
+    category: 'genre-card',
+    name: '调性卡 · 燃向',
+    description: '调性卡：台词语气、动作幅度、节奏、镜头取向与禁止漂移',
+    template: GENRE_CARD_CONTENT.genre_card_燃向,
+    variables: [],
+    isCustom: false,
+  },
+
+  genre_card_狗血: {
+    id: 'genre_card_狗血',
+    category: 'genre-card',
+    name: '调性卡 · 狗血',
+    description: '调性卡：台词语气、动作幅度、节奏、镜头取向与禁止漂移',
+    template: GENRE_CARD_CONTENT.genre_card_狗血,
+    variables: [],
+    isCustom: false,
+  },
+
+  genre_card_致郁: {
+    id: 'genre_card_致郁',
+    category: 'genre-card',
+    name: '调性卡 · 致郁',
+    description: '调性卡：台词语气、动作幅度、节奏、镜头取向与禁止漂移',
+    template: GENRE_CARD_CONTENT.genre_card_致郁,
+    variables: [],
     isCustom: false,
   },
 

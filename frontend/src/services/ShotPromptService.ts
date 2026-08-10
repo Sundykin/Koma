@@ -20,6 +20,7 @@ import type { StyleSnapshotLike } from '../utils/promptNormalize';
 import { runWithTask } from './taskRunner';
 import type { TaskSubType } from './TaskManager';
 import { usesPreviousVideoExtend } from './shotContinuity';
+import { buildGenreToneDirective } from './dramaGenreTags';
 import {
   PREVIOUS_VIDEO_LABEL,
   PREVIOUS_VIDEO_MENTION,
@@ -359,9 +360,13 @@ export class ShotPromptService {
       referenceBundle,
     );
 
+    const imageGenreToneDirective = await buildGenreToneDirective(this.ctx.genreTags);
     const result = await this.ctx.llmProvider.chat([
       { role: 'system', content: systemPrompt },
-      { role: 'user', content: `${prompt}\n\n${mappingSchemaNote}` },
+      {
+        role: 'user',
+        content: [prompt, mappingSchemaNote, imageGenreToneDirective].filter(Boolean).join('\n\n'),
+      },
     ]);
 
     // 清理结果
@@ -461,6 +466,7 @@ export class ShotPromptService {
       tailFrameContinuityDirective,
       videoExtendDirective,
       voiceMentionDirective,
+      genreToneDirective,
       finalOutputBoundary,
     ] = await Promise.all([
       buildMappingSchemaNote(shotCharacters, shotScenes, shotProps, referenceBundle),
@@ -468,6 +474,8 @@ export class ShotPromptService {
       buildTailFrameContinuityDirective(referenceBundle),
       buildVideoExtendDirective(shot, adjacency.prev1),
       buildVoiceMentionDirective(shotCharacters),
+      // 风格标签：题材校准剧情推进，调性校准台词语气 / 动作幅度 / 镜头节奏
+      buildGenreToneDirective(this.ctx.genreTags),
       resolveDirective('shot_directive_output_boundary', {
         narrativeModeRule: this.ctx.projectMode === 'drama'
           ? '剧情模式下，第一人称叙述 / 转述句需要改写成真实可拍剧情和少量正确人称对白，禁止把原叙述句逐字塞进对白或旁白。'
@@ -499,6 +507,7 @@ export class ShotPromptService {
           tailFrameContinuityDirective,
           videoExtendDirective,
           voiceMentionDirective,
+          genreToneDirective,
           finalOutputBoundary,
         ]
           .filter(Boolean)

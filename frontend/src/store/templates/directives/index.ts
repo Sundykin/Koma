@@ -14,6 +14,7 @@ import spatialAnchored from './shot_directive_spatial_anchored.md?raw';
 import spatialMultiRef from './shot_directive_spatial_multiref.md?raw';
 import tailFrame from './shot_directive_tail_frame.md?raw';
 import videoExtend from './shot_directive_video_extend.md?raw';
+import genreTone from './shot_directive_genre_tone.md?raw';
 import voiceMention from './shot_directive_voice_mention.md?raw';
 import outputBoundary from './shot_directive_output_boundary.md?raw';
 
@@ -23,6 +24,7 @@ export const SHOT_DIRECTIVE_TEMPLATE_CONTENT = {
   shot_directive_spatial_multiref: spatialMultiRef,
   shot_directive_tail_frame: tailFrame,
   shot_directive_video_extend: videoExtend,
+  shot_directive_genre_tone: genreTone,
   shot_directive_voice_mention: voiceMention,
   shot_directive_output_boundary: outputBoundary,
 } as const;

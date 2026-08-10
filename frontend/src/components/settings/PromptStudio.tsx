@@ -224,7 +224,7 @@ export const PromptStudio: React.FC = () => {
     const groups: Record<PromptTemplateCategory, PromptTemplate[]> = {
       global: [], system: [], script: [], analysis: [], extraction: [],
       tweet: [], 'inference-image': [], 'inference-video': [],
-      'inference-directive': [], tti: [], itv: [],
+      'inference-directive': [], 'genre-card': [], tti: [], itv: [],
     };
     for (const t of Object.values(templates)) {
       if (lower) {
