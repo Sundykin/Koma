@@ -2,14 +2,13 @@
  * AI 剧本生成器
  * 使用 LLM 生成完整剧本
  */
-import type { AppSettings, Character, Scene } from '../types';
+import type { AppSettings } from '../types';
 import { getProjectLLMProvider } from '../providers';
 import type { LLMCallOptions, LLMStreamChunkHandler } from '../providers/llm/types';
 import { resolvePromptTemplate } from '../store/promptTemplates';
 import { logLLMCall } from '../store/aiCallLogger';
 import { createLogger } from '../store/logger';
 import { createAITraceId, describeLLMProviderTransport } from '../utils/aiTrace';
-import { parseLLMJSON } from '../utils/llmJsonParser';
 import type { StyleSnapshotLike } from '../utils/promptNormalize';
 
 const logger = createLogger('ScriptGenerator');
@@ -22,35 +21,6 @@ interface StyleContext {
 type ScriptLLMCallOptions = LLMCallOptions & StyleContext & {
   onChunk?: LLMStreamChunkHandler;
 };
-
-interface ScriptGeneratorParams {
-  settings: AppSettings;
-  topic: string;
-  genre: string;
-  characters?: Character[];
-  scenes?: Scene[];
-  episodeCount?: number;
-  styleSnapshot?: StyleSnapshotLike;
-  project?: { styleSnapshot?: StyleSnapshotLike };
-}
-
-interface GeneratedScript {
-  title: string;
-  episodes: {
-    number: number;
-    title: string;
-    content: string;
-  }[];
-}
-
-interface ScriptFromIdeaParams {
-  settings: AppSettings;
-  idea: string;
-  style: string;
-  duration: string;
-  styleSnapshot?: StyleSnapshotLike;
-  project?: { styleSnapshot?: StyleSnapshotLike };
-}
 
 // 随机创意接口（保留兼容）
 interface RandomIdea {
@@ -199,39 +169,6 @@ export async function generateRandomScriptWithMetadata(
 }
 
 /**
- * 从创意生成剧本（使用 Prompt 模板）
- */
-export async function generateScriptFromIdea(
-  params: ScriptFromIdeaParams,
-  onProgress: (progress: number, step?: string) => void
-): Promise<string> {
-  const { idea, style, duration } = params;
-  const provider = await getProjectLLMProvider();
-  if (!provider) {
-    throw new Error('未配置 LLM 模型');
-  }
-
-  onProgress(5, '加载 Prompt 模板...');
-  const styleSuffix = getResolvedLLMStyleSuffix(params);
-  const effectiveStyle = styleSuffix || style;
-
-  const resolvedPrompt = await resolvePromptTemplate('script_generation', {
-    idea,
-    style: effectiveStyle,
-    duration,
-  });
-  const finalPrompt = resolvedPrompt.prompt;
-
-  onProgress(10, '正在生成剧本...');
-  const response = await provider.chat([
-    { role: 'user', content: finalPrompt },
-  ]);
-
-  onProgress(100, '剧本生成完成');
-  return response;
-}
-
-/**
  * 润色剧本（使用 Prompt 模板）
  */
 export async function polishScript(
@@ -270,86 +207,7 @@ export async function polishScript(
   return response;
 }
 
-/**
- * 生成完整剧本
- */
-export async function generateScript(
-  params: ScriptGeneratorParams,
-  onProgress: (progress: number, step?: string) => void
-): Promise<GeneratedScript> {
-  const { topic, genre, characters, scenes, episodeCount = 1 } = params;
-
-  const provider = await getProjectLLMProvider();
-  if (!provider) {
-    throw new Error('未配置 LLM 模型');
-  }
-
-  // 构建角色描述
-  const characterDesc = characters?.length
-    ? characters.map((c) => `- ${c.name}: ${c.prompt || c.name}`).join('\n')
-    : '（由AI自动创建角色）';
-
-  // 构建场景描述
-  const sceneDesc = scenes?.length
-    ? scenes.map((s) => `- ${s.name}: ${s.prompt || s.name}`).join('\n')
-    : '（由AI自动创建场景）';
-
-  const prompt = `你是一位专业编剧。请根据以下信息创作一个短剧剧本：
-
-主题/故事线索：${topic}
-类型/题材：${genre}
-集数：${episodeCount}
-
-角色设定：
-${characterDesc}
-
-场景设定：
-${sceneDesc}
-
-要求：
-1. 每集剧本必须包含场景描述、角色对话和动作指示
-2. 使用标准剧本格式：
-   - 场景标题格式：# 场景名 - 时间
-   - 角色名单独一行
-   - 台词用引号包裹
-   - 动作/情绪用圆括号标注
-3. 每集约500-800字
-4. 故事要有起承转合，情节紧凑
-
-请以JSON格式返回：
-{
-  "title": "剧本标题",
-  "episodes": [
-    {
-      "number": 1,
-      "title": "第一集标题",
-      "content": "剧本内容..."
-    }
-  ]
-}`;
-
-  onProgress(10, '正在构思剧本...');
-
-  const finalPrompt = appendStyleRequirement(prompt, params);
-
-  const response = await provider.chat([
-    {
-      role: 'user',
-      content: finalPrompt,
-    },
-  ]);
-
-  onProgress(80, '解析剧本结构...');
-
-  const script: GeneratedScript = parseLLMJSON<GeneratedScript>(response);
-  onProgress(100, '剧本生成完成');
-
-  return script;
-}
-
 export default {
-  generateScript,
-  generateScriptFromIdea,
   generateRandomIdea,
   generateRandomScript,
   generateRandomScriptWithMetadata,

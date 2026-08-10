@@ -172,42 +172,6 @@ export const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     isCustom: false,
   },
 
-  script_generation: {
-    id: 'script_generation',
-    category: 'script',
-    name: '剧本生成',
-    description: '从创意/灵感生成完整剧本',
-    template: `你是一个专业的编剧，请根据以下创意生成一个短视频剧本。
-
-创意：{{idea}}
-风格：{{style}}
-时长：约 {{duration}} 分钟
-
-要求：
-1. 剧本包含场景描述、角色对话、动作指示
-2. 情节紧凑，有明确的开端、发展、高潮、结局
-3. 对话自然生动，符合角色性格
-4. 场景转换流畅，视觉感强
-
-请按以下格式输出：
-
-## 剧本标题
-
-### 场景 1：[场景名称]
-[场景描述]
-
-**角色A**：对话内容
-（动作指示）
-
-**角色B**：对话内容
-...
-
-### 场景 2：...
-`,
-    variables: [variable('idea'), variable('style'), variable('duration')],
-    isCustom: false,
-  },
-
   script_polish: {
     id: 'script_polish',
     category: 'script',
@@ -1733,30 +1697,6 @@ BGM：{背景音乐风格}
     isCustom: false,
   },
 
-  tti_shot_image: {
-    id: 'tti_shot_image',
-    category: 'tti',
-    name: '分镜图片',
-    description: '生成分镜预览图',
-    template: '{{stylePrefix}}, storyboard still frame and video anchor frame, {{shotType}}, objective visible image only, use the structured description exactly: {{description}}, visible emotion cues: {{emotion}}, clear foreground / midground / background layering, readable character silhouettes and hand poses, stable spatial continuity for later video generation, cinematic lighting with explicit light direction and shadow shape, detailed environment, high quality, 4k, do not render ordinary dialogue as text unless the description explicitly asks for subtitle / system bubble / screen text, art style lock: render in the SAME art style as the project character / scene / prop reference images already established (color palette, lighting, brush/line work, textures, atmosphere, rendering technique); do NOT drift toward photorealism / live-action / a different aesthetic, do NOT change the established art style of any character, scene or prop visible in the shot',
-    variables: [
-      variable('stylePrefix'),
-      variable('description', {
-        description: '当前镜头的客观可见事实，应包含人物外观、姿态、动作瞬间、空间关系、道具状态与环境细节。',
-      }),
-      variable('shotType', {
-        label: '镜头景别',
-        description: '当前静帧使用的景别或机位短语。',
-        format: '短语',
-        example: 'medium close-up, eye-level',
-      }),
-      variable('emotion', {
-        description: '情绪的可见线索，应转化为表情、肢体张力、光照或色调特征。',
-      }),
-    ],
-    isCustom: false,
-  },
-
   tti_grid_shot_image: {
     id: 'tti_grid_shot_image',
     category: 'tti',
@@ -1822,30 +1762,6 @@ Strict rendering rule: render short production-board notes, numbered camera mark
   },
 
   // ========== ITV 视频生成模板 ==========
-
-  itv_shot_video: {
-    id: 'itv_shot_video',
-    category: 'itv',
-    name: '分镜视频',
-    description: '生成分镜动态视频',
-    template: '{{stylePrefix}}, objective motion picture prompt, {{description}}, shot scale: {{shotType}}, camera movement: {{cameraMovement}}, total duration {{durationSeconds}} seconds, {{motionTimeline}}, cinematic continuity, high quality video',
-    variables: [
-      variable('stylePrefix'),
-      variable('description', {
-        description: '视频镜头中的主体、环境和动作基础状态，只包含当前镜头可见事实。',
-      }),
-      variable('shotType', {
-        label: '镜头景别',
-        description: '视频镜头使用的景别短语。',
-        format: '短语',
-        example: 'wide shot',
-      }),
-      variable('cameraMovement'),
-      variable('durationSeconds'),
-      variable('motionTimeline'),
-    ],
-    isCustom: false,
-  },
 
   itv_character_motion: {
     id: 'itv_character_motion',

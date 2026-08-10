@@ -14,7 +14,6 @@ export type PromptTemplateType =
   | 'script_analysis_system'   // 剧本解析的系统提示
   // LLM 任务模板
   | 'random_script_generation' // 随机剧本生成（一步完成）
-  | 'script_generation'        // 剧本生成
   | 'script_polish'            // 剧本润色
   | 'shot_breakdown'           // 分镜拆解
   | 'shot_breakdown_drama'     // 剧情模式分镜拆解（小说/结构化剧本 → 真正的分镜描述 + 声音行）
@@ -39,12 +38,10 @@ export type PromptTemplateType =
   | 'tti_character_costume'    // 角色定妆照（三视图）
   | 'tti_scene_preview'        // 场景预览图
   | 'tti_prop_reference'       // 道具参考图
-  | 'tti_shot_image'           // 分镜图片
   | 'tti_grid_shot_image'      // 九宫格分镜图片（3×3网格）
   | 'tti_grid_4_shot_image'    // 四宫格分镜图片（2×2网格）
   | 'tti_storyboard_shot_image' // 故事板分镜图片（电影级制作方案板）
   // ITV 视频生成模板
-  | 'itv_shot_video'           // 分镜视频
   | 'itv_character_motion'     // 角色动态视频
   | 'itv_prop_motion';         // 道具动态视频
 

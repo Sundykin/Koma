@@ -663,6 +663,24 @@ describe('ShotPromptService 视频提示词的上一镜尾帧承接', () => {
     expect(result).toBe(llmOutput);
   });
 
+  it('首行之后重复的尾帧映射符降级成纯文本，只保留一处引用', async () => {
+    const { result, userMessage } = await runWithTailFrame([
+      '承接上一分镜：@previous_tail_frame 上一分镜尾帧 —— 叶赎坐于桌边。',
+      '画面描述：承接 @previous_tail_frame 上一分镜尾帧，破木屋内部。',
+      '角色提示词：承接 @previous_tail_frame 上一分镜尾帧 的坐姿。',
+      '呼应提示词：上分镜末帧 @previous_tail_frame 为两人对峙。',
+      '精确时长：10秒',
+    ].join('\n'));
+
+    expect(result.match(/@previous_tail_frame/g)).toHaveLength(1);
+    expect(result.split('\n')[0]).toBe('承接上一分镜：@previous_tail_frame 上一分镜尾帧 —— 叶赎坐于桌边。');
+    expect(result).toContain('画面描述：承接 上一镜尾帧，破木屋内部。');
+    expect(result).toContain('角色提示词：承接 上一镜尾帧 的坐姿。');
+    expect(result).toContain('呼应提示词：上分镜末帧 上一镜尾帧 为两人对峙。');
+    // 推理侧也要明说只写一次，别等兜底去删
+    expect(userMessage).toContain('全文只允许出现这一次');
+  });
+
   it('未绑定尾帧的分镜不注入承接约束，也不改写推理结果', async () => {
     const { result, userMessage } = await runVideoPrompt({
       shot: createVideoShot(),

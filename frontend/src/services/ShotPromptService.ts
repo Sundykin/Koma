@@ -999,21 +999,13 @@ function formatCharacterIdentityWithVoice(character: Character): string {
 function buildVoiceMentionDirective(shotCharacters: Character[]): string {
   const voiced = shotCharacters.filter(hasBoundVoice);
   if (!voiced.length) return '';
-  const lines: string[] = [];
-  lines.push('【音色映射约束（本分镜角色已绑定音色）】');
-  lines.push('');
-  lines.push('`@char_<id>` 只代表角色的**形象参考图**，不含声音。角色的声音由复合映射符 `@char_<id>-音色` 指定，两者必须同时出现，下游才能把台词切到正确音色。');
-  lines.push('');
-  lines.push('1) `角色提示词` 里每个已绑定音色的角色，首次出现时必须写成完整形式：`@char_<id> <角色名> 音色 @char_<id>-音色`。');
-  lines.push('2) `对白提示词` 里该角色的台词前也要标注 `@char_<id>-音色`，让每句台词都能对应到音色。');
-  lines.push('3) `@char_<id>-音色` 是**独立映射符**，不要写成 `@char_<id> 的音色`、`音色：<音色名>` 或 `@Audio N`；后面要跟空格或标点，不要直接连汉字。');
-  lines.push('4) 没有列在下面清单里的角色不要编造音色映射符。');
-  lines.push('');
-  lines.push('本分镜已绑定音色的角色：');
-  for (const character of voiced) {
-    lines.push(`- \`${formatCharacterIdentityWithVoice(character)}\``);
-  }
-  return lines.join('\n');
+  return [
+    '【音色映射约束（本分镜角色已绑定音色）】',
+    '`@char_<id>` 只是形象参考图，不含声音；声音由复合映射符 `@char_<id>-音色` 指定，两者都写全，下游才能把台词切到正确音色。',
+    '1) `角色提示词` 里每个已绑定音色的角色**首次出现**时写完整形式 `@char_<id> <角色名> 音色 @char_<id>-音色`；`对白提示词` 里该角色的台词前再标注一次 `@char_<id>-音色`。其余位置只写 `@char_<id> <角色名>`，不要反复带音色符。',
+    '2) 音色符不要写成 `@char_<id> 的音色` / `音色：<音色名>` / `@Audio N`；后面跟空格或标点，不要直接连汉字。清单外的角色不要编造音色符。',
+    `已绑定音色：${voiced.map(c => `\`${formatCharacterIdentityWithVoice(c)}\``).join('；')}`,
+  ].join('\n');
 }
 
 /**
@@ -1223,24 +1215,43 @@ function findPreviousTailFrameItem(bundle: ShotReferenceBundle): ShotReferenceIt
  * 列出的对象"，模型反而会主动回避 `@previous_tail_frame`，结果推理出来的视频词
  * 完全不承接上一镜（人物站位 / 朝向 / 动作末态被重置成新的起始状态）。
  *
- * 这里显式要求：正文第一行写成 `承接上一分镜：@previous_tail_frame 上一分镜尾帧 —— …`，
- * 并在画面 / 角色字段里继续引用尾帧作为起始状态真相。
+ * 承接关系只需要**一处**：首行承接句。早期版本还要求画面 / 角色 / 呼应字段各重复
+ * 一次，实测一条提示词里 `@previous_tail_frame 上一分镜尾帧` 会出现 5-6 次，纯属
+ * 浪费 token 且摊薄模型注意力 —— 现在明确限定"全文只出现一次"，
+ * 多写的由 dedupePreviousTailFrameMentions 降级成纯文本。
  */
 function buildTailFrameContinuityDirective(referenceBundle: ShotReferenceBundle): string {
   if (!findPreviousTailFrameItem(referenceBundle)) return '';
   const mention = `${PREVIOUS_TAIL_FRAME_MENTION} ${PREVIOUS_TAIL_FRAME_LABEL}`;
   return [
-    '【尾帧承接约束（本分镜已绑定上一分镜真实视频尾帧，连续性最高优先级）】',
-    '',
-    `\`${PREVIOUS_TAIL_FRAME_MENTION}\` 是上一分镜成片的**真实最后一帧**，不是概念参考图：它就是本分镜第 0 秒的画面真相。`,
-    '',
-    `1) **正文第一行必须是承接句**，格式固定为：\`${TAIL_FRAME_CONTINUITY_PREFIX}：${mention} —— <从尾帧继续的起始状态>\`。`,
-    `   起始状态需覆盖：人物站位与朝向、动作末态（上一镜结束时手 / 身体停在哪）、视线落点、持物、景别与机位关系、场景光影与色温。`,
-    `2) **禁止重置起始状态**：不得把人物挪到尾帧之外的位置、不得凭空换姿态 / 换持物 / 换服装状态、不得重新布光或改色温，除非【输入文案】明确写了移动或换装。`,
-    `3) \`画面描述\` 与 \`角色提示词\` 里至少各再出现一次 \`${mention}\`，说明本镜画面 / 人物是从尾帧的哪一状态继续演进的。`,
-    `4) 承接只约束**起始状态**：动作要往前推进，禁止把上一镜已经完成的动作再演一遍。`,
-    `5) \`${PREVIOUS_TAIL_FRAME_MENTION}\` 每次出现都要写完整的 \`${mention}\`，不要只写中文名，也不要写成 \`@Image N\`。`,
+    '【尾帧承接约束（本分镜已绑定上一分镜真实视频尾帧）】',
+    `\`${PREVIOUS_TAIL_FRAME_MENTION}\` 是上一分镜成片的**真实最后一帧**，就是本镜第 0 秒的画面真相。`,
+    `1) **正文第一行固定为承接句**：\`${TAIL_FRAME_CONTINUITY_PREFIX}：${mention} —— <起始状态>\`；起始状态覆盖人物站位与朝向、动作末态、视线落点、持物、景别机位、光影色温。`,
+    '2) **禁止重置起始状态**：不得挪动人物位置、换姿态 / 持物 / 服装、重新布光，除非【输入文案】明确写了移动或换装。承接只约束起始状态，动作仍要往前推进，不得重演上一镜已完成的动作。',
+    `3) \`${PREVIOUS_TAIL_FRAME_MENTION}\` **全文只允许出现这一次**。后续字段要提到上一镜画面时写纯文字「上一镜尾帧」，不要重复映射符，也不要写成 \`@Image N\`。`,
   ].join('\n');
+}
+
+/**
+ * 把首行承接句之后重复出现的 `@previous_tail_frame` 降级成纯文本「上一镜尾帧」。
+ *
+ * 尾帧在 references 里只占一个位置，重复引用不会带来任何新信息：编译后是同一个
+ * `@Image N`，却要多花 5-6 份 token，还会让模型把注意力压在"回看上一镜"而不是
+ * "推进本镜动作"。保留纯文字表述，语义读起来仍然连贯。
+ */
+function dedupePreviousTailFrameMentions(prompt: string): string {
+  const pattern = new RegExp(
+    `${escapeRegExp(PREVIOUS_TAIL_FRAME_MENTION)}(?:\\s*${escapeRegExp(PREVIOUS_TAIL_FRAME_LABEL)})?`,
+    'g',
+  );
+  let seen = false;
+  return prompt.replace(pattern, (match) => {
+    if (!seen) {
+      seen = true;
+      return match;
+    }
+    return '上一镜尾帧';
+  });
 }
 
 /**
@@ -1256,7 +1267,7 @@ function ensureTailFrameContinuityInVideoPrompt(
   if (!findPreviousTailFrameItem(referenceBundle)) return prompt;
   const trimmed = prompt.trim();
   if (!trimmed) return prompt;
-  if (trimmed.includes(PREVIOUS_TAIL_FRAME_MENTION)) return prompt;
+  if (trimmed.includes(PREVIOUS_TAIL_FRAME_MENTION)) return dedupePreviousTailFrameMentions(trimmed);
   return [
     `${TAIL_FRAME_CONTINUITY_PREFIX}：${PREVIOUS_TAIL_FRAME_MENTION} ${PREVIOUS_TAIL_FRAME_LABEL} —— 人物站位、朝向、动作末态、视线、持物与场景光影全部从尾帧自然继续，不要重置为新的起始状态。`,
     trimmed,
