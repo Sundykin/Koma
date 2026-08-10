@@ -717,6 +717,7 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
                 showDurationRange
                 showVideosPath={currentProviderType === 'openai-video'}
                 showComfyWorkflow={currentProviderType === 'comfyui-itv'}
+                showH3ContextIR={currentProviderType === 'minimax-h3-itv'}
               />
             </Form.Item>
           </div>

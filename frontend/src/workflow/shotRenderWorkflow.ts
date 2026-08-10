@@ -49,6 +49,8 @@ import { buildShotVideoExtendPlan, compileShotVideoExtendMentions } from './shot
 import { resolveConfiguredChannelModel } from '../providers/channel/resolver';
 import { getModelMaxReferenceImages } from '../providers/itv/modelCatalog';
 import type { StyleSnapshotLike } from '../utils/promptNormalize';
+import type { ITVProvider } from '../providers/itv/types';
+import type { ITVRequest } from '../types/media';
 import { normalizeVideoDurationSeconds } from '../utils/videoDuration';
 import { clampDurationToSpec, getDurationSpecForITVSelection } from '../providers/itv/durationSpec';
 import { ffmpegManager } from '../services/ffmpegManager';
@@ -593,6 +595,37 @@ export async function shotRenderWorkflow(
         promptSource,
       }
     );
+
+    // H3-Context-IR（可选，仅 MiniMax H3 官方渠道 + 模型开关开启时）：
+    // 先让上游深度理解多模态上下文，生成结构化更丰富的增强提示词再出片。
+    if (providerType === 'minimax-h3-itv') {
+      const minimaxProvider = await mediaGenerationService.resolveITVProvider(effectiveITVSelection, effectiveVideoCapability) as
+        | (ITVProvider & {
+          useH3ContextIR?: boolean;
+          enhancePromptWithContextIR?: (req: ITVRequest<unknown, unknown>, duration: number, ratio?: string) => Promise<string | undefined>;
+        })
+        | null;
+      if (minimaxProvider?.useH3ContextIR && minimaxProvider.enhancePromptWithContextIR) {
+        onProgress(25, 'H3-Context-IR 增强提示词...');
+        const enhanced = await minimaxProvider.enhancePromptWithContextIR(
+          compiledVideoRequest.request,
+          videoDuration,
+          params.aspectRatio || params.project?.aspectRatio || '16:9',
+        );
+        if (enhanced) {
+          logger.info('H3-Context-IR 增强已应用', {
+            shotId: normalizedShot.id,
+            originalLength: compiledVideoRequest.prompt.length,
+            enhancedLength: enhanced.length,
+          });
+          compiledVideoRequest.prompt = enhanced;
+          compiledVideoRequest.request = {
+            ...compiledVideoRequest.request,
+            prompt: enhanced,
+          };
+        }
+      }
+    }
 
     // 先创建版本（生成后续媒体时用 versionId 做落盘路径收口）
     onProgress(20, '创建分镜版本...');

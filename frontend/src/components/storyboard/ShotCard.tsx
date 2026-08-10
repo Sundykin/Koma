@@ -486,7 +486,7 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
       ...mentionItems.filter(item => !extraKeys.has(`${item.type}:${item.id}`)),
       ...extraItems,
     ];
-  }, [currentImage, mentionItems, previousStoryboardMention, shot.imageMode, videoReference?.referenceFrame, videoReference?.usePreviousTailFrame]);
+  }, [currentImage, mentionItems, previousStoryboardMention, shot.imageMode, videoReference?.continuity, videoReference?.referenceFrame, videoReference?.usePreviousTailFrame]);
 
   /** 当前选中的配音资产（默认指向最新一条）。
       currentAudioSrc / handleToggleAudio / useEffect 因为依赖 getDisplaySrc

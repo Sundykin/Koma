@@ -74,7 +74,11 @@ export const StoryboardNodeEditor: React.FC<StoryboardNodeEditorProps> = ({
   const props = nodeData.properties as unknown as LinghuiStoryboardNodeProperties;
   const prompt = String(props.prompt ?? '');
   const llmSelection = String(props.llmSelection ?? '');
-  const productionAssets = Array.isArray(props.productionAssets) ? props.productionAssets : [];
+  // 条件表达式在每次 render 都新建引用，下游 useCallback 的依赖会跟着抖——先钉住。
+  const productionAssets = useMemo(
+    () => (Array.isArray(props.productionAssets) ? props.productionAssets : []),
+    [props.productionAssets],
+  );
   const productionAssetSync = useLinghuiProductionAssetSync({
     workspaceId,
     nodeId,

@@ -228,7 +228,6 @@ export const EditorView: React.FC<EditorViewProps> = ({
           llmSelection={llmSelection}
           aspectRatio={activeProject.aspectRatio || '16:9'}
           ttiSelection={ttiSelection}
-          itvSelection={itvSelection}
           styleSnapshot={styleSnapshot}
         />
       </div>

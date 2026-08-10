@@ -119,6 +119,8 @@ export function specToInputBounds(spec: VideoDurationSpec): { min: number; max: 
 const ITV_DURATION_SPECS_BY_PROVIDER: Record<string, VideoDurationSpec> = {
   // grok-imagine-video：上游仅接受 6/12/16/20
   'grok2api-imagine-itv': { kind: 'enum', values: [6, 12, 16, 20], default: 6 },
+  // MiniMax H3 官方：4-15s 连续，仅整数值
+  'minimax-h3-itv': { kind: 'range', min: 4, max: 15, step: 1, default: 5 },
   // Koma 官方：上游约束 4-15s 连续（参考 new-api/relay/channel/task/suihe/constants.go）
   'koma-suihe-itv': { kind: 'range', min: 4, max: 15, step: 1, default: 5 },
   // 旧的独立 seedance（直连 toapis.com）保留映射，避免回归

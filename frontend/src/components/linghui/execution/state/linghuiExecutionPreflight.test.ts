@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { preflightLinghuiTargetNodes, type LinghuiPreflightIssue } from './linghuiExecutionPreflight';
+import { preflightLinghuiTargetNodes } from './linghuiExecutionPreflight';
 import type { LinghuiExecutionContext, LinghuiNodeData, LinghuiRFNodeSnapshot } from '../../../../types/linghui';
 
 /** 构造一个最小 ExecutionContext：nodes + edges 足够 preflight 用 */

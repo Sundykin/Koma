@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { shotsToTracks, syncShotSelectionsIntoTracks, collectShotsMissingMedia } from './SimpleEditor';
 import type { Shot, StoredMediaAsset } from '../../types';
-import type { Track } from '../../types/editor';
 
 function makeShot(scriptLines: Shot['scriptLines'], overrides: Partial<Shot> = {}): Shot {
   return {

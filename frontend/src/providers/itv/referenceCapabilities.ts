@@ -22,6 +22,7 @@ const REFERENCE_KINDS_BY_PROVIDER: Record<string, PromptCompilationReferenceKind
   'koma-suihe-itv': ALL_KINDS,
   'suihe-itv': ALL_KINDS,
   'comfyui-itv': ALL_KINDS,
+  'minimax-h3-itv': ALL_KINDS,
   'grok2api-imagine-itv': IMAGE_ONLY,
   'openai-video': IMAGE_ONLY,
 };

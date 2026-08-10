@@ -20,6 +20,24 @@ import { recoverTask } from './mediaGeneration/tasks';
 type ShotAudioSegmentsParams = Parameters<typeof generateShotAudioWithSegmentsWith>[0];
 
 export class MediaGenerationService {
+  /** 解析当前项目选中的 ITV provider 实例（给渲染工作流做 H3-Context-IR 等渠道特有预处理）。 */
+  async resolveITVProvider(
+    itvSelection?: string,
+    capability: Parameters<typeof generateVideo>[0]['request']['capability'] = 'video.reference-to-video',
+  ) {
+    const { resolveProviderAndContext } = await import('./mediaGeneration/helpers');
+    const { getProjectITVProvider } = await import('../providers');
+    const { provider } = await resolveProviderAndContext({
+      category: 'itv',
+      selectionKey: itvSelection,
+      capability,
+      getProvider: getProjectITVProvider,
+      missingError: '未配置 ITV 服务',
+      allowCapabilityFallback: false,
+    });
+    return provider;
+  }
+
   generateImages = generateImages;
   generateImage = generateImage;
   generateVideo = generateVideo;

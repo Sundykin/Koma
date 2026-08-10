@@ -19,6 +19,7 @@ export { SuiheITVProvider } from './SuiheITVProvider';
 export { OpenAIVideoITVProvider } from './OpenAIVideoITVProvider';
 export { SuiheDirectITVProvider } from './SuiheDirectITVProvider';
 export { ComfyUIITVProvider } from './ComfyUIITVProvider';
+export { MiniMaxH3ITVProvider } from './MiniMaxH3ITVProvider';
 
 import type { ITVConfig } from '../../types';
 import type { ITVProvider } from './types';
@@ -27,6 +28,7 @@ import { SuiheITVProvider } from './SuiheITVProvider';
 import { OpenAIVideoITVProvider } from './OpenAIVideoITVProvider';
 import { SuiheDirectITVProvider } from './SuiheDirectITVProvider';
 import { ComfyUIITVProvider } from './ComfyUIITVProvider';
+import { MiniMaxH3ITVProvider } from './MiniMaxH3ITVProvider';
 import type { ProviderDefinition } from '../registry.types';
 import { DEFAULT_POLLING_CONFIG, MEDIA_PROVIDER_CONTRACT_VERSION } from '../registry.types';
 import { itvRegistry } from '../registry';
@@ -119,6 +121,24 @@ function registerBuiltinProviders() {
       },
       // ComfyUI 原生无鉴权：apiKey 可选，服务地址必填
       auth: { apiKey: 'optional', baseUrl: 'required' },
+      fallbackPolicy: 'lock-to-selection',
+    },
+    {
+      type: 'minimax-h3-itv',
+      kind: 'itv',
+      name: 'MiniMax H3 官方',
+      description: 'MiniMax 官方云端 API（api.minimaxi.com，V2 接口）：多模态 content[] 直接输入，'
+        + '支持文生视频 / 首尾帧 / 全能参考（图 ≤9 + 视频 ≤3 + 音频 ≤3）；可选 H3-Context-IR'
+        + '增强提示词（先深度理解多模态上下文，再生成结构化更丰富的 prompt）。',
+      factory: (config) => new MiniMaxH3ITVProvider(config as ITVConfig),
+      contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
+      capabilities: ['itv'],
+      polling: {
+        interval: 10000,
+        maxDuration: 1800000,
+        initialDelay: 5000,
+      },
+      auth: { apiKey: 'required', baseUrl: 'optional' },
       fallbackPolicy: 'lock-to-selection',
     },
   ];

@@ -80,7 +80,11 @@ export const ScriptNodeEditor: React.FC<ScriptNodeEditorProps> = ({
   const systemPrompt = String(props.systemPrompt ?? '');
   const llmSelection = String(props.llmSelection ?? '');
   const viewMode = props.viewMode === 'table' ? 'table' : 'cards';
-  const productionAssets = Array.isArray(props.productionAssets) ? props.productionAssets : [];
+  // 条件表达式在每次 render 都新建引用，下游 useCallback 的依赖会跟着抖——先钉住。
+  const productionAssets = useMemo(
+    () => (Array.isArray(props.productionAssets) ? props.productionAssets : []),
+    [props.productionAssets],
+  );
   const productionAssetSync = useLinghuiProductionAssetSync({
     workspaceId,
     nodeId,

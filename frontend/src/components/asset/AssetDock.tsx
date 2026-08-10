@@ -100,7 +100,6 @@ interface AssetDockProps {
   llmSelection?: string;
   aspectRatio?: '16:9' | '9:16';
   ttiSelection?: string;
-  itvSelection?: string;
   styleSnapshot?: ProjectStyleSnapshot;
 }
 
@@ -121,7 +120,6 @@ export const AssetDock: React.FC<AssetDockProps> = ({
   llmSelection,
   aspectRatio,
   ttiSelection,
-  itvSelection,
   styleSnapshot,
 }) => {
   const { message } = App.useApp();
@@ -347,7 +345,7 @@ export const AssetDock: React.FC<AssetDockProps> = ({
     else if (type === 'scene') await persist(type, updateSceneMedia(entity as Scene, { previewImage: asset }));
     else await persist(type, updatePropMedia(entity as Prop, { previewImage: asset }));
     return true;
-  }, [characters, scenes, props, projectId, aspectRatio, styleSnapshot, ttiSelection, persist, message]);
+  }, [characters, scenes, props, projectId, aspectRatio, styleSnapshot, ttiSelection, getAssetPath, persist, message]);
 
   const handleGenerateImage = useCallback(async (type: AssetType, id: string) => {
     if (generatingIds.has(id)) return;

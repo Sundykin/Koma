@@ -27,7 +27,7 @@ describe('channel catalog (itv)', () => {
   it('exposes the Koma 官方 ITV providers + openai-video + suihe-itv + comfyui-itv（runway / kling / pika / sora2 / seedance / vidu / comfyui-animatediff / custom 已下线）', () => {
     const itvChannels = listBuiltInChannelDefinitions('itv');
     const ids = itvChannels.map((c) => c.id).sort();
-    expect(ids).toEqual(['comfyui-itv', 'grok2api-imagine-itv', 'koma-suihe-itv', 'openai-video', 'suihe-itv']);
+    expect(ids).toEqual(['comfyui-itv', 'grok2api-imagine-itv', 'koma-suihe-itv', 'minimax-h3-itv', 'openai-video', 'suihe-itv']);
   });
 
   it('declares provider template metadata for comfyui-itv channel', () => {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button, Card, Checkbox, Form, Input, InputNumber, Space, Tag, Typography, Tooltip } from 'antd';
+import { Button, Card, Checkbox, Form, Input, InputNumber, Space, Switch, Tag, Typography, Tooltip } from 'antd';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import type { ModelCapability } from '../../providers/channel/types';
 import { generateId } from '../../store/globalStore';
@@ -50,6 +50,11 @@ export interface ChannelModelsEditorProps {
    * 仅对 comfyui-tti / comfyui-itv 渠道显示。
    */
   showComfyWorkflow?: boolean;
+  /**
+   * MiniMax H3 官方：可选 H3-Context-IR 增强提示词开关
+   * （写入 model.defaults.useH3ContextIR）。仅 minimax-h3-itv 渠道显示。
+   */
+  showH3ContextIR?: boolean;
 }
 
 export const ChannelModelsEditor: React.FC<ChannelModelsEditorProps> = ({
@@ -63,6 +68,7 @@ export const ChannelModelsEditor: React.FC<ChannelModelsEditorProps> = ({
   showDurationRange,
   showVideosPath,
   showComfyWorkflow,
+  showH3ContextIR,
 }) => (
   <div className="settings-models-editor">
     {helpText && (
@@ -210,6 +216,21 @@ export const ChannelModelsEditor: React.FC<ChannelModelsEditorProps> = ({
 
                 {showComfyWorkflow ? (
                   <ComfyWorkflowSection listName={name} fieldName={field.name} />
+                ) : null}
+
+                {showH3ContextIR ? (
+                  <div className="full-span">
+                    <Form.Item
+                      name={[field.name, 'defaults', 'useH3ContextIR']}
+                      label="H3-Context-IR 增强提示词"
+                      valuePropName="checked"
+                      tooltip="生成视频前先调 H3-Context-IR：深度理解多模态上下文，返回结构化更丰富的增强提示词再出片。开启后每镜多一次推理请求、多等待一轮，但画面细节与连贯度通常更好。"
+                      className="settings-form-item-flush"
+                      style={{ marginBottom: 0 }}
+                    >
+                      <Switch />
+                    </Form.Item>
+                  </div>
                 ) : null}
               </div>
             </Card>

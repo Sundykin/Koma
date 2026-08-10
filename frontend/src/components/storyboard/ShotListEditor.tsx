@@ -382,6 +382,8 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
       onDurationChange,
       onShotImageModeChange,
       onStoryboardInheritPreviousChange,
+      onVideoReferenceModeChange,
+      onCapturePreviousTailFrame,
       onShotVideoModeChange,
       onCharactersChange,
       onScenesChange,
