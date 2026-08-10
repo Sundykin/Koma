@@ -598,32 +598,41 @@ export async function shotRenderWorkflow(
 
     // H3-Context-IR（可选，仅 MiniMax H3 官方渠道 + 模型开关开启时）：
     // 先让上游深度理解多模态上下文，生成结构化更丰富的增强提示词再出片。
+    // 整个块必须容错：增强是锦上添花，任何一步失败（渠道解析 / 素材上传 / 上游调用）
+    // 都只告警，用原始提示词继续出片，绝不让它拖垮生成。
     if (providerType === 'minimax-h3-itv') {
-      const minimaxProvider = await mediaGenerationService.resolveITVProvider(effectiveITVSelection, effectiveVideoCapability) as
-        | (ITVProvider & {
-          useH3ContextIR?: boolean;
-          enhancePromptWithContextIR?: (req: ITVRequest<unknown, unknown>, duration: number, ratio?: string) => Promise<string | undefined>;
-        })
-        | null;
-      if (minimaxProvider?.useH3ContextIR && minimaxProvider.enhancePromptWithContextIR) {
-        onProgress(25, 'H3-Context-IR 增强提示词...');
-        const enhanced = await minimaxProvider.enhancePromptWithContextIR(
-          compiledVideoRequest.request,
-          videoDuration,
-          params.aspectRatio || params.project?.aspectRatio || '16:9',
-        );
-        if (enhanced) {
-          logger.info('H3-Context-IR 增强已应用', {
-            shotId: normalizedShot.id,
-            originalLength: compiledVideoRequest.prompt.length,
-            enhancedLength: enhanced.length,
-          });
-          compiledVideoRequest.prompt = enhanced;
-          compiledVideoRequest.request = {
-            ...compiledVideoRequest.request,
-            prompt: enhanced,
-          };
+      try {
+        const minimaxProvider = await mediaGenerationService.resolveITVProvider(effectiveITVSelection, effectiveVideoCapability) as
+          | (ITVProvider & {
+            useH3ContextIR?: boolean;
+            enhancePromptWithContextIR?: (req: ITVRequest<unknown, unknown>, duration: number, ratio?: string) => Promise<string | undefined>;
+          })
+          | null;
+        if (minimaxProvider?.useH3ContextIR && minimaxProvider.enhancePromptWithContextIR) {
+          onProgress(25, 'H3-Context-IR 增强提示词...');
+          const enhanced = await minimaxProvider.enhancePromptWithContextIR(
+            compiledVideoRequest.request,
+            videoDuration,
+            params.aspectRatio || params.project?.aspectRatio || '16:9',
+          );
+          if (enhanced) {
+            logger.info('H3-Context-IR 增强已应用', {
+              shotId: normalizedShot.id,
+              originalLength: compiledVideoRequest.prompt.length,
+              enhancedLength: enhanced.length,
+            });
+            compiledVideoRequest.prompt = enhanced;
+            compiledVideoRequest.request = {
+              ...compiledVideoRequest.request,
+              prompt: enhanced,
+            };
+          }
         }
+      } catch (err) {
+        logger.warn('H3-Context-IR 增强失败，跳过（不影响出片）', {
+          shotId: normalizedShot.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
     }
 
@@ -672,12 +681,13 @@ export async function shotRenderWorkflow(
       success: true,
     };
   } catch (err: any) {
-    logger.error(`分镜 ${normalizedShot.id} 视频生成失败`, { error: err.message });
+    const errorMessage = err instanceof Error ? err.message : String(err && (err.message ?? err)) || JSON.stringify(err);
+    logger.error(`分镜 ${normalizedShot.id} 视频生成失败`, { error: errorMessage });
     return {
       shotId: normalizedShot.id,
       version: {} as ShotVersion,
       success: false,
-      error: err.message,
+      error: errorMessage,
     };
   }
 }

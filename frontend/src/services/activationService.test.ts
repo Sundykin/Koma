@@ -450,3 +450,56 @@ describe('activationService ensureDefaultModelChannels', () => {
     expect(setDefaultCalls.some(([, args]) => args.channelId === KOMAAPI_ACTIVATION_CHANNEL_IDS.itvJimeng)).toBe(false);
   });
 });
+
+describe('activationService reconcileMissingManagedChannels', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('期望清单包含缺失的 llm 激活渠道（从其它管理渠道继承 apiKey 重建）', async () => {
+    const { activationService } = await import('./activationService');
+    const channelConfigService = await import('./channelConfigService');
+
+    // llm 渠道缺失；其它三个管理渠道存在（可作继承源）
+    const existing = new Map<string, any>([
+      ['komaapi-default-itv-jimeng', { id: 'komaapi-default-itv-jimeng', providerType: 'koma-suihe-itv' }],
+      ['komaapi-default-tti-gpt-image-2', { id: 'komaapi-default-tti-gpt-image-2', providerType: 'openai-compatible-tti' }],
+      ['komaapi-default-tts', { id: 'komaapi-default-tts', providerType: 'koma-tts' }],
+    ]);
+    vi.spyOn(channelConfigService, 'getChannel').mockImplementation(async (id: string) => existing.get(id) ?? null);
+    const reconcile = vi.spyOn(channelConfigService, 'reconcileActivationChannels').mockReturnValue([] as any);
+
+    await activationService.reconcileMissingManagedChannels();
+
+    expect(reconcile).toHaveBeenCalled();
+    const [configs, sourceIds] = reconcile.mock.calls[0];
+    // llm 渠道在待重建清单里
+    expect(configs.some((c: any) => c.id === 'komaapi-default-llm' && c.providerType === 'openai')).toBe(true);
+    // 继承源是已存在的管理渠道（按 KOMAAPI_ACTIVATION_CHANNEL_IDS 定义顺序）
+    expect([...sourceIds].sort()).toEqual(
+      ['komaapi-default-itv-jimeng', 'komaapi-default-tti-gpt-image-2', 'komaapi-default-tts'].sort(),
+    );
+  });
+
+  it('llm 渠道已存在且无漂移时不重复重建', async () => {
+    const { activationService } = await import('./activationService');
+    const channelConfigService = await import('./channelConfigService');
+
+    const existing = new Map<string, any>([
+      ['komaapi-default-llm', {
+        id: 'komaapi-default-llm',
+        providerType: 'openai',
+        models: [{ id: 'glm-5', capabilities: ['llm.chat'] }],
+      }],
+      ['komaapi-default-itv-jimeng', { id: 'komaapi-default-itv-jimeng', providerType: 'koma-suihe-itv' }],
+      ['komaapi-default-tti-gpt-image-2', { id: 'komaapi-default-tti-gpt-image-2', providerType: 'openai-compatible-tti' }],
+      ['komaapi-default-tts', { id: 'komaapi-default-tts', providerType: 'koma-tts' }],
+    ]);
+    vi.spyOn(channelConfigService, 'getChannel').mockImplementation(async (id: string) => existing.get(id) ?? null);
+    const reconcile = vi.spyOn(channelConfigService, 'reconcileActivationChannels').mockReturnValue([] as any);
+
+    await activationService.reconcileMissingManagedChannels();
+
+    expect(reconcile.mock.calls[0][0].some((c: any) => c.id === 'komaapi-default-llm')).toBe(false);
+  });
+});

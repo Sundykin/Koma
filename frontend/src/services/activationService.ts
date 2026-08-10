@@ -719,13 +719,38 @@ export const activationService = {
       source: 'builtin',
     };
 
+    // Koma 官方默认 LLM 渠道：早期激活流程会建，但用户手动删掉 / 换 LLM 后它可能
+    // 消失——而激活 KV 的 defaultChannelIds.llm 仍指向它，导致 readActivationInfo
+    // 解不出激活 key，图床（qiniu 等插件）全部报"未检测到激活 Key"。
+    // 放进 reconcile 期望清单：缺失时从其它管理渠道继承 apiKey 自动重建。
+    const llmCfg: Parameters<typeof channelConfigService.reconcileActivationChannels>[0][number] = {
+      id: KOMAAPI_ACTIVATION_CHANNEL_ID,
+      category: 'llm',
+      providerType: 'openai',
+      name: 'Koma官方',
+      providerConfig: withKomaActivationChannelMarker({
+        baseUrl: 'https://komaapi.com/v1',
+        // apiKey 由后端从 sourceChannelIds 解密继承
+      }),
+      defaultModelId: 'glm-5',
+      models: [
+        {
+          id: 'glm-5',
+          label: 'glm-5',
+          providerModelName: 'glm-5',
+          capabilities: ['llm.chat' as ModelCapability],
+        },
+      ],
+      enabled: true,
+      source: 'builtin',
+    };
+
     // 期望管理渠道清单：[(id, expected providerType, 期望完整配置)]
     const expected = [
+      { id: llmCfg.id!, providerType: llmCfg.providerType, cfg: llmCfg },
       { id: itvJimengCfg.id!, providerType: itvJimengCfg.providerType, cfg: itvJimengCfg },
       { id: ttiGptImage2Cfg.id!, providerType: ttiGptImage2Cfg.providerType, cfg: ttiGptImage2Cfg },
       { id: ttsCfg.id!, providerType: ttsCfg.providerType, cfg: ttsCfg },
-      // 其它管理渠道（llm/tti/itv）原 ensureDefaultModelChannels 已建出，
-      // 这里也可以加进来作为额外保护（落入 update 路径），但目前没有 providerType 漂移问题，先不加。
     ];
 
     // 拉取现状
