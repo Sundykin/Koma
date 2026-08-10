@@ -56,6 +56,23 @@ describe('MiniMaxH3ITVProvider', () => {
     expect(roles).toEqual(expect.arrayContaining(['text', 'reference_image', 'reference_video', 'reference_audio']));
   });
 
+  it('代理渠道（profileId）下 validate 通过，即使 apiKey 为空', () => {
+    const proxy = new MiniMaxH3ITVProvider({
+      provider: 'minimax-h3-itv',
+      apiKey: '',
+      profileId: 'chan-1',
+    });
+    expect(proxy.validate()).toBe(true);
+  });
+
+  it('明文 apiKey 渠道 validate 通过', () => {
+    const plain = new MiniMaxH3ITVProvider({
+      provider: 'minimax-h3-itv',
+      apiKey: 'sk-test',
+    });
+    expect(plain.validate()).toBe(true);
+  });
+
   it('useH3ContextIR 读模型 defaults 开关', () => {
     const on = new MiniMaxH3ITVProvider({
       provider: 'minimax-h3-itv',

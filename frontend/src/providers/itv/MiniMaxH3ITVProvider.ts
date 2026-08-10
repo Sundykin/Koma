@@ -170,7 +170,8 @@ export class MiniMaxH3ITVProvider implements ITVProvider {
   }
 
   validate(): boolean {
-    return Boolean(this.config.apiKey);
+    // 代理模式（profileId）下 apiKey 由主进程注入，前端 config 里是空的——单查 apiKey 会误报
+    return Boolean(this.config.profileId) || Boolean(this.config.apiKey);
   }
 
   getModelName(): string {
@@ -317,7 +318,7 @@ export class MiniMaxH3ITVProvider implements ITVProvider {
   }
 
   async start(request: BaseITVRequest<unknown, unknown>): Promise<ProviderStartResult<ITVResult>> {
-    if (!this.validate()) throw new Error('MiniMax H3 API Key 未配置');
+    if (!this.validate()) throw new Error('MiniMax H3 API Key 未配置（代理渠道请检查主进程凭据注入）');
     assertSupportedVideoCapabilities(request as ITVRequest, 'MiniMax H3', [
       'video.text-to-video',
       'video.image-to-video',
