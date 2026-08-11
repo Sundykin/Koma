@@ -18,7 +18,6 @@ import type {
 } from '../../types/plugin';
 import { validateOperation, validateStoragePath, createSandboxedFetch, hasScope } from './PluginSandbox';
 import { electronService } from '../electronService';
-import { activationService } from '../activationService';
 import { message, Modal } from 'antd';
 import { createLogger } from '../../store/logger';
 import type { ChannelCapability } from '../../providers/registry.types';
@@ -77,6 +76,7 @@ import {
   deleteChannelsByPlugin,
   deleteChannelByProviderType,
 } from '../../store/settings/channelConfig';
+import { getProviderApiKeyForPlugin } from '../channelConfigService';
 import packageJson from '../../../package.json';
 
 // 事件监听器
@@ -513,6 +513,14 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
       },
 
       /**
+       * 读取本插件渠道里保存的 API Key（明文）。
+       * 只能拿到自己这条渠道的，归属由主进程校验。
+       */
+      async getProviderApiKey(type: string): Promise<string | null> {
+        return getProviderApiKeyForPlugin(pluginId, type);
+      },
+
+      /**
        * 列出所有 Provider
        */
       async listProviders(kind?: ChannelKind) {
@@ -714,16 +722,6 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
             items.splice(idx, 1);
           }
         }
-      },
-    },
-
-    // ========== Activation ==========
-    activation: {
-      async getApiKey() {
-        return activationService.getApiKey();
-      },
-      async getInfo() {
-        return activationService.getActivationInfo();
       },
     },
   };

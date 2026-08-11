@@ -12,9 +12,7 @@ import type {
 } from './mcp';
 import type { WorkerAgentDefinition } from './agent';
 import type { ProviderDefinition } from './provider';
-import type { ActivationInfo } from './plugin';
 
-export type { ActivationInfo };
 
 // 子进程选项
 export interface SpawnOptions {
@@ -68,6 +66,8 @@ export interface ElectronPluginAPI {
     unregisterProvider: (type: string) => Promise<void>;
     listProviders: (kind?: string) => ProviderDefinition[];
     getProviderConfig: (type: string) => Promise<Record<string, unknown> | null>;
+    /** 读取本插件渠道里保存的 API Key（明文）；只能拿到自己这条渠道的 */
+    getProviderApiKey: (type: string) => Promise<string | null>;
     updateProviderConfig: (type: string, config: Record<string, unknown>) => Promise<void>;
   };
 
@@ -105,14 +105,6 @@ export interface ElectronPluginAPI {
     error: (...args: unknown[]) => void;
   };
 
-  /**
-   * 激活信息读取。仅返回 Koma 激活 Key；未激活时返回 null。
-   * 所有内置渠道都应使用该 Key 作为请求凭证，请求 https://komaapi.com。
-   */
-  activation: {
-    getApiKey: () => Promise<string | null>;
-    getInfo: () => Promise<ActivationInfo | null>;
-  };
 }
 
 // 插件模块导出接口（后端）

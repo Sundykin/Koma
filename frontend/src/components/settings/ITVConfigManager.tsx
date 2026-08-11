@@ -58,10 +58,6 @@ import {
   shouldReplaceITVModelsOnProviderChange,
 } from './itvProviderSuggestions';
 import { useMediaConfigManager } from './useMediaConfigManager';
-import {
-  isKomaActivationManagedChannel,
-  withKomaActivationChannelMarker,
-} from '../../utils/activationManagedChannels';
 
 interface ITVConfigManagerProps {
   onConfigChange?: () => void;
@@ -155,8 +151,7 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
   } = useMediaConfigManager<ITVModelConfig>('itv', loadBuiltins, onConfigChange);
 
   const watchedProviderType = Form.useWatch('providerType', form) as string | undefined;
-  const isEditingActivationChannel = isKomaActivationManagedChannel(editingChannel);
-  const currentProviderType = isEditingActivationChannel ? editingChannel?.providerType : watchedProviderType;
+  const currentProviderType = watchedProviderType;
   const previousProviderTypeRef = useRef<string | undefined>(undefined);
   const editingHasStoredApiKey = Boolean(editingChannel && (editingChannel.providerConfig as Record<string, unknown> | undefined)?.hasApiKey);
   const currentDefinition = currentProviderType ? definitionMap.get(currentProviderType) : undefined;
@@ -320,10 +315,7 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
   const handleSave = useCallback(async () => {
     try {
       const values = await form.validateFields();
-      const isActivationChannel = isKomaActivationManagedChannel(editingChannel);
-      const effectiveProviderType = isActivationChannel && editingChannel
-        ? editingChannel.providerType
-        : values.providerType;
+      const effectiveProviderType = values.providerType;
       const definition = definitionMap.get(effectiveProviderType);
       if (!definition) {
         throw new Error('未找到对应的视频渠道定义');
@@ -337,25 +329,18 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
       if (!defaultModelId) throw new Error('请至少添加一个模型');
 
       const lockedBaseUrl = readLockedBaseUrl(definition);
-      const providerConfig = isActivationChannel && editingChannel
-        ? withKomaActivationChannelMarker({
-            baseUrl: editingChannel.providerConfig?.baseUrl,
-            promptProtocol: values.promptProtocol || undefined,
-            defaultDuration: values.defaultDuration || undefined,
-            defaultResolution: values.defaultResolution || undefined,
-          })
-        : {
-            // 若渠道定义声明 baseUrlLocked，强制使用 schema 中的固定域名，
-            // 防止用户绕过 UI 直接改写 localStorage。
-            baseUrl: lockedBaseUrl || values.baseUrl,
-            apiKey: values.apiKey,
-            promptProtocol: values.promptProtocol || undefined,
-            defaultDuration: values.defaultDuration || undefined,
-            defaultResolution: values.defaultResolution || undefined,
-          };
+      const providerConfig = {
+        // 若渠道定义声明 baseUrlLocked，强制使用 schema 中的固定域名，
+        // 防止用户绕过 UI 直接改写 localStorage。
+        baseUrl: lockedBaseUrl || values.baseUrl,
+        apiKey: values.apiKey,
+        promptProtocol: values.promptProtocol || undefined,
+        defaultDuration: values.defaultDuration || undefined,
+        defaultResolution: values.defaultResolution || undefined,
+      };
 
       const payload = {
-        name: isActivationChannel && editingChannel ? editingChannel.name : values.name,
+        name: values.name,
         description: definition.description,
         category: 'itv' as const,
         providerType: effectiveProviderType,
@@ -670,13 +655,12 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
               <Form.Item
                 name="providerType"
                 label="模型渠道"
-                required={!isEditingActivationChannel}
-                rules={[{ required: !isEditingActivationChannel, message: '请选择模型渠道' }]}
+                required
+                rules={[{ required: true, message: '请选择模型渠道' }]}
               >
                 <Select
                   placeholder={t('settings.selectITVProvider')}
                   onChange={handleProviderChange}
-                  disabled={isEditingActivationChannel}
                 >
                   {channelDefinitions.map((definition) => (
                     <Select.Option key={definition.id} value={definition.id}>
@@ -689,10 +673,10 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
               <Form.Item
                 name="name"
                 label={t('settings.configName')}
-                required={!isEditingActivationChannel}
-                rules={[{ required: !isEditingActivationChannel, message: `${t('settings.pleaseEnter')} ${t('settings.configName')}` }]}
+                required
+                rules={[{ required: true, message: `${t('settings.pleaseEnter')} ${t('settings.configName')}` }]}
               >
-                <Input placeholder={t('settings.configNamePlaceholder')} disabled={isEditingActivationChannel} />
+                <Input placeholder={t('settings.configNamePlaceholder')} />
               </Form.Item>
             </div>
           </div>
@@ -753,14 +737,13 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
                   name="apiKey"
                   label={t('settings.apiKey')}
                   rules={[{
-                    required: apiKeyRequired && !editingHasStoredApiKey && !isEditingActivationChannel,
+                    required: apiKeyRequired && !editingHasStoredApiKey,
                     message: `${t('settings.pleaseEnter')} ${t('settings.apiKey')}`,
                   }]}
                   extra={apiKeyRequired ? undefined : '该渠道无需鉴权，留空即可；若服务前置了鉴权网关再填写'}
                 >
                   <Input.Password
                     placeholder={editingHasStoredApiKey ? t('settings.apiKeyStoredPlaceholder') : t('settings.enterApiKey')}
-                    disabled={isEditingActivationChannel}
                   />
                 </Form.Item>
               )}
@@ -768,12 +751,12 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
               <Form.Item
                 name="baseUrl"
                 label={t('settings.apiAddress')}
-                rules={[{ required: !isEditingActivationChannel, message: `${t('settings.pleaseEnter')} ${t('settings.apiAddress')}` }]}
+                rules={[{ required: true, message: `${t('settings.pleaseEnter')} ${t('settings.apiAddress')}` }]}
                 extra={readLockedBaseUrl(currentDefinition) ? '官方渠道地址不可修改' : undefined}
               >
                 <Input
                   placeholder="https://api.klingai.com"
-                  disabled={isEditingActivationChannel || Boolean(readLockedBaseUrl(currentDefinition))}
+                  disabled={Boolean(readLockedBaseUrl(currentDefinition))}
                 />
               </Form.Item>
 

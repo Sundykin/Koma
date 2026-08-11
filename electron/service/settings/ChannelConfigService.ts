@@ -332,44 +332,26 @@ export function getDecryptedApiKey(channelConfigId: string): string | null {
   return decryptApiKey(row.api_key_cipher);
 }
 
-/* --- 激活渠道补齐：从已存在的 koma-activation 管理渠道继承 apiKey 创建/更新 --- */
-
 /**
- * 激活渠道补齐：用于已激活老用户启动后，把新增的 koma-activation 管理渠道（如 itvJimeng）
- * 自动注册出来。前端通过 IPC `channel:reconcileActivation` 提交一组渠道配置（不带 apiKey），
- * 主进程从已存在的任一同批管理渠道里解密 apiKey，再加密落库到目标渠道。
+ * 插件读取「自己那条渠道」的明文 apiKey。
  *
- * @param channels 待补齐 / 更新的渠道配置数组（providerConfig 不需要含 apiKey）
- * @param sourceChannelIds 已存在的 koma-activation 管理渠道 id 列表，用于解密继承 apiKey
- * @returns 实际写入（创建或更新）的渠道 DTO 数组
+ * 常规读取路径（listChannelConfigs / getChannelConfig）一律剥掉 apiKey 只回 hasApiKey，
+ * 所以插件把 Key 存进去之后自己反而读不回来，没法拿它去请求上游。这里开一个**按归属
+ * 收窄**的口子：只有 plugin_id 与调用方一致的渠道才会返回明文，别的插件、以及非插件
+ * 渠道（plugin_id 为空）一律拿不到。
+ *
+ * pluginId 由渲染进程传入，主进程必须自己再校验一次归属——不能只信调用方声明的身份。
  */
-export function reconcileActivationChannels(
-  channels: ChannelConfigInput[],
-  sourceChannelIds: string[],
-): ChannelConfigDTO[] {
-  // 找出第一个能解密出 apiKey 的源渠道，作为继承源
-  let inheritedApiKey: string | null = null;
-  for (const sourceId of sourceChannelIds) {
-    const key = getDecryptedApiKey(sourceId);
-    if (key) {
-      inheritedApiKey = key;
-      break;
-    }
-  }
-  if (!inheritedApiKey) {
-    throw new Error('no_source_apikey: 找不到可继承 apiKey 的源渠道（可能尚未激活）');
-  }
-
-  const results: ChannelConfigDTO[] = [];
-  for (const cfg of channels) {
-    const providerConfig = { ...(cfg.providerConfig || {}), apiKey: inheritedApiKey };
-    const merged: ChannelConfigInput = { ...cfg, providerConfig };
-    const existing = cfg.id ? configRepo.getById(cfg.id) : null;
-    if (existing) {
-      results.push(updateChannelConfig(cfg.id!, merged));
-    } else {
-      results.push(createChannelConfig(merged));
-    }
-  }
-  return results;
+export function getDecryptedApiKeyForPlugin(
+  pluginId: string,
+  providerType: string,
+): string | null {
+  if (!pluginId || !providerType) return null;
+  const row = configRepo
+    .list()
+    .find(item => item.plugin_id === pluginId && item.channel_def_id === providerType);
+  if (!row?.api_key_cipher) return null;
+  return decryptApiKey(row.api_key_cipher);
 }
+
+

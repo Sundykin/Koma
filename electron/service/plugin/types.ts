@@ -270,6 +270,8 @@ export interface ElectronPluginAPI {
     unregisterProvider: (type: string) => Promise<void>;
     listProviders: (kind?: string) => ProviderDefinition[];
     getProviderConfig: (type: string) => Promise<Record<string, unknown> | null>;
+    /** 读取本插件渠道里保存的 API Key（明文）；只能拿到自己这条渠道的 */
+    getProviderApiKey: (type: string) => Promise<string | null>;
     updateProviderConfig: (type: string, config: Record<string, unknown>) => Promise<void>;
   };
 
@@ -306,18 +308,6 @@ export interface ElectronPluginAPI {
     warn: (...args: unknown[]) => void;
     error: (...args: unknown[]) => void;
   };
-
-  // 激活信息 —— 内置渠道（请求 https://komaapi.com）用它取激活 Key
-  activation: {
-    getApiKey: () => Promise<string | null>;
-    getInfo: () => Promise<ActivationInfo | null>;
-  };
-}
-
-export interface ActivationInfo {
-  apiKey: string;
-  activatedAt: number;
-  lastValidatedAt: number;
 }
 
 // 子进程选项

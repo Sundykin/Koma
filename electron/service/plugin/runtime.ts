@@ -34,6 +34,7 @@ import {
 import {
   createChannelConfig,
   getDecryptedApiKey,
+  getDecryptedApiKeyForPlugin,
   listChannelConfigs,
   updateChannelConfig,
 } from '../settings/ChannelConfigService';
@@ -42,7 +43,6 @@ import type {
   ChannelConfigInput,
 } from '../settings/ChannelConfigService';
 import type { MediaCategory } from '../storage/repositories/settingsInterfaces';
-import { readActivationInfo } from '../settings/activationKey';
 
 // 仅作为兼容迁移来源：旧版插件配置文件（provider-configs.json）。
 class LegacyProviderConfigStore {
@@ -568,6 +568,10 @@ class ElectronPluginRuntime extends EventEmitter {
         getProviderConfig: async (type: string) => {
           return getPluginProviderConfig(manifest, type);
         },
+        // 只能取到本插件自己那条渠道的明文 Key，归属在服务层校验
+        getProviderApiKey: async (type: string) => {
+          return getDecryptedApiKeyForPlugin(pluginId, type);
+        },
         updateProviderConfig: async (type: string, config: Record<string, unknown>) => {
           await savePluginProviderConfig(manifest, type, config);
         },
@@ -624,11 +628,6 @@ class ElectronPluginRuntime extends EventEmitter {
         info: (...args) => console.info(`[Plugin:${pluginId}]`, ...args),
         warn: (...args) => console.warn(`[Plugin:${pluginId}]`, ...args),
         error: (...args) => console.error(`[Plugin:${pluginId}]`, ...args),
-      },
-
-      activation: {
-        getApiKey: async () => readActivationInfo()?.apiKey || null,
-        getInfo: async () => readActivationInfo(),
       },
     };
   }

@@ -8,7 +8,7 @@ import type { PluginAPI } from '@komastudio/plugin-sdk';
 const React = (window as any).React;
 const { useState, useEffect, useCallback } = React;
 const {
-  Card, Button, Form, Switch, Space, Typography,
+  Card, Button, Form, Input, Switch, Space, Typography,
   Divider, Tag, Spin, Alert, Row, Col, Statistic,
 } = (window as any).antd;
 const Icons = (window as any)['@ant-design/icons'] || {};
@@ -25,6 +25,8 @@ const UPLOAD_ENDPOINT = 'https://komaapi.com/v1/uploads/images';
 
 interface QiniuConfig {
   enabled: boolean;
+  /** 上传凭据。激活体系移除后改为手动填写，保存时由宿主加密落库 */
+  apiKey?: string;
 }
 
 const DEFAULT_CONFIG: QiniuConfig = {
@@ -100,7 +102,7 @@ function QiniuProvider({ api }: QiniuProviderProps) {
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<ConnStatus>('idle');
   const [err, setErr] = useState('');
-  const [hasActivation, setHasActivation] = useState<boolean | null>(null);
+  const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -110,11 +112,11 @@ function QiniuProvider({ api }: QiniuProviderProps) {
         setConfig(merged);
         form.setFieldsValue(merged);
         try {
-          const key = await api.activation.getApiKey();
-          setHasActivation(!!key);
+          const key = await api.channels.getProviderApiKey('qiniu-image-hosting');
+          setHasApiKey(!!key);
           if (merged.enabled && key) setStatus('success');
         } catch {
-          setHasActivation(false);
+          setHasApiKey(false);
         }
       } catch {
         form.setFieldsValue(DEFAULT_CONFIG);
@@ -128,14 +130,15 @@ function QiniuProvider({ api }: QiniuProviderProps) {
   const testConn = useCallback(async (cfg?: QiniuConfig) => {
     const t = cfg || config;
     if (!t.enabled) { api.ui.showMessage('warning', '请先启用图床服务'); return; }
-    const key = await api.activation.getApiKey();
+    const key = (t.apiKey || '').trim() || await api.channels.getProviderApiKey('qiniu-image-hosting');
     if (!key) {
-      api.ui.showMessage('error', '未检测到激活 Key，请先在应用中完成激活');
+      api.ui.showMessage('error', '请先填写 API Key');
       setStatus('error');
-      setErr('未检测到激活 Key');
-      setHasActivation(false);
+      setErr('未配置 API Key');
+      setHasApiKey(false);
       return;
     }
+    setHasApiKey(true);
     setStatus('testing');
     setErr('');
     const r = await api.channels.testProvider('image-hosting', 'qiniu-image-hosting', t);
@@ -219,10 +222,10 @@ function QiniuProvider({ api }: QiniuProviderProps) {
       )
     ),
 
-    hasActivation === false && React.createElement(Alert, {
+    hasApiKey === false && React.createElement(Alert, {
       type: 'warning',
-      message: '未检测到激活 Key',
-      description: '请先在应用内完成激活，否则图床无法使用。',
+      message: '未配置 API Key',
+      description: '请在下方填写 API Key 并保存，否则图床无法使用。',
       style: { marginBottom: 16 },
       showIcon: true,
     }),
@@ -246,11 +249,12 @@ function QiniuProvider({ api }: QiniuProviderProps) {
         }, React.createElement(Text, { code: true }, UPLOAD_ENDPOINT)),
 
         React.createElement(Form.Item, {
+          name: 'apiKey',
           label: 'API Key',
-          extra: '自动使用 Koma 激活 Key，无需手动填写',
-        }, React.createElement(Text, { type: 'secondary' },
-          hasActivation === false ? '未激活' : '已接入激活 Key（已脱敏）'
-        )),
+          extra: hasApiKey
+            ? '已保存 Key（出于安全不回显）。留空保存则沿用已保存的 Key，填写则覆盖。'
+            : '请填写用于 komaapi.com 图片上传接口的 Key',
+        }, React.createElement(Input.Password, { placeholder: 'sk-...', autoComplete: 'new-password' })),
 
         React.createElement(Divider),
 
@@ -312,13 +316,16 @@ class QiniuImageHostingRuntime {
   }
 
   private async resolveApiKey(): Promise<string | null> {
+    // 配置对象里可能带明文（刚保存那一次），否则回落到宿主解密后的已存 Key
+    const inline = (this.config.apiKey || '').trim();
+    if (inline) return inline;
     try {
-      if (this.api?.activation?.getApiKey) {
-        return await this.api.activation.getApiKey();
+      if (this.api?.channels?.getProviderApiKey) {
+        return await this.api.channels.getProviderApiKey('qiniu-image-hosting');
       }
       const globalApi: PluginAPI | undefined = (window as any).__KOMA_PLUGIN_API__;
-      if (globalApi?.activation?.getApiKey) {
-        return await globalApi.activation.getApiKey();
+      if (globalApi?.channels?.getProviderApiKey) {
+        return await globalApi.channels.getProviderApiKey('qiniu-image-hosting');
       }
     } catch {
       // fall through
@@ -385,7 +392,7 @@ class QiniuImageHostingRuntime {
 async function onActivate(api: PluginAPI) {
   console.log('[Qiniu] 前端 UI 已加载');
   try {
-    // 让 runtime 能从全局兜底读到 api.activation
+    // 让 runtime 能从全局兜底读到 api.channels
     (window as any).__KOMA_PLUGIN_API__ = api;
     await api.channels.registerProvider({
       type: 'qiniu-image-hosting',

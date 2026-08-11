@@ -263,20 +263,19 @@ export async function bulkImportChannels(
 }
 
 /**
- * 激活渠道补齐：用于已激活老用户启动后，把新增的 koma-activation 管理渠道
- * （如 itvJimeng）自动注册出来。前端不持有明文 apiKey，主进程从 sourceChannelIds
- * 列表里第一个能解密出 apiKey 的渠道继承密钥再加密落库到目标渠道。
+ * 插件读取自己那条渠道的明文 apiKey。
+ * 常规读取只回 hasApiKey，插件存进去的 Key 自己读不回来；这里按 (pluginId, providerType)
+ * 归属取一次明文，归属校验在主进程做，前端传的身份不作数。
  */
-export async function reconcileActivationChannels(
-  cfgs: Array<Omit<ChannelConfig, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }>,
-  sourceChannelIds: string[],
-): Promise<ChannelConfig[]> {
-  const inputs = cfgs.map(frontendToInput);
-  const dtos = await invoke<ChannelConfigDTO[]>('channel:reconcileActivation', {
-    configs: inputs,
-    sourceChannelIds,
+export async function getProviderApiKeyForPlugin(
+  pluginId: string,
+  providerType: string,
+): Promise<string | null> {
+  const res = await invoke<{ apiKey: string | null }>('channel:getProviderApiKey', {
+    pluginId,
+    providerType,
   });
-  return dtos.map(dtoToFrontend);
+  return res?.apiKey ?? null;
 }
 
 /* --- Media Defaults --- */

@@ -19,9 +19,8 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'chat:history:listSessions', 'chat:history:getSession',
   'chat:history:saveSession', 'chat:history:deleteSession',
   // 全局渠道配置 (settings.db)
-  'channel:list', 'channel:get', 'channel:count',
+  'channel:list', 'channel:get', 'channel:count', 'channel:getProviderApiKey',
   'channel:create', 'channel:update', 'channel:delete', 'channel:bulkImport',
-  'channel:reconcileActivation',
   'channel:setDefault', 'channel:getDefault', 'channel:listDefaults', 'channel:deleteDefault',
   // 全局 KV
   'app-kv:get', 'app-kv:set', 'app-kv:delete',
@@ -33,7 +32,6 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'tasks:webContentsId',
   'tasks:delegate:claim', 'tasks:delegate:reply',
   // 激活信息
-  'activation:get-api-key',
   // controller/* 显式白名单
   'controller/window/minimize', 'controller/window/maximize',
   'controller/window/close', 'controller/window/isMaximized',

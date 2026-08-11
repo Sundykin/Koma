@@ -1,13 +1,15 @@
 /**
  * 七牛云图床 Provider - Backend Module
- * 固定经由 Koma 激活通道（https://komaapi.com）上传图片，
- * API Key 即用户在应用内填写的激活 Key，由宿主通过 api.activation 注入。
+ * 固定经由 https://komaapi.com 上传图片，API Key 由用户在插件设置里手动填写，
+ * 宿主加密落库；这里通过 api.channels.getProviderApiKey 取回本插件自己那条渠道的明文。
  */
 
 import type { ElectronPluginAPI } from '@komastudio/plugin-sdk';
 
 interface QiniuConfig {
   enabled: boolean;
+  /** 上传凭据。手动填写，宿主加密落库 */
+  apiKey?: string;
 }
 
 const UPLOAD_ENDPOINT = 'https://komaapi.com/v1/uploads/images';
@@ -98,9 +100,11 @@ class QiniuImageHostingProvider {
   }
 
   private async resolveApiKey(): Promise<string | null> {
+    const inline = (this.config?.apiKey || '').trim();
+    if (inline) return inline;
     if (!this.api) return null;
     try {
-      return await this.api.activation.getApiKey();
+      return await this.api.channels.getProviderApiKey('qiniu-image-hosting');
     } catch {
       return null;
     }
@@ -116,7 +120,7 @@ class QiniuImageHostingProvider {
 
     const apiKey = await this.resolveApiKey();
     if (!apiKey) {
-      return { success: false, error: '未检测到激活 Key，请先在应用中完成激活' };
+      return { success: false, error: '未配置 API Key，请在图床插件设置里填写' };
     }
 
     try {

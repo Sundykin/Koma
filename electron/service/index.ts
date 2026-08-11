@@ -11,6 +11,7 @@ import { linghuiService, LinghuiService } from './linghui';
 import { diagnosticsService, DiagnosticsService } from './diagnostics';
 import { baseDB, settingsDB } from './storage';
 import { syncBuiltinStyleReferences } from './styleReferences';
+import { dropActivationChannelMarkers } from './settings/dropActivationChannelMarkers';
 
 export const services = {
   project: projectService,
@@ -31,6 +32,13 @@ export async function initServices(): Promise<void> {
   initPromise = (async () => {
     // 全局 settings.db 与项目无关，先行初始化
     settingsDB.init();
+    // 激活体系已移除：把历史渠道上的托管标记摘掉，让它们变成普通渠道（幂等）
+    try {
+      const dropped = dropActivationChannelMarkers();
+      if (dropped > 0) console.info(`[services] 已清理 ${dropped} 个渠道的激活托管标记`);
+    } catch (err) {
+      console.warn('[services] 清理激活托管标记失败（不阻塞启动）', err);
+    }
     await services.project.init(path.join(app.getPath('home'), '.koma'));
     services.diagnostics.init(services.project.getStorageRoot());
     services.linghui.init(services.project.getStorageRoot());

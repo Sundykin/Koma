@@ -24,8 +24,7 @@ import {
 } from './store/projectOpenService';
 import { armUnloadFlush } from './services/saveFlushRegistry';
 import { loadCharacters, loadScenes, loadProps, loadShots, loadEpisodeShots, saveEpisode, createEpisode } from './store/projectStore';
-import { Spin, App as AntApp, Button, Input, Typography } from 'antd';
-import { KeyOutlined } from '@ant-design/icons';
+import { Spin, App as AntApp, Button } from 'antd';
 import {
   DEV_TEST_PROJECT,
   DEV_TEST_ANALYSIS,
@@ -36,17 +35,13 @@ import {
 import { getThumbnailUrl } from './constants/dimensions';
 import { createLogger } from './store/logger';
 import { loadSettings } from './store/globalStore';
-import { activationService, ActivationInfo } from './services/activationService';
-import { electronService } from './services/electronService';
 import { listEditorStepIds } from './workflow/editorStepRegistry';
 import { resolveConfiguredChannelModel, serializeMediaSelection } from './providers/channel/resolver';
 import {
   getDurationSpecForModel,
   getDurationSpecForProviderType,
 } from './providers/itv/durationSpec';
-import { useTranslation } from 'react-i18next';
 
-const { Text } = Typography;
 
 const logger = createLogger('App');
 
@@ -110,31 +105,16 @@ function isDisplayableProject(project: unknown): project is NonNullable<ReturnTy
 
 const AppContent: React.FC = () => {
   const { message } = AntApp.useApp();
-  const { t } = useTranslation();
 
   // 开发模式检测
   const urlParams = new URLSearchParams(window.location.search);
   const devMode = urlParams.get('dev');
   const isVideoDevMode = devMode === 'video';
 
-  // 激活状态
-  const [activationInfo, setActivationInfo] = useState<ActivationInfo | null>(null);
-  const [activationLoading, setActivationLoading] = useState(true);
-  const [activationInputKey, setActivationInputKey] = useState('');
-  const [activationVerifying, setActivationVerifying] = useState(false);
-
-  useEffect(() => {
-    activationService.getActivationInfo()
-      .then(info => setActivationInfo(info))
-      .finally(() => setActivationLoading(false));
-  }, []);
-
   // 窗口关闭/跳前冲刷所有防抖中的保存（剧本/分镜/剪辑时间线）
   useEffect(() => {
     armUnloadFlush();
   }, []);
-
-  const activationLocked = !activationLoading && !activationInfo;
 
   // 项目管理 Hook
   const {
@@ -176,10 +156,6 @@ const AppContent: React.FC = () => {
     void reloadSettings();
   }, [reloadSettings]);
 
-  const openKomaApi = useCallback(() => {
-    void electronService.shell.openExternal('https://komaapi.com');
-  }, []);
-
   // 当前项目 ITV 渠道的时长规格 — 传给 ProjectSettingsModal 让"视频提示词"档位 checkbox
   // 把不在 spec 范围内的档位灰显（model 优先 > providerType > default）
   const projectItvDurationSpec = useMemo(() => {
@@ -191,46 +167,6 @@ const AppContent: React.FC = () => {
       ?? getDurationSpecForProviderType(ctx?.channelConfig.providerType)
     );
   }, [activeProject, appSettings]);
-
-  const handleActivateFromLockedView = useCallback(async () => {
-    const apiKey = activationInputKey.trim();
-    if (!apiKey) {
-      message.warning(t('activation.emptyKey'));
-      return;
-    }
-
-    setActivationVerifying(true);
-    try {
-      const verifyResult = await activationService.verifyApiKey(apiKey);
-      if (!verifyResult.success) {
-        message.error(verifyResult.error === 'invalid_key'
-          ? t('activation.invalidKey')
-          : t('activation.verifyFailed'));
-        return;
-      }
-
-      const channelResult = await activationService.ensureDefaultModelChannels(apiKey);
-      if (!channelResult.success || !channelResult.channelIds) {
-        message.error(t('activation.defaultChannelsFailed'));
-        return;
-      }
-
-      const info: ActivationInfo = {
-        activatedAt: Date.now(),
-        lastValidatedAt: Date.now(),
-        maskedKey: activationService.maskApiKey(apiKey),
-        defaultChannelIds: channelResult.channelIds,
-      };
-
-      await activationService.saveActivationInfo(info);
-      setActivationInfo(info);
-      setActivationInputKey('');
-      await reloadSettings();
-      message.success(t('activation.verifySuccess'));
-    } finally {
-      setActivationVerifying(false);
-    }
-  }, [activationInputKey, message, reloadSettings, t]);
 
   // 注册 main → renderer 反向调用的 fulfillers：
   //   media:* 由 main 主导媒体轮询 → renderer 调原 provider + 落盘
@@ -261,7 +197,7 @@ const AppContent: React.FC = () => {
 
   // 启动/激活项目时检查未完成媒体任务，由用户决定是否恢复
   useEffect(() => {
-    if (!activeProject || activationLocked) return;
+    if (!activeProject) return;
 
     let disposed = false;
     const projectId = activeProject.id;
@@ -285,7 +221,7 @@ const AppContent: React.FC = () => {
     };
     // 按 id 粒度依赖：项目对象本身每轮 render 可能重建，整对象列入会反复触发。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeProject?.id, activationLocked]);
+  }, [activeProject?.id]);
 
   // 从存储加载分析数据
   const loadAnalysisData = useCallback(async (projectId: string) => {
@@ -369,15 +305,7 @@ const AppContent: React.FC = () => {
     if (view !== 'linghui') {
       lastNonLinghuiViewRef.current = view;
     }
-    // 锁定状态禁止留在灵绘，且关闭所有残留弹窗/任务状态
-    if (activationLocked) {
-      setIsCreateModalOpen(false);
-      setIsProjectSettingsOpen(false);
-      if (view === 'linghui') {
-        setView('projects');
-      }
-    }
-  }, [view, activationLocked]);
+  }, [view]);
 
   // 切换到视频步骤时加载 shots
   useEffect(() => {
@@ -600,73 +528,22 @@ const AppContent: React.FC = () => {
   const pendingMediaTaskSummary = pendingMediaPrompt
     ? summarizePendingMediaTasks(pendingMediaPrompt.tasks)
     : '';
-  const ActivationLockedView = (
-    <div className="h-full flex items-center justify-center bg-bg-app p-6">
-      <div className="w-full max-w-sm rounded-3xl border border-border-subtle bg-bg-surface/50 p-6 shadow-2xl shadow-black/30">
-        <div className="mb-5 text-center">
-          <div className="text-lg font-semibold text-text-primary">激活 Koma Studio</div>
-          <Text className="mt-2 block text-sm leading-6 text-text-secondary">
-            请输入你的 KomaAPI 激活码。还没有激活码？可以前往官网获取后再回来激活。
-          </Text>
-        </div>
-        <Input.Password
-          autoFocus
-          size="large"
-          placeholder={t('activation.apiKeyPlaceholder')}
-          value={activationInputKey}
-          onChange={event => setActivationInputKey(event.target.value)}
-          onPressEnter={handleActivateFromLockedView}
-          prefix={<KeyOutlined className="text-text-tertiary" />}
-          className="bg-bg-app border-border text-text-primary"
-        />
-        <Button
-          type="primary"
-          size="large"
-          block
-          loading={activationVerifying}
-          onClick={handleActivateFromLockedView}
-          className="mt-3 bg-accent-hover hover:bg-accent border-none"
-        >
-          {activationVerifying ? t('activation.activating') : t('activation.activate')}
-        </Button>
-        <Button
-          type="link"
-          block
-          onClick={openKomaApi}
-          className="mt-2 text-text-secondary hover:text-accent"
-        >
-          前往官网获取激活码
-        </Button>
-      </div>
-    </div>
-  );
-
   return (
     <div className="flex flex-col h-screen bg-bg-app text-text-primary font-sans selection:bg-accent/30">
       <WindowControls />
       <div className="flex flex-1 min-h-0">
-        {!activationLocked && view !== 'linghui' && (
+        {view !== 'linghui' && (
           <Sidebar
             view={view}
             activeProject={activeProject}
             activeEpisode={activeEpisode}
             onViewChange={setView}
             onConfigChange={reloadSettings}
-            activationInfo={activationInfo}
-            activationLocked={activationLocked}
-            onActivationChange={setActivationInfo}
           />
         )}
         <div className="flex-1 flex flex-col min-w-0 transition-all duration-300">
           <main className="flex-1 overflow-hidden relative bg-bg-app">
-            {activationLoading ? (
-              <div className="flex h-full items-center justify-center">
-                <Spin size="large" description="检查激活状态..."><div className="p-12" /></Spin>
-              </div>
-            ) : activationLocked ? (
-              ActivationLockedView
-            ) : (
-              <>
+            <>
                 {view === 'projects' && (
                   projectsLoading ? (
                     <div className="flex h-full items-center justify-center">
@@ -729,13 +606,11 @@ const AppContent: React.FC = () => {
                     />
                   </Suspense>
                 )}
-              </>
-            )}
+            </>
           </main>
         </div>
       </div>
-      {!activationLocked && (
-        <>
+      <>
           <CreateProjectModal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} onCreate={handleCreateProject} />
           <ProjectSettingsModal
             project={activeProject}
@@ -797,10 +672,9 @@ const AppContent: React.FC = () => {
               </div>
             </div>
           )}
-        </>
-      )}
+      </>
       {/* 全局任务状态悬浮通知 */}
-      {!activationLocked && activeProject && (
+      {activeProject && (
         <TaskStatusBar key={`${activeProject.id}:${taskStatusRefreshKey}`} projectId={activeProject.id} />
       )}
     </div>

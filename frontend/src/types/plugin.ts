@@ -241,6 +241,8 @@ export interface PluginAPI {
     updateProviderConfig(type: string, config: Record<string, any>): Promise<void>;
     /** 获取 Provider 配置 */
     getProviderConfig(type: string): Promise<Record<string, any> | null>;
+    /** 读取本插件渠道里保存的 API Key（明文）；只能拿到自己这条渠道的 */
+    getProviderApiKey(type: string): Promise<string | null>;
     /** 列出所有 Provider */
     listProviders(kind?: string): Promise<any[]>;
     /** 测试 Provider */
@@ -266,23 +268,6 @@ export interface PluginAPI {
     removeMenuItem(key: string): void;
   };
 
-  // 激活信息 —— 内置渠道（请求 https://komaapi.com）用它取激活 Key
-  activation: {
-    getApiKey(): Promise<string | null>;
-    getInfo(): Promise<ActivationInfo | null>;
-  };
-}
-
-// 激活信息（不含明文 apiKey；要拿明文请用 api.activation.getApiKey()）
-export interface ActivationInfo {
-  activatedAt: number;
-  lastValidatedAt: number;
-  maskedKey: string;
-  defaultChannelIds: {
-    llm: string;
-    tti: string;
-    itv: string;
-  };
 }
 
 // 插件导出接口

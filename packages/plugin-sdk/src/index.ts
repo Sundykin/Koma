@@ -40,7 +40,6 @@ export type {
   MCPMeta,
   AgentMeta,
   // 激活信息
-  ActivationInfo,
 } from './plugin';
 
 // MCP 相关类型（新增）

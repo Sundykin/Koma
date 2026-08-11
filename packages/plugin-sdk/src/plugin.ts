@@ -144,18 +144,6 @@ export interface HostInfo {
   electronVersion: string;
 }
 
-// 激活信息（不含明文 apiKey；要拿明文请用 api.activation.getApiKey()）
-export interface ActivationInfo {
-  activatedAt: number;
-  lastValidatedAt: number;
-  maskedKey: string;
-  defaultChannelIds: {
-    llm: string;
-    tti: string;
-    itv: string;
-  };
-}
-
 // 项目过滤器
 export interface ProjectFilter {
   status?: 'active' | 'archived';
@@ -256,6 +244,8 @@ export interface PluginAPI {
     unregisterProvider(type: string): Promise<void>;
     updateProviderConfig(type: string, config: Record<string, any>): Promise<void>;
     getProviderConfig(type: string): Promise<Record<string, any> | null>;
+    /** 读取本插件渠道里保存的 API Key（明文）；只能拿到自己这条渠道的 */
+    getProviderApiKey(type: string): Promise<string | null>;
     listProviders(kind?: string): Promise<any[]>;
     testProvider(kind: string, type: string, config: Record<string, any>): Promise<ChannelTestResult>;
     test(channelId: string): Promise<ChannelTestResult>;
@@ -277,14 +267,6 @@ export interface PluginAPI {
     removeMenuItem(key: string): void;
   };
 
-  /**
-   * 激活信息读取。仅返回 Koma 激活 Key；未激活时返回 null。
-   * 所有内置渠道都应使用该 Key 作为请求凭证，请求 https://komaapi.com。
-   */
-  activation: {
-    getApiKey(): Promise<string | null>;
-    getInfo(): Promise<ActivationInfo | null>;
-  };
 }
 
 // 插件导出接口
