@@ -5,10 +5,14 @@
  *   - 单镜：flush 队列保存 → 取最新 shot 快照 → generateShotPrompt → 回写
  *   - 批量：活跃任务去重守门 → batchGenerateShotPrompts → 逐条回写 + 聚合进度
  */
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { computeShotScriptHash } from '../../../services/shotFreshness';
 import type { Shot, ProjectStyleSnapshot } from '../../../types';
-import { generateShotPrompt, batchGenerateShotPrompts } from '../../../services/ShotPromptService';
+import {
+  generateShotPrompt,
+  batchGenerateShotPrompts,
+  type ShotPromptStreamHandler,
+} from '../../../services/ShotPromptService';
 import { findActiveTask } from '../../../services/tasksIPC';
 
 export interface StoryboardPromptsDeps {
@@ -33,6 +37,17 @@ export interface StoryboardPromptsDeps {
 
 type PromptKind = 'image' | 'video';
 
+/** 单个分镜某一类提示词的流式状态（浮层要的全部信息） */
+export interface PromptStreamSlot {
+  /** 已到达的文本：思考阶段是思维链，正文阶段是提示词本体 */
+  text?: string;
+  phase: 'reasoning' | 'output';
+  /** 生成开始时刻，用于浮层显示"已等待 N 秒" */
+  startedAt: number;
+}
+
+export type PromptStreamMap = Map<string, { image?: PromptStreamSlot; video?: PromptStreamSlot }>;
+
 const KIND_LABEL: Record<PromptKind, string> = { image: '图片', video: '视频' };
 const KIND_FLAG: Record<PromptKind, { image: boolean; video: boolean }> = {
   image: { image: true, video: false },
@@ -42,6 +57,13 @@ const KIND_TASK_TYPE: Record<PromptKind, string> = {
   image: 'prompt-generation:image',
   video: 'prompt-generation:video',
 };
+
+/**
+ * 流式分片合批间隔。
+ * LLM 分片是逐 token 到的，直接 setState 会在长输出 + 批量并跑时打出上千次渲染；
+ * 攒到这个间隔再刷一次，肉眼看仍是连续出字。
+ */
+const STREAM_FLUSH_INTERVAL_MS = 120;
 
 export function useStoryboardPrompts(deps: StoryboardPromptsDeps) {
   const {
@@ -55,6 +77,66 @@ export function useStoryboardPrompts(deps: StoryboardPromptsDeps) {
     (kind: PromptKind) => (kind === 'image' ? setSubmittingImagePrompts : setSubmittingVideoPrompts),
     [setSubmittingImagePrompts, setSubmittingVideoPrompts],
   );
+
+  // ---- 推理流式预览：分片先攒进 ref，再按 STREAM_FLUSH_INTERVAL_MS 合批刷进 state ----
+  const [promptStreamMap, setPromptStreamMap] = useState<PromptStreamMap>(new Map());
+  const streamBufferRef = useRef<PromptStreamMap>(new Map());
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  const publishStream = useCallback(() => {
+    setPromptStreamMap(new Map(streamBufferRef.current));
+  }, []);
+
+  const writeStreamSlot = useCallback((
+    shotId: string,
+    kind: PromptKind,
+    patch: Partial<PromptStreamSlot>,
+  ) => {
+    const entry = streamBufferRef.current.get(shotId) || {};
+    streamBufferRef.current.set(shotId, {
+      ...entry,
+      [kind]: { ...(entry[kind] || { startedAt: Date.now(), phase: 'reasoning' as const }), ...patch },
+    });
+  }, []);
+
+  const scheduleStreamFlush = useCallback(() => {
+    if (flushTimerRef.current !== undefined) return;
+    flushTimerRef.current = setTimeout(() => {
+      flushTimerRef.current = undefined;
+      publishStream();
+    }, STREAM_FLUSH_INTERVAL_MS);
+  }, [publishStream]);
+
+  /**
+   * 生成一开始就把槽位建出来（还没有任何分片）。
+   * 推理模型吐正文前会先思考几十秒，这段"什么都没有"的时间正是等待焦虑的来源——
+   * 浮层必须在 t=0 就出现并开始计时，而不是等第一个字。
+   */
+  const beginPromptStream = useCallback((shotIds: string[], kind: PromptKind) => {
+    for (const shotId of shotIds) {
+      writeStreamSlot(shotId, kind, { startedAt: Date.now(), phase: 'reasoning', text: '' });
+    }
+    publishStream();
+  }, [writeStreamSlot, publishStream]);
+
+  const handlePromptStream = useCallback<ShotPromptStreamHandler>(({ shotId, kind, accumulated, phase }) => {
+    writeStreamSlot(shotId, kind, { text: accumulated, phase });
+    scheduleStreamFlush();
+  }, [writeStreamSlot, scheduleStreamFlush]);
+
+  /** 推理结束（成功或失败）后清掉浮层，编辑器随即显示最终稿 */
+  const clearPromptStream = useCallback((shotIds: string[]) => {
+    for (const shotId of shotIds) streamBufferRef.current.delete(shotId);
+    if (flushTimerRef.current !== undefined) {
+      clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = undefined;
+    }
+    publishStream();
+  }, [publishStream]);
+
+  useEffect(() => () => {
+    if (flushTimerRef.current !== undefined) clearTimeout(flushTimerRef.current);
+  }, []);
 
   /** 批量入口前置守门：DB 里已有同 (type, episode) 活跃任务时不再创建第二条 */
   const ensureNoActiveBatch = useCallback(async (
@@ -86,6 +168,7 @@ export function useStoryboardPrompts(deps: StoryboardPromptsDeps) {
     const label = KIND_LABEL[kind];
     const setSubmitting = getSubmittingSetter(kind);
     setSubmitting(prev => new Set(prev).add(shotId));
+    beginPromptStream([shotId], kind);
     try {
       await flushQueuedShotSaves();
       const shotsSnapshot = shotsRef.current;
@@ -97,7 +180,7 @@ export function useStoryboardPrompts(deps: StoryboardPromptsDeps) {
         projectStylePrompt,
         llmSelection,
         KIND_FLAG[kind],
-        { force, shotsSnapshot },
+        { force, shotsSnapshot, onStream: handlePromptStream },
         styleSnapshot,
       );
       if (result.success) {
@@ -123,8 +206,9 @@ export function useStoryboardPrompts(deps: StoryboardPromptsDeps) {
         next.delete(shotId);
         return next;
       });
+      clearPromptStream([shotId]);
     }
-  }, [projectId, episodeId, llmSelection, projectStylePrompt, styleSnapshot, flushQueuedShotSaves, shotsRef, setShots, getSubmittingSetter, message]);
+  }, [projectId, episodeId, llmSelection, projectStylePrompt, styleSnapshot, flushQueuedShotSaves, shotsRef, setShots, getSubmittingSetter, message, handlePromptStream, beginPromptStream, clearPromptStream]);
 
   /** 批量提示词生成（force=true 即"重新生成已有提示词的"） */
   const runBatchPrompts = useCallback(async (kind: PromptKind, force: boolean, targetShotIds?: string[]) => {
@@ -149,6 +233,7 @@ export function useStoryboardPrompts(deps: StoryboardPromptsDeps) {
     }
     const setSubmitting = getSubmittingSetter(kind);
     setSubmitting(new Set(targetShots.map(s => s.id)));
+    beginPromptStream(targetShots.map(s => s.id), kind);
     setBatchProgress({ current: 0, total: targetShots.length, step: force ? '准备重新生成...' : '准备生成...' });
     try {
       const action = force ? '重新生成' : '生成';
@@ -159,6 +244,8 @@ export function useStoryboardPrompts(deps: StoryboardPromptsDeps) {
         projectStylePrompt,
         (current, total, result) => {
           setBatchProgress({ current, total, step: `${action}中 ${current}/${total}` });
+          // 这一条已出结果，浮层交还给编辑器
+          clearPromptStream([result.shotId]);
           if (result.success) {
             setShots(prev => prev.map(s => s.id === result.shotId ? {
               ...s,
@@ -170,7 +257,7 @@ export function useStoryboardPrompts(deps: StoryboardPromptsDeps) {
         llmSelection,
         styleSnapshot,
         KIND_FLAG[kind],
-        { force, shotsSnapshot: currentShots },
+        { force, shotsSnapshot: currentShots, onStream: handlePromptStream },
       );
       const successCount = results.filter(r => r.success).length;
       if (successCount === 0 && results.length > 0) {
@@ -185,8 +272,9 @@ export function useStoryboardPrompts(deps: StoryboardPromptsDeps) {
     } finally {
       setSubmitting(new Set());
       setBatchProgress(undefined);
+      clearPromptStream(targetShots.map(s => s.id));
     }
-  }, [projectId, episodeId, llmSelection, projectStylePrompt, styleSnapshot, ensureNoActiveBatch, message, flushQueuedShotSaves, shotsRef, setShots, getSubmittingSetter, setBatchProgress]);
+  }, [projectId, episodeId, llmSelection, projectStylePrompt, styleSnapshot, ensureNoActiveBatch, message, flushQueuedShotSaves, shotsRef, setShots, getSubmittingSetter, setBatchProgress, handlePromptStream, beginPromptStream, clearPromptStream]);
 
   const handleGenerateImagePrompt = useCallback(
     (shotId: string) => runSinglePrompt('image', shotId, false),
@@ -222,6 +310,7 @@ export function useStoryboardPrompts(deps: StoryboardPromptsDeps) {
   );
 
   return {
+    promptStreamMap,
     ensureNoActiveBatch,
     handleGenerateImagePrompt,
     handleGenerateVideoPrompt,

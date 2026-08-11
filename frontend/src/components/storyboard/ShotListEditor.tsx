@@ -13,6 +13,7 @@ import type { Shot, ShotContinuityMode, ShotImageMode, ShotScriptLine, Character
 import { getMediaAssetDisplaySource } from '../../types';
 import { getPrimaryShotSize, detectShotLightTone, isSameScene } from '../../services/photographyElements';
 import { ShotCard } from './ShotCard';
+import type { PromptStreamMap } from './hooks/useStoryboardPrompts';
 
 const { Text } = Typography;
 
@@ -103,6 +104,8 @@ export interface ShotListEditorProps {
   videoExtendSupported?: boolean;
   /** 单镜头视频生成进度（按 shotId 聚合），透传给 ShotCard 渲染百分比与阶段文本 */
   videoProgressMap?: Map<string, { progress: number; step: string }>;
+  /** 提示词推理流式状态（按 shotId 聚合，image/video 各一份） */
+  promptStreamMap?: PromptStreamMap;
 }
 
 export const ShotListEditor: React.FC<ShotListEditorProps> = ({
@@ -174,6 +177,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   durationSpec,
   videoExtendSupported,
   videoProgressMap,
+  promptStreamMap,
 }) => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const virtuosoRef = useRef<VirtuosoHandle>(null);
@@ -358,6 +362,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
           durationSpec={durationSpec}
           videoExtendSupported={videoExtendSupported}
           videoProgress={videoProgressMap?.get(shot.id)}
+          promptStream={promptStreamMap?.get(shot.id)}
         />
       );
     },
@@ -412,6 +417,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
       durationSpec,
       videoExtendSupported,
       videoProgressMap,
+      promptStreamMap,
     ],
   );
 

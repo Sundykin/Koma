@@ -19,6 +19,15 @@ const DEFAULT_TIMEOUT_MS = 120_000;
 const SUMMARY_SKIP_CHUNK_COUNT = 2;
 const MAX_RETRIES = 2;
 
+/**
+ * 流式请求的总时长硬顶。
+ *
+ * 流式的 timeoutMs 是**空闲**预算（首字节前 + 相邻两个分片之间的最大间隔），只要模型还在
+ * 吐字就不该判超时——否则长输出的推理任务会在正常出字的过程中被掐掉。这个硬顶兜住另一种
+ * 病态：上游一直滴水但永远不结束，空闲计时被无限重置。
+ */
+const STREAM_TOTAL_CAP_MS = 1_800_000;
+
 function resolveApiKeyForProfile(profileId?: string): string | null {
   if (!profileId) return null;
   try {
@@ -26,6 +35,33 @@ function resolveApiKeyForProfile(profileId?: string): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * 从流式分片里取"推理过程"增量。
+ *
+ * 各家把思维链放在不同字段，而且都不在 `content` 里：
+ *   - DeepSeek / 多数 OpenAI 兼容网关：`additional_kwargs.reasoning_content`
+ *   - 部分网关：`additional_kwargs.reasoning`
+ *   - Anthropic extended thinking：content 数组里 type='thinking' 的块
+ * 取不到就返回空串——拿不到思维链不影响正文，UI 那边还有计时兜底。
+ */
+function extractReasoningDelta(chunk: unknown): string {
+  const record = chunk as { additional_kwargs?: Record<string, unknown>; content?: unknown } | undefined;
+  const kwargs = record?.additional_kwargs;
+  const candidate = kwargs?.reasoning_content ?? kwargs?.reasoning;
+  if (typeof candidate === 'string' && candidate) return candidate;
+  if (Array.isArray(record?.content)) {
+    return record.content
+      .map((part) => {
+        const block = part as { type?: string; thinking?: unknown; text?: unknown };
+        if (block?.type !== 'thinking') return '';
+        const value = typeof block.thinking === 'string' ? block.thinking : block.text;
+        return typeof value === 'string' ? value : '';
+      })
+      .join('');
+  }
+  return '';
 }
 
 function normalizeProvider(value: unknown): string | undefined {
@@ -391,24 +427,52 @@ export class LLMExecutionEngine {
 
   private async queryStreamSingle(request: LLMQueryRequest, callbacks: StreamCallbacks, logCtx: QueryLogContext): Promise<void> {
     const startTime = Date.now();
-    const timeoutMs = request.options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    // 流式语义：timeoutMs = 空闲预算（等首字节 + 分片间隔），收到分片就重置；
+    // 总时长另有硬顶 STREAM_TOTAL_CAP_MS，避免"一直滴水不结束"的流永远不超时。
+    const idleTimeoutMs = request.options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    const totalCapMs = Math.max(idleTimeoutMs, STREAM_TOTAL_CAP_MS);
     const controller = new AbortController();
     let timedOut = false;
-    const timer = setTimeout(() => {
+    let timeoutKind: 'idle' | 'total' = 'idle';
+    const timeoutMessage = () => (timeoutKind === 'idle'
+      ? `LLM stream idle for ${idleTimeoutMs}ms (no output from upstream)`
+      : `LLM stream exceeded total budget ${totalCapMs}ms`);
+
+    let idleTimer = setTimeout(() => {
       timedOut = true;
+      timeoutKind = 'idle';
       controller.abort();
-    }, timeoutMs);
+    }, idleTimeoutMs);
+    const totalTimer = setTimeout(() => {
+      timedOut = true;
+      timeoutKind = 'total';
+      controller.abort();
+    }, totalCapMs);
+    const clearTimers = () => {
+      clearTimeout(idleTimer);
+      clearTimeout(totalTimer);
+    };
+    /** 每收到一个分片重置空闲计时：只要还在出字就不算超时。 */
+    const touchIdleTimer = () => {
+      if (timedOut) return;
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        timedOut = true;
+        timeoutKind = 'idle';
+        controller.abort();
+      }, idleTimeoutMs);
+    };
     const abortFromClient = () => {
-      clearTimeout(timer);
+      clearTimers();
       if (!controller.signal.aborted) {
         controller.abort();
       }
     };
 
-    console.info('[LLMQuery] 流式请求开始', { ...logCtx, timeoutMs });
+    console.info('[LLMQuery] 流式请求开始', { ...logCtx, idleTimeoutMs, totalCapMs });
 
     if (callbacks.abortSignal?.aborted) {
-      clearTimeout(timer);
+      clearTimers();
       console.warn('[LLMQuery] 流式请求被中止', { ...logCtx, durationMs: Date.now() - startTime });
       callbacks.onError({ code: 'ABORTED', message: 'Stream aborted by client' });
       return;
@@ -429,8 +493,8 @@ export class LLMExecutionEngine {
       for await (const chunk of stream) {
         if (timedOut) {
           const durationMs = Date.now() - startTime;
-          console.error('[LLMQuery] 流式请求超时', { ...logCtx, durationMs, timeoutMs });
-          callbacks.onError({ code: 'TIMEOUT', message: `LLM stream query timed out after ${timeoutMs}ms` });
+          console.error('[LLMQuery] 流式请求超时', { ...logCtx, durationMs, timeoutKind, idleTimeoutMs, totalCapMs });
+          callbacks.onError({ code: 'TIMEOUT', message: timeoutMessage() });
           return;
         }
         if (callbacks.abortSignal?.aborted) {
@@ -438,16 +502,25 @@ export class LLMExecutionEngine {
           callbacks.onError({ code: 'ABORTED', message: 'Stream aborted by client' });
           return;
         }
+        // 推理增量：思考阶段 content 恒为空，只有 reasoning 在动。它同样算"上游还活着"，
+        // 要重置空闲计时；但绝不累进 fullContent——那是要写回提示词的正文。
+        const reasoningDelta = extractReasoningDelta(chunk);
+        if (reasoningDelta) {
+          touchIdleTimer();
+          callbacks.onChunk(reasoningDelta, 'reasoning');
+        }
         const delta = typeof chunk.content === 'string' ? chunk.content : JSON.stringify(chunk.content);
         if (delta) {
+          // 先重置空闲计时再回调：onChunk 里的下游处理（IPC 转发等）不该占用空闲预算
+          touchIdleTimer();
           fullContent += delta;
-          callbacks.onChunk(delta);
+          callbacks.onChunk(delta, 'content');
         }
       }
       const durationMs = Date.now() - startTime;
       if (timedOut) {
-        console.error('[LLMQuery] 流式请求超时', { ...logCtx, durationMs, timeoutMs });
-        callbacks.onError({ code: 'TIMEOUT', message: `LLM stream query timed out after ${timeoutMs}ms` });
+        console.error('[LLMQuery] 流式请求超时', { ...logCtx, durationMs, timeoutKind, idleTimeoutMs, totalCapMs });
+        callbacks.onError({ code: 'TIMEOUT', message: timeoutMessage() });
         return;
       }
       if (callbacks.abortSignal?.aborted) {
@@ -472,8 +545,8 @@ export class LLMExecutionEngine {
       const durationMs = Date.now() - startTime;
       const errMsg = err instanceof Error ? err.message : String(err);
       if (timedOut) {
-        console.error('[LLMQuery] 流式请求超时', { ...logCtx, durationMs, timeoutMs, error: errMsg });
-        callbacks.onError({ code: 'TIMEOUT', message: `LLM stream query timed out after ${timeoutMs}ms` });
+        console.error('[LLMQuery] 流式请求超时', { ...logCtx, durationMs, timeoutKind, idleTimeoutMs, totalCapMs, error: errMsg });
+        callbacks.onError({ code: 'TIMEOUT', message: timeoutMessage() });
         return;
       }
       if (callbacks.abortSignal?.aborted || (err instanceof Error && err.name === 'AbortError')) {
@@ -484,7 +557,7 @@ export class LLMExecutionEngine {
       console.error('[LLMQuery] 流式请求异常', { ...logCtx, durationMs, error: errMsg });
       callbacks.onError({ code: 'API_ERROR', message: sanitizeErrorMessage(errMsg) });
     } finally {
-      clearTimeout(timer);
+      clearTimers();
       callbacks.abortSignal?.removeEventListener('abort', abortFromClient);
     }
   }
@@ -535,9 +608,10 @@ export class LLMExecutionEngine {
       console.info('[LLMQuery] 处理分段', { ...logCtx, chunk: index + 1, total: plan.chunks.length, chunkLen: chunkContent.length });
       const chunkResult = await new Promise<{ ok: true } | { ok: false; error: { code: string; message: string } }>((resolve) => {
         void this.queryStreamSingle({ ...request, messages: [...plan.systemMessages, ...plan.prefixUserMessages, { role: 'user', content: chunkUserContent }], options: { ...request.options, traceId: `${logCtx.traceId}-chunk${index + 1}` } }, {
-          onChunk: (delta) => {
-            fullContent += delta;
-            callbacks.onChunk(delta);
+          onChunk: (delta, kind) => {
+            // 推理增量只透传给 UI，不进 fullContent（分段模式同样）
+            if (kind !== 'reasoning') fullContent += delta;
+            callbacks.onChunk(delta, kind);
           },
           onDone: () => resolve({ ok: true }),
           onError: (error) => resolve({ ok: false, error: { code: error.code, message: `${chunkLabel} ${error.message}` } }),

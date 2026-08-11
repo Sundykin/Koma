@@ -58,6 +58,8 @@ import { useTheme } from '../../theme/runtime';
 import { ImageCardGrid } from '../asset/ImageCardGrid';
 import { buildImageAddMenu } from '../asset/imageAddMenu';
 import { VideoCardGrid } from '../asset/VideoCardGrid';
+import { PromptStreamOverlay } from './PromptStreamOverlay';
+import type { PromptStreamSlot } from './hooks/useStoryboardPrompts';
 import { StagePlayer } from '../video/StagePlayer';
 import { electronService, fsRemove } from '../../services/electronService';
 import { persistMediaAsset } from '../../services/mediaPersistenceService';
@@ -115,6 +117,8 @@ export interface ShotCardProps {
   isGeneratingVideoPrompt: boolean;
   isGeneratingImage: boolean;
   isGeneratingVideo: boolean;
+  /** 提示词推理的流式状态（image/video 各一份），生成期间盖在对应编辑器上实时显示 */
+  promptStream?: { image?: PromptStreamSlot; video?: PromptStreamSlot };
   onSelectChange: (shotId: string, selected: boolean) => void;
   onActivate?: (shotId: string | null) => void;
   /** 单分镜内字幕行变更（编辑 / 添加 / 删除 / 同分镜内排序 / 任意位置插入） */
@@ -201,6 +205,7 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
   isGeneratingVideoPrompt,
   isGeneratingImage,
   isGeneratingVideo,
+  promptStream,
   onSelectChange,
   onActivate,
   onScriptLinesChange,
@@ -1012,6 +1017,14 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
                   darkTheme={isDarkTheme}
                   className="shot-prompt-editor shot-prompt-editor-fill"
                 />
+                {isGeneratingImagePrompt && promptStream?.image && (
+                  <PromptStreamOverlay
+                    text={promptStream.image.text}
+                    phase={promptStream.image.phase}
+                    startedAt={promptStream.image.startedAt}
+                    label="图片提示词推理"
+                  />
+                )}
                 {/* 参考图浮在右下角（AI 生成相关按钮已上提到 header） */}
                 <div className="absolute right-2 bottom-2 flex items-center gap-1.5">
                   {referenceImages.map((img, idx) => (
@@ -1222,6 +1235,14 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
                   darkTheme={isDarkTheme}
                   className="shot-prompt-editor shot-prompt-editor-fill"
                 />
+                {isGeneratingVideoPrompt && promptStream?.video && (
+                  <PromptStreamOverlay
+                    text={promptStream.video.text}
+                    phase={promptStream.video.phase}
+                    startedAt={promptStream.video.startedAt}
+                    label="视频提示词推理"
+                  />
+                )}
               </div>
               <div className="flex-1 min-w-0 p-1 bg-bg-surface/15 relative">
                 <VideoCardGrid

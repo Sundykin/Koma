@@ -28,6 +28,12 @@ export interface LLMCallOptions {
   timeoutMs?: number;
   /** 流式增量回调；提供后会优先走流式请求 */
   onChunk?: LLMStreamChunkHandler;
+  /**
+   * 推理过程（思维链）增量回调。推理模型吐正文之前会先思考几十秒，那段时间 onChunk
+   * 一个字都不会来——只有这个回调有内容，用来让 UI 显示"正在思考"而不是空转。
+   * 它不会进入最终返回的正文。
+   */
+  onReasoningChunk?: LLMStreamChunkHandler;
 }
 
 export type LLMStreamChunkHandler = (delta: string, accumulated: string) => void;

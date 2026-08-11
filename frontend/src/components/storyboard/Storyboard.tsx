@@ -579,6 +579,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   // 生成图片提示词（首次生成）
   // 提示词生成/优化逻辑已拆到 hooks/useStoryboardPrompts（单镜 + 批量参数化）
   const {
+    promptStreamMap,
     ensureNoActiveBatch,
     handleGenerateImagePrompt,
     handleGenerateVideoPrompt,
@@ -929,6 +930,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             generatingImages={generatingShots}
             generatingVideos={renderingShots}
             videoProgressMap={shotVideoProgress}
+            promptStreamMap={promptStreamMap}
             batchProgress={batchProgress ?? derivedBatchProgress}
             activeShotId={activeShotId}
             onActiveShotChange={setActiveShotId}

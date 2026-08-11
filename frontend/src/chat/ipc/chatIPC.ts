@@ -270,13 +270,16 @@ export async function llmQuery(request: LLMQueryRequest): Promise<LLMQueryRespon
 export async function llmQueryStream(
   request: LLMQueryRequest,
   onChunk?: (delta: string, accumulated: string) => void,
+  onReasoning?: (delta: string, accumulated: string) => void,
 ): Promise<LLMQueryResponse> {
   const api = getLLMAPI();
 
   return new Promise<LLMQueryResponse>((resolve, reject) => {
     let accumulated = '';
+    // 推理过程单独累积：它只用于 UI 展示，绝不能混进 resolve 出去的正文
+    let accumulatedReasoning = '';
     let streamId: string | undefined;
-    let pendingChunks: Array<{ streamId: string; delta: string }> = [];
+    let pendingChunks: Array<{ streamId: string; delta: string; kind?: string }> = [];
     let pendingDone: { streamId: string; content: string; usage?: LLMQueryResponse['usage'] } | undefined;
     let pendingError: { streamId: string; error: { code: string; message: string } } | undefined;
 
@@ -284,12 +287,19 @@ export async function llmQueryStream(
     const cleanup = () => cleanupFns.forEach(fn => fn());
 
     // 处理 streamId 设置后的缓冲事件
+    const dispatchChunk = (data: { delta: string; kind?: string }) => {
+      if (data.kind === 'reasoning') {
+        accumulatedReasoning += data.delta;
+        onReasoning?.(data.delta, accumulatedReasoning);
+        return;
+      }
+      accumulated += data.delta;
+      onChunk?.(data.delta, accumulated);
+    };
+
     const flushPending = () => {
       for (const data of pendingChunks) {
-        if (data.streamId === streamId) {
-          accumulated += data.delta;
-          onChunk?.(data.delta, accumulated);
-        }
+        if (data.streamId === streamId) dispatchChunk(data);
       }
       pendingChunks = [];
 
@@ -305,10 +315,9 @@ export async function llmQueryStream(
     };
 
     // 注册流式事件监听
-    const unsubChunk = api.onStreamChunk((_event: any, data: { streamId: string; delta: string }) => {
+    const unsubChunk = api.onStreamChunk((_event: any, data: { streamId: string; delta: string; kind?: string }) => {
       if (streamId && data.streamId === streamId) {
-        accumulated += data.delta;
-        onChunk?.(data.delta, accumulated);
+        dispatchChunk(data);
       } else if (!streamId) {
         pendingChunks.push(data);
       }

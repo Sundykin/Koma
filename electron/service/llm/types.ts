@@ -107,7 +107,12 @@ export interface ResolvedExecutionConfig {
 }
 
 export interface StreamCallbacks {
-  onChunk: (delta: string) => void;
+  /**
+   * kind 区分正文与推理过程：推理模型（deepseek-reasoner 等）在吐正文之前会先思考几十秒，
+   * 那段时间 content 恒为空。把 reasoning 增量也送出去，UI 才有东西可显示，
+   * 同时它绝不能混进最终 content。
+   */
+  onChunk: (delta: string, kind?: 'content' | 'reasoning') => void;
   onDone: (result: { content: string; usage?: LLMUsage }) => void;
   onError: (error: { code: string; message: string }) => void;
   abortSignal?: AbortSignal;

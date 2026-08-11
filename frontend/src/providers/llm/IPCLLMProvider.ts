@@ -60,7 +60,7 @@ export class IPCLLMProvider implements LLMProvider {
     };
 
     const response = (options?.stream || typeof options?.onChunk === 'function')
-      ? await llmQueryStream(request, options?.onChunk)
+      ? await llmQueryStream(request, options?.onChunk, options?.onReasoningChunk)
       : await llmQuery(request);
     return response.content;
   }
@@ -89,7 +89,7 @@ export class IPCLLMProvider implements LLMProvider {
     };
 
     const response = options?.stream
-      ? await llmQueryStream(request, onChunk || options?.onChunk)
+      ? await llmQueryStream(request, onChunk || options?.onChunk, options?.onReasoningChunk)
       : await llmQuery(request);
     return response.content;
   }

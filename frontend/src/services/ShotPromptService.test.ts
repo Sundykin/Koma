@@ -1059,3 +1059,111 @@ describe('风格标签注入推理', () => {
     expect(userMessage).not.toContain('【风格标签');
   });
 });
+
+describe('提示词推理走流式', () => {
+  /** 跑一次图/视频推理，返回 chat 收到的 LLMCallOptions。 */
+  async function runWithOptions(kind: 'image' | 'video', onStream?: (e: {
+    shotId: string; kind: 'image' | 'video'; accumulated: string;
+  }) => void) {
+    const projectStore = await import('../store/projectStore');
+    vi.mocked(projectStore.loadScenes).mockResolvedValue([]);
+    vi.mocked(projectStore.loadProps).mockResolvedValue([]);
+    vi.mocked(projectStore.loadEpisodeShots).mockResolvedValue([]);
+
+    const { ShotPromptService } = await import('./ShotPromptService');
+    const chat = vi.fn(async (
+      _m: ChatMessage[],
+      options?: { onChunk?: (delta: string, accumulated: string) => void },
+    ) => {
+      // 模拟上游分片下发
+      options?.onChunk?.('画面描述：', '画面描述：');
+      options?.onChunk?.('x', '画面描述：x');
+      return '画面描述：x\n精确时长：10秒';
+    });
+    const service = new ShotPromptService(createContext({
+      llmProvider: { chat, stream: vi.fn() } as unknown as CreationContext['llmProvider'],
+    }));
+    await service.generateDualShotPrompts(
+      createStoryboardShot({ id: 's', imageMode: 'normal', videoMode: 'multi-ref', duration: 10 }),
+      [],
+      '',
+      { image: kind === 'image', video: kind === 'video' },
+      onStream ? { onStream } : undefined,
+    );
+    return chat.mock.calls[0]?.[1] as {
+      stream?: boolean; timeoutMs?: number; operation?: string; targetId?: string;
+    } | undefined;
+  }
+
+  it('图片提示词推理开启 stream 并放宽超时', async () => {
+    const options = await runWithOptions('image');
+    expect(options?.stream).toBe(true);
+    expect(options?.operation).toBe('shot-image-prompt');
+    expect(options?.timeoutMs).toBeGreaterThan(120_000);
+  });
+
+  it('视频提示词推理开启 stream 并带上分镜 id', async () => {
+    const options = await runWithOptions('video');
+    expect(options?.stream).toBe(true);
+    expect(options?.operation).toBe('shot-video-prompt');
+    expect(options?.targetId).toBe('s');
+  });
+
+  it('onStream 收到累计文本，kind 与推理类型一致', async () => {
+    const events: Array<{ shotId: string; kind: string; accumulated: string }> = [];
+    await runWithOptions('video', e => events.push(e));
+    expect(events).toEqual([
+      { shotId: 's', kind: 'video', accumulated: '画面描述：', phase: 'output' },
+      { shotId: 's', kind: 'video', accumulated: '画面描述：x', phase: 'output' },
+    ]);
+  });
+
+  it('思考阶段的增量以 phase=reasoning 上报，且不进入最终提示词', async () => {
+    const projectStore = await import('../store/projectStore');
+    vi.mocked(projectStore.loadScenes).mockResolvedValue([]);
+    vi.mocked(projectStore.loadProps).mockResolvedValue([]);
+    vi.mocked(projectStore.loadEpisodeShots).mockResolvedValue([]);
+
+    const { ShotPromptService } = await import('./ShotPromptService');
+    const chat = vi.fn(async (
+      _m: ChatMessage[],
+      options?: {
+        onChunk?: (d: string, a: string) => void;
+        onReasoningChunk?: (d: string, a: string) => void;
+      },
+    ) => {
+      // 推理模型：先思考（正文一个字都没有），再出正文
+      options?.onReasoningChunk?.('先分析分镜', '先分析分镜');
+      options?.onChunk?.('画面描述：x', '画面描述：x');
+      return '画面描述：x\n精确时长：10秒';
+    });
+    const events: Array<{ phase: string; accumulated: string }> = [];
+    const service = new ShotPromptService(createContext({
+      llmProvider: { chat, stream: vi.fn() } as unknown as CreationContext['llmProvider'],
+    }));
+    const { videoPrompt } = await service.generateDualShotPrompts(
+      createStoryboardShot({ id: 's', imageMode: 'normal', videoMode: 'multi-ref', duration: 10 }),
+      [], '', { image: false, video: true },
+      { onStream: e => events.push({ phase: e.phase, accumulated: e.accumulated }) },
+    );
+
+    expect(events[0]).toEqual({ phase: 'reasoning', accumulated: '先分析分镜' });
+    expect(events[1]).toEqual({ phase: 'output', accumulated: '画面描述：x' });
+    // 思维链绝不能混进最终提示词
+    expect(videoPrompt).not.toContain('先分析分镜');
+  });
+
+  it('即使 UI 没订阅也注册 onChunk（分片到达与否是排查流式的唯一证据）', async () => {
+    const options = await runWithOptions('image') as { onChunk?: unknown } | undefined;
+    expect(typeof options?.onChunk).toBe('function');
+  });
+
+  it('streamStats 统计分片数：上游只发一整块时 chunks=1，可与"链路没通"区分', async () => {
+    const options = await runWithOptions('video') as unknown as {
+      streamStats: () => { chunks: number; firstChunkMs?: number };
+    };
+    // 桩里模拟了 2 个分片
+    expect(options.streamStats().chunks).toBe(2);
+    expect(options.streamStats().firstChunkMs).toBeGreaterThanOrEqual(0);
+  });
+});

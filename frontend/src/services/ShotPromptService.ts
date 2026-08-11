@@ -9,6 +9,7 @@ import { resolvePromptTemplate } from '../store/promptTemplates';
 import type { PromptTemplateType } from '../store/promptTemplates';
 import { loadProject, loadScenes, loadProps, updateShot, loadEpisodeShots } from '../store/projectStore';
 import { createLogger } from '../store/logger';
+import type { LLMCallOptions } from '../providers/llm/types';
 import { createMentionString } from '../editor/mentionTypes';
 import { runWithConcurrency } from '../utils/concurrency';
 import {
@@ -59,6 +60,64 @@ export {
 
 const logger = createLogger('ShotPrompt');
 
+/**
+ * 提示词推理的 LLM 超时（默认 120s 对这几个模板来说太紧）。
+ *
+ * 图/视频推理的 user 段是"模板 + 参考表 + 邻镜上下文 + 6 段约束"拼出来的长输入，
+ * 输出也常有几千字；非流式请求要等整段生成完才回第一个字节，慢模型 / 中转网关很容易
+ * 在读超时上直接把连接掐掉，表现为整批分镜推理失败。
+ */
+const SHOT_PROMPT_LLM_TIMEOUT_MS = 300_000;
+
+/**
+ * 提示词推理统一走流式：分片持续下发，连接不会因为长时间无响应被中间层判死。
+ * operation / taskKind 一并带上，便于在 LLM 调用日志里按分镜定位。
+ */
+function buildPromptLLMOptions(
+  operation: string,
+  shotId: string,
+  kind: 'image' | 'video',
+  onStream?: ShotPromptStreamHandler,
+): LLMCallOptions & {
+  streamStats: () => { chunks: number; firstChunkMs?: number; reasoningChunks: number; firstReasoningMs?: number };
+} {
+  // onChunk / onReasoningChunk 始终注册（即使 UI 没订阅）：分片有没有真的到达是排查
+  // "流式没生效"的唯一证据。上游网关如果把整段响应缓冲成一个分片下发，这里会看到
+  // chunks=1 —— 那是上游行为，不是本地链路断了，两者必须能从日志里分辨出来。
+  let chunks = 0;
+  let reasoningChunks = 0;
+  let firstChunkMs: number | undefined;
+  let firstReasoningMs: number | undefined;
+  const startedAt = Date.now();
+  return {
+    source: 'shot-prompt',
+    operation,
+    targetId: shotId,
+    taskKind: 'generate',
+    stream: true,
+    timeoutMs: SHOT_PROMPT_LLM_TIMEOUT_MS,
+    onReasoningChunk: (_delta, accumulated) => {
+      reasoningChunks += 1;
+      if (reasoningChunks === 1) {
+        firstReasoningMs = Date.now() - startedAt;
+        logger.info('分镜提示词推理 - 模型开始思考', { shotId, kind, operation, firstReasoningMs });
+      }
+      onStream?.({ shotId, kind, accumulated, phase: 'reasoning' });
+    },
+    onChunk: (_delta, accumulated) => {
+      chunks += 1;
+      if (chunks === 1) {
+        firstChunkMs = Date.now() - startedAt;
+        logger.info('分镜提示词推理 - 流式首个分片已到达', {
+          shotId, kind, operation, firstChunkMs, thinkingChunks: reasoningChunks,
+        });
+      }
+      onStream?.({ shotId, kind, accumulated, phase: 'output' });
+    },
+    streamStats: () => ({ chunks, firstChunkMs, reasoningChunks, firstReasoningMs }),
+  };
+}
+
 // 运镜关键字
 export const CAMERA_OPTIONS = [
   'static shot',
@@ -105,9 +164,22 @@ export interface PromptGenerationResult {
   error?: string;
 }
 
+/**
+ * 推理流式增量回调：分镜卡用它把"正在生成的提示词"实时显示出来。
+ * accumulated 是到目前为止的全量文本（不是增量），UI 直接渲染即可。
+ */
+export type ShotPromptStreamHandler = (event: {
+  shotId: string;
+  kind: 'image' | 'video';
+  accumulated: string;
+  /** reasoning = 模型还在思考（正文一个字都没出）；output = 已经在写正文 */
+  phase: 'reasoning' | 'output';
+}) => void;
+
 export interface ShotPromptGenerationOptions {
   force?: boolean;
   shotsSnapshot?: Shot[];
+  onStream?: ShotPromptStreamHandler;
 }
 
 export class ShotPromptService {
@@ -235,6 +307,7 @@ export class ShotPromptService {
         'image', shot, shotCharacters, shotScenes, shotProps,
         characterRefs, sceneRefs, propRefs, resolvedStylePrefix,
         referenceTable, gridSequenceNotice, shotsSection, referenceBundle, allEpisodeShots,
+        options?.onStream,
       );
     }
     let videoPrompt = shot.videoPrompt || '';
@@ -244,6 +317,7 @@ export class ShotPromptService {
         'video', shotForVideo, shotCharacters, shotScenes, shotProps,
         characterRefs, sceneRefs, propRefs, resolvedStylePrefix,
         referenceTable, gridSequenceNotice, shotsSection, referenceBundle, allEpisodeShots,
+        options?.onStream,
       );
     }
 
@@ -272,12 +346,14 @@ export class ShotPromptService {
     shotsSection: string,
     referenceBundle: ShotReferenceBundle,
     allEpisodeShots?: Shot[],
+    onStream?: ShotPromptStreamHandler,
   ): Promise<string> {
     // 视频路径：按 (duration, videoMode) 选择 5 个新模板之一，附带上下文衔接
     if (type === 'video') {
       return this.generateVideoPrompt(
         shot, shotCharacters, shotScenes, shotProps,
         referenceTable, gridSequenceNotice, shotsSection, referenceBundle, allEpisodeShots,
+        onStream,
       );
     }
 
@@ -361,13 +437,17 @@ export class ShotPromptService {
     );
 
     const imageGenreToneDirective = await buildGenreToneDirective(this.ctx.genreTags);
-    const result = await this.ctx.llmProvider.chat([
-      { role: 'system', content: systemPrompt },
-      {
-        role: 'user',
-        content: [prompt, mappingSchemaNote, imageGenreToneDirective].filter(Boolean).join('\n\n'),
-      },
-    ]);
+    const imageLLMOptions = buildPromptLLMOptions('shot-image-prompt', shot.id, 'image', onStream);
+    const result = await this.ctx.llmProvider.chat(
+      [
+        { role: 'system', content: systemPrompt },
+        {
+          role: 'user',
+          content: [prompt, mappingSchemaNote, imageGenreToneDirective].filter(Boolean).join('\n\n'),
+        },
+      ],
+      imageLLMOptions,
+    );
 
     // 清理结果
     let cleanedResult = result.trim();
@@ -379,6 +459,7 @@ export class ShotPromptService {
       shotId: shot.id,
       outputLength: cleanedResult.length,
       output: cleanedResult,
+      ...imageLLMOptions.streamStats(),
     });
 
     return cleanedResult;
@@ -398,6 +479,7 @@ export class ShotPromptService {
     shotsSection: string,
     referenceBundle: ShotReferenceBundle,
     allEpisodeShots?: Shot[],
+    onStream?: ShotPromptStreamHandler,
   ): Promise<string> {
     const videoMode: ShotVideoMode = shot.videoMode || 'multi-ref';
     const templateKey = VIDEO_TEMPLATE_BY_MODE[videoMode];
@@ -495,30 +577,35 @@ export class ShotPromptService {
       duration: shot.duration,
     });
 
-    const result = await this.ctx.llmProvider.chat([
-      { role: 'system', content: systemPrompt },
-      {
-        role: 'user',
-        content: [
-          userPrompt,
-          dialogueGuardNote,
-          mappingSchemaNote,
-          spatialAnchorDirective,
-          tailFrameContinuityDirective,
-          videoExtendDirective,
-          voiceMentionDirective,
-          genreToneDirective,
-          finalOutputBoundary,
-        ]
-          .filter(Boolean)
-          .join('\n\n'),
-      },
-    ]);
+    const videoLLMOptions = buildPromptLLMOptions('shot-video-prompt', shot.id, 'video', onStream);
+    const result = await this.ctx.llmProvider.chat(
+      [
+        { role: 'system', content: systemPrompt },
+        {
+          role: 'user',
+          content: [
+            userPrompt,
+            dialogueGuardNote,
+            mappingSchemaNote,
+            spatialAnchorDirective,
+            tailFrameContinuityDirective,
+            videoExtendDirective,
+            voiceMentionDirective,
+            genreToneDirective,
+            finalOutputBoundary,
+          ]
+            .filter(Boolean)
+            .join('\n\n'),
+        },
+      ],
+      videoLLMOptions,
+    );
 
     logger.info('分镜视频提示词推理 - LLM 输出', {
       shotId: shot.id,
       outputLength: result.length,
       output: result,
+      ...videoLLMOptions.streamStats(),
       hasTailFrameDirective: Boolean(tailFrameContinuityDirective),
       tailFrameMentioned: result.includes(PREVIOUS_TAIL_FRAME_MENTION),
     });
@@ -594,6 +681,7 @@ export class ShotPromptService {
     stylePrefix: string = '',
     styleSnapshot?: StyleSnapshotLike,
     allShotsOverride?: Shot[],
+    onStream?: ShotPromptStreamHandler,
   ): Promise<string> {
     const resolvedStylePrefix = this.resolveTTIStylePrefix(stylePrefix, styleSnapshot);
 
@@ -663,10 +751,13 @@ export class ShotPromptService {
 
     const resolvedSystemPrompt = await resolvePromptTemplate('shot_prompt_system', {});
 
-    const result = await this.ctx.llmProvider.chat([
-      { role: 'system', content: resolvedSystemPrompt.prompt },
-      { role: 'user', content: resolvedPrompt.prompt },
-    ]);
+    const result = await this.ctx.llmProvider.chat(
+      [
+        { role: 'system', content: resolvedSystemPrompt.prompt },
+        { role: 'user', content: resolvedPrompt.prompt },
+      ],
+      buildPromptLLMOptions('shot-special-image-prompt', shot.id, 'image', onStream),
+    );
 
     let cleanedResult = result.trim();
     if (cleanedResult.startsWith('"') && cleanedResult.endsWith('"')) {
@@ -819,7 +910,9 @@ export class ShotPromptService {
         // 网格/故事板模式：imagePrompt 使用专用推理模板
         const needImage = options?.force || !shot.imagePrompt?.trim();
         imagePrompt = needImage
-          ? await this.generateSpecialImageShotPrompt(shot, characters, stylePrefix, styleSnapshot, options?.shotsSnapshot)
+          ? await this.generateSpecialImageShotPrompt(
+            shot, characters, stylePrefix, styleSnapshot, options?.shotsSnapshot, options?.onStream,
+          )
           : (workingShot.imagePrompt || '');
         const shotWithGridPrompt = { ...workingShot, imagePrompt };
         // videoPrompt 仍走原流程

@@ -212,9 +212,11 @@ class ChatIpc {
       void (async () => {
         try {
           await llmExecutionEngine.queryStream(args, {
-            onChunk: (delta) => {
+            onChunk: (delta, kind) => {
               if (!sender.isDestroyed()) {
-                sender.send('llm:stream:chunk', { streamId, delta });
+                // kind 复用同一条事件通道（免开新 IPC 通道 / 免改白名单）；
+                // 缺省视为正文，老前端不认识这个字段也不会受影响。
+                sender.send('llm:stream:chunk', { streamId, delta, kind: kind || 'content' });
               }
             },
             onDone: (result) => {
