@@ -63,7 +63,43 @@ interface H3ContentItem {
   role?: H3Role;
 }
 
-/** MiniMax 上游的 error 可能是 string / {code,message} / 更深嵌套对象，统一可读化。 */
+/**
+ * MiniMax 状态码 → 中文原因 + 处置建议。
+ *
+ * 上游只回英文短语（例如 1026 只有 `input new_sensitive, input text sensitive`），
+ * 用户在分镜面板上看到的就是这串东西，既不知道是审核拦截，也不知道该改什么。
+ * 这里把常见码翻成"发生了什么 + 下一步做什么"。
+ */
+const MINIMAX_ERROR_HINTS: Record<string, string> = {
+  1000: 'MiniMax 未知错误',
+  1001: 'MiniMax 请求超时，请稍后重试',
+  1002: 'MiniMax 触发限流（RPM），请降低并发或稍后重试',
+  1004: 'MiniMax 鉴权失败，请检查渠道 API Key 是否有效',
+  1008: 'MiniMax 账户余额不足，请充值后重试',
+  1013: 'MiniMax 服务内部错误，请稍后重试',
+  1026: 'MiniMax 内容审核未通过：输入内容命中敏感词',
+  1027: 'MiniMax 内容审核未通过：生成结果命中敏感词',
+  1039: 'MiniMax 触发限流（TPM），请稍后重试',
+  2013: 'MiniMax 入参异常，请检查提示词与参考素材',
+  2049: 'MiniMax API Key 无效，请检查渠道配置',
+};
+
+/** 输入审核（1026）的补充指引：上游会在 message 里说明是文本还是素材命中。 */
+function describeInputSensitive(message: string): string {
+  const lower = message.toLowerCase();
+  const parts: string[] = [];
+  if (lower.includes('text')) parts.push('提示词文本');
+  if (lower.includes('image') || lower.includes('img')) parts.push('参考图');
+  if (lower.includes('video')) parts.push('参考视频');
+  if (lower.includes('audio')) parts.push('参考音频');
+  const target = parts.length ? parts.join(' / ') : '输入内容';
+  return `请修改该分镜的${target}后重新生成，或改用其它视频渠道`;
+}
+
+/**
+ * 上游错误可读化。
+ * error 可能是 string / {code,message} / 更深嵌套对象；命中已知状态码时补中文原因和建议。
+ */
 function formatMiniMaxError(error: unknown): string {
   if (!error) return '任务失败';
   if (typeof error === 'string') return error;
@@ -71,6 +107,12 @@ function formatMiniMaxError(error: unknown): string {
     const record = error as Record<string, unknown>;
     const code = typeof record.code === 'string' || typeof record.code === 'number' ? String(record.code) : '';
     const message = typeof record.message === 'string' ? record.message : '';
+    const hint = code ? MINIMAX_ERROR_HINTS[code] : undefined;
+    if (hint) {
+      const advice = code === '1026' ? `。${describeInputSensitive(message)}` : '';
+      const raw = message ? `（[${code}] ${message}）` : `（[${code}]）`;
+      return `${hint}${advice}${raw}`;
+    }
     if (message && code) return `[${code}] ${message}`;
     if (message) return message;
     if (code) return `[${code}]`;
@@ -81,6 +123,18 @@ function formatMiniMaxError(error: unknown): string {
     }
   }
   return String(error);
+}
+
+/**
+ * base_resp 里的失败（status_code ≠ 0）也要可读化。
+ *
+ * MiniMax 的审核 / 鉴权 / 限流经常是 HTTP 200 + base_resp.status_code≠0，只判 response.ok
+ * 会漏过去，最后死在"响应缺少 task_id"这种完全指错方向的报错上。
+ */
+function formatBaseRespError(baseResp: H3TaskResponse['base_resp']): string | undefined {
+  const statusCode = baseResp?.status_code;
+  if (statusCode === undefined || statusCode === null || statusCode === 0) return undefined;
+  return formatMiniMaxError({ code: statusCode, message: baseResp?.status_msg || '' });
 }
 
 interface H3TaskResponse {
@@ -154,6 +208,40 @@ async function toBase64DataUrl(asset: unknown): Promise<string | undefined> {
   return undefined;
 }
 
+/** 这次请求要带的素材，按 H3 的两种模式（i2va 首尾帧 / r2va 多模态参考）分好类。 */
+interface H3AssetPlan {
+  /** 首尾帧（只在 i2va 模式下成立） */
+  frames: Array<{ asset: unknown; role: 'first_frame' | 'last_frame' }>;
+  referenceImages: unknown[];
+  videos: ProviderAssetInput[];
+  audios: ProviderAssetInput[];
+}
+
+function collectAssets(request: BaseITVRequest<unknown, unknown>): H3AssetPlan {
+  // 音色参考（音画同出）：metadata.komaVoiceReferences；视频延长承接：metadata.komaVideoReferences
+  const voiceRefs = (request.metadata?.komaVoiceReferences as ProviderAssetInput[] | undefined) ?? [];
+  const videoRefs = (request.metadata?.komaVideoReferences as ProviderAssetInput[] | undefined) ?? [];
+  const plan: H3AssetPlan = {
+    frames: [],
+    referenceImages: [],
+    videos: videoRefs.slice(0, MAX_VIDEO_REFS),
+    audios: voiceRefs.slice(0, MAX_AUDIO_REFS),
+  };
+
+  if (request.capability === 'video.image-to-video') {
+    plan.frames.push({ asset: request.primaryImage, role: 'first_frame' });
+    plan.referenceImages.push(...(request.additionalReferences || []));
+  } else if (request.capability === 'video.start-end-to-video') {
+    plan.frames.push({ asset: request.startFrame, role: 'first_frame' });
+    plan.frames.push({ asset: request.endFrame, role: 'last_frame' });
+  } else if (request.capability !== 'video.text-to-video') {
+    // reference-to-video 与兜底：全部当多模态参考
+    plan.referenceImages.push(...(request.referenceImages || []));
+  }
+  plan.referenceImages = plan.referenceImages.slice(0, MAX_IMAGE_REFS);
+  return plan;
+}
+
 async function buildContentItems(request: BaseITVRequest<unknown, unknown>): Promise<H3ContentItem[]> {
   const items: H3ContentItem[] = [];
   const pending: Promise<void>[] = [];
@@ -172,39 +260,51 @@ async function buildContentItems(request: BaseITVRequest<unknown, unknown>): Pro
     const url = await toBase64DataUrl(asset);
     if (url) items.push({ type: 'audio_url', audio_url: { url }, role: 'reference_audio' });
   };
-
-  // 音色参考（音画同出）：metadata.komaVoiceReferences 是 ProviderAssetInput[]
-  const voiceRefs = (request.metadata?.komaVoiceReferences as ProviderAssetInput[] | undefined) ?? [];
-  // 视频延长参考：metadata.komaVideoReferences
-  const videoRefs = (request.metadata?.komaVideoReferences as ProviderAssetInput[] | undefined) ?? [];
-
   const schedule = (fn: Promise<void>) => { pending.push(fn); };
 
-  if (request.capability === 'video.text-to-video') {
-    pushText(request.prompt);
-  } else if (request.capability === 'video.image-to-video') {
-    pushText(request.prompt);
-    schedule(pushImage(request.primaryImage, 'first_frame'));
-    for (const ref of request.additionalReferences || []) schedule(pushImage(ref, 'reference_image'));
-  } else if (request.capability === 'video.start-end-to-video') {
-    pushText(request.prompt);
-    schedule(pushImage(request.startFrame, 'first_frame'));
-    schedule(pushImage(request.endFrame, 'last_frame'));
-  } else if (request.capability === 'video.reference-to-video') {
-    pushText(request.prompt);
-    for (const ref of (request.referenceImages || []).slice(0, MAX_IMAGE_REFS)) schedule(pushImage(ref, 'reference_image'));
-    for (const ref of videoRefs.slice(0, MAX_VIDEO_REFS)) schedule(pushVideo(ref));
-    for (const ref of voiceRefs.slice(0, MAX_AUDIO_REFS)) schedule(pushAudio(ref));
+  pushText(request.prompt);
+  const plan = collectAssets(request);
+
+  // H3 的硬规则：content 里出现任一 reference_*，就不能再出现 first_frame / last_frame。
+  //
+  // 参考视频（上一镜延长承接）和参考音频（音色）只存在于多模态模式，而且都是用户在分镜上
+  // 显式打开的开关——它们出现时整条请求切到多模态，首尾帧降级成 reference_image。
+  // 旧实现是在 i2va 分支里直接**不发**视频/音频：提示词里写着"将 <视频 1> 延长 N 秒"，
+  // 请求里却没有那段视频，模型只能照着不存在的参考硬编。
+  const forcesMultimodal = plan.videos.length > 0 || plan.audios.length > 0;
+
+  if (forcesMultimodal) {
+    for (const frame of plan.frames) schedule(pushImage(frame.asset, 'reference_image'));
+    for (const ref of plan.referenceImages) schedule(pushImage(ref, 'reference_image'));
+    for (const ref of plan.videos) schedule(pushVideo(ref));
+    for (const ref of plan.audios) schedule(pushAudio(ref));
+  } else if (plan.frames.length > 0) {
+    // i2va：上游只认首尾帧，多余的参考图带上去就是混用（会被判非法），直接丢掉并留日志
+    for (const frame of plan.frames) schedule(pushImage(frame.asset, frame.role));
+    if (plan.referenceImages.length > 0) {
+      logger.warn('MiniMax H3 图生视频不支持在首尾帧之外再带参考图（上游规定二者互斥），已丢弃', {
+        capability: request.capability,
+        dropped: plan.referenceImages.length,
+      });
+    }
   } else {
-    // 兜底：把能给的都当全能参考
-    pushText(request.prompt);
-    for (const ref of (request.referenceImages || []).slice(0, MAX_IMAGE_REFS)) schedule(pushImage(ref, 'reference_image'));
-    for (const ref of videoRefs.slice(0, MAX_VIDEO_REFS)) schedule(pushVideo(ref));
-    for (const ref of voiceRefs.slice(0, MAX_AUDIO_REFS)) schedule(pushAudio(ref));
+    for (const ref of plan.referenceImages) schedule(pushImage(ref, 'reference_image'));
   }
 
   await Promise.all(pending);
   return items;
+}
+
+/** content 里是否已经进入多模态参考模式（决定 ratio 规则与互斥校验）。 */
+function hasMultimodalReference(items: H3ContentItem[]): boolean {
+  return items.some(item => item.role === 'reference_image'
+    || item.role === 'reference_video'
+    || item.role === 'reference_audio');
+}
+
+/** content 是否只有文本（t2va：上游要求 ratio 必填且不能是 adaptive）。 */
+function isTextOnly(items: H3ContentItem[]): boolean {
+  return items.every(item => item.type === 'text');
 }
 
 export class MiniMaxH3ITVProvider implements ITVProvider {
@@ -273,12 +373,18 @@ export class MiniMaxH3ITVProvider implements ITVProvider {
       throw new Error(`MiniMax H3 响应不是合法 JSON: ${raw.slice(0, 300)}`);
     }
     if (!response.ok) {
-      const message = typeof body.error === 'string'
-        ? body.error
-        : (body.error as { message?: string } | undefined)?.message
-          || body.base_resp?.status_msg
-          || raw.slice(0, 300);
+      const message = formatBaseRespError(body.base_resp)
+        || (typeof body.error === 'string'
+          ? body.error
+          : body.error
+            ? formatMiniMaxError(body.error)
+            : raw.slice(0, 300));
       throw new Error(`MiniMax H3 任务创建失败（${response.status}）: ${message}`);
+    }
+    // HTTP 200 但 base_resp 报错（审核 / 鉴权 / 限流的常见形态）
+    const baseRespError = formatBaseRespError(body.base_resp);
+    if (baseRespError) {
+      throw new Error(`MiniMax H3 任务创建失败: ${baseRespError}`);
     }
     const taskId = body.task_id || body.task?.id || body.task?.task_id;
     if (!taskId) {
@@ -315,13 +421,12 @@ export class MiniMaxH3ITVProvider implements ITVProvider {
       });
       const raw = await response.text();
       const body = JSON.parse(raw) as H3TaskResponse;
-      if (!response.ok) {
-        const message = typeof body.error === 'string'
-          ? body.error
-          : (body.error as { message?: string } | undefined)?.message
-            || body.base_resp?.status_msg
-            || raw.slice(0, 300);
-        logger.warn('H3-Context-IR 创建失败，跳过增强', { status: response.status, message });
+      const createError = !response.ok
+        ? (formatBaseRespError(body.base_resp)
+          || (typeof body.error === 'string' ? body.error : body.error ? formatMiniMaxError(body.error) : raw.slice(0, 300)))
+        : formatBaseRespError(body.base_resp);
+      if (createError) {
+        logger.warn('H3-Context-IR 创建失败，跳过增强', { status: response.status, message: createError });
         return undefined;
       }
       const taskId = body.task_id || body.task?.id;
@@ -380,10 +485,15 @@ export class MiniMaxH3ITVProvider implements ITVProvider {
       Math.max(Math.round(options?.duration ?? this.defaultDuration), 4),
       15,
     );
-    const ratio = options?.aspectRatio && options.aspectRatio !== 'adaptive'
-      ? options.aspectRatio
-      : 'adaptive';
     const content = await buildContentItems(request);
+    // 文生视频（content 只有 text）上游要求 ratio 必填且不能是 adaptive；
+    // 图生视频的 ratio 由输入图决定（传了也会被忽略），多模态参考则可选。
+    const requestedRatio = options?.aspectRatio && options.aspectRatio !== 'adaptive'
+      ? options.aspectRatio
+      : undefined;
+    const ratio = isTextOnly(content)
+      ? (requestedRatio || '16:9')
+      : (requestedRatio || 'adaptive');
     const payload: Record<string, unknown> = {
       model: this.getModelName(),
       content,
@@ -391,6 +501,13 @@ export class MiniMaxH3ITVProvider implements ITVProvider {
       resolution: options?.resolution || '768P',
       ratio,
     };
+    logger.info('MiniMax H3 请求组装完成', {
+      capability: request.capability,
+      mode: isTextOnly(content) ? 't2va' : hasMultimodalReference(content) ? 'r2va' : 'i2va',
+      ratio,
+      duration,
+      roles: content.map(item => item.role || item.type),
+    });
     const { taskId } = await this.createTask(payload);
     return {
       mode: 'async',
@@ -425,6 +542,11 @@ export class MiniMaxH3ITVProvider implements ITVProvider {
     const body = JSON.parse(raw) as H3TaskResponse;
     const task = body.task || {};
     const status = String(task.status || '').toLowerCase();
+    // 审核拦截有时不进 task.error，只体现在 base_resp 上；没有任何 task 状态时也按失败处理
+    const baseRespError = formatBaseRespError(body.base_resp);
+    if (baseRespError && status !== 'succeeded') {
+      return { state: 'failed', progress: 0, error: baseRespError };
+    }
     const state: ProviderTaskSnapshot<ITVResult>['state'] = status === 'succeeded'
       ? 'succeeded'
       : status === 'failed' || status === 'cancelled'
@@ -438,7 +560,11 @@ export class MiniMaxH3ITVProvider implements ITVProvider {
       return { state: 'succeeded', progress: 100, output: { source: resultUrl, taskId } };
     }
     if (state === 'failed') {
-      return { state: 'failed', progress: 0, error: formatMiniMaxError(task.error) };
+      return {
+        state: 'failed',
+        progress: 0,
+        error: formatMiniMaxError(task.error ?? body.error),
+      };
     }
     return { state, progress: status === 'processing' ? 50 : undefined };
   }
