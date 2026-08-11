@@ -182,6 +182,8 @@ describe('projectPersistenceHelpers', () => {
         }),
         capturedAt: 12,
         sourceVideoKey: 'shot-0:/tmp/shot-0.mp4:99',
+        // 没显式写承接方式的历史数据按尾帧承接读回
+        continuity: 'tail-frame',
       },
       characters: ['char-1'],
       scenes: ['scene-1'],
@@ -266,6 +268,44 @@ describe('projectPersistenceHelpers', () => {
     const shot = shotRowToEntity(row, [], [], [], []);
     expect(shot.videoReference).toBeUndefined();
     expect(shot.promptScriptHash).toBe('valid-hash');
+  });
+
+  it('承接方式（延长上一镜视频）能撑过一次存取往返', () => {
+    const row = shotToRow({
+      id: 'shot-extend',
+      scriptLines: [{ id: 'l1', text: '镜头' }],
+      shotType: 'medium',
+      cameraMovement: 'static',
+      duration: 4,
+      characters: [],
+      videoReference: {
+        mode: 'manual',
+        usePreviousTailFrame: true,
+        continuity: 'video-extend',
+        sourceShotId: 'shot-prev',
+      },
+    }, 'project-1', 0);
+
+    // 写库时 continuity 必须落进 metadata，否则读回来就退化成尾帧承接
+    expect(JSON.parse(String(row.metadata_json)).videoReference.continuity).toBe('video-extend');
+
+    const shot = shotRowToEntity(row, [], [], [], []);
+    expect(shot.videoReference?.continuity).toBe('video-extend');
+    expect(shot.videoReference?.usePreviousTailFrame).toBe(true);
+  });
+
+  it('没写 continuity 的历史数据按尾帧承接读回', () => {
+    const row = shotToRow({
+      id: 'shot-legacy',
+      scriptLines: [{ id: 'l1', text: '镜头' }],
+      shotType: 'medium',
+      cameraMovement: 'static',
+      duration: 4,
+      characters: [],
+      videoReference: { mode: 'manual', usePreviousTailFrame: true },
+    }, 'project-1', 0);
+
+    expect(shotRowToEntity(row, [], [], [], []).videoReference?.continuity).toBe('tail-frame');
   });
 
   it('builds episodes, analysis, assets and csv refs with structured semantics', () => {

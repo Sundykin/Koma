@@ -66,7 +66,17 @@ export async function buildShotVideoExtendPlan(params: {
   promptProtocol?: string;
 }): Promise<ShotVideoExtendPlan> {
   const { shot, allShots, durationSeconds, promptProtocol } = params;
-  if (!usesPreviousVideoExtend(shot)) return EMPTY_PLAN;
+  if (!usesPreviousVideoExtend(shot)) {
+    // 这里曾经是静默 return：推理时开了延长（提示词里带 @previous_video_clip）、渲染时
+    // 开关又没了的情况完全查不出原因。把判定依据打出来，一眼能看出是哪个字段掉了。
+    logger.info('本镜未启用延长承接，跳过视频参考', {
+      shotId: shot.id,
+      mode: shot.videoReference?.mode,
+      usePreviousTailFrame: shot.videoReference?.usePreviousTailFrame,
+      continuity: shot.videoReference?.continuity,
+    });
+    return EMPTY_PLAN;
+  }
 
   const sequence = allShots ?? [];
   const index = sequence.findIndex(candidate => candidate.id === shot.id);

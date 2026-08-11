@@ -225,6 +225,10 @@ function parseShotVideoReference(value: unknown): Shot['videoReference'] {
       ? record.capturedAt
       : undefined,
     sourceVideoKey: compactString(record.sourceVideoKey),
+    // 承接方式是用户在分镜上显式选的。这里原本没透传，写库和读库都会把它抹掉，
+    // 于是「延长上一镜视频」存完就变回「继承尾帧」——UI 上看着是自己跳回去了，
+    // 渲染期 usesPreviousVideoExtend() 也随之为假，整段延长参考不会下发。
+    continuity: record.continuity === 'video-extend' ? 'video-extend' : 'tail-frame',
   };
 }
 
