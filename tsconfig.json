@@ -23,5 +23,11 @@
   },
   "include": [
     "./electron/**/*"
+  ],
+  // 测试文件由 frontend 的 vitest 跑（见 frontend/vitest.config.ts），
+  // 不进 electron 构建，也不该要求 electron 侧装 vitest 类型。
+  "exclude": [
+    "./electron/**/*.test.ts",
+    "./electron/**/*.spec.ts"
   ]
 }

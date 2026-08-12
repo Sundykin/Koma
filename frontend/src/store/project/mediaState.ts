@@ -1,5 +1,6 @@
 import type {
   Character,
+  CharacterVariant,
   Prop,
   Scene,
   Shot,
@@ -79,20 +80,43 @@ function foldLegacyTextIntoPrompt<T extends { prompt: string }>(record: T, legac
   return cleaned as T;
 }
 
+/**
+ * 媒体槽位重建的通用规则：这里是 load 与 save 都会过的收口点，**没被列进来的槽位会被永久丢弃**。
+ * 加新槽位时必须同步加到对应 normalize 里，否则用户存进去的东西下次读就没了。
+ */
 export function normalizeCharacterMediaState(character: Character): Character {
   const folded = foldLegacyTextIntoPrompt(character, ['appearance', 'description']);
   const costumePhoto = compactAsset(folded.media?.costumePhoto);
   const previewVideo = compactAsset(folded.media?.previewVideo);
-  const media = (costumePhoto || previewVideo)
-    ? { costumePhoto, previewVideo }
+  const referenceImage = compactAsset(folded.media?.referenceImage);
+  const media = (costumePhoto || previewVideo || referenceImage)
+    ? { costumePhoto, previewVideo, referenceImage }
     : undefined;
-  return { ...folded, media };
+  return { ...folded, media, variants: normalizeCharacterVariants(folded.variants) };
+}
+
+/**
+ * 子形象的媒体槽位与主形象同构，同样要过 compactAsset；
+ * 空数组归一成 undefined，避免存一堆 `variants: []` 噪声。
+ */
+function normalizeCharacterVariants(variants?: CharacterVariant[]): CharacterVariant[] | undefined {
+  if (!variants?.length) return undefined;
+  return variants.map(variant => {
+    const costumePhoto = compactAsset(variant.media?.costumePhoto);
+    const previewVideo = compactAsset(variant.media?.previewVideo);
+    const referenceImage = compactAsset(variant.media?.referenceImage);
+    const media = (costumePhoto || previewVideo || referenceImage)
+      ? { costumePhoto, previewVideo, referenceImage }
+      : undefined;
+    return { ...variant, media };
+  });
 }
 
 export function normalizeSceneMediaState(scene: Scene): Scene {
   const folded = foldLegacyTextIntoPrompt(scene, ['description']);
   const previewImage = compactAsset(folded.media?.previewImage);
-  const media = previewImage ? { previewImage } : undefined;
+  const referenceImage = compactAsset(folded.media?.referenceImage);
+  const media = (previewImage || referenceImage) ? { previewImage, referenceImage } : undefined;
   return { ...folded, media };
 }
 
@@ -100,8 +124,9 @@ export function normalizePropMediaState(prop: Prop): Prop {
   const folded = foldLegacyTextIntoPrompt(prop, ['description']);
   const previewImage = compactAsset(folded.media?.previewImage);
   const previewVideo = compactAsset(folded.media?.previewVideo);
-  const media = (previewImage || previewVideo)
-    ? { previewImage, previewVideo }
+  const referenceImage = compactAsset(folded.media?.referenceImage);
+  const media = (previewImage || previewVideo || referenceImage)
+    ? { previewImage, previewVideo, referenceImage }
     : undefined;
   return { ...folded, media };
 }

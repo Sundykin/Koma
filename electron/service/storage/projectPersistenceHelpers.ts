@@ -398,6 +398,54 @@ export function storedMediaAssetToShotVersionEntry(
   };
 }
 
+/**
+ * 固定列之外的实体字段统一走 metadata_json。
+ *
+ * characters / scenes / props 三张表的列是早期定死的，后来加的字段（aliases、角色子形象、
+ * 用户上传的"使用参考图"）没有对应列。之前这些字段在写盘时被直接丢弃 —— UI 上能编辑、
+ * 存完再读就没了。metadata_json 列本来就在 schema 里，用它承载，不需要 migration。
+ *
+ * 新增实体字段时：要么加列，要么加进这里；直接写进 xxxToRow 之外的地方一律会丢。
+ */
+function packMetadata(payload: Record<string, unknown>): string | undefined {
+  const entries = Object.entries(payload).filter(([, value]) => {
+    if (value === undefined || value === null || value === '') return false;
+    if (Array.isArray(value) && value.length === 0) return false;
+    return true;
+  });
+  return entries.length ? JSON.stringify(Object.fromEntries(entries)) : undefined;
+}
+
+function unpackMetadata(metadataJson?: string): Record<string, unknown> {
+  if (!metadataJson) return {};
+  try {
+    const parsed = JSON.parse(metadataJson);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    // 损坏的 metadata 不该让整个实体读不出来，忽略即可（下次保存会覆盖）
+    return {};
+  }
+}
+
+/** 参考图只存 local/remote 两个来源，读回时重建成 StoredMediaAsset */
+function packReferenceImage(asset?: StoredMediaAsset): { localPath?: string; remoteUrl?: string } | undefined {
+  if (!asset?.localPath && !asset?.remoteUrl) return undefined;
+  return { localPath: asset.localPath, remoteUrl: asset.remoteUrl };
+}
+
+function unpackReferenceImage(raw: unknown, updatedAt: number): StoredMediaAsset | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const record = raw as { localPath?: unknown; remoteUrl?: unknown };
+  const localPath = typeof record.localPath === 'string' ? record.localPath : undefined;
+  const remoteUrl = typeof record.remoteUrl === 'string' ? record.remoteUrl : undefined;
+  if (!localPath && !remoteUrl) return undefined;
+  return { kind: 'image', localPath, remoteUrl, createdAt: updatedAt };
+}
+
+function unpackString(raw: unknown): string | undefined {
+  return typeof raw === 'string' && raw.trim() ? raw : undefined;
+}
+
 export function characterToRow(character: Character, projectId: string, sortOrder: number, now: number): CharacterRow {
   return {
     id: character.id,
@@ -422,7 +470,12 @@ export function characterToRow(character: Character, projectId: string, sortOrde
     preview_video_local: character.media?.previewVideo?.localPath,
     preview_video_remote: character.media?.previewVideo?.remoteUrl,
     sort_order: sortOrder,
-    metadata_json: undefined,
+    metadata_json: packMetadata({
+      aliases: character.aliases,
+      variants: character.variants,
+      activeVariantId: character.activeVariantId,
+      referenceImage: packReferenceImage(character.media?.referenceImage),
+    }),
     created_at: now,
     updated_at: now,
   };
@@ -437,6 +490,8 @@ export function characterRowToEntity(row: CharacterRow, refs?: EntityEpisodeRefR
   const prompt = storedPrompt
     || [legacyAppearance, legacyDescription].filter(Boolean).join('\n')
     || '';
+  const metadata = unpackMetadata(row.metadata_json);
+  const referenceImage = unpackReferenceImage(metadata.referenceImage, row.updated_at);
   return {
     id: row.id,
     name: row.name,
@@ -453,7 +508,11 @@ export function characterRowToEntity(row: CharacterRow, refs?: EntityEpisodeRefR
         }
       : undefined,
     fingerprint: row.fingerprint ?? undefined,
-    media: row.costume_photo_local || row.costume_photo_remote || row.preview_video_local || row.preview_video_remote
+    aliases: unpackString(metadata.aliases),
+    variants: Array.isArray(metadata.variants) ? (metadata.variants as Character['variants']) : undefined,
+    activeVariantId: unpackString(metadata.activeVariantId),
+    media: row.costume_photo_local || row.costume_photo_remote
+      || row.preview_video_local || row.preview_video_remote || referenceImage
       ? {
           costumePhoto: row.costume_photo_local || row.costume_photo_remote
             ? {
@@ -471,6 +530,7 @@ export function characterRowToEntity(row: CharacterRow, refs?: EntityEpisodeRefR
                 createdAt: row.updated_at,
               }
             : undefined,
+          referenceImage,
         }
       : undefined,
     episodeRefs: buildEpisodeRefs(refs),
@@ -492,7 +552,10 @@ export function sceneToRow(scene: Scene, projectId: string, sortOrder: number, n
     preview_image_local: scene.media?.previewImage?.localPath,
     preview_image_remote: scene.media?.previewImage?.remoteUrl,
     sort_order: sortOrder,
-    metadata_json: undefined,
+    metadata_json: packMetadata({
+      aliases: scene.aliases,
+      referenceImage: packReferenceImage(scene.media?.referenceImage),
+    }),
     created_at: now,
     updated_at: now,
   };
@@ -501,6 +564,8 @@ export function sceneToRow(scene: Scene, projectId: string, sortOrder: number, n
 export function sceneRowToEntity(row: SceneRow, refs?: EntityEpisodeRefRow[]): Scene {
   const legacyDescription = (row.description ?? '').toString().trim();
   const storedPrompt = (row.prompt ?? '').toString().trim();
+  const metadata = unpackMetadata(row.metadata_json);
+  const referenceImage = unpackReferenceImage(metadata.referenceImage, row.updated_at);
   return {
     id: row.id,
     name: row.name,
@@ -508,15 +573,19 @@ export function sceneRowToEntity(row: SceneRow, refs?: EntityEpisodeRefRow[]): S
     location: row.location ?? undefined,
     time: row.time_of_day as Scene['time'] | undefined,
     mood: row.mood ?? undefined,
+    aliases: unpackString(metadata.aliases),
     fingerprint: row.fingerprint ?? undefined,
-    media: row.preview_image_local || row.preview_image_remote
+    media: row.preview_image_local || row.preview_image_remote || referenceImage
       ? {
-          previewImage: {
-            kind: 'image',
-            localPath: row.preview_image_local ?? undefined,
-            remoteUrl: row.preview_image_remote ?? undefined,
-            createdAt: row.updated_at,
-          },
+          previewImage: row.preview_image_local || row.preview_image_remote
+            ? {
+                kind: 'image',
+                localPath: row.preview_image_local ?? undefined,
+                remoteUrl: row.preview_image_remote ?? undefined,
+                createdAt: row.updated_at,
+              }
+            : undefined,
+          referenceImage,
         }
       : undefined,
     episodeRefs: buildEpisodeRefs(refs),
@@ -540,7 +609,10 @@ export function propToRow(prop: Prop, projectId: string, sortOrder: number, now:
     preview_video_local: prop.media?.previewVideo?.localPath,
     preview_video_remote: prop.media?.previewVideo?.remoteUrl,
     sort_order: sortOrder,
-    metadata_json: undefined,
+    metadata_json: packMetadata({
+      aliases: prop.aliases,
+      referenceImage: packReferenceImage(prop.media?.referenceImage),
+    }),
     created_at: now,
     updated_at: now,
   };
@@ -549,11 +621,14 @@ export function propToRow(prop: Prop, projectId: string, sortOrder: number, now:
 export function propRowToEntity(row: PropRow, refs?: EntityEpisodeRefRow[]): Prop {
   const legacyDescription = (row.description ?? '').toString().trim();
   const storedPrompt = (row.prompt ?? '').toString().trim();
+  const metadata = unpackMetadata(row.metadata_json);
+  const referenceImage = unpackReferenceImage(metadata.referenceImage, row.updated_at);
   return {
     id: row.id,
     name: row.name,
     prompt: storedPrompt || legacyDescription || '',
     type: row.prop_type ?? undefined,
+    aliases: unpackString(metadata.aliases),
     sora2PropId: row.sora2_prop_id ?? undefined,
     timestampRange: typeof row.timestamp_start === 'number' || typeof row.timestamp_end === 'number'
       ? {
@@ -562,7 +637,8 @@ export function propRowToEntity(row: PropRow, refs?: EntityEpisodeRefRow[]): Pro
         }
       : undefined,
     fingerprint: row.fingerprint ?? undefined,
-    media: row.preview_image_local || row.preview_image_remote || row.preview_video_local || row.preview_video_remote
+    media: row.preview_image_local || row.preview_image_remote
+      || row.preview_video_local || row.preview_video_remote || referenceImage
       ? {
           previewImage: row.preview_image_local || row.preview_image_remote
             ? {
@@ -580,6 +656,7 @@ export function propRowToEntity(row: PropRow, refs?: EntityEpisodeRefRow[]): Pro
                 createdAt: row.updated_at,
               }
             : undefined,
+          referenceImage,
         }
       : undefined,
     episodeRefs: buildEpisodeRefs(refs),
