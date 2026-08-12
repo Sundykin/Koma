@@ -13,6 +13,7 @@
 import type { Character, Prop, Scene, Shot, StoredMediaAsset } from '../../types';
 import { createMentionString } from '../../editor/mentionTypes';
 import { normalizeShotMediaState } from '../../store/project/mediaState';
+import { resolveActiveVariant, resolveCharacterAppearance } from '../../utils/characterVariants';
 import type {
   ShotReferenceBundle,
   ShotReferenceBundleOptions,
@@ -83,17 +84,20 @@ export function buildShotReferenceBundle(params: BuildParams): ShotReferenceBund
   }
 
   // 3. 角色（首个角色按"主角"待遇，后续配角次之）
+  //    本镜激活了子形象时用子形象的定妆照（resolveCharacterAppearance 内部回落主形象）
   (normalized.characters || []).forEach((charId, idx) => {
-    const char = params.characters.find(c => c.id === charId);
-    if (!char) return;
+    const rawChar = params.characters.find(c => c.id === charId);
+    if (!rawChar) return;
+    const char = resolveCharacterAppearance(rawChar, params.shot);
     const mentionToken = createMentionString('char', char.id);
     pushFallback(mentionFallbacks, mentionToken, char.name);
     const source = pickCharacterVisual(char);
     if (!source) return;
+    const activeVariant = resolveActiveVariant(rawChar, params.shot);
     pushItem(items, seen, {
       kind: 'character',
       id: char.id,
-      label: `角色：${char.name}`,
+      label: activeVariant ? `角色：${char.name}（${activeVariant.name}）` : `角色：${char.name}`,
       source,
       mentionToken,
       priority: idx === 0 ? PRIORITY.CHARACTER_LEAD : PRIORITY.CHARACTER_SUPPORT,

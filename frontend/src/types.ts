@@ -82,6 +82,8 @@ export type {
   AssetTimestampRange,
   CharacterGender,
   Character,
+  CharacterVariant,
+  CharacterVariantKind,
   Scene,
   Prop,
   ShotVideo,

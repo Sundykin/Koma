@@ -7,6 +7,7 @@
  *   - 道具：名称 / 类型 / 代称 / 提示词
  * 左侧大图区：主参考图点击放大预览，支持 AI 生成 / 上传主图 / 上传"使用参考图"
  * （生成时作为身份/空间/物品参考传入）。抽屉头部有批量生成（补齐缺图）与演员库入口。
+ * 角色行下方可展开 CharacterAppearancePanel（预览视频 + 子形象），全部在抽屉内完成，不弹窗。
  * 删除 = 从当前剧集移除（不删项目资产本体）。
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -25,6 +26,7 @@ import {
   TeamOutlined,
   AudioOutlined,
   CloudUploadOutlined,
+  SkinOutlined,
 } from '@ant-design/icons';
 import { v4 as uuidv4 } from 'uuid';
 import type { Character, Scene, Prop, ProjectStyleSnapshot, StoredMediaAsset } from '../../types';
@@ -61,6 +63,7 @@ import {
 import { loadActorLibrary, createCharacterFromActor, saveActorFromCharacter } from '../../services/actorLibraryService';
 import type { ActorProfile } from '../../types/actor-library';
 import { useTaskTransitions } from '../../hooks';
+import { CharacterAppearancePanel } from './CharacterAppearancePanel';
 
 type AssetType = 'character' | 'scene' | 'prop';
 
@@ -138,6 +141,8 @@ export const AssetDock: React.FC<AssetDockProps> = ({
   // 上传成功后自增，强制 CharacterVoiceSelect 重新挂载以读到新音色
   const [voiceLibVersion, setVoiceLibVersion] = useState(0);
   const [isExtracting, setIsExtracting] = useState(false);
+  // 角色形象面板（主形象预览视频 + 子形象管理）当前展开的角色 id；直接内嵌在角色行下方
+  const [appearanceCharacterId, setAppearanceCharacterId] = useState<string | null>(null);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -161,6 +166,11 @@ export const AssetDock: React.FC<AssetDockProps> = ({
   useEffect(() => {
     if (openType) void loadAll();
   }, [openType, loadAll]);
+
+  // 切到其它资产类型时收起展开的角色形象面板，避免下次回到角色页还挂着旧展开态
+  useEffect(() => {
+    if (openType !== 'character') setAppearanceCharacterId(null);
+  }, [openType]);
 
   // 挂载先拉一次计数；剧本解析完成后再刷新一次（提取的新资产体现在角标上）
   useEffect(() => { void loadAll(); }, [loadAll]);
@@ -631,74 +641,125 @@ export const AssetDock: React.FC<AssetDockProps> = ({
     </Tooltip>
   );
 
-  const renderCharacterRow = (c: Character) => (
-    <div key={c.id} className="flex items-stretch gap-3 px-3 py-3 border-b border-border-subtle/60">
-      {renderMediaCell('character', c.id, toDisplaySrc(getCharacterCostumePhotoSource(c)), c.media?.referenceImage)}
-      <div className="flex-1 min-w-0 flex flex-col gap-1.5">
-        <div className="flex items-center gap-1.5 h-8">
-          <Input
-            key={`${c.id}-name`}
-            defaultValue={c.name}
-            placeholder="角色名"
-            className={`${inputCls} flex-1 min-w-0`}
-            onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== c.name) handleFieldSave('character', c.id, { name: v }); }}
-          />
-          <Select value={c.role} options={ROLE_OPTIONS} className="w-[88px] shrink-0" onChange={(role) => handleFieldSave('character', c.id, { role })} />
-          <Select value={c.gender ?? 'unknown'} options={GENDER_OPTIONS} className="w-[76px] shrink-0" onChange={(gender) => handleFieldSave('character', c.id, { gender })} />
-          <Input
-            key={`${c.id}-age`}
-            defaultValue={c.age || ''}
-            placeholder="年龄"
-            className={`${inputCls} !w-[80px] shrink-0`}
-            onBlur={(e) => { if (e.target.value !== (c.age || '')) handleFieldSave('character', c.id, { age: e.target.value }); }}
-          />
-          <Tooltip title="把该角色存入演员库（跨项目复用）">
-            <button
-              onClick={() => void handleSaveToLibrary(c)}
-              className="shrink-0 w-8 h-8 flex items-center justify-center text-text-tertiary hover:text-accent hover:bg-bg-hover rounded cursor-pointer"
-            >
-              <TeamOutlined className="text-[12px]" />
-            </button>
-          </Tooltip>
-          {renderDeleteBtn('character', c.id)}
-        </div>
-        <div className="flex items-center gap-1.5 h-8">
-          <div className="flex-1 min-w-0" key={`${c.id}-voice-${voiceLibVersion}`}>
-            <CharacterVoiceSelect
-              value={c.voiceId}
-              placeholder="绑定音色"
-              onChange={(voiceId) => handleFieldSave('character', c.id, { voiceId })}
-            />
+  const renderCharacterRow = (c: Character) => {
+    const appearanceOpen = appearanceCharacterId === c.id;
+    const variantCount = c.variants?.length || 0;
+    return (
+      <div key={c.id} className="px-3 py-3 border-b border-border-subtle/60">
+        <div className="flex items-stretch gap-3">
+          {renderMediaCell('character', c.id, toDisplaySrc(getCharacterCostumePhotoSource(c)), c.media?.referenceImage)}
+          <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+            {/* 行1：身份字段 */}
+            <div className="flex items-center gap-1.5 h-8">
+              <Input
+                key={`${c.id}-name`}
+                defaultValue={c.name}
+                placeholder="角色名"
+                className={`${inputCls} flex-1 min-w-0`}
+                onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== c.name) handleFieldSave('character', c.id, { name: v }); }}
+              />
+              <Select value={c.role} options={ROLE_OPTIONS} className="w-[88px] shrink-0" onChange={(role) => handleFieldSave('character', c.id, { role })} />
+              <Select value={c.gender ?? 'unknown'} options={GENDER_OPTIONS} className="w-[76px] shrink-0" onChange={(gender) => handleFieldSave('character', c.id, { gender })} />
+              <Input
+                key={`${c.id}-age`}
+                defaultValue={c.age || ''}
+                placeholder="年龄"
+                className={`${inputCls} !w-[80px] shrink-0`}
+                onBlur={(e) => { if (e.target.value !== (c.age || '')) handleFieldSave('character', c.id, { age: e.target.value }); }}
+              />
+              <Tooltip title="把该角色存入演员库（跨项目复用）">
+                <button
+                  onClick={() => void handleSaveToLibrary(c)}
+                  className="shrink-0 w-8 h-8 flex items-center justify-center text-text-tertiary hover:text-accent hover:bg-bg-hover rounded cursor-pointer"
+                >
+                  <TeamOutlined className="text-[12px]" />
+                </button>
+              </Tooltip>
+              {renderDeleteBtn('character', c.id)}
+            </div>
+
+            {/* 行2：音色 + 代称。音色必须能清空 —— 除了 Select 自带的 ✕，
+                这里再给一个常驻按钮，窄布局下 antd 的清除图标容易被挤到点不到。 */}
+            <div className="flex items-center gap-1.5 h-8">
+              <div className="flex-1 min-w-0" key={`${c.id}-voice-${voiceLibVersion}`}>
+                <CharacterVoiceSelect
+                  value={c.voiceId}
+                  placeholder="绑定音色"
+                  onChange={(voiceId) => handleFieldSave('character', c.id, { voiceId: voiceId || undefined })}
+                />
+              </div>
+              <Tooltip title={c.voiceId ? '清除音色绑定（回到项目默认音色）' : '当前未绑定音色'}>
+                <button
+                  onClick={() => handleFieldSave('character', c.id, { voiceId: undefined })}
+                  disabled={!c.voiceId}
+                  className="shrink-0 w-8 h-8 flex items-center justify-center text-text-tertiary hover:text-status-error hover:bg-bg-hover rounded cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  <CloseOutlined className="text-[11px]" />
+                </button>
+              </Tooltip>
+              <Tooltip title="上传自定义音色样本音频，上传后自动绑定到该角色">
+                <button
+                  onClick={() => setVoiceUpload({ characterId: c.id, name: `${c.name}的音色`, filePath: '', submitting: false })}
+                  className="shrink-0 w-8 h-8 flex items-center justify-center text-text-secondary hover:text-accent hover:bg-bg-hover rounded cursor-pointer"
+                >
+                  <CloudUploadOutlined className="text-[13px]" />
+                </button>
+              </Tooltip>
+              <Input
+                key={`${c.id}-aliases`}
+                defaultValue={c.aliases || ''}
+                placeholder="代称（多个用英文逗号分隔）"
+                className={`${inputCls} flex-1 min-w-0`}
+                onBlur={(e) => { if (e.target.value !== (c.aliases || '')) handleFieldSave('character', c.id, { aliases: e.target.value }); }}
+              />
+            </div>
+
+            {/* 行3：视觉提示词 */}
+            <div className="flex-1 min-h-0">
+              <Input.TextArea
+                key={`${c.id}-prompt`}
+                defaultValue={c.prompt || ''}
+                placeholder="视觉描述提示词（外貌/服装/体态等客观可见设定，供生图生视频保持一致性）"
+                className="!text-[11px] !bg-bg-surface/60 !h-full resize-none"
+                onBlur={(e) => { if (e.target.value !== (c.prompt || '')) handleFieldSave('character', c.id, { prompt: e.target.value }); }}
+              />
+            </div>
           </div>
-          {/* 上传自定义音色：与是否已选音色无关，未绑定时也要能直接传样本 */}
-          <Tooltip title="上传自定义音色样本音频，上传后自动绑定到该角色">
-            <button
-              onClick={() => setVoiceUpload({ characterId: c.id, name: `${c.name}的音色`, filePath: '', submitting: false })}
-              className="shrink-0 w-8 h-8 flex items-center justify-center text-text-secondary hover:text-accent hover:bg-bg-hover rounded cursor-pointer"
-            >
-              <CloudUploadOutlined className="text-[13px]" />
-            </button>
-          </Tooltip>
-          <Input
-            key={`${c.id}-aliases`}
-            defaultValue={c.aliases || ''}
-            placeholder="代称（多个用英文逗号分隔）"
-            className={`${inputCls} flex-1 min-w-0`}
-            onBlur={(e) => { if (e.target.value !== (c.aliases || '')) handleFieldSave('character', c.id, { aliases: e.target.value }); }}
-          />
         </div>
-        <div className="flex-1 min-h-0">
-          <Input.TextArea
-            key={`${c.id}-prompt`}
-            defaultValue={c.prompt || ''}
-            placeholder="视觉描述提示词（外貌/服装/体态等客观可见设定，供生图生视频保持一致性）"
-            className="!text-[11px] !bg-bg-surface/60 !h-full resize-none"
-            onBlur={(e) => { if (e.target.value !== (c.prompt || '')) handleFieldSave('character', c.id, { prompt: e.target.value }); }}
+
+        {/* 形象面板开关：预览视频 + 子形象都在抽屉内直接完成，不再弹窗 */}
+        <button
+          onClick={() => setAppearanceCharacterId(appearanceOpen ? null : c.id)}
+          className={`mt-2 w-full h-7 flex items-center justify-center gap-1.5 text-[11px] rounded border transition-colors cursor-pointer ${
+            appearanceOpen
+              ? 'border-accent/50 text-accent bg-accent/5'
+              : 'border-border-subtle text-text-tertiary hover:text-text-primary hover:border-border'
+          }`}
+        >
+          <SkinOutlined className="text-[11px]" />
+          形象 · 预览视频与子形象
+          {variantCount > 0 && <span className="text-[10px] text-text-muted">（{variantCount} 个子形象）</span>}
+          <span className="text-[9px]">{appearanceOpen ? '▲' : '▼'}</span>
+        </button>
+
+        {appearanceOpen && (
+          <CharacterAppearancePanel
+            projectId={projectId}
+            character={c}
+            script={script}
+            aspectRatio={aspectRatio}
+            styleSnapshot={styleSnapshot}
+            ttiSelection={ttiSelection}
+            llmSelection={llmSelection}
+            onChange={async (updated) => {
+              setCharacters(prev => prev.map(item => (item.id === updated.id ? updated : item)));
+              await persist('character', updated);
+            }}
           />
-        </div>
+        )}
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderSceneRow = (s: Scene) => (
     <div key={s.id} className="flex items-stretch gap-3 px-3 py-3 border-b border-border-subtle/60">
@@ -833,9 +894,10 @@ export const AssetDock: React.FC<AssetDockProps> = ({
       <Drawer
         title={openType ? `${TYPE_META[openType].label}资产（${counts[openType]}）` : ''}
         placement="right"
-        width={720}
+        // 角色行内嵌形象面板（预览视频 + 子形象列表），比场景/道具需要更多横向空间
+        width={openType === 'character' ? 880 : 720}
         open={openType !== null}
-        onClose={() => setOpenType(null)}
+        onClose={() => { setOpenType(null); setAppearanceCharacterId(null); }}
         styles={{ body: { padding: 0 } }}
         extra={openType && (
           <div className="flex items-center gap-3">

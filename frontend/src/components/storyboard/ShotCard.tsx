@@ -149,6 +149,8 @@ export interface ShotCardProps {
   continuousFlowRunning?: boolean;
   onVideoModeChange?: (shotId: string, mode: 'multi-ref' | 'first-frame') => void;
   onCharactersChange: (shotId: string, characterIds: string[]) => void;
+  /** 本镜角色子形象切换；variantId 为空表示回到主形象 */
+  onCharacterVariantChange?: (shotId: string, characterId: string, variantId?: string) => void;
   onScenesChange?: (shotId: string, sceneIds: string[]) => void;
   onPropsChange?: (shotId: string, propIds: string[]) => void;
   onReferenceImagesChange?: (shotId: string, assets: StoredMediaAsset[], selectedIndex: number) => void;
@@ -224,6 +226,7 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
   continuousFlowRunning,
   onVideoModeChange,
   onCharactersChange,
+  onCharacterVariantChange,
   onScenesChange,
   onPropsChange,
   onReferenceImagesChange,
@@ -912,6 +915,9 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
               selectedIds={shot.characters || []}
               allAssets={characters}
               onChange={(ids) => onCharactersChange(shot.id, ids)}
+              variantSelections={shot.characterVariants}
+              onVariantChange={(characterId, variantId) =>
+                onCharacterVariantChange?.(shot.id, characterId, variantId)}
             />
           </div>
           <div className="flex-1 min-h-0">

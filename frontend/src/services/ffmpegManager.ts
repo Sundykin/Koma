@@ -492,6 +492,26 @@ class FFmpegManager {
   }
 
   /**
+   * 提取人声样本音轨（统一重编码成 wav，音色库/克隆直接可用）。
+   * 与 splitAudio 不同：不做 `-acodec copy`，任何容器/编码的视频都能提。
+   */
+  async extractAudioTrack(options: {
+    input: string;
+    output: string;
+    sampleRate?: number;
+    channels?: number;
+    startSeconds?: number;
+    durationSeconds?: number;
+  }): Promise<string> {
+    const api = getFFmpegAPI();
+    if (!api) {
+      throw new Error('FFmpeg 不可用');
+    }
+
+    return await api.extractAudioTrack(options);
+  }
+
+  /**
    * 处理资源（获取媒体信息、抽帧、生成波形）
    */
   async processResource(

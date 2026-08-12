@@ -1091,14 +1091,65 @@ BGM：{背景音乐风格}
 4. "gender"：只能填写 "male"、"female"、"neutral"、"unknown"；性别无法 100% 确认时根据上下文选最合理的可视化性别，不要写 "unknown" 兜底
 5. "role"：只能填写 "protagonist"、"antagonist"、"supporting"
 6. "appearance"：纯客观可见外观，作为文生图的核心提示词；总长度 ≥ 60 字
+   - **只写"拍照能拍到的东西"**。任何职业、身份、亲属关系、经历、性格都必须写进 description，
+     绝不能出现在 appearance —— appearance 会被原样喂给文生图模型，"年轻调查员"这类词画不出来，
+     只会让模型自由发挥导致人物漂移。
    - **必须显式包含以下七要素**（缺一不可）：年龄段、性别、发色、发型、眼睛颜色、上身服装、下身服装
    - 在七要素之外还要尽量覆盖：脸部细节（脸型、眉型、眼型、鼻型、嘴唇、肤色）、体态（身高感、身材、姿势）、鞋履与配饰（眼镜、首饰、围巾、手套、武器/法器造型，均带材质）、衣物外可见的特征痕迹（疤痕、纹身、胎记）
    - 服装必须给出【颜色】+【款式】+【材质】三维（如：深灰色羊毛长风衣 / 白色棉质立领衬衫 / 蓝色牛仔修身长裤）
-7. "description"：≤ 20 字的极简身份 / 职业标签，仅用于 LLM 上下文识别，禁止任何剧情、性格、心理、过往经历
+7. "description"：≤ 20 字的极简身份 / 职业标签。它是 appearance 的"泄压阀"——
+   身份信息都倒进这里，appearance 才能保持纯画面。禁止剧情、性格、心理、过往经历。
+8. "variants"：该人物在本文中**外观发生过明显变化的阶段**（子形象）。详见下方专门章节。
+
+【variants：角色阶段性外观变化】
+appearance 描述的是该人物的"基准形象"。但同一个人在故事里往往会变样，变样了就要单列一个阶段，
+否则后面所有画面都会用同一套服装和状态，跟剧情对不上。
+
+必须产出 variants 的典型情况：
+- **境遇改变**：流浪街头 → 被富贵人家接回，衣着从破旧脏污变成体面考究，气色体态也跟着变
+- **年龄跨度**：从小到大，身高体型、脸部稚气、发型都要变；老去则有白发与皱纹
+- **身体状态**：负伤、患病、消瘦、淋雨落水、蓬头垢面、被囚禁
+- **场合换装**：婚礼、出征、赴宴、奔丧、乔装改扮、制服与便装切换
+
+判定与书写规则：
+1. **只有原文真的写到变化才输出**。全程没变样的人物给空数组 []，不要为了凑数编造。
+2. 每个阶段必须仍是**同一个人**：五官、骨相、瞳色、基础发色不得改变（年龄跨度允许自然发育变化）。
+3. "prompt" 只写**相对 appearance 改变了什么**，不要重抄一遍完整外观。
+   例："衣衫褴褛破洞、灰扑扑沾满尘土、头发油腻打结、面色蜡黄、赤脚" →
+   "换上藕荷色云锦长衫与白色中衣，头发梳理整齐束玉冠，面色红润，脚穿黑缎软靴"
+4. "prompt" 同样守 appearance 的红线：只写画面可见的客观信息，禁止性格、情绪、心理、剧情。
+5. "kind" 按主要变化维度取 age / state / outfit / other。
+6. "name" 用 3~6 个中文字，一眼能看懂阶段（「流浪时期」「入府之后」「少年时期」「浴血重伤」）。
+7. "keywords" 给 2~6 个中文触发词，英文逗号分隔，是原文里出现就该切到该阶段的线索
+   （「流浪,街头,乞讨」「接回,认亲,入府」「十二岁,少年,那年」）。
+8. 阶段之间必须有明显画面差异；与基准 appearance 几乎一样的阶段不要输出。
+9. 变化跨度大的人物给 2~4 个阶段即可，不要把每个小情节都拆成一个阶段。
+
+【第一人称判定 —— 决定要不要输出"我"】
+先判断原文的叙事人称，再决定：
+- **第一人称叙事**（叙述者本人用"我"讲述，旁白里就出现"我看见/我走进/我心想"）
+  → 必须输出"我"这个角色。原文未明说外貌时，结合上下文给最合理、最保守的可视化补全。
+- **第三人称叙事**（旁白用人名或"他/她"叙述，"我"只出现在引号内的对白里）
+  → **禁止把"我"输出成独立角色**。对白里的"我"是说话人的自称，必须归到那个说话人名下；
+    识别不出说话人就直接忽略，不要为它单开一条记录。
+- 判断依据只看**旁白**（引号外的叙述文字）用的是"我"还是人名/他/她；只有对白里出现"我"不算第一人称。
+
+【同一人物合并 —— 减少一人被拆成多个角色】
+输出前必须按上下文语境把下列情况判定为**同一个人**，合并成一条记录：
+1. 本名 / 小名 / 昵称 / 绰号（顾行、阿行、行哥、小行）
+2. 姓 + 称谓（顾先生、顾总、顾少、老顾、小顾）
+3. 职务 / 身份指代（班主任、老板娘、司机、那个医生）—— 若全文只有一个人担任该职务，
+   且与某个具名人物出现在同一情境，判定为同一人
+4. 亲属称谓（我妈、母亲、妈妈；她父亲、老爷子）—— 同一视角下指向同一人
+5. 前后文的"他/她"回指对象
+6. 同一人物在不同时期的称呼（少年时叫小七，成年后叫萧七）
+合并后：name 取最核心、最稳定、出现最多的那个称呼；其余全部塞进 aliases。
+**拿不准两个称呼是不是同一人时，优先合并**——拆错比合错更难在下游修复
+（分镜里会变成两个角色、两张定妆照、两条音色）。
 
 【硬性规则】违反任一项都视为不合格：
-1. **必须包含"我"这个人物**。即使原文未明确"我"的外貌，也要结合上下文给出最合理、最保守的可视化补全（性别、年龄段、身份气质都要落到画面元素上）。
-2. 必须合并同一人物的不同叫法、代称、身份称呼到同一条记录里，不要重复输出同一个人物；多个名字时 name 选最核心、最稳定的，其余全部进 aliases。
+1. 遵守上面的第一人称判定：第三人称叙事里绝不能出现名为"我"的角色。
+2. 遵守上面的同一人物合并规则，同一个人只能出现一条记录。
 3. 只提取"可单独识别的人物"。禁止输出泛指群体：众人 / 同学们 / 路人 / 村民们 / 所有人 等。
 4. 若人物没有明确姓名但在文中可单独识别，使用文中最稳定的称呼作为 name（如：班主任、老板娘、司机、邻居阿姨）。
 5. **每个人物的穿着必须尽量不重复**。原文未明确服装时，在不违背人物身份、时代、阶层、剧情氛围的前提下做合理且保守的差异化补全，确保不同人物在画面中可一眼区分。
@@ -1118,10 +1169,21 @@ BGM：{背景音乐风格}
 8. 必须使用中文描述；任何无法在画面中直接看到的内容一律剔除。
 9. appearance 写法风格统一，建议结构："一个……岁左右的……人，……发色……发型，……眼睛，穿着……上装，下身穿……"
 
+【输出前自检】逐条过一遍，任一条不通过就改完再输出：
+1. 叙事人称判对了吗？第三人称叙事的结果里是否混进了名为"我"的角色？
+2. 列表里有没有两条其实是同一个人（本名与绰号、姓+称谓、职务指代、亲属称谓）？
+3. 每条的 appearance 里有没有混进职业 / 身份 / 亲属关系 / 经历 / 性格？有就挪进 description。
+4. 有没有把泛指群体当成单个人物输出？
+5. 原文里换过装、长大过、受过伤、境遇变过的人物，是否都给出了 variants？
+   variants 里有没有重抄完整外观、或写进了剧情与情绪？
+
 【输出要求】
 - 只输出 JSON，可包裹在 \`\`\`json 代码块中；禁止输出任何解释、前言、备注、Markdown 标题。
 - JSON 必须严格遵循下方示例的结构（顶层对象包含 \`characters\` 数组）。
-- 不得出现重复人物、不得漏掉"我"、不得缺字段、不得输出无效 JSON。
+- 不得出现重复人物、不得缺字段、不得输出无效 JSON。
+
+下面的示例取自**第一人称**原文（旁白用"我"叙述），所以输出里包含"我"；
+第三人称原文的输出里不应出现"我"这条记录。
 
 \`\`\`json
 {
@@ -1133,7 +1195,21 @@ BGM：{背景音乐风格}
       "gender": "male",
       "role": "protagonist",
       "appearance": "一个28岁左右的年轻男人，黑色微卷短发，深棕色丹凤眼，窄长脸，挺直鼻梁，薄唇，小麦色肤；中等偏高瘦削身形，肩背挺拔；上身穿深灰色羊毛长风衣搭白色棉质立领衬衫，下身穿黑色斜纹布修身长裤，脚踩黑色牛皮短靴，左手腕戴一只银色金属机械表，左眉尾有一道浅淡旧疤。",
-      "description": "年轻调查员"
+      "description": "年轻调查员",
+      "variants": [
+        {
+          "name": "流浪时期",
+          "kind": "state",
+          "prompt": "衣衫褴褛多处破洞、灰扑扑沾满尘土，头发油腻打结垂到肩，面色蜡黄双颊凹陷，赤脚或裹破布，指甲缝发黑",
+          "keywords": "流浪,街头,乞讨,饿"
+        },
+        {
+          "name": "入府之后",
+          "kind": "outfit",
+          "prompt": "换上藕荷色云锦长衫搭白色细棉中衣，头发梳理整齐束白玉冠，面色红润，脚穿黑缎软靴，腰间悬一枚青玉佩",
+          "keywords": "接回,认亲,入府,少爷"
+        }
+      ]
     },
     {
       "name": "我",
@@ -1142,7 +1218,8 @@ BGM：{背景音乐风格}
       "gender": "female",
       "role": "supporting",
       "appearance": "一个20岁左右的年轻女人，深棕色长发扎成低马尾，黑色眼睛，圆脸柔和五官，浅肤色；中等偏瘦体型；上身穿浅杏色棉质连帽外套搭白色针织内搭，下身穿蓝色牛仔修身长裤，脚踩白色帆布鞋。",
-      "description": "第一人称叙述者"
+      "description": "第一人称叙述者",
+      "variants": []
     }
   ]
 }
@@ -1153,6 +1230,174 @@ BGM：{背景音乐风格}
       variable('tweetScript', { required: false }),
       variable('plotSummary', { required: false }),
       variable('stylePrefix', { required: false }),
+    ],
+    isCustom: false,
+  },
+
+  character_preview_video_prompt: {
+    id: 'character_preview_video_prompt',
+    category: 'inference-video',
+    name: '角色预览视频提示词',
+    description: '先从剧本推断角色性格与口头禅，再产出一段「动作 + 台词」，用于主形象预览视频（同时也是提取角色音频的素材）',
+    template: `你在为一段角色预览短视频写提示词。这段视频只有一个用途：把这个角色演活，并留下一段干净的角色人声，供后续提取成音色样本。
+
+【角色资料】
+姓名：{{characterName}}
+代称：{{aliases}}
+性别 / 年龄：{{demographic}}
+定位：{{role}}
+外观（画面已由定妆照锁定，不要重复描述外观）：{{appearance}}
+
+【剧本原文（用来推断这个角色怎么说话、怎么动；为空则只依据上面的角色资料）】
+{{script}}
+
+【第一步：先自己推断，不要输出这一步】
+从剧本里找这个角色（含代称）的台词与行为，归纳出：
+- 性格：急躁还是沉稳、外放还是压抑、强势还是讨好
+- 说话习惯：句子长短、用词文白程度、有没有反复出现的口头禅 / 语气词 / 称呼方式
+剧本里找不到这个角色的台词时，依据定位与外观做最保守的推断，不要编造剧情。
+
+【第二步：输出两部分】
+1. action：角色的动作与神态，英文，一句话。
+   - 必须是**由上面推断出的性格推导出来的**具体行为（急性子就有小动作，阴沉就压着不动，
+     跳脱就手舞足蹈），不要写"站着微笑"这种通用词
+   - 只写角色本人的动作、表情、视线、呼吸、细微姿态变化；镜头保持稳定，不要写运镜、转场、特效
+   - 不要写背景、道具、其它人物、环境音
+   - 角色必须在说话：动作要和开口的节奏对得上（如 "leaning in slightly as he speaks"）
+2. dialogue：角色说出口的一句台词，中文，8~25 字。
+   - 剧本里有反复出现的口头禅 / 招牌说法，**必须用上**（可自然扩写成完整一句）
+   - 没有的话，写一句最能体现该性格与说话习惯的短句
+   - 必须是这个角色会说的话：语气、用词、文化程度都要贴人物
+   - 只有一句，不要旁白、不要引号、不要人名前缀、不要舞台提示
+
+【硬性规则】
+- 只输出 JSON，可包裹在 \`\`\`json 代码块中，禁止任何解释文字
+- action 只能是英文，dialogue 只能是中文
+- 台词内容里不得出现音效词、背景音乐描述、环境声
+
+\`\`\`json
+{
+  "action": "shifting his weight impatiently, tapping two fingers against his thigh, eyes flicking up as he speaks",
+  "dialogue": "行了行了，废话少说，跟我走。"
+}
+\`\`\`
+`,
+    variables: [
+      variable('characterName'),
+      variable('aliases', { required: false }),
+      variable('demographic', { required: false }),
+      variable('role', { required: false }),
+      variable('appearance', { required: false }),
+      variable('script', {
+        description: '剧本 / 章节正文；模型据此推断该角色的性格与口头禅。为空时只依据角色资料保守推断。',
+        required: false,
+      }),
+    ],
+    isCustom: false,
+  },
+
+  character_variant_derivation: {
+    id: 'character_variant_derivation',
+    category: 'extraction',
+    name: '角色子形象派生',
+    description: '从角色主形象派生出不同年龄 / 不同状态 / 不同穿着的子形象清单（含匹配关键词）',
+    template: `请为下面这个角色规划「子形象」。子形象 = 同一个人在剧情不同阶段的不同外观，用于分镜里自动切换参考图。
+
+【角色资料】
+姓名：{{characterName}}
+性别 / 年龄：{{demographic}}
+定位：{{role}}
+主形象外观（基准，必须视作同一个人）：{{appearance}}
+
+【剧情线索（用于判断这个角色到底需要哪些子形象；为空则按角色定位给通用集合）】
+{{script}}
+
+【规划要求】
+1. 产出 {{variantCount}} 个子形象，覆盖三类维度，按剧情实际需要分配数量：
+   - kind="age"    不同年龄（少年 / 青年 / 中年 / 老年，只在剧情真的跨年龄时给）
+   - kind="state"  不同状态（重伤、狼狈、病容、醉酒、湿身、蒙尘、情绪外显到影响外观）
+   - kind="outfit" 不同穿着（战袍、礼服、便装、制服、丧服、婚服）
+2. 每个子形象必须是**同一个人**：五官、骨相、肤色、瞳色、基础发色不得改变。
+   prompt 里只写**相对主形象改变了什么**，不要重抄一遍主形象的完整外观。
+3. prompt 只允许画面可见的客观描述（发型长度、胡须、皱纹、伤口位置、血污范围、衣服颜色款式材质、配饰）；
+   禁止性格、情绪词、剧情、心理描写。
+4. keywords 给 2~6 个中文触发词，英文逗号分隔，是原文里出现这些词就该切到该子形象的线索
+   （如 "少年,童年,十二岁"、"重伤,浴血,染血"、"婚礼,大红喜服"）。
+5. name 用 3~6 个中文字，一眼能看懂（如「少年时期」「浴血重伤」「大婚喜服」）。
+6. 不得产出与主形象几乎一样的子形象；每个子形象之间必须有明显画面差异。
+
+【输出要求】
+- 只输出 JSON，可包裹在 \`\`\`json 代码块中，禁止解释文字
+
+\`\`\`json
+{
+  "variants": [
+    {
+      "name": "少年时期",
+      "kind": "age",
+      "prompt": "十三四岁的少年体型，个子矮一截，脸颊未脱稚气，头发短而蓬乱未束冠，粗麻布短褐，赤脚草鞋",
+      "keywords": "少年,童年,小时候,十三岁"
+    },
+    {
+      "name": "浴血重伤",
+      "kind": "state",
+      "prompt": "左肩到胸口一道深长刀伤，衣襟被血浸成暗红并撕裂，脸上溅有血点与尘土，发髻散乱垂落，嘴唇发白",
+      "keywords": "重伤,浴血,染血,受伤,负伤"
+    }
+  ]
+}
+\`\`\`
+`,
+    variables: [
+      variable('characterName'),
+      variable('demographic', { required: false }),
+      variable('role', { required: false }),
+      variable('appearance'),
+      variable('script', { description: '剧情文本（剧本 / 章节正文）；用于判断角色实际需要哪些子形象。', required: false }),
+      variable('variantCount', { description: '期望产出的子形象数量。', required: false }),
+    ],
+    isCustom: false,
+  },
+
+  shot_character_variant_match: {
+    id: 'shot_character_variant_match',
+    category: 'analysis',
+    name: '分镜子形象匹配',
+    description: '按分镜画面与台词，为每个出场角色选出该镜应激活的子形象',
+    template: `请为每个分镜挑选出场角色应该使用的「子形象」。
+
+【可选子形象清单】（每个角色的子形象；未列出的角色不用处理）
+{{variantCatalog}}
+
+【分镜列表】
+{{shotList}}
+
+【判定规则】
+1. 只有当分镜内容**明确**指向某个子形象时才切换：
+   - 时间线索（回忆、少年时、多年后）→ 年龄类子形象
+   - 状态线索（受伤、浑身是血、落水、醉酒、病中）→ 状态类子形象
+   - 场合线索（婚礼、出征、上朝、葬礼）→ 穿着类子形象
+2. 状态是**延续性**的：角色受伤后，后续分镜在没有明确"痊愈/换装"线索前，继续沿用该状态子形象。
+3. 没有任何线索时输出 null（用主形象），**不要为了填满而乱选**。
+4. 只能从清单里选，variantId 必须原样照抄清单里的 id。
+
+【输出要求】
+- 只输出 JSON，可包裹在 \`\`\`json 代码块中，禁止解释文字
+- shots 数组必须与输入分镜一一对应、顺序一致
+- assignments 里只写需要切换子形象的角色；不需要切换的角色直接省略
+
+\`\`\`json
+{
+  "shots": [
+    { "shotId": "shot-1", "assignments": [{ "characterId": "char-1", "variantId": "var-3", "reason": "回忆少年时" }] },
+    { "shotId": "shot-2", "assignments": [] }
+  ]
+}
+\`\`\`
+`,
+    variables: [
+      variable('variantCatalog', { description: '角色子形象清单（含 id / 名称 / 差异描述 / 触发关键词）。' }),
+      variable('shotList', { description: '分镜清单（含 shotId、画面描述、台词、出场角色）。' }),
     ],
     isCustom: false,
   },
@@ -1989,6 +2234,23 @@ BGM：{背景音乐风格}
     isCustom: false,
   },
 
+  tti_character_variant: {
+    id: 'tti_character_variant',
+    category: 'tti',
+    name: '角色子形象定妆照',
+    description: '以主形象定妆照为身份锚，只按差异描述派生出同一角色的不同年龄 / 状态 / 穿着',
+    // references[0] 恒为主形象定妆照：这里的核心约束是"同一个人"，
+    // 模型只允许按 variantPrompt 改变差异项，不得重新设计脸/骨相/肤色/瞳色。
+    template: '{{stylePrefix}}, character turnaround sheet of a {{demographic}}, SAME PERSON as the reference sheet provided as references[0]: strictly inherit the face structure, facial features, bone structure, skin tone, eye color and base hair color from it — this is a variant of the SAME character, not a new character, {{appearance}}, VARIANT CHANGES (apply exactly these differences and nothing else): {{variantPrompt}}, full body standing reference, neutral A-pose, three poses in one image: front view | three-quarter side view | back view, identical character identity repeated across all three views, plain pure white seamless background, soft even studio lighting, no cast shadows on background, clear silhouette, all clothing layers visible, objective visible appearance only, no props, no environment, no narrative, no text, no extra characters, art style lock: match the project art style exactly (color palette, lighting, brush/line work, textures, atmosphere, rendering technique); do NOT drift toward photorealism / live-action / a different aesthetic',
+    variables: [
+      variable('stylePrefix'),
+      variable('demographic', { required: false }),
+      variable('appearance', { description: '主形象的客观外观描述（身份基线）。' }),
+      variable('variantPrompt', { description: '子形象相对主形象的差异描述（年龄 / 状态 / 穿着的变化）。' }),
+    ],
+    isCustom: false,
+  },
+
   tti_scene_preview: {
     id: 'tti_scene_preview',
     category: 'tti',
@@ -2102,9 +2364,23 @@ Strict rendering rule: render short production-board notes, numbered camera mark
     id: 'itv_character_motion',
     category: 'itv',
     name: '角色动态视频',
-    description: '生成角色动态展示视频',
-    template: '{{characterName}} {{action}}, {{stylePrefix}}, smooth animation, character showcase, professional quality',
-    variables: [variable('characterName'), variable('action'), variable('stylePrefix')],
+    description: '生成角色动态展示视频；音轨只保留角色本人说话的干声，供「提取角色音频」直接做音色样本',
+    // 音频约束是硬要求：这段视频的音轨会被 ffmpeg 提取成音色样本，
+    // 任何 BGM / 音效 / 环境音 / 旁白都会污染样本，导致克隆出来的音色带底噪。
+    template: `{{characterName}} {{action}}, {{stylePrefix}}, single character alone in frame, steady locked-off camera, smooth natural animation, character showcase, professional quality.
+
+Spoken line (the character says exactly this, lip-synced, in their own voice): {{dialogue}}
+
+AUDIO REQUIREMENTS (strict): the audio track must contain ONLY this character's own clean speaking voice — no background music, no soundtrack, no sound effects, no foley, no ambient or room noise, no crowd noise, no narration or voice-over, no other speakers, no reverb tail. Studio-dry clean vocal recording. If no line is given, keep the audio track silent rather than adding any music or effects.`,
+    variables: [
+      variable('characterName'),
+      variable('action'),
+      variable('stylePrefix'),
+      variable('dialogue', {
+        description: '角色说出口的台词；留空时模型应保持静音而不是补音乐/音效。',
+        required: false,
+      }),
+    ],
     isCustom: false,
   },
 

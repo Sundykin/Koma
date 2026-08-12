@@ -25,6 +25,8 @@ import { useStoryboardPrompts } from './hooks/useStoryboardPrompts';
 import { loadVoiceLibrary } from '../../services/voiceLibrary/voiceLibraryService';
 import { useStoryboardAudio } from './hooks/useStoryboardAudio';
 import { useStoryboardShotMutations } from './hooks/useStoryboardShotMutations';
+import { matchShotCharacterVariants } from '../../services/CharacterAppearanceService';
+import { createCreationContext } from '../../services/CreationContext';
 import { useStoryboardPersistence } from './hooks/useStoryboardPersistence';
 import { useStoryboardTaskSubscriptions } from './hooks/useStoryboardTaskSubscriptions';
 import type { VoiceLibrarySnapshot } from '../../types/voice-library';
@@ -539,6 +541,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     handleImagePromptChange,
     handleVideoPromptChange,
     handleCharactersChange,
+    handleCharacterVariantChange,
     handleScenesChange,
     handlePropsChange,
     handleReferenceImagesChange,
@@ -577,6 +580,48 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   });
 
   // 生成图片提示词（首次生成）
+  /**
+   * AI 匹配角色子形象：把每个分镜该用哪个子形象一次性算出来并落库。
+   * 只覆盖模型明确给出线索的分镜；其余分镜的既有选择原样保留（不会被清空）。
+   */
+  const [matchingCharacterVariants, setMatchingCharacterVariants] = useState(false);
+  const handleMatchCharacterVariants = useCallback(async () => {
+    if (shots.length === 0) {
+      message.warning('当前剧集还没有分镜');
+      return;
+    }
+    if (!characters.some(c => (c.variants?.length || 0) > 0)) {
+      message.warning('还没有角色子形象，请先在角色资产里派生子形象');
+      return;
+    }
+    setMatchingCharacterVariants(true);
+    try {
+      const ctx = await createCreationContext(projectId, episodeId || '', { llmConfigId: llmSelection });
+      const assignments = await matchShotCharacterVariants(ctx.llmProvider, shots, characters);
+      if (assignments.length === 0) {
+        message.info('没有分镜出现需要切换子形象的线索，全部保持主形象');
+        return;
+      }
+      const byShot = new Map<string, Record<string, string>>();
+      for (const item of assignments) {
+        const current = byShot.get(item.shotId) || {};
+        current[item.characterId] = item.variantId;
+        byShot.set(item.shotId, current);
+      }
+      const updatedShots = shots.map(shot => {
+        const patch = byShot.get(shot.id);
+        if (!patch) return shot;
+        return { ...shot, characterVariants: { ...(shot.characterVariants || {}), ...patch } };
+      });
+      await saveAllShots(updatedShots);
+      message.success(`已为 ${byShot.size} 个分镜匹配子形象`);
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : '匹配子形象失败');
+    } finally {
+      setMatchingCharacterVariants(false);
+    }
+  }, [shots, characters, projectId, episodeId, llmSelection, saveAllShots, message]);
+
   // 提示词生成/优化逻辑已拆到 hooks/useStoryboardPrompts（单镜 + 批量参数化）
   const {
     promptStreamMap,
@@ -939,6 +984,9 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             onVideoPromptChange={handleVideoPromptChange}
             onDurationChange={handleDurationChange}
             onCharactersChange={handleCharactersChange}
+            onCharacterVariantChange={handleCharacterVariantChange}
+            onMatchCharacterVariants={handleMatchCharacterVariants}
+            matchingCharacterVariants={matchingCharacterVariants}
             onScenesChange={handleScenesChange}
             onPropsChange={handlePropsChange}
             onReferenceImagesChange={handleReferenceImagesChange}

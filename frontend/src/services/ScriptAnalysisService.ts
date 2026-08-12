@@ -3,7 +3,7 @@
  * 使用 LLM 分析剧本，提取角色、场景、道具
  * 分镜生成由 ShotAnalysisService 单独处理
  */
-import type { Character, Scene, Prop, ScriptAnalysisResult } from '../types';
+import type { Character, CharacterVariant, CharacterVariantKind, Scene, Prop, ScriptAnalysisResult } from '../types';
 import { resolvePromptTemplate } from '../store/promptTemplates';
 import type { ResolvedPromptTemplate } from '../store/promptTemplates';
 import { logLLMCall } from '../store/aiCallLogger';
@@ -128,6 +128,20 @@ const CHARACTERS_SCHEMA = {
             type: 'string',
             description: 'AI 文生图用的纯客观可见外观描述（中文，建议 ≥ 60 字）。必须覆盖：脸部（脸型/眉/眼/瞳色/鼻/嘴/肤色）、头发、体态、上下装与鞋履（每件给【颜色】+【款式】+【材质】）、配饰、衣物外可见的疤痕/纹身/胎记/穿孔。禁止性格情绪、被衣物遮挡的隐藏部位特征、职业身份叙述、模糊词。',
           },
+          variants: {
+            type: 'array',
+            description: '该角色在本文中发生过明显外观变化的阶段（子形象）。只有原文真的写到变化才输出；全程没变就给空数组。',
+            items: {
+              type: 'object',
+              properties: {
+                name: { type: 'string', description: '3~6 字的阶段名，如「流浪时期」「入府之后」「少年时期」' },
+                kind: { type: 'string', enum: ['age', 'state', 'outfit', 'other'], description: '变化维度：年龄 / 状态 / 穿着 / 其它' },
+                prompt: { type: 'string', description: '相对 appearance 改变了什么（只写差异，客观可见）；不得重抄完整外观' },
+                keywords: { type: 'string', description: '触发该阶段的中文关键词，英文逗号分隔' },
+              },
+              required: ['name', 'kind', 'prompt'],
+            },
+          },
         },
         required: ['name', 'age', 'gender', 'role', 'description', 'appearance'],
       },
@@ -176,6 +190,41 @@ const PROPS_SCHEMA = {
   required: ['props'],
 };
 
+
+/**
+ * 提取阶段一并产出的角色子形象 → CharacterVariant[]。
+ *
+ * 子形象不是单独一次 AI 调用：角色的阶段性外观变化（流浪→入府、少年→成年、受伤→痊愈）
+ * 只有读完整段原文才判断得出来，所以跟着角色提取一次性出，不额外花一次 LLM。
+ * 这里只做结构归一与防御：缺名字/缺差异描述的条目没法生图也没法匹配，直接丢。
+ */
+function mapExtractedVariants(raw: unknown, characterId: string): CharacterVariant[] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined;
+  const kinds: CharacterVariantKind[] = ['age', 'state', 'outfit', 'other'];
+  const seenNames = new Set<string>();
+  const variants: CharacterVariant[] = [];
+
+  raw.forEach((item, index) => {
+    if (!item || typeof item !== 'object') return;
+    const record = item as Record<string, unknown>;
+    const name = cleanText(typeof record.name === 'string' ? record.name : '');
+    const prompt = cleanText(typeof record.prompt === 'string' ? record.prompt : '');
+    if (!name || !prompt || seenNames.has(name)) return;
+    seenNames.add(name);
+    const rawKind = typeof record.kind === 'string' ? record.kind.toLowerCase() : '';
+    variants.push({
+      // 提取结果可能被多次合并（entityMerge），id 要在角色内稳定且唯一
+      id: `${characterId}_var_${index}`,
+      name,
+      kind: (kinds as string[]).includes(rawKind) ? (rawKind as CharacterVariantKind) : 'other',
+      prompt,
+      keywords: cleanText(typeof record.keywords === 'string' ? record.keywords : ''),
+      createdAt: Date.now(),
+    });
+  });
+
+  return variants.length ? variants : undefined;
+}
 
 export class ScriptAnalysisService {
   private ctx: import('./CreationContext').CreationContext;
@@ -500,16 +549,17 @@ export class ScriptAnalysisService {
           return parsed.characters.filter((c: any) => c && typeof c.name === 'string' && c.name.trim());
         },
         (c, index) => {
-          // LLM 仍按 schema 同时返回 appearance（视觉外观）和 description（≤20 字身份标签），
-          // 但我们只保留一份 prompt：把 sanitize 后的 appearance 放前面（视觉重要），
-          // description 作为身份补充拼到后面。这样后续读取只有一份真相，UI 改了就立刻生效。
+          // prompt 是喂给 TTI 的视觉描述，必须只有画面可见信息。
+          // schema 里仍要求 LLM 输出 description（≤20 字身份标签）—— 它是个「泄压阀」：
+          // 给模型一个地方安放职业/身份，appearance 才不会被身份说明污染。
+          // 但它的值不进 prompt，否则「年轻调查员」这类身份文本会跟着进生图提示词。
           const visualAppearance = sanitizeCharacterAppearance(c.appearance, c.name);
-          const briefDescription = cleanText(c.description || '');
-          const promptParts = [visualAppearance, briefDescription].filter(Boolean);
+          const characterId = `char_${Date.now()}_${index}`;
           return {
-            id: `char_${Date.now()}_${index}`,
+            id: characterId,
             name: c.name,
-            prompt: promptParts.join('\n') || c.name,
+            prompt: visualAppearance || c.name,
+            variants: mapExtractedVariants(c.variants, characterId),
             age: c.age || '未知',
             gender: ['male', 'female', 'neutral', 'unknown'].includes(c.gender) ? c.gender : 'unknown',
             role: c.role || 'supporting',

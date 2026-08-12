@@ -180,12 +180,18 @@ export async function compileCharacterPreviewVideoRequest(params: {
   primaryImage: MediaAssetSource;
   stylePrefix: string;
   duration?: number;
+  /** AI 生成的动作提示词（英文）；缺省时退回按外观描述的通用展示动作 */
+  action?: string;
+  /** AI 生成的台词（中文）；音轨会被提取成音色样本，所以模板要求只保留这句人声 */
+  dialogue?: string;
 }): Promise<CompiledVideoGenerationRequest> {
   const visualPrompt = params.character.prompt || params.character.name;
   const resolvedPrompt = await resolvePromptTemplate('itv_character_motion', {
     stylePrefix: params.stylePrefix,
     characterName: params.character.name,
-    action: `${visualPrompt}, character showcase, subtle breathing, natural eye movement, steady camera`,
+    action: params.action?.trim()
+      || `${visualPrompt}, character showcase, subtle breathing, natural eye movement, steady camera`,
+    dialogue: params.dialogue?.trim() || '',
   });
 
   const finalDuration = coerceRequestDurationSeconds(params.duration);

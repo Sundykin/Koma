@@ -33,6 +33,14 @@ function aliasKeys(aliases: string | undefined): Set<string> {
   return out;
 }
 
+/** 角色子形象在归并里的最小形状（只关心去重键与已生成的图） */
+interface MergeableVariant {
+  id: string;
+  name: string;
+  prompt?: string;
+  media?: { costumePhoto?: unknown } | unknown;
+}
+
 interface MergeableAsset {
   id: string;
   name: string;
@@ -42,6 +50,53 @@ interface MergeableAsset {
   aliases?: string;
   createdAt?: number;
   media?: { costumePhoto?: unknown; previewImage?: unknown } | unknown;
+  /** 角色子形象；跨 chunk / 跨集提取到同一角色时必须取并集，不能整体覆盖 */
+  variants?: MergeableVariant[];
+}
+
+/**
+ * 子形象取并集，按规范名去重。
+ *
+ * 覆盖式合并（`{...hit, ...item}`）会把已经出过图的子形象整批冲掉 —— 提取是分块并行的，
+ * 同一角色在多个 chunk 里都会出现，后来的那份通常没有 media。所以：
+ *  - 同名子形象保留既有 id 与 media（图还在）；已出图时连 prompt 也保旧值，
+ *    理由同角色 prompt：新描述与已生成的图打架会造成视觉漂移
+ *  - 新出现的子形象追加到末尾
+ */
+function mergeVariants(
+  existing: MergeableVariant[] | undefined,
+  incoming: MergeableVariant[] | undefined,
+): MergeableVariant[] | undefined {
+  if (!existing?.length) return incoming?.length ? incoming : undefined;
+  if (!incoming?.length) return existing;
+
+  const merged = [...existing];
+  const indexByKey = new Map<string, number>();
+  existing.forEach((variant, index) => {
+    const key = normalizeAssetName(variant.name);
+    if (key) indexByKey.set(key, index);
+  });
+
+  for (const variant of incoming) {
+    const key = normalizeAssetName(variant.name);
+    const index = key ? indexByKey.get(key) : undefined;
+    if (index === undefined) {
+      if (key) indexByKey.set(key, merged.length);
+      merged.push(variant);
+      continue;
+    }
+    const hit = merged[index];
+    const hitMedia = hit.media as { costumePhoto?: unknown } | undefined;
+    const hitHasImage = Boolean(hitMedia?.costumePhoto);
+    merged[index] = {
+      ...variant,
+      id: hit.id,
+      media: hit.media ?? variant.media,
+      prompt: hitHasImage && hit.prompt?.trim() ? hit.prompt : variant.prompt,
+    };
+  }
+
+  return merged;
 }
 
 /**
@@ -114,6 +169,7 @@ export function mergeAssetEntities<T extends MergeableAsset>(existing: T[], newI
       // 已有定妆照/预览图且旧 prompt 非空时保留旧 prompt：新外貌描述与已生成图片会静默打架
       prompt: hitHasVisual && (hit as T).prompt?.trim() ? (hit as T).prompt : (item as T).prompt,
       aliases: Array.from(mergedAliases).join(','),
+      variants: mergeVariants(hit.variants, item.variants),
     } as T;
 
     result[indexById.get(hit.id)!] = merged;

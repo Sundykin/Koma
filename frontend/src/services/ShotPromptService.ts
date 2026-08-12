@@ -12,6 +12,7 @@ import { createLogger } from '../store/logger';
 import type { LLMCallOptions } from '../providers/llm/types';
 import { createMentionString } from '../editor/mentionTypes';
 import { runWithConcurrency } from '../utils/concurrency';
+import { resolveCharactersAppearance } from '../utils/characterVariants';
 import {
   clampDurationToSpec,
   FALLBACK_DURATION_RANGE,
@@ -236,7 +237,11 @@ export class ShotPromptService {
     }
 
     // 过滤出该分镜关联的资产（角色/场景/道具）
-    const shotCharacters = characters.filter(c => shot.characters?.includes(c.id));
+    // resolveCharactersAppearance：本镜激活了子形象的角色，提示词与参考图都按子形象编译
+    const shotCharacters = resolveCharactersAppearance(
+      characters.filter(c => shot.characters?.includes(c.id)),
+      shot,
+    );
 
     // 场景与道具由服务内部加载，避免在调用点扩散参数/兼容代码
     const [allScenes, allProps] = await Promise.all([
@@ -685,8 +690,11 @@ export class ShotPromptService {
   ): Promise<string> {
     const resolvedStylePrefix = this.resolveTTIStylePrefix(stylePrefix, styleSnapshot);
 
-    // 过滤出该分镜关联的资产
-    const shotCharacters = characters.filter(c => shot.characters?.includes(c.id));
+    // 过滤出该分镜关联的资产（同上：子形象激活时按子形象编译）
+    const shotCharacters = resolveCharactersAppearance(
+      characters.filter(c => shot.characters?.includes(c.id)),
+      shot,
+    );
     const [allScenes, allProps] = await Promise.all([
       loadScenes(this.ctx.projectId).catch(() => []),
       loadProps(this.ctx.projectId).catch(() => []),

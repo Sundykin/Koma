@@ -85,6 +85,21 @@ export interface WaveformOptions {
   backgroundColor?: string;
 }
 
+// 音轨提取选项（视频 → 人声样本 wav）
+export interface ExtractAudioTrackOptions {
+  input: string;
+  /** 输出 wav 路径 */
+  output: string;
+  /** 采样率，默认 44100 */
+  sampleRate?: number;
+  /** 声道数，默认 1（单声道，音色克隆更稳） */
+  channels?: number;
+  /** 截取起点（秒）；不传则从头开始 */
+  startSeconds?: number;
+  /** 截取时长（秒）；不传则到结尾 */
+  durationSeconds?: number;
+}
+
 // 视频合成选项
 export interface ComposeVideoOptions {
   frameDir: string;           // 帧文件目录
@@ -153,7 +168,7 @@ export interface UpscaleVideoOptions {
 }
 
 // 任务类型
-type TaskType = 'getInfo' | 'extractFrames' | 'splitGridImage' | 'upscaleImage' | 'cropImage' | 'waveform' | 'splitAudio' | 'export' | 'composeVideo' | 'concatMediaClips' | 'concatAudioClips' | 'trimVideo' | 'upscaleVideo';
+type TaskType = 'getInfo' | 'extractFrames' | 'splitGridImage' | 'upscaleImage' | 'cropImage' | 'waveform' | 'splitAudio' | 'extractAudioTrack' | 'export' | 'composeVideo' | 'concatMediaClips' | 'concatAudioClips' | 'trimVideo' | 'upscaleVideo';
 
 // 任务定义
 interface Task {
@@ -371,6 +386,15 @@ export class FFmpegService {
   }
 
   /**
+   * 从视频提取人声样本音轨（重编码为 wav）。
+   * 与 splitAudio 的区别：splitAudio 是 `-acodec copy`，容器不匹配就失败；
+   * 这里统一转成 pcm_s16le wav，音色克隆 / 音色库上传都能直接吃。
+   */
+  async extractAudioTrack(options: ExtractAudioTrackOptions): Promise<string> {
+    return this.queueTask<string>('extractAudioTrack', options);
+  }
+
+  /**
    * 合成视频（图片序列 + 音频 -> 视频文件）
    */
   async composeVideo(options: ComposeVideoOptions, onProgress?: ProgressCallback): Promise<string> {
@@ -457,6 +481,9 @@ export class FFmpegService {
           break;
         case 'splitAudio':
           result = await this.doSplitAudio(task.args.input, task.args.output);
+          break;
+        case 'extractAudioTrack':
+          result = await this.doExtractAudioTrack(task.args);
           break;
         case 'composeVideo':
           result = await this.doComposeVideo(task.args, task.onProgress);
@@ -967,6 +994,35 @@ export class FFmpegService {
 
     await this.runFFmpeg(args);
     return output;
+  }
+
+  private async doExtractAudioTrack(options: ExtractAudioTrackOptions): Promise<string> {
+    if (!this.ffmpegPath) {
+      throw new Error('FFmpeg not available');
+    }
+
+    await fs.promises.mkdir(path.dirname(options.output), { recursive: true });
+
+    const args: string[] = [];
+    // -ss 放在 -i 之前走关键帧快速定位
+    if (typeof options.startSeconds === 'number' && options.startSeconds > 0) {
+      args.push('-ss', String(options.startSeconds));
+    }
+    args.push('-i', options.input);
+    if (typeof options.durationSeconds === 'number' && options.durationSeconds > 0) {
+      args.push('-t', String(options.durationSeconds));
+    }
+    args.push(
+      '-vn',
+      '-acodec', 'pcm_s16le',
+      '-ar', String(options.sampleRate || 44100),
+      '-ac', String(options.channels || 1),
+      '-y',
+      options.output,
+    );
+
+    await this.runFFmpeg(args);
+    return options.output;
   }
 
   /**

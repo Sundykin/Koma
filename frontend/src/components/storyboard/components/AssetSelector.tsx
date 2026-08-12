@@ -8,13 +8,19 @@
  * - 没有"+ 添加"入口（资产管理在专属面板做）；本组件只做"勾选 / 取消"
  */
 import React from 'react';
-import { Popover, Avatar } from 'antd';
+import { Popover, Avatar, Select } from 'antd';
 import { UserOutlined, EnvironmentOutlined, ToolOutlined } from '@ant-design/icons';
 import { electronService } from '../../../services/electronService';
 import type { StoredMediaAsset } from '../../../types';
 import { getMediaAssetDisplaySource } from '../../../types';
 
 type AssetType = 'character' | 'scene' | 'prop';
+
+interface AssetVariant {
+  id: string;
+  name: string;
+  media?: { costumePhoto?: StoredMediaAsset };
+}
 
 interface Asset {
   id: string;
@@ -26,6 +32,10 @@ interface Asset {
     costumePhoto?: StoredMediaAsset;
     previewImage?: StoredMediaAsset;
   };
+  /** 角色子形象（不同年龄 / 状态 / 穿着）；只有角色类资产会有 */
+  variants?: AssetVariant[];
+  /** 角色级默认激活的子形象，本镜没指定时的回落 */
+  activeVariantId?: string;
 }
 
 interface AssetSelectorProps {
@@ -33,6 +43,10 @@ interface AssetSelectorProps {
   selectedIds: string[];
   allAssets: Asset[];
   onChange: (ids: string[]) => void;
+  /** 本镜生效的子形象：assetId → variantId（仅角色类型使用） */
+  variantSelections?: Record<string, string>;
+  /** 切换本镜子形象；variantId 为空表示回到主形象 */
+  onVariantChange?: (assetId: string, variantId?: string) => void;
 }
 
 const CONFIG: Record<AssetType, { label: string; icon: React.ReactNode; color: string; selectedRing: string; selectedBg: string; typeColor: string }> = {
@@ -62,8 +76,17 @@ const CONFIG: Record<AssetType, { label: string; icon: React.ReactNode; color: s
   },
 };
 
-function getAssetImage(asset: Asset): string | undefined {
-  const src = getMediaAssetDisplaySource(asset.media?.costumePhoto)
+/** 本镜生效的子形象；用主形象时返回 undefined（与 utils/characterVariants 同一套回落规则） */
+function getActiveVariant(asset: Asset, variantSelections?: Record<string, string>): AssetVariant | undefined {
+  if (!asset.variants?.length) return undefined;
+  const variantId = variantSelections?.[asset.id] || asset.activeVariantId;
+  if (!variantId) return undefined;
+  return asset.variants.find(v => v.id === variantId);
+}
+
+function getAssetImage(asset: Asset, variant?: AssetVariant): string | undefined {
+  const src = getMediaAssetDisplaySource(variant?.media?.costumePhoto)
+    || getMediaAssetDisplaySource(asset.media?.costumePhoto)
     || getMediaAssetDisplaySource(asset.media?.previewImage)
     || asset.cover
     || asset.avatar;
@@ -73,9 +96,9 @@ function getAssetImage(asset: Asset): string | undefined {
 }
 
 /** 悬浮详情卡片（与 @mention 悬浮风格一致） */
-function AssetDetailContent({ asset, type }: { asset: Asset; type: AssetType }) {
+function AssetDetailContent({ asset, type, variant }: { asset: Asset; type: AssetType; variant?: AssetVariant }) {
   const config = CONFIG[type];
-  const img = getAssetImage(asset);
+  const img = getAssetImage(asset, variant);
   return (
     <div className="w-[260px] p-1">
       <div className="flex items-center gap-2 mb-2">
@@ -85,6 +108,9 @@ function AssetDetailContent({ asset, type }: { asset: Asset; type: AssetType }) 
           {config.label}
         </span>
         <span className="font-medium text-text-primary text-sm">{asset.name}</span>
+        {variant && (
+          <span className="px-1.5 py-0.5 rounded text-[11px] bg-accent/15 text-accent">{variant.name}</span>
+        )}
       </div>
       {img && (
         <img
@@ -109,6 +135,8 @@ export const AssetSelector: React.FC<AssetSelectorProps> = ({
   selectedIds,
   allAssets,
   onChange,
+  variantSelections,
+  onVariantChange,
 }) => {
   const config = CONFIG[type];
 
@@ -144,48 +172,73 @@ export const AssetSelector: React.FC<AssetSelectorProps> = ({
           <div className="flex flex-col gap-0.5">
             {allAssets.map(asset => {
               const selected = selectedIds.includes(asset.id);
-              const img = getAssetImage(asset);
+              const activeVariant = getActiveVariant(asset, variantSelections);
+              const img = getAssetImage(asset, activeVariant);
+              // 子形象切换只对"本镜已选中且有子形象"的角色出现，避免未出场角色占据行高
+              const showVariantSwitch = Boolean(
+                selected && onVariantChange && asset.variants && asset.variants.length > 0,
+              );
               return (
-                <Popover
-                  key={asset.id}
-                  content={<AssetDetailContent asset={asset} type={type} />}
-                  trigger="hover"
-                  mouseEnterDelay={0.4}
-                  placement="left"
-                  overlayClassName="asset-detail-popover"
-                >
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => toggleSelection(asset.id)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        toggleSelection(asset.id);
-                      }
-                    }}
-                    className={`flex items-center gap-2 h-7 px-1.5 rounded border transition-colors cursor-pointer text-xs select-none ${
-                      selected
-                        ? `${config.selectedRing} ${config.selectedBg} text-text-primary font-medium`
-                        : 'border-transparent hover:border-border-subtle hover:bg-bg-hover/40 text-text-secondary'
-                    }`}
-                    title={selected ? `已选中 · 再次点击取消（${asset.name}）` : `点击选中（${asset.name}）`}
+                <React.Fragment key={asset.id}>
+                  <Popover
+                    content={<AssetDetailContent asset={asset} type={type} variant={activeVariant} />}
+                    trigger="hover"
+                    mouseEnterDelay={0.4}
+                    placement="left"
+                    overlayClassName="asset-detail-popover"
                   >
-                    <Avatar
-                      size={22}
-                      shape="square"
-                      src={img}
-                      icon={!img && config.icon}
-                      className="flex-shrink-0 !rounded"
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => toggleSelection(asset.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          toggleSelection(asset.id);
+                        }
+                      }}
+                      className={`flex items-center gap-2 h-7 px-1.5 rounded border transition-colors cursor-pointer text-xs select-none ${
+                        selected
+                          ? `${config.selectedRing} ${config.selectedBg} text-text-primary font-medium`
+                          : 'border-transparent hover:border-border-subtle hover:bg-bg-hover/40 text-text-secondary'
+                      }`}
+                      title={selected ? `已选中 · 再次点击取消（${asset.name}）` : `点击选中（${asset.name}）`}
+                    >
+                      <Avatar
+                        size={22}
+                        shape="square"
+                        src={img}
+                        icon={!img && config.icon}
+                        className="flex-shrink-0 !rounded"
+                      />
+                      <span className="truncate flex-1 min-w-0">
+                        {asset.name}
+                      </span>
+                      {activeVariant && (
+                        <span className="shrink-0 text-[9px] px-1 rounded bg-accent/15 text-accent max-w-[52px] truncate">
+                          {activeVariant.name}
+                        </span>
+                      )}
+                      {selected && (
+                        <span className={`shrink-0 text-[10px] ${config.color}`}>✓</span>
+                      )}
+                    </div>
+                  </Popover>
+                  {showVariantSwitch && (
+                    <Select
+                      size="small"
+                      variant="filled"
+                      value={variantSelections?.[asset.id] ?? ''}
+                      onChange={(value) => onVariantChange?.(asset.id, value || undefined)}
+                      className="w-full !text-[10px]"
+                      popupMatchSelectWidth={false}
+                      options={[
+                        { value: '', label: '主形象' },
+                        ...(asset.variants || []).map(v => ({ value: v.id, label: v.name })),
+                      ]}
                     />
-                    <span className="truncate flex-1 min-w-0">
-                      {asset.name}
-                    </span>
-                    {selected && (
-                      <span className={`shrink-0 text-[10px] ${config.color}`}>✓</span>
-                    )}
-                  </div>
-                </Popover>
+                  )}
+                </React.Fragment>
               );
             })}
           </div>

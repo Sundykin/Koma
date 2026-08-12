@@ -221,6 +221,25 @@ export function useStoryboardShotMutations(deps: StoryboardShotMutationsDeps) {
     (shotId: string, characterIds: string[]) => runAssetChange('character', shotId, characterIds),
     [runAssetChange],
   );
+  /**
+   * 本镜角色子形象切换。variantId 为空 = 回到主形象（把该角色从 map 里删掉，
+   * 不留空串，免得下游把空串当成一个不存在的 variantId 去查）。
+   */
+  const handleCharacterVariantChange = useCallback(
+    (shotId: string, characterId: string, variantId?: string) => {
+      const shot = shots.find(s => s.id === shotId);
+      if (!shot) return;
+      const next = { ...(shot.characterVariants || {}) };
+      if (variantId) next[characterId] = variantId;
+      else delete next[characterId];
+      const updatedShots = shots.map(s =>
+        s.id === shotId ? { ...s, characterVariants: next } : s,
+      );
+      saveAllShots(updatedShots);
+    },
+    [shots, saveAllShots],
+  );
+
   const handleScenesChange = useCallback(
     (shotId: string, sceneIds: string[]) => runAssetChange('scene', shotId, sceneIds),
     [runAssetChange],
@@ -586,6 +605,7 @@ export function useStoryboardShotMutations(deps: StoryboardShotMutationsDeps) {
     handleImagePromptChange,
     handleVideoPromptChange,
     handleCharactersChange,
+    handleCharacterVariantChange,
     handleScenesChange,
     handlePropsChange,
     handleReferenceImagesChange,

@@ -6,6 +6,7 @@ import {
   getMediaAssetDisplaySource,
   getMediaAssetSource,
   type Character,
+  type CharacterVariant,
   type MediaAssetSource,
   type ProviderAssetInput,
   type StoredMediaAsset,
@@ -64,6 +65,10 @@ interface GenerateOptions {
   seed?: number;
   variationPrompt?: string;
   destPath?: string;
+  /** 预览视频：AI 生成的动作提示词（英文）；见 CharacterAppearanceService */
+  previewAction?: string;
+  /** 预览视频：AI 生成的台词（中文）；音轨会被提取成音色样本 */
+  previewDialogue?: string;
   bindOwner?: boolean;
   normalizeRemoteUrl?: boolean;
   /**
@@ -181,13 +186,108 @@ export async function generateCostumePhoto(
 }
 
 /**
+ * 生成角色「子形象」定妆照。
+ *
+ * 与主形象定妆照的关键差别：主形象定妆照恒为 references[0]（身份锚），提示词里
+ * 明确声明"这是同一个人的另一种年龄/状态/穿着"，模型只允许按 variant.prompt 改差异，
+ * 不得重新设计脸/骨相/肤色/瞳色。没有主形象定妆照时直接失败——没有锚就没法保证是同一个人。
+ */
+export async function generateCharacterVariantPhoto(
+  options: GenerateOptions & { variant: CharacterVariant },
+): Promise<{ success: boolean; path?: string; url?: string; error?: string }> {
+  const {
+    projectId, character, variant, aspectRatio, theme, stylePrompt, styleSnapshot, project,
+    ttiSelection, seed, destPath, bindOwner, normalizeRemoteUrl, onProgress, disableTask,
+  } = options;
+  const finalAspectRatio = aspectRatio || project?.aspectRatio || '16:9';
+
+  const identityAnchor = getMediaAssetDisplaySource(character.media?.costumePhoto);
+  if (!identityAnchor) {
+    return { success: false, error: '请先生成主形象定妆照（子形象需要它作为身份锚）' };
+  }
+
+  logger.info(`开始生成角色子形象: ${character.name} / ${variant.name}`);
+  onProgress?.(0, '准备生成子形象...');
+
+  try {
+    const stylePrefix = await getResolvedTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
+    const baseVariables = buildCharacterCostumeTemplateVariables(character, stylePrefix || '');
+    const resolvedPrompt = await resolvePromptTemplate('tti_character_variant', {
+      ...baseVariables,
+      variantPrompt: variant.prompt,
+    });
+
+    logTTICall(
+      'TTI',
+      resolvedPrompt.prompt,
+      { aspectRatio: finalAspectRatio, ...(seed !== undefined ? { seed } : undefined) },
+      {
+        projectId,
+        targetId: character.id,
+        targetName: `${character.name} · ${variant.name}`,
+        templateId: resolvedPrompt.template.id,
+        promptSource: resolvedPrompt.source,
+      }
+    );
+
+    const { result: asset } = await runWithTask({
+      disabled: disableTask,
+      projectId,
+      category: 'asset',
+      subType: 'asset-generation',
+      targetType: 'character',
+      targetId: character.id,
+      targetName: `${character.name} · ${variant.name}`,
+      type: 'asset-generation',
+      execute: async (ctx) => {
+        ctx.progress(10, '调用 TTI 服务...');
+        const a = await mediaGenerationService.generateImage({
+          projectId,
+          ownerRef: {
+            projectId,
+            ownerType: 'character',
+            ownerId: character.id,
+            slot: 'costumePhoto',
+          },
+          request: {
+            prompt: resolvedPrompt.prompt,
+            // 主形象定妆照恒为 references[0]：模板里以它为身份锚
+            references: [identityAnchor],
+            options: {
+              aspectRatio: finalAspectRatio,
+              ...(seed !== undefined ? { seed } : undefined),
+            },
+          },
+          ttiSelection,
+          destPath,
+          bindOwner,
+          normalizeRemoteUrl,
+          taskName: `${character.name} · ${variant.name}`,
+        });
+        ctx.progress(100, '完成');
+        return a;
+      },
+    });
+
+    onProgress?.(100, '完成');
+    return { success: true, path: asset.localPath, url: asset.remoteUrl };
+  } catch (err: any) {
+    logger.error(`生成子形象失败: ${character.name} / ${variant.name}`, { error: err.message });
+    return { success: false, error: err.message };
+  }
+}
+
+/**
  * 生成角色预览视频
  * 优先使用远程 URL（Sora2 等需要远程可访问的图片）
  */
 export async function generateCharacterPreviewVideo(
   options: GenerateOptions
-): Promise<{ success: boolean; path?: string; taskId?: string; error?: string }> {
-  const { projectId, character, theme, stylePrompt, styleSnapshot, project, itvSelection, onProgress, disableTask } = options;
+): Promise<{ success: boolean; path?: string; taskId?: string; asset?: StoredMediaAsset; error?: string }> {
+  const {
+    projectId, character, theme, stylePrompt, styleSnapshot, project, itvSelection,
+    previewAction, previewDialogue, destPath, bindOwner, onProgress, disableTask,
+  } = options;
 
   logger.info(`开始生成角色预览视频: ${character.name}`);
   onProgress?.(0, '准备生成预览视频...');
@@ -219,6 +319,8 @@ export async function generateCharacterPreviewVideo(
       primaryImage: rawImageSource,
       stylePrefix: resolvedStylePrefix,
       duration: previewDuration,
+      action: previewAction,
+      dialogue: previewDialogue,
     });
 
     // 打印完整提示词日志
@@ -257,6 +359,7 @@ export async function generateCharacterPreviewVideo(
           },
           request: compiledRequest.request,
           itvSelection,
+          destPath,
           taskName: `${character.name} 预览视频`,
         });
         ctx.progress(100, '完成');
@@ -265,7 +368,11 @@ export async function generateCharacterPreviewVideo(
     });
 
     onProgress?.(100, '完成');
-    return { success: true, path: asset.localPath, taskId: asset.providerTaskId };
+    // bindOwner=false 时调用方自己落 media 槽位（AssetDock 走整表读改存）
+    if (bindOwner) {
+      await updateCharacterAsset(projectId, character.id, { media: { previewVideo: asset } });
+    }
+    return { success: true, path: asset.localPath, taskId: asset.providerTaskId, asset };
   } catch (err: any) {
     logger.error(`生成预览视频失败: ${character.name}`, { error: err.message });
     return { success: false, error: err.message };

@@ -22,6 +22,32 @@ export interface AssetTimestampRange {
 
 export type CharacterGender = 'male' | 'female' | 'neutral' | 'unknown';
 
+/** 子形象的差异维度：不同年龄 / 不同状态 / 不同穿着 */
+export type CharacterVariantKind = 'age' | 'state' | 'outfit' | 'other';
+
+/**
+ * 角色子形象（同一角色的不同年龄 / 状态 / 穿着）。
+ *
+ * 子形象从主形象派生：生图时以主形象定妆照作为身份锚，只按 prompt 描述的差异改变，
+ * 保证是"同一个人"。分镜里可以按 AI 分析结果自动激活，也可以在角色栏手动切换；
+ * 激活后提示词编译与参考图构造都改用该子形象的定妆照（见 resolveCharacterAppearance）。
+ */
+export interface CharacterVariant {
+  id: string;
+  /** 子形象名，如「少年时期」「重伤浴血」「婚礼礼服」 */
+  name: string;
+  kind: CharacterVariantKind;
+  /** 相对主形象的差异描述（客观可见），用于派生生图与提示词编译 */
+  prompt: string;
+  /**
+   * 触发关键词（英文逗号分隔）：AI 匹配分镜时的线索，
+   * 如「少年,童年,十岁」「重伤,浴血,受伤」「婚礼,礼服」
+   */
+  keywords?: string;
+  media?: CharacterMediaSlots;
+  createdAt?: number;
+}
+
 // 角色接口定义
 export interface Character {
   id: string;
@@ -37,7 +63,15 @@ export interface Character {
   aliases?: string;
 
   voiceId?: string;    // TTS 音色 ID
-  media?: CharacterMediaSlots; // 结构化媒体槽位
+  media?: CharacterMediaSlots; // 结构化媒体槽位（主形象）
+
+  /** 子形象列表（不同年龄 / 状态 / 穿着），从主形象派生 */
+  variants?: CharacterVariant[];
+  /**
+   * 全局默认激活的子形象 id；为空表示用主形象。
+   * 分镜级别的激活见 Shot.characterVariants，优先级高于此字段。
+   */
+  activeVariantId?: string;
   sora2CharacterId?: string;  // 角色提取API返回的ID
   timestampRange?: AssetTimestampRange; // Sora2 提取时间范围
   // 剧集引用追踪
@@ -186,6 +220,12 @@ export interface Shot {
   media?: ShotMediaState; // 结构化媒体槽位
   // 关联资产
   characters: string[];  // 涉及的角色ID
+  /**
+   * 本镜生效的角色子形象：characterId → variantId。
+   * 由 AI 分镜分析自动匹配，也可在分镜角色栏手动切换；
+   * 未命中的角色回落到 Character.activeVariantId，再回落到主形象。
+   */
+  characterVariants?: Record<string, string>;
   scenes?: string[];     // 涉及的场景ID（可在 UI 中编辑）
   dialogue?: string;     // 台词（用于 TTS）
   /**

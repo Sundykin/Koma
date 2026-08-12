@@ -13,6 +13,7 @@ import {
   PlusOutlined,
   DownOutlined,
   DeleteOutlined,
+  SkinOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { SHOT_LAYOUT, COL_ACTION_WIDTH } from '../../constants/storyboardConstants';
@@ -55,6 +56,11 @@ interface ShotListHeaderProps {
   onBatchContinuousFlow?: () => void;
   onAddShot: () => void;
   onBatchDelete: () => void;
+  /** AI 匹配角色子形象：按分镜画面/台词为出场角色选年龄·状态·穿着形象 */
+  onMatchCharacterVariants?: () => void;
+  matchingCharacterVariants?: boolean;
+  /** 项目里有没有子形象；没有就不显示入口 */
+  hasCharacterVariants?: boolean;
 }
 
 export const ShotListHeader: React.FC<ShotListHeaderProps> = ({
@@ -86,6 +92,9 @@ export const ShotListHeader: React.FC<ShotListHeaderProps> = ({
   onBatchContinuousFlow,
   onAddShot,
   onBatchDelete,
+  onMatchCharacterVariants,
+  matchingCharacterVariants,
+  hasCharacterVariants,
 }) => {
   const { t } = useTranslation();
   const cellClass = "px-2 py-1.5 text-xs font-medium text-text-secondary border-r border-border-subtle flex items-center";
@@ -201,8 +210,24 @@ export const ShotListHeader: React.FC<ShotListHeaderProps> = ({
       {/* 剧本 */}
       <div className={`${SHOT_LAYOUT.colScript} ${cellClass}`}>{t('storyboard.script')}</div>
 
-      {/* 资产 */}
-      <div className={`${SHOT_LAYOUT.colAssets} ${cellClass}`}>{t('storyboard.assets')}</div>
+      {/* 资产：列标题 + 子形象 AI 匹配入口（有子形象时才出现） */}
+      <div className={`${SHOT_LAYOUT.colAssets} ${cellClass} !flex-col !justify-center gap-0.5`}>
+        <span>{t('storyboard.assets')}</span>
+        {hasCharacterVariants && onMatchCharacterVariants && (
+          <Tooltip title="按每个分镜的画面与台词，自动为出场角色匹配子形象（回忆 / 受伤 / 换装等）；没有线索的分镜保持主形象">
+            <Button
+              type="text"
+              size="small"
+              className="h-5 px-1 text-[11px]"
+              icon={<SkinOutlined />}
+              loading={matchingCharacterVariants}
+              onClick={onMatchCharacterVariants}
+            >
+              匹配子形象
+            </Button>
+          </Tooltip>
+        )}
+      </div>
 
       {/* 媒体列：上下两段 —— 行1 居中列标题（独立 cell），行2 批量按钮挤紧靠右 */}
       <div className={`${SHOT_LAYOUT.colMedia} border-r-0 flex flex-col text-text-secondary`}>

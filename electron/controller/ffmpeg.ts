@@ -11,6 +11,7 @@ import type {
   UpscaleImageOptions,
   CropImageOptions,
   WaveformOptions,
+  ExtractAudioTrackOptions,
   ComposeVideoOptions,
   ConcatMediaClipOptions,
   ConcatAudioClipsOptions,
@@ -81,6 +82,14 @@ class FFmpegController {
   async splitAudio(args: { input: string; output: string }, _event: IpcMainInvokeEvent) {
     await ensureServicesReady();
     return services.ffmpeg.splitAudio(args.input, args.output);
+  }
+
+  /**
+   * 提取人声样本音轨（重编码 wav）
+   */
+  async extractAudioTrack(args: ExtractAudioTrackOptions, _event: IpcMainInvokeEvent) {
+    await ensureServicesReady();
+    return services.ffmpeg.extractAudioTrack(args);
   }
 
   /**

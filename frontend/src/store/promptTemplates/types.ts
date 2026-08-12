@@ -32,6 +32,9 @@ export type PromptTemplateType =
   | 'grid_shot_prompt_generation'  // 九宫格分镜提示词生成（将单个分镜扩展为9个连续画面）
   | 'grid_4_shot_prompt_generation' // 四宫格分镜提示词生成（将单个分镜扩展为4个连续画面，更细粒度的镜头控制）
   | 'character_extraction'     // 角色提取
+  | 'character_preview_video_prompt' // 角色预览视频提示词（按性格/口头禅生成动作 + 台词）
+  | 'character_variant_derivation'   // 角色子形象派生（不同年龄/状态/穿着）
+  | 'shot_character_variant_match'   // 分镜子形象匹配（按分镜内容选激活子形象）
   | 'scene_extraction'         // 场景提取
   | 'prop_extraction'          // 道具提取
   | 'tweet_script_generation'  // 推文文案生成（剧本 → 整段连续推文旁白）
@@ -65,6 +68,7 @@ export type PromptTemplateType =
   | 'shot_directive_genre_tone'     // 推理约束 · 风格标签注入
   // TTI 图片生成模板
   | 'tti_character_costume'    // 角色定妆照（三视图）
+  | 'tti_character_variant'    // 角色子形象定妆照（以主形象为身份锚做差异派生）
   | 'tti_scene_preview'        // 场景预览图
   | 'tti_prop_reference'       // 道具参考图
   | 'tti_grid_shot_image'      // 九宫格分镜图片（3×3网格）

@@ -39,6 +39,10 @@ export interface ShotListEditorProps {
   onVideoPromptChange: (shotId: string, videoPrompt: string) => void;
   onDurationChange?: (shotId: string, duration: number) => void;
   onCharactersChange: (shotId: string, characterIds: string[]) => void;
+  onCharacterVariantChange?: (shotId: string, characterId: string, variantId?: string) => void;
+  /** AI 匹配全部分镜的角色子形象 */
+  onMatchCharacterVariants?: () => void;
+  matchingCharacterVariants?: boolean;
   onScenesChange?: (shotId: string, sceneIds: string[]) => void;
   onPropsChange?: (shotId: string, propIds: string[]) => void;
   onReferenceImagesChange?: (shotId: string, assets: StoredMediaAsset[], selectedIndex: number) => void;
@@ -128,6 +132,9 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   onVideoPromptChange,
   onDurationChange,
   onCharactersChange,
+  onCharacterVariantChange,
+  onMatchCharacterVariants,
+  matchingCharacterVariants,
   onScenesChange,
   onPropsChange,
   onReferenceImagesChange,
@@ -338,6 +345,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
           continuousFlowRunning={continuousFlowRunning?.has(shot.id)}
           onVideoModeChange={onShotVideoModeChange}
           onCharactersChange={onCharactersChange}
+          onCharacterVariantChange={onCharacterVariantChange}
           onScenesChange={onScenesChange}
           onPropsChange={onPropsChange}
           onReferenceImagesChange={onReferenceImagesChange}
@@ -391,6 +399,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
       onCapturePreviousTailFrame,
       onShotVideoModeChange,
       onCharactersChange,
+      onCharacterVariantChange,
       onScenesChange,
       onPropsChange,
       onReferenceImagesChange,
@@ -460,6 +469,9 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
           <div className="flex flex-col flex-1 min-h-0">
             {/* 公共表头 - 集成全选和批量操作；置于虚拟滚动外，长列表滚动时常驻可见 */}
             <ShotListHeader
+              onMatchCharacterVariants={onMatchCharacterVariants}
+              matchingCharacterVariants={matchingCharacterVariants}
+              hasCharacterVariants={characters.some(c => (c.variants?.length || 0) > 0)}
               totalCount={shots.length}
               totalDurationSec={shots.reduce((sum, shot) => sum + (Number(shot.duration) || 0), 0)}
               selectedCount={selectedCount}
