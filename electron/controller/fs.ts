@@ -8,7 +8,7 @@ import * as path from 'path';
 import { app, net as electronNet } from 'electron';
 import { BaseController } from './base';
 import { validateUrl } from '../service/url-validator';
-import { getDecryptedApiKey } from '../service/settings/ChannelConfigService';
+import { buildChannelAuthorizationHeader } from '../service/settings/channelAuthorization';
 
 const DOWNLOAD_TIMEOUT_MS = 10 * 60_000;
 
@@ -49,11 +49,28 @@ class FsController extends BaseController {
     return path.join(parsed.dir, `${parsed.name}.${extension}`);
   }
 
-  private static buildDownloadHeaders(extraHeaders?: Record<string, string>): Record<string, string> {
+  /** ngrok 免费域名后缀：这些主机会对"像浏览器"的请求先返回拦截页 */
+  private static readonly NGROK_HOST_SUFFIXES = [
+    '.ngrok-free.dev', '.ngrok-free.app', '.ngrok.app', '.ngrok.io', '.ngrok.dev',
+  ];
+
+  private static isNgrokHost(url: string): boolean {
+    try {
+      const host = new URL(url).host.toLowerCase();
+      return FsController.NGROK_HOST_SUFFIXES.some(suffix => host.endsWith(suffix));
+    } catch {
+      return false;
+    }
+  }
+
+  private static buildDownloadHeaders(extraHeaders?: Record<string, string>, url?: string): Record<string, string> {
     return {
       'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Koma/1.0 Safari/537.36',
       'Accept': 'video/mp4,video/*,image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
       'Connection': 'close',
+      // 上面这个 UA 会让 ngrok-free 判定为浏览器并返回 HTML 拦截页，
+      // 下载下来就是一个打不开的"视频"。带上这个 header 直接跳过拦截页。
+      ...(url && FsController.isNgrokHost(url) ? { 'ngrok-skip-browser-warning': 'true' } : {}),
       ...(extraHeaders || {}),
     };
   }
@@ -68,8 +85,10 @@ class FsController extends BaseController {
       }
     }
     if (!Object.keys(out).some(k => k.toLowerCase() === 'authorization') && args.channelId) {
-      const apiKey = getDecryptedApiKey(args.channelId);
-      if (apiKey) out.Authorization = `Bearer ${apiKey}`;
+      // 认证方式从渠道配置里查：这条链路上没有 provider，只有资产上记录的 channelId。
+      // 反代做了 HTTP Basic 的自建服务（走隧道的远程 ComfyUI）在这里也要能取回成片。
+      const authorization = buildChannelAuthorizationHeader(args.channelId);
+      if (authorization) out.Authorization = authorization;
     }
     return out;
   }
@@ -116,7 +135,7 @@ class FsController extends BaseController {
       const response = await request(url, {
         method: 'GET',
         redirect: 'follow',
-        headers: FsController.buildDownloadHeaders(headers),
+        headers: FsController.buildDownloadHeaders(headers, url),
         signal: controller.signal,
       });
       if (!response.ok) {
@@ -189,7 +208,7 @@ class FsController extends BaseController {
       >((resolve, reject) => {
         const protocol = currentUrl.startsWith('https') ? https : http;
 
-        const request = protocol.get(currentUrl, { headers: FsController.buildDownloadHeaders(authHeaders), timeout: DOWNLOAD_TIMEOUT_MS }, (response) => {
+        const request = protocol.get(currentUrl, { headers: FsController.buildDownloadHeaders(authHeaders, currentUrl), timeout: DOWNLOAD_TIMEOUT_MS }, (response) => {
           if (response.statusCode === 301 || response.statusCode === 302 || response.statusCode === 307 || response.statusCode === 308) {
             const redirectUrl = response.headers.location;
             response.resume(); // drain response

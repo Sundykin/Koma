@@ -3,6 +3,7 @@ import https from 'node:https';
 import { BaseController } from './base';
 import { validateUrl } from '../service/url-validator';
 import { getDecryptedApiKey } from '../service/settings/ChannelConfigService';
+import { buildBasicAuthorization } from '../service/settings/channelAuthorization';
 
 // 每个 chunk 之间的最大空闲时间（5 分钟，兼容慢模型的首 token 等待）
 const CHUNK_IDLE_TIMEOUT_MS = 300_000;
@@ -377,6 +378,7 @@ class NetController extends BaseController {
       'x-koma-channel-id',
       'x-koma-channel-query-key-name',
       'x-koma-channel-raw-authorization',
+      'x-koma-channel-basic-auth',
     ];
     const rawHeaderKeys = Object.keys(args.headers || {});
     for (const sensitive of SENSITIVE_HEADER_NAMES) {
@@ -404,10 +406,14 @@ class NetController extends BaseController {
     const rawAuthorization = ['1', 'true', 'yes'].includes(
       String(rawAuthMarker ?? '').trim().toLowerCase(),
     );
+    const basicAuthMarker = getHeaderValue(args.headers, 'x-koma-channel-basic-auth');
+    const basicAuthorization = ['1', 'true', 'yes'].includes(
+      String(basicAuthMarker ?? '').trim().toLowerCase(),
+    );
 
     // 代理模式与明文 Authorization 互斥
     const hasExplicitAuth = rawHeaderKeys.some(k => k.toLowerCase() === 'authorization');
-    if ((channelId || queryKeyName || rawAuthorization) && hasExplicitAuth) {
+    if ((channelId || queryKeyName || rawAuthorization || basicAuthorization) && hasExplicitAuth) {
       console.warn('[NetController] 代理模式与 Authorization 冲突', { traceId, channelId, queryKeyName, rawAuthorization });
       return {
         ok: false,
@@ -454,6 +460,35 @@ class NetController extends BaseController {
         }),
       };
     }
+    // basic 代理同样需要 channelId
+    if (basicAuthorization && !channelId) {
+      return {
+        ok: false,
+        status: 400,
+        statusText: 'Bad Request',
+        body: jsonErrorBase64({
+          error: {
+            code: 'missing_channel_id_for_basic_auth',
+            message: 'x-koma-channel-basic-auth 必须与 x-koma-channel-id 配对使用',
+            type: 'koma_client_error',
+          },
+        }),
+      };
+    }
+    if (basicAuthorization && (queryKeyName || rawAuthorization)) {
+      return {
+        ok: false,
+        status: 400,
+        statusText: 'Bad Request',
+        body: jsonErrorBase64({
+          error: {
+            code: 'conflict_auth_mode',
+            message: 'x-koma-channel-basic-auth 与 query-key / raw-authorization 互斥',
+            type: 'koma_client_error',
+          },
+        }),
+      };
+    }
     if (rawAuthorization && queryKeyName) {
       return {
         ok: false,
@@ -483,6 +518,7 @@ class NetController extends BaseController {
         lk === 'x-koma-channel-id'
         || lk === 'x-koma-channel-query-key-name'
         || lk === 'x-koma-channel-raw-authorization'
+        || lk === 'x-koma-channel-basic-auth'
       ) {
         delete headers[k];
       }
@@ -553,6 +589,10 @@ class NetController extends BaseController {
         // raw-authorization 模式：直接把 apiKey 作为 Authorization 值（不加 Bearer）
         // 仅用于少数上游接受裸 key 的服务（如 NanoBanana）
         headers['Authorization'] = plainKey;
+      } else if (basicAuthorization) {
+        // basic 模式：apiKey 存的是 `用户名:密码`，这里 base64 后注入
+        // （反代做了 HTTP Basic 的自建服务，如走隧道暴露的远程 ComfyUI）
+        headers['Authorization'] = buildBasicAuthorization(plainKey);
       } else {
         // 默认 Bearer 模式
         headers['Authorization'] = `Bearer ${plainKey}`;

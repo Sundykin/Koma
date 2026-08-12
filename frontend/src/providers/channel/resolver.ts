@@ -302,6 +302,10 @@ export function buildTTIConfigFromContext(context: ResolvedChannelModelContext):
     provider: provider as TTIModelConfig['provider'],
     profileId: context.channelConfig.id,
     modelName: context.model.providerModelName,
+    // 结构化 defaults 必须整体带过去：mergeProviderConfig 只把它平铺到顶层，
+    // 而 ComfyUI provider 读的是 config.modelDefaults（与 ITV 侧口径一致）。
+    // 漏了这一行的后果是静默的：认证方式丢失（401）、自定义工作流被内置工作流顶替。
+    modelDefaults: context.model.defaults ? { ...(context.model.defaults as Record<string, unknown>) } : undefined,
     isDefault: false,
     createdAt: context.channelConfig.createdAt,
     updatedAt: context.channelConfig.updatedAt,

@@ -135,8 +135,36 @@ const SIZE_CLASS_NAMES = ['EmptyLatentImage', 'EmptySD3LatentImage'];
 const ASPECT_CLASS_NAMES = ['ResolutionSelector'];
 const SAMPLER_CLASS_NAMES = ['KSampler', 'KSamplerAdvanced', 'SamplerCustom'];
 
-const IMAGE_OUTPUT_CLASSES = ['SaveImage', 'PreviewImage'];
-const VIDEO_OUTPUT_CLASSES = ['SaveVideo', 'VHS_VideoCombine', 'CreateVideo'];
+/**
+ * 输出节点识别。
+ *
+ * ComfyUI 的保存节点是开放生态：核心的 SaveImage / SaveVideo 之外，自定义节点包
+ * 会带 SaveImageAdvanced、SaveImageWebsocket、Image Save(WAS)、SaveWEBM 等一堆变体。
+ * 写死清单会漏 —— 漏了就误报"未识别到输出节点"，让用户以为工作流不能用
+ * （实际上运行时是按 history.outputs 里的 images/gifs 字段扫的，与类名无关）。
+ * 所以这里是「显式清单 + 命名模式兜底」。
+ */
+const IMAGE_OUTPUT_CLASSES = [
+  'SaveImage', 'PreviewImage', 'SaveImageAdvanced', 'SaveImageWebsocket',
+  'SaveAnimatedWEBP', 'SaveAnimatedPNG', 'Image Save',
+];
+const VIDEO_OUTPUT_CLASSES = [
+  'SaveVideo', 'VHS_VideoCombine', 'CreateVideo', 'SaveWEBM', 'VHS_VideoCombine_Adv',
+];
+
+/** 视频类保存节点的命名模式（先判视频：视频工作流里往往也挂着图像预览节点） */
+const VIDEO_OUTPUT_PATTERN = /(video ?combine|save.*(video|webm|gif)|create.*video)/i;
+/** 图像类保存节点的命名模式 */
+const IMAGE_OUTPUT_PATTERN = /(save.*image|image.*save|preview.*image|save.*animated)/i;
+
+function isVideoOutputClass(classType: string): boolean {
+  return VIDEO_OUTPUT_CLASSES.includes(classType) || VIDEO_OUTPUT_PATTERN.test(classType);
+}
+
+function isImageOutputClass(classType: string): boolean {
+  if (isVideoOutputClass(classType)) return false;
+  return IMAGE_OUTPUT_CLASSES.includes(classType) || IMAGE_OUTPUT_PATTERN.test(classType);
+}
 
 function titleOf(node: ComfyWorkflowNode | undefined): string {
   return String(node?._meta?.title || '');
@@ -323,11 +351,12 @@ function detectFps(workflow: ComfyWorkflow): ComfyNodeCandidate | undefined {
 /** 分析工作流结构：输出类型 + 各角色节点识别 + 候选清单 */
 export function analyzeComfyWorkflow(workflow: ComfyWorkflow): ComfyWorkflowAnalysis {
   const nodeIds = Object.keys(workflow);
-  const outputNodeIds = nodeIds.filter(id =>
-    IMAGE_OUTPUT_CLASSES.includes(workflow[id]?.class_type ?? '')
-    || VIDEO_OUTPUT_CLASSES.includes(workflow[id]?.class_type ?? ''));
-  const hasVideoOutput = outputNodeIds.some(id => VIDEO_OUTPUT_CLASSES.includes(workflow[id]?.class_type ?? ''));
-  const hasImageOutput = outputNodeIds.some(id => IMAGE_OUTPUT_CLASSES.includes(workflow[id]?.class_type ?? ''));
+  const outputNodeIds = nodeIds.filter(id => {
+    const classType = workflow[id]?.class_type ?? '';
+    return isImageOutputClass(classType) || isVideoOutputClass(classType);
+  });
+  const hasVideoOutput = outputNodeIds.some(id => isVideoOutputClass(workflow[id]?.class_type ?? ''));
+  const hasImageOutput = outputNodeIds.some(id => isImageOutputClass(workflow[id]?.class_type ?? ''));
   const kind: ComfyWorkflowAnalysis['kind'] = hasVideoOutput ? 'video' : hasImageOutput ? 'image' : 'unknown';
 
   const prompt = detectPrompt(workflow);
@@ -349,7 +378,9 @@ export function analyzeComfyWorkflow(workflow: ComfyWorkflow): ComfyWorkflowAnal
 
   const warnings: string[] = [];
   if (!prompt) warnings.push('未识别到提示词节点（需要 PrimitiveString/CLIPTextEncode 类节点）');
-  if (kind === 'unknown') warnings.push('未识别到输出节点（SaveImage/SaveVideo/VHS_VideoCombine），执行后可能取不到产物');
+  if (kind === 'unknown') {
+    warnings.push('未识别到输出节点（SaveImage / SaveVideo / VHS_VideoCombine 一类的保存节点），执行后可能取不到产物');
+  }
   if (seeds.length === 0) warnings.push('未识别到种子节点，每次生成将沿用模板内置种子');
   if (referenceImages.length > 0) {
     warnings.push(`含 ${referenceImages.length} 个参考图节点（LoadImage）：未提供参考图时这些节点会被自动摘除`);

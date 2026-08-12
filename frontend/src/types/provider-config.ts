@@ -59,6 +59,14 @@ export interface TTIModelConfig extends MediaProviderConfig {
   modelName?: string;
   defaultSize?: string;            // "1024x1024"
   defaultSteps?: number;
+  /**
+   * 渠道模型的原始 defaults（workflowJson / authMode / nodeBindings 等）。
+   *
+   * 注意与"平铺"的区别：buildTTIConfigFromContext 同时会把 defaults 展开到本对象顶层
+   * （历史行为，defaultSize / defaultSteps 这些就是那么来的），但结构化的值（工作流 JSON、
+   * 认证方式）必须从这里整体读 —— ComfyUI provider 依赖它，缺了就会退回内置工作流并丢掉认证。
+   */
+  modelDefaults?: Record<string, unknown>;
 }
 
 // ITV 配置（图生视频）

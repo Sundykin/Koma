@@ -12,6 +12,10 @@
  *  - raw-authorization: `x-koma-channel-id` + `x-koma-channel-raw-authorization: true`
  *                       → 主进程注入 `Authorization: <apiKey>`（不加 Bearer 前缀）
  *                       仅在上游不接受 Bearer 时启用（需后端 B4b 落地）
+ *  - basic-authorization: `x-koma-channel-id` + `x-koma-channel-basic-auth: true`
+ *                       → 主进程把 apiKey（格式 `用户名:密码`）base64 后注入
+ *                         `Authorization: Basic <base64>`。用于反代加了 HTTP Basic
+ *                         的自建服务（远程 ComfyUI 走 ngrok / Cloudflare Tunnel）
  *
  * 回退：channelId 缺失时使用 apiKey（明文），用于未保存到 SQLite 的临时配置。
  * 防御：拦截 '$ENC$' 占位符，视为"无可用凭据"（Secret Intent 迁移后可清理）。
@@ -19,7 +23,7 @@
 import { safeFetch } from '../../utils/safeFetch';
 import { parseNetError } from '../netError';
 
-export type ChannelAuthMode = 'bearer-header' | 'query-key' | 'raw-authorization';
+export type ChannelAuthMode = 'bearer-header' | 'query-key' | 'raw-authorization' | 'basic-authorization';
 
 export interface ChannelAuthOptions {
   /** 已保存渠道的 channelId（profileId）。有则走主进程代理；无则回退明文 apiKey。 */
@@ -48,6 +52,19 @@ function isUsableApiKey(key?: string): key is string {
 }
 
 /**
+ * `用户名:密码` → `Basic base64(用户名:密码)`。
+ * 已带 `Basic ` 前缀的值原样返回（用户直接粘了整段 header 值的情况）。
+ * 注意用 UTF-8 字节做 base64：btoa 对非 ASCII 密码会抛 InvalidCharacterError。
+ */
+export function toBasicAuthorization(credential: string): string {
+  if (/^basic\s+/i.test(credential)) return credential;
+  const bytes = new TextEncoder().encode(credential);
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return `Basic ${btoa(binary)}`;
+}
+
+/**
  * 构造请求的 header + URL-build 函数；不发请求。
  * Provider 如果要自己调 safeFetch / multipart，用此 API；
  * 否则优先用 {@link fetchWithChannelAuth}。
@@ -64,6 +81,8 @@ export function buildChannelAuthRequest(opts: ChannelAuthOptions): BuiltChannelA
       headers['x-koma-channel-query-key-name'] = opts.queryKeyName;
     } else if (opts.mode === 'raw-authorization') {
       headers['x-koma-channel-raw-authorization'] = 'true';
+    } else if (opts.mode === 'basic-authorization') {
+      headers['x-koma-channel-basic-auth'] = 'true';
     }
     // bearer-header 模式：主进程默认注入 `Authorization: Bearer <apiKey>`，无须额外 header
     return {
@@ -95,6 +114,8 @@ export function buildChannelAuthRequest(opts: ChannelAuthOptions): BuiltChannelA
 
   if (opts.mode === 'raw-authorization') {
     headers['Authorization'] = apiKey;
+  } else if (opts.mode === 'basic-authorization') {
+    headers['Authorization'] = toBasicAuthorization(apiKey);
   } else {
     headers['Authorization'] = `Bearer ${apiKey}`;
   }

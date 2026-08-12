@@ -21,6 +21,7 @@ import type { TTIModelConfig, ProviderStartResult, ProviderTaskSnapshot, Provide
 import type { TTIProvider, TTIOptions, TTIRequest, ImageResult } from './types';
 import { safeFetch } from '../../utils/safeFetch';
 import { buildChannelAuthRequest } from '../channel/auth';
+import { buildTunnelHeaders, resolveComfyAuthMode, validateBasicCredential } from '../comfyui/remoteAccess';
 import { createLogger } from '../../store/logger';
 import { fetchReferenceBytes, extFromMime } from '../utils/referenceAssets';
 import { normalizeAspectRatioOption } from '../itv/comfyui/workflowBinding';
@@ -200,8 +201,23 @@ export class ComfyUITTIProvider implements TTIProvider {
     this.config = { ...config };
   }
 
+  /**
+   * 模型 defaults（workflowJson / authMode / workflowId / nodeBindings）。
+   * 兜底读一次平铺到顶层的同名字段：历史上 TTI 侧只做平铺不带 modelDefaults，
+   * 老配置或第三方构造的 config 仍可能是那个形状。
+   */
   private getModelDefaults(): Record<string, unknown> {
-    return (this.config as unknown as { modelDefaults?: Record<string, unknown> }).modelDefaults ?? {};
+    const config = this.config as unknown as Record<string, unknown> & {
+      modelDefaults?: Record<string, unknown>;
+    };
+    if (config.modelDefaults && typeof config.modelDefaults === 'object') {
+      return config.modelDefaults;
+    }
+    const flattened: Record<string, unknown> = {};
+    for (const key of ['workflowJson', 'workflowId', 'authMode', 'nodeBindings']) {
+      if (config[key] !== undefined) flattened[key] = config[key];
+    }
+    return flattened;
   }
 
   private getBaseUrl(): string {
@@ -223,15 +239,32 @@ export class ComfyUITTIProvider implements TTIProvider {
     return parsed.workflow;
   }
 
+  /**
+   * 请求头：认证 + 隧道适配。
+   *  - authMode=basic  反代做了 HTTP Basic（apiKey 填「用户名:密码」），
+   *                    经主进程凭据代理注入 Authorization: Basic ...
+   *  - authMode=bearer 反代认 Bearer token
+   *  - 未声明        局域网直连，不带认证
+   * ngrok 免费域名另需 skip-warning header，否则接口回的是 HTML 拦截页。
+   */
   private getHeaders(extra?: Record<string, string>): Record<string, string> {
-    const headers = { ...(extra ?? {}) };
-    if (String(this.getModelDefaults().authMode || '').toLowerCase() !== 'bearer') {
+    const headers = { ...(extra ?? {}), ...buildTunnelHeaders(this.getBaseUrl()) };
+    const authMode = resolveComfyAuthMode(this.getModelDefaults().authMode);
+    if (authMode === 'none') {
       return headers;
+    }
+    if (authMode === 'basic') {
+      // profileId 存在时明文 apiKey 在渲染进程是拿不到的（凭据代理会解密），
+      // 这种情况跳过格式校验，交给主进程与上游判定。
+      if (!this.config.profileId) {
+        const error = validateBasicCredential(this.config.apiKey);
+        if (error) throw new Error(error);
+      }
     }
     return buildChannelAuthRequest({
       channelId: this.config.profileId,
       apiKey: this.config.apiKey,
-      mode: 'bearer-header',
+      mode: authMode === 'basic' ? 'basic-authorization' : 'bearer-header',
       headers,
     }).headers;
   }

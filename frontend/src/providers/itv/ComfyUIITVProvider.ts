@@ -31,6 +31,7 @@ import type {
 import { createLogger } from '../../store/logger';
 import { safeFetch } from '../../utils/safeFetch';
 import { buildChannelAuthRequest } from '../channel/auth';
+import { buildTunnelHeaders, resolveComfyAuthMode, validateBasicCredential } from '../comfyui/remoteAccess';
 import { fetchReferenceBytes, extFromMime } from '../utils/referenceAssets';
 import {
   assertSupportedVideoCapabilities,
@@ -172,15 +173,32 @@ export class ComfyUIITVProvider implements ITVProvider {
    * ComfyUI 原生无鉴权 → 默认不带任何凭据 header。
    * 仅当模型 defaults.authMode='bearer'（前置了鉴权网关）时才走渠道凭据代理。
    */
+  /**
+   * 请求头：认证 + 隧道适配。
+   *  - authMode=basic  反代做了 HTTP Basic（apiKey 填「用户名:密码」），
+   *                    经主进程凭据代理注入 Authorization: Basic ...
+   *  - authMode=bearer 反代认 Bearer token
+   *  - 未声明        局域网直连，不带认证
+   * ngrok 免费域名另需 skip-warning header，否则接口回的是 HTML 拦截页。
+   */
   private getHeaders(extra?: Record<string, string>): Record<string, string> {
-    const headers = { ...(extra ?? {}) };
-    if (String(this.getModelDefaults().authMode || '').toLowerCase() !== 'bearer') {
+    const headers = { ...(extra ?? {}), ...buildTunnelHeaders(this.getBaseUrl()) };
+    const authMode = resolveComfyAuthMode(this.getModelDefaults().authMode);
+    if (authMode === 'none') {
       return headers;
+    }
+    if (authMode === 'basic') {
+      // profileId 存在时明文 apiKey 在渲染进程是拿不到的（凭据代理会解密），
+      // 这种情况跳过格式校验，交给主进程与上游判定。
+      if (!this.config.profileId) {
+        const error = validateBasicCredential(this.config.apiKey);
+        if (error) throw new Error(error);
+      }
     }
     return buildChannelAuthRequest({
       channelId: this.config.profileId,
       apiKey: this.config.apiKey,
-      mode: 'bearer-header',
+      mode: authMode === 'basic' ? 'basic-authorization' : 'bearer-header',
       headers,
     }).headers;
   }

@@ -129,10 +129,20 @@ function stripDataHeader(dataUrl: string): string {
   return index >= 0 ? dataUrl.slice(index + 1) : dataUrl;
 }
 
+/**
+ * 该远程地址取回成片时是否需要带渠道凭据。
+ *
+ * 默认不带：绝大多数渠道返回的是带签名的公开 CDN 直链，多带一个 Authorization
+ * 反而可能被对象存储拒掉。只有"成片挂在需要认证的服务上"才走认证下载：
+ *  - OpenAI 风格 /v1/videos/{id}/content
+ *  - ComfyUI 的 /view?filename=…（自建服务，反代常带 HTTP Basic）
+ */
 function requiresAuthenticatedDownload(source: string): boolean {
   try {
     const url = new URL(source);
-    return /\/v1\/videos\/[^/]+\/content$/i.test(url.pathname);
+    if (/\/v1\/videos\/[^/]+\/content$/i.test(url.pathname)) return true;
+    // ComfyUI 成片直链：/view?filename=xxx&type=output
+    return /(^|\/)view$/i.test(url.pathname) && url.searchParams.has('filename');
   } catch {
     return false;
   }
