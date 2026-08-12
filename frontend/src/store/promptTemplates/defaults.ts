@@ -84,13 +84,14 @@ export const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 - scriptContent: 对应的剧本原文
 - shotType: 景别（close-up特写/medium中景/wide全景/extreme-wide大全景）
 - cameraMovement: 运镜方式（static固定/pan摇镜/zoom-in推镜/tracking跟随/handheld手持）
-- duration: 预估时长（秒），{{durationConstraint}}，无法判断时填写 {{durationDefault}} 秒
+- duration: 预估时长（秒），{{durationConstraint}}，无法判断时填写 {{durationDefault}} 秒；优先贴近上限 {{durationMax}} 秒
 - characters: 出现的角色名列表
 - dialogue: 角色台词，格式为"角色名（情绪）：台词内容"，具体生成尺度必须遵守项目叙事模式
 - emotion: 画面情绪氛围
 - props: 出现的道具名列表
 - scenes: 出现的场景名列表
 - continuity: 相对上一镜是否需要延续人物站位、动作和空间状态（inherit/independent）
+- continuityMode: 承接方式（none/tail-frame/video-extend），判定标准见下方
 - continuityReason: 连续性判断的一句话剧情依据
 
 {{dialogueModeDirective}}
@@ -102,17 +103,34 @@ export const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 1. 必须按剧本原文顺序从头到尾拆解，不能跳段、不能只挑“重要情节”、不能摘要式合并中间动作。
 2. 每个原文句子/动作/环境变化/视线变化/停顿/台词都必须归入某一个 shot.scriptContent；没有画面变化但承接关系重要的句子也要保留在相邻分镜中。
 3. shot.scriptContent 必须优先复制原文连续片段，允许带少量相邻上下文，但禁止改写成概括句；禁止把多个相距较远的原文段落揉成一个摘要。
-4. 当同一段里出现“新动作 / 新视线目标 / 新道具状态 / 新场景空间 / 新说话人 / 情绪转折 / 时间推进”时，应优先拆成新的分镜，不要为了减少数量而合并。
-5. 如果剧本文本很长，也必须继续输出完整 shots 数组直到覆盖末尾；宁可分镜多，也不要丢失细节。
-6. 输出前自检：把所有 shot.scriptContent 连起来，应能覆盖原剧本的主干顺序；若发现遗漏，必须补齐后再返回。
+4. 输出前自检：把所有 shot.scriptContent 连起来，应能覆盖原剧本的主干顺序；若发现遗漏，必须补齐后再返回。
+
+【合镜原则 — 镜头要长】
+一个分镜 = 一次视频生成。分镜越碎成片越碎：每切一个新分镜，模型都要重新建立空间与人物，
+接缝处必然漂移。所以**默认合并，不默认切分**。
+1. duration 优先贴近 {{durationMax}} 秒；把同场景、同一段连续时间的剧情并进同一个分镜。
+2. 只有换场景 / 时间跳跃 / 闪回 / 平行叙事 / 剧情硬转折才开新分镜。
+   “新动作 / 新说话人 / 新视线目标 / 新道具状态 / 情绪递进”**不是**开新分镜的理由——
+   这些是同一分镜**内部的镜头切换**，写在 scriptContent 里即可。
+3. 台词长度是时长下限（每 4–5 汉字 ≈ 1 秒），台词多正好撑满长镜头；
+   只有超过 {{durationMax}} 秒才拆分。
 
 【视频连续性判断】
-每个非首镜必须输出 continuity 与 continuityReason。同一时空中的连续动作、视线、人物站位或机位承接填 inherit；明确转场、场景切换、时间跳跃、闪回或平行叙事填 independent。首镜填 independent。该建议只描述剧情关系，不代表已有视频。
+每个非首镜必须输出 continuity、continuityMode 与 continuityReason。
+- continuity：同一时空的连续动作、视线、人物站位或机位承接填 inherit；明确转场、场景切换、时间跳跃、闪回或平行叙事填 independent。首镜填 independent。
+- continuityMode：承接方式，三选一（首镜固定 none）
+  - video-extend：本镜是上一镜动作的无缝续演，同一机位或连续运镜、动作没有中断、时间直接接续 → 下游把上一镜整段视频交给模型延长，连贯度最高
+  - tail-frame：同一场景、时间连续，但换了机位或景别 → 下游取上一镜末帧作为构图起点
+  - none：换场景、时间跳跃、闪回、平行叙事，或需要全新空间建立
+该建议只描述剧情关系，不代表已有视频。
 
 注意：不需要生成画面描述(description)提示词，这将在后续步骤生成。`,
     variables: [
       variable('durationConstraint'),
       variable('durationDefault'),
+      variable('durationMax', {
+        description: '当前视频渠道允许的最大时长（秒）；分镜按它规划长镜头。',
+      }),
       variable('projectNarrativeMode', { required: false }),
       variable('dialogueModeDirective', { required: false }),
     ],
@@ -314,12 +332,37 @@ script 是**一段完整的自然行文**（不是逐行标签），它是后续
 3. **严禁心理描写与抽象评价**：不写"他想/她意识到/气氛十分紧张/场面感人"，改写为可见行为（"他攥紧剑柄，指节发白"）。
 4. **严禁概括性叙述**：不写"两人展开激战"这类总结句，拆成具体动作节拍。
 
-【切镜原则】
-1. 按剧情顺序拆镜；出现新空间 / 新动作 / 新说话人 / 情绪转折 / 时间推进时倾向开新镜头。
-2. 每镜 duration 必须容纳该镜全部台词 + 旁白的朗读时长：**按每 4–5 个汉字 ≈ 1 秒估算，duration 不得小于朗读估算时长**；台词多的镜头宁可给足时长，也不得让配音溢出；台词量达到两段完整对白且无法压缩时，拆成两个镜头。
-3. 每镜 script 一小段完整行文（1–4 句画面 + 引号台词），画面要素按上述规范写全。
-4. 剧本中的台词与关键情节必须全部覆盖到某个分镜，不得遗漏、不得概括性合并。
-5. 每个非首镜判断与上一镜的视频连续性：同一时空的连续动作、视线、人物站位或机位承接填 continuity=inherit；明确转场、场景切换、时间跳跃、闪回或平行叙事填 independent。首镜填 independent，并用 continuityReason 简述依据。
+【合镜原则 — 镜头要长，节奏放到镜头内部】
+一个分镜 = 一次视频生成。**分镜越碎，成片越碎**：每切一个新分镜，模型都要重新建立空间、
+人物位置和光线，接缝处必然漂移；而同一个分镜内部的镜头切换是模型在一次生成里完成的，
+连贯性天然更好。所以默认策略是**合并，不是切分**。
+
+1. **目标时长 {{durationMax}} 秒**：把同一场景、同一段连续时间里的剧情尽量并进一个分镜，
+   duration 优先贴近 {{durationMax}} 秒。只有下列情况才必须开新分镜：
+   - 换场景 / 换空间
+   - 明确的时间跳跃、闪回、平行叙事
+   - 剧情硬转折（需要观众感知到"这是另一场戏"）
+   单纯的"新动作 / 新说话人 / 新视线目标 / 情绪递进"**不是**开新分镜的理由——
+   它们应该写成同一分镜内部的镜头切换。
+2. **镜头内部的节奏用镜头切换承载**：一个长分镜的 script 里要写清内部有几次切镜、
+   每次切镜的景别与机位怎么变（如"中景对话 → 切特写手部 → 拉回过肩双人"）。
+   下游视频推理会按这个结构在单次生成里排布 2–4 个硬切镜头。
+3. **时长下限由台词决定**：duration 必须容纳该镜全部台词 + 旁白的朗读时长
+   （按每 4–5 个汉字 ≈ 1 秒估算），不得让配音溢出。台词多正好用来撑满长镜头；
+   只有当台词长到超过 {{durationMax}} 秒**才**拆成两个分镜。
+4. 每镜 script 写成一段完整行文，长镜头就写长（覆盖内部每次切镜的画面要素），
+   不要因为要写得长而灌水复述。
+5. 剧本中的台词与关键情节必须全部覆盖到某个分镜，不得遗漏、不得概括性合并。
+
+【与上一镜的承接方式 — 每个非首镜必须判断】
+填 continuityMode，三选一（首镜固定 none）：
+- **video-extend（整段延长）**：本镜是上一镜动作的**无缝续演**——同一机位或连续运镜、
+  人物动作没有中断、时间直接接续（如上镜"举起杯子"、本镜"送到嘴边喝下"）。
+  下游会把上一镜**整段视频**交给模型做延长，运镜惯性和动作节奏都能接上，连贯度最高。
+- **tail-frame（尾帧承接）**：同一场景、时间也连续，但**换了机位或景别**
+  （如上镜中景对话，本镜切到特写）。下游取上一镜末帧作为构图起点。
+- **none（独立起镜）**：换场景、时间跳跃、闪回、平行叙事，或需要全新的空间建立。
+continuityReason 用一句话说明依据（动作是否连续、机位是否变化、时空是否跳跃）。
 
 【情绪词列表】
 高兴、愤怒、悲伤、恐惧、反感、低落、惊讶、自然、急切、平静、激动、呵斥、关心、严肃
@@ -339,7 +382,8 @@ script 是**一段完整的自然行文**（不是逐行标签），它是后续
 【字段枚举约束（输出 JSON 时必须遵守，否则会被服务端校验拒绝）】
 - shotType 只能是：close-up / medium / wide / extreme-wide
 - cameraMovement 只能是：static / pan / zoom-in / tracking / handheld
-- duration 只能取：6 / 10 / 12 / 16 / 20 之一
+- duration：{{durationConstraint}}；无法判断时填 {{durationDefault}}。优先贴近 {{durationMax}} 秒
+- continuityMode 只能是：none / tail-frame / video-extend
 
 【输出 JSON】
 \`\`\`json
@@ -355,6 +399,7 @@ script 是**一段完整的自然行文**（不是逐行标签），它是后续
       "props": ["长剑"],
       "emotion": "严肃",
       "continuity": "independent",
+      "continuityMode": "none",
       "continuityReason": "本段首镜，建立新的雨夜戏台空间"
     }
   ]
@@ -365,6 +410,7 @@ script 是**一段完整的自然行文**（不是逐行标签），它是后续
 - script：分镜脚本，多行文本。无标记行 = 画面行（场景/动作/构图/光线）；[台词·角色名] 行 = 该角色的台词；[旁白] 行 = 画外音
 - dialogue 字段已废弃，一律省略；台词就写在 script 的台词行里
 - continuity：相对上一镜的视频末态关系，只能是 inherit / independent
+- continuityMode：承接方式，只能是 none / tail-frame / video-extend（判定标准见上方章节）
 - continuityReason：说明动作、视线、场景、时间或转场关系的一句话理由
 `,
     variables: [
@@ -374,6 +420,9 @@ script 是**一段完整的自然行文**（不是逐行标签），它是后续
       variable('props'),
       variable('durationConstraint'),
       variable('durationDefault'),
+      variable('durationMax', {
+        description: '当前视频渠道允许的最大时长（秒）。分镜按它规划长镜头，节奏放到镜头内部切换。',
+      }),
     ],
     isCustom: false,
   },

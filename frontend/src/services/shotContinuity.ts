@@ -2,6 +2,7 @@ import {
   getMediaAssetSource,
   getShotScriptText,
   type Shot,
+  type ShotContinuityMode,
   type ShotVideoReference,
   type StoredMediaAsset,
 } from '../types';
@@ -123,8 +124,23 @@ export interface ShotContinuityPayload {
   continuity?: unknown;
   usePreviousTailFrame?: unknown;
   continuityReason?: unknown;
+  /**
+   * 分镜拆解时 AI 判定的承接方式：none / tail-frame / video-extend。
+   * 只有它能区分「换机位的尾帧承接」和「同机位的整段延长」——这两者剧情信号不同，
+   * 后期规则（同场景 / 相同角色 / 连续动作词）判不出来。
+   */
+  continuityMode?: unknown;
   /** chunk 首镜没有真实上一镜上下文时忽略该局部建议。 */
   ignoreContinuitySuggestion?: boolean;
+}
+
+/** 解析 AI 给的承接方式；识别不了返回 undefined（交给既有规则兜底） */
+export function parseContinuityMode(value: unknown): ShotContinuityMode | 'none' | undefined {
+  const raw = String(value ?? '').trim().toLowerCase();
+  if (raw === 'video-extend' || raw === 'videoextend' || raw === 'extend') return 'video-extend';
+  if (raw === 'tail-frame' || raw === 'tailframe' || raw === 'tail') return 'tail-frame';
+  if (raw === 'none' || raw === 'independent') return 'none';
+  return undefined;
 }
 
 /** Normalize after all chunks are merged and final Shot IDs/order exist. */
@@ -136,13 +152,18 @@ export function normalizeShotContinuity(
     const previous = shots[index - 1];
     const existing = normalizeShotVideoReference(shot.videoReference);
     const payload = payloads[index];
+    // AI 在拆解时已经判过承接方式；chunk 首镜看不到真实上一镜，那种局部建议要忽略
+    const aiMode = payload?.ignoreContinuitySuggestion
+      ? undefined
+      : parseContinuityMode(payload?.continuityMode);
     const decision = decideShotContinuity(
       previous,
       shot,
       payload?.ignoreContinuitySuggestion
         ? undefined
         : {
-          usePreviousTailFrame: payload?.usePreviousTailFrame ?? payload?.continuity,
+          // continuityMode 比布尔建议更精确，优先用它推导「要不要承接」
+          usePreviousTailFrame: aiMode ? aiMode !== 'none' : (payload?.usePreviousTailFrame ?? payload?.continuity),
           reason: payload?.continuityReason,
         },
     );
@@ -176,8 +197,13 @@ export function normalizeShotContinuity(
         referenceFrame: sourceChanged ? undefined : existing?.referenceFrame,
         capturedAt: sourceChanged ? undefined : existing?.capturedAt,
         sourceVideoKey: sourceChanged ? undefined : existing?.sourceVideoKey,
-        // 承接方式是用户显式选择，重排 / 重算连续性都不该把它冲掉
-        continuity: existing?.continuity ?? 'tail-frame',
+        // 优先级：用户手动选择 > AI 拆解判定 > 默认尾帧。
+        // - 手动选择过（mode==='manual'）绝不覆盖
+        // - AI 判定只在「确实承接上一镜」时才采用：硬断点（换场景 / 时间跳跃）会
+        //   把 usePreviousTailFrame 否掉，这时留着 video-extend 只是个不生效的脏值
+        continuity: mode === 'manual' || !usePreviousTailFrame
+          ? (existing?.continuity ?? 'tail-frame')
+          : (aiMode && aiMode !== 'none' ? aiMode : (existing?.continuity ?? 'tail-frame')),
       },
     };
   });

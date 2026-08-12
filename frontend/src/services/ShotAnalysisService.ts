@@ -16,7 +16,7 @@ import { extractErrorMessage } from '../utils/errorHandler';
 import { appendStyleRequirement, type StyleSnapshotLike } from '../utils/promptNormalize';
 
 
-import { clampDurationToSpec, formatSpecPromptHint } from '../providers/itv/durationSpec';
+import { clampDurationToSpec, formatSpecPromptHint, getSpecMaxDuration } from '../providers/itv/durationSpec';
 import { estimateShotSpeechDuration } from './shotFreshness';
 import { buildGenreToneDirective } from './dramaGenreTags';
 import {
@@ -145,7 +145,12 @@ export const _SHOTS_SCHEMA = {
           scriptContent: { type: 'string', description: '对应剧本原文' },
           shotType: { type: 'string', enum: ['close-up', 'medium', 'wide', 'extreme-wide'] },
           cameraMovement: { type: 'string', enum: ['static', 'pan', 'zoom-in', 'tracking', 'handheld'] },
-          duration: { type: 'number', description: '持续时长(秒)，只能是 6、10、12、16、20 之一' },
+          duration: {
+            type: 'number',
+            // 具体允许值由渠道 VideoDurationSpec 决定，提示词里注入 durationConstraint；
+            // 这里不再写死枚举，否则换渠道后 schema 和提示词互相打架。
+            description: '持续时长(秒)。优先贴近所选视频渠道的时长上限，把连续剧情放进同一个长镜头，镜头内部用镜头切换承载节奏。',
+          },
           characters: { type: 'array', items: { type: 'string' }, description: '涉及的角色名' },
           dialogue: { type: 'string', description: '台词' },
           emotion: { type: 'string', description: '情绪氛围' },
@@ -155,6 +160,11 @@ export const _SHOTS_SCHEMA = {
             type: 'string',
             enum: ['inherit', 'independent'],
             description: '相对上一镜是否需要延续人物站位、动作和空间状态',
+          },
+          continuityMode: {
+            type: 'string',
+            enum: ['none', 'tail-frame', 'video-extend'],
+            description: '与上一镜的承接方式：video-extend=同机位无缝续演（下游把上一镜整段视频交给模型延长）；tail-frame=同场景但换了机位/景别（取上一镜末帧作构图起点）；none=换场景或时间跳跃。首镜固定 none。',
           },
           continuityReason: { type: 'string', description: '连续性判断的简短剧情依据' },
         },
@@ -398,6 +408,7 @@ export class ShotAnalysisService {
         shotEntries.map(entry => entry.shot),
         shotEntries.map(entry => ({
           continuity: entry.payload.continuity,
+          continuityMode: entry.payload.continuityMode,
           usePreviousTailFrame: entry.payload.usePreviousTailFrame,
           continuityReason: entry.payload.continuityReason,
           ignoreContinuitySuggestion: entry.payload.__ignoreContinuitySuggestion,
@@ -466,7 +477,7 @@ export class ShotAnalysisService {
   private async generateDramaShotPayloadsForChunk(
     traceId: string,
     chunk: ScriptAnalysisChunk,
-    options: { durationConstraint: string; durationDefault: string; chunkLabel: string },
+    options: { durationConstraint: string; durationDefault: string; durationMax: string; chunkLabel: string },
     prevContext?: { tailText: string; lastShotSummary: string },
   ): Promise<any[]> {
     const { characters, scenes, props } = this.ctx;
@@ -501,6 +512,7 @@ export class ShotAnalysisService {
         : '无',
       durationConstraint: options.durationConstraint,
       durationDefault: options.durationDefault,
+      durationMax: options.durationMax,
     });
     const styledPrompt = await this.appendGenreToneDirective(
       this.appendStyleRequirement(resolvedPrompt.prompt),
@@ -557,6 +569,8 @@ export class ShotAnalysisService {
     const durationSpec = this.ctx.itvDurationSpec;
     const durationConstraint = formatSpecPromptHint(durationSpec);
     const durationDefault = String(durationSpec.default);
+    // 拆解时按渠道上限规划长镜头（而不是切成一堆短镜头），见模板的「合镜原则」
+    const durationMax = String(getSpecMaxDuration(durationSpec));
     const { characters, scenes, props } = this.ctx;
     const chunkLabel = chunk.total > 1 ? `（第 ${chunk.index + 1}/${chunk.total} 段）` : '';
     const isDrama = this.ctx.projectMode === 'drama';
@@ -566,6 +580,7 @@ export class ShotAnalysisService {
       return this.generateDramaShotPayloadsForChunk(traceId, chunk, {
         durationConstraint,
         durationDefault,
+        durationMax,
         chunkLabel,
       }, prevContext);
     }
@@ -609,6 +624,7 @@ export class ShotAnalysisService {
         : '无',
       durationConstraint,
       durationDefault,
+      durationMax,
       projectNarrativeMode,
       dialogueModeDirective,
     });
@@ -619,6 +635,7 @@ export class ShotAnalysisService {
     const resolvedSystemPrompt = await resolvePromptTemplate('shot_breakdown_system', {
       durationConstraint,
       durationDefault,
+      durationMax,
       projectNarrativeMode,
       dialogueModeDirective,
     });

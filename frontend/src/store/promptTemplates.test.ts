@@ -47,10 +47,37 @@ describe('default shot breakdown prompt templates', () => {
 
     expect(systemTemplate).toContain('不能跳段');
     expect(systemTemplate).toContain('不能摘要式合并中间动作');
-    expect(systemTemplate).toContain('宁可分镜多，也不要丢失细节');
     expect(userTemplate).toContain('禁止改写、合并、压缩、概括、补充任何字幕行原文');
     expect(userTemplate).toContain('必须按字幕行号顺序、连续、不重不漏地覆盖全部行');
     expect(userTemplate).toContain('无遗漏、无重复、无乱序');
+  });
+
+  // 「覆盖完整」和「镜头要长」是两件事：前者要求剧情不丢，后者要求不要为了
+  // 表现细节就把连续剧情切成一堆短分镜（分镜越碎，每次重新建立空间就越容易漂移）。
+  it('分镜拆解按渠道时长上限规划长镜头，节奏放到镜头内部', () => {
+    const systemTemplate = getDefaultTemplate('shot_breakdown_system').template;
+    const dramaTemplate = getDefaultTemplate('shot_breakdown_drama').template;
+
+    for (const template of [systemTemplate, dramaTemplate]) {
+      expect(template).toContain('{{durationMax}}');
+      expect(template).toContain('合镜原则');
+      // 明确排除「新说话人 / 新动作」这类曾经的切镜理由
+      expect(template).toContain('不是**开新分镜的理由');
+    }
+    // 旧口径（鼓励多切）必须已经移除
+    expect(systemTemplate).not.toContain('宁可分镜多');
+    expect(dramaTemplate).not.toContain('duration 只能取：6 / 10 / 12 / 16 / 20 之一');
+  });
+
+  it('分镜拆解输出与上一镜的承接方式，供下游选尾帧或整段延长', () => {
+    const systemTemplate = getDefaultTemplate('shot_breakdown_system').template;
+    const dramaTemplate = getDefaultTemplate('shot_breakdown_drama').template;
+
+    for (const template of [systemTemplate, dramaTemplate]) {
+      expect(template).toContain('continuityMode');
+      expect(template).toContain('video-extend');
+      expect(template).toContain('tail-frame');
+    }
   });
 
   it('分镜拆解模板按项目叙事模式约束 dialogue 字段', () => {

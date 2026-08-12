@@ -97,6 +97,20 @@ export function formatSpecPromptHint(spec: VideoDurationSpec): string {
 }
 
 /**
+ * spec 允许的最大时长。
+ *
+ * 分镜拆解要"尽量把镜头做长"：一个 15 秒的镜头内部用镜头切换承载节奏，
+ * 远好过切成三个 5 秒的独立分镜（每次换镜都要重新建立空间与人物，
+ * 观感碎、连贯性差、渲染成本也更高）。所以拆解提示词需要知道上限是多少。
+ */
+export function getSpecMaxDuration(spec: VideoDurationSpec): number {
+  if (spec.kind === 'enum') {
+    return spec.values.length > 0 ? Math.max(...spec.values) : spec.default;
+  }
+  return spec.max;
+}
+
+/**
  * UI 输入控件需要的 min/max/step bound。
  * enum 时 step 给 1（占位，UI 应优先用 Select 而非 InputNumber），
  * 但如果实在用 InputNumber，会被 clamp 到 enum 区间。

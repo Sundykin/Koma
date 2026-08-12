@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ShotReferenceBundle, ShotReferenceItem } from './types';
-import { decideShotsMode, renderShotsSection } from './shotsOutputFormat';
+import { decideShotsMode, planInnerShotCount, renderShotsSection } from './shotsOutputFormat';
 
 function bundle(items: ShotReferenceItem[]): ShotReferenceBundle {
   return {
@@ -59,31 +59,59 @@ describe('decideShotsMode', () => {
 });
 
 describe('renderShotsSection — normal', () => {
-  it('6s 输出含 2-3 镜头骨架 + 6 秒预算说明', () => {
+  // 分镜拆解改为按渠道上限出长镜头后，内部镜头数必须跟着时长走：
+  // 15 秒只切 2 刀 = 每镜 7-8 秒，那么长的时间模型只能做匀速推近，成片就是平淡的。
+  it('镜头数按时长推算（~4 秒一镜，夹在 2-5 之间）', () => {
+    expect(planInnerShotCount(6)).toBe(2);
+    expect(planInnerShotCount(10)).toBe(3);
+    expect(planInnerShotCount(15)).toBe(4);
+    expect(planInnerShotCount(20)).toBe(5);
+    // 上下限
+    expect(planInnerShotCount(3)).toBe(2);
+    expect(planInnerShotCount(60)).toBe(5);
+    expect(planInnerShotCount(0)).toBe(2);
+  });
+
+  it('6s → 2 镜头骨架，总时长写死 6 秒', () => {
     const out = renderShotsSection({ mode: 'normal', duration: 6 });
-    expect(out).toContain('【分镜镜头内容】');
-    expect(out).toContain('镜头1：');
-    expect(out).toContain('# 可选镜头2');
-    expect(out).toContain('# 可选镜头3');
-    expect(out).toContain('精确为6秒');
+    expect(out).toContain('2 镜头硬切结构');
+    expect(out).toContain('必须输出 2 个镜头');
+    expect(out).toContain('总和精确 6 秒');
+    expect(out).toContain('镜头 1（3 秒）：');
+    expect(out).toContain('镜头 2（3 秒）：');
+    expect(out).not.toContain('镜头 3（');
   });
 
-  it('10s 输出 4-6/3-4 秒预算', () => {
-    const out = renderShotsSection({ mode: 'normal', duration: 10 });
-    expect(out).toContain('精确为10秒');
-    expect(out).toContain('2镜头方案单镜头4-6秒');
-    expect(out).toContain('3镜头方案单镜头3-4秒');
-  });
-
-  it('15s 输出 7-8/4-6 秒预算', () => {
+  it('15s → 4 镜头骨架', () => {
     const out = renderShotsSection({ mode: 'normal', duration: 15 });
-    expect(out).toContain('精确为15秒');
+    expect(out).toContain('必须输出 4 个镜头');
+    expect(out).toContain('总和精确 15 秒');
+    for (let n = 1; n <= 4; n += 1) expect(out).toContain(`镜头 ${n}（`);
+    expect(out).not.toContain('镜头 5（');
   });
 
-  it('20s 输出 9-11/6-8 秒预算', () => {
-    const out = renderShotsSection({ mode: 'normal', duration: 20 });
-    expect(out).toContain('精确为20秒');
-    expect(out).toContain('2镜头方案单镜头9-11秒');
+  it('每个内部镜头都要求景别/机位有变化，禁止整段固定机位', () => {
+    const out = renderShotsSection({ mode: 'normal', duration: 15 });
+    expect(out).toContain('相邻两个镜头的「景别」与「机位/运镜」不得同时相同');
+    expect(out).toContain('每次运镜都要有动机');
+    expect(out).toContain('禁止整段固定机位平铺直叙');
+  });
+
+  it('人物与道具必须交代出入画，不能凭空出现', () => {
+    const out = renderShotsSection({ mode: 'normal', duration: 10 });
+    expect(out).toContain('禁止凭空出现在画面里');
+    expect(out).toContain('入画');
+    expect(out).toContain('镜头揭示');
+    expect(out).toContain('离场同理');
+    // 每个镜头骨架里都有出入画这一行
+    expect(out.match(/- 出入画：/g)?.length).toBe(3);
+  });
+
+  it('首镜承接上单元、末镜收束到本单元锚定帧', () => {
+    const out = renderShotsSection({ mode: 'normal', duration: 10 });
+    expect(out).toContain('【上单元结尾锚定帧】');
+    expect(out).toContain('【本单元结尾锚定帧】');
+    expect(out.match(/no dissolves, no cross-fades, use hard cuts only/g)?.length).toBeGreaterThanOrEqual(2);
   });
 });
 
@@ -135,7 +163,8 @@ describe('e2e: 用户选了 grid 但还没生成图，整链路必须回到无�
     expect(mode).toBe('normal');
 
     const section = renderShotsSection({ mode, duration: 6 });
-    expect(section).toContain('2-3个镜头时长总和必须精确为6秒');
+    expect(section).toContain('2 镜头硬切结构');
+    expect(section).toContain('总和精确 6 秒');
     expect(section).not.toContain('4 镜头硬切结构');
     expect(section).not.toContain('cell 1');
   });
@@ -150,11 +179,13 @@ describe('e2e: 用户选了 grid 但还没生成图，整链路必须回到无�
     const mode = decideShotsMode(emptyBundle, 9);
     expect(mode).toBe('normal');
     const section = renderShotsSection({ mode, duration: 9 });
-    expect(section).toContain('2-3个镜头时长总和必须精确为9秒');
-    expect(section).not.toContain('9 镜头硬切结构');
+    expect(section).toContain('总和精确 9 秒');
+    // 关键：不能出现宫格 cell 协议（没有真实宫格锚图）
+    expect(section).not.toContain('cell 9');
+    expect(section).not.toContain('九宫格');
   });
 
-  it('imageMode=normal → 走 normal 2-3 镜头骨架（不退化）', () => {
+  it('imageMode=normal → 走 normal 硬切骨架（不退化）', () => {
     const emptyBundle: ShotReferenceBundle = {
       items: [],
       hasGridAnchor: false,
@@ -164,7 +195,8 @@ describe('e2e: 用户选了 grid 但还没生成图，整链路必须回到无�
     const mode = decideShotsMode(emptyBundle, undefined);
     expect(mode).toBe('normal');
     const section = renderShotsSection({ mode, duration: 6 });
-    expect(section).toContain('2-3个镜头时长总和必须精确为6秒');
+    expect(section).toContain('2 镜头硬切结构');
+    expect(section).toContain('总和精确 6 秒');
   });
 });
 
