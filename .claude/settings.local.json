@@ -104,7 +104,10 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(npx vite:*)",
-      "Read(//Users/sunmeng/.koma/**)"
+      "Read(//Users/sunmeng/.koma/**)",
+      "Bash(curl -s http://127.0.0.1:9333/json/version)",
+      "Bash(break)",
+      "Bash(curl -s http://127.0.0.1:9333/json)"
     ]
   }
 }
