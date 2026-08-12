@@ -14,9 +14,11 @@ describe('default shot breakdown prompt templates', () => {
     expect(userTemplate).not.toContain('6、10、12、16、20');
 
     expect(systemTemplate).toContain('{{durationConstraint}}');
-    expect(systemTemplate).toContain('{{durationDefault}}');
     expect(userTemplate).toContain('{{durationConstraint}}');
-    expect(userTemplate).toContain('{{durationDefault}}');
+    // durationDefault 曾作为「无法判断时填 X」的兜底，与「用满渠道上限」直接冲突
+    // （range 5–15 时它解析成 5，把模型往下拽），已改为兜底到 durationMax。
+    expect(systemTemplate).toContain('{{durationMax}}');
+    expect(userTemplate).toContain('{{durationMax}}');
 
     // 历史回归保护：不应该出现历史"15 秒"等旧约束遗留
     expect(combined).not.toContain('15 秒以内');
@@ -67,6 +69,35 @@ describe('default shot breakdown prompt templates', () => {
     // 旧口径（鼓励多切）必须已经移除
     expect(systemTemplate).not.toContain('宁可分镜多');
     expect(dramaTemplate).not.toContain('duration 只能取：6 / 10 / 12 / 16 / 20 之一');
+  });
+
+  // 模型对示例 JSON 的锚定远强于抽象指令：示例里写死 "duration": 6，
+  // 就算正文写了"优先贴近 15 秒"，产出也会一片 6/12。示例必须用变量。
+  it('三个拆解模板的示例 duration 都用 {{durationMax}}，不留字面量数字', () => {
+    for (const id of ['shot_breakdown', 'shot_breakdown_drama'] as const) {
+      const template = getDefaultTemplate(id).template;
+      expect(template).toContain('"duration": {{durationMax}}');
+      expect(template).not.toMatch(/"duration":\s*\d/);
+    }
+  });
+
+  it('三个拆解模板都注入 durationMax，且兜底值不再往下拽', () => {
+    for (const id of ['shot_breakdown', 'shot_breakdown_drama', 'shot_breakdown_system'] as const) {
+      const t = getDefaultTemplate(id);
+      expect(t.template).toContain('{{durationMax}}');
+      expect(t.variables.map(v => (typeof v === 'string' ? v : v.name))).toContain('durationMax');
+    }
+    // 「无法判断时填 durationDefault」与「用满上限」直接冲突，必须已经改掉
+    for (const id of ['shot_breakdown_drama', 'shot_breakdown_system'] as const) {
+      expect(getDefaultTemplate(id).template).not.toMatch(/无法判断时填\S*\{\{durationDefault\}\}/);
+    }
+  });
+
+  it('解说模式的拆解模板也改成默认合并（此前只改了剧情模式与系统模板）', () => {
+    const template = getDefaultTemplate('shot_breakdown').template;
+    expect(template).toContain('默认合并，不默认切分');
+    expect(template).toContain('不是**开新镜头的理由');
+    expect(template).not.toContain('出现下列任一信号时倾向"开新镜头"');
   });
 
   it('分镜拆解输出与上一镜的承接方式，供下游选尾帧或整段延长', () => {

@@ -84,7 +84,8 @@ export const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 - scriptContent: 对应的剧本原文
 - shotType: 景别（close-up特写/medium中景/wide全景/extreme-wide大全景）
 - cameraMovement: 运镜方式（static固定/pan摇镜/zoom-in推镜/tracking跟随/handheld手持）
-- duration: 预估时长（秒），{{durationConstraint}}，无法判断时填写 {{durationDefault}} 秒；优先贴近上限 {{durationMax}} 秒
+- duration: 预估时长（秒），{{durationConstraint}}。**默认就往 {{durationMax}} 秒写**，判断不了时也填 {{durationMax}}；
+  只有台词/剧情实在撑不满才给更小的值。禁止照抄说明里出现过的数字
 - characters: 出现的角色名列表
 - dialogue: 角色台词，格式为"角色名（情绪）：台词内容"，具体生成尺度必须遵守项目叙事模式
 - emotion: 画面情绪氛围
@@ -232,7 +233,7 @@ export const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 3. **必须按字幕行号顺序、连续、不重不漏地覆盖全部行**。所有分镜的 scriptLineIndices 拼起来应等于 [1, 2, 3, ..., N]，N 是字幕总行数。
 
 【时长要求】
-每个镜头的 duration {{durationConstraint}}；无法判断时填写 {{durationDefault}}。
+每个镜头的 duration {{durationConstraint}}；**默认就往 {{durationMax}} 秒写**，判断不了时也填 {{durationMax}}。
 
 【情绪词列表】
 高兴、愤怒、悲伤、恐惧、反感、低落、惊讶、自然、急切、平静、激动、呵斥、关心、严肃
@@ -251,8 +252,12 @@ export const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 
 【切分原则】
 1. 按字幕行号从 1 开始顺序，把连续若干行划归一个分镜，不许跳号。
-2. 出现下列任一信号时倾向"开新镜头"：新动作 / 新视线目标 / 新道具状态 / 新空间 / 新说话人 / 情绪转折 / 时间推进。
-3. 单镜分配的行数原则上 1–6 行；行数受 duration 约束（每行约 1.5–3 秒，按 duration 折算合理行数）。
+2. **默认合并，不默认切分**：一个分镜 = 一次视频生成，分镜越碎成片越碎（每次换镜模型都要
+   重新建立空间与人物，接缝必然漂移）。只有换场景 / 时间跳跃 / 闪回 / 剧情硬转折才开新镜头；
+   "新动作 / 新视线目标 / 新道具状态 / 新说话人 / 情绪转折"**不是**开新镜头的理由——
+   它们是同一镜头内部的镜头切换，由下游视频推理在一次生成里排布。
+3. 单镜行数由 duration 折算（每行约 1.5–3 秒），duration 默认往 {{durationMax}} 秒写，
+   因此单镜通常能容纳 5–10 行；不要为了凑短而少分行。
 4. 不许出现空分镜（scriptLineIndices 为空）。
 5. dialogue 字段由项目叙事模式决定：剧情模式可从第一人称推文解说改写少量真实对白；解说模式只保留显式对白或极少必要短反应。
 6. 自检：把所有分镜的 scriptLineIndices 按顺序拼起来 = [1, 2, ..., N]，无遗漏、无重复、无乱序。
@@ -266,7 +271,7 @@ export const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
       "scriptLineIndices": [1, 2, 3],
       "shotType": "close-up/medium/wide/extreme-wide",
       "cameraMovement": "static/pan/zoom-in/tracking/handheld",
-      "duration": 6,
+      "duration": {{durationMax}},
       "dialogue": "角色名（情绪）：「台词内容」",
       "characters": ["已知角色名称"],
       "emotion": "情绪标签",
@@ -293,6 +298,9 @@ export const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
       variable('props'),
       variable('durationConstraint'),
       variable('durationDefault'),
+      variable('durationMax', {
+        description: '当前视频渠道允许的最大时长（秒）；分镜按它规划长镜头。',
+      }),
       variable('projectNarrativeMode', { required: false }),
       variable('dialogueModeDirective', { required: false }),
     ],
@@ -384,7 +392,8 @@ continuityReason 用一句话说明依据（动作是否连续、机位是否变
 【字段枚举约束（输出 JSON 时必须遵守，否则会被服务端校验拒绝）】
 - shotType 只能是：close-up / medium / wide / extreme-wide
 - cameraMovement 只能是：static / pan / zoom-in / tracking / handheld
-- duration：{{durationConstraint}}；无法判断时填 {{durationDefault}}。优先贴近 {{durationMax}} 秒
+- duration：{{durationConstraint}}。**默认就往 {{durationMax}} 秒写**；判断不了时也填 {{durationMax}}，
+  只有台词/剧情实在撑不满时才给更小的值。**禁止照抄本说明里出现过的任何数字**
 - continuityMode 只能是：none / tail-frame / video-extend
 
 【输出 JSON】
@@ -392,10 +401,10 @@ continuityReason 用一句话说明依据（动作是否连续、机位是否变
 {
   "shots": [
     {
-      "script": "中景，平视，废弃戏台，雨夜。宁卓独立台中央，背影绷直，手握剑柄微颤；帷幕被风掀起，冷蓝月光从豁口斜切进来，拉出他长而孤的影子。\\n宁卓抬眼：\"你们来了。\"",
+      "script": "中景，平视，废弃戏台，雨夜。宁卓独立台中央，背影绷直，手握剑柄微颤；帷幕被风掀起，冷蓝月光从豁口斜切进来，拉出他长而孤的影子。\\n镜头缓推至近景，他指节因用力而发白，喉结滚动一下。\\n宁卓抬眼：\"你们来了。\"\\n切过肩反打：三名黑衣人自帷幕后依次踏入，靴底碾过积水。\\n为首者压低斗笠：\"交出剑，留你全尸。\"\\n镜头拉回双人中景，两方在雨幕中对峙，宁卓拇指缓缓推开剑镡。",
       "shotType": "medium",
       "cameraMovement": "static",
-      "duration": 6,
+      "duration": {{durationMax}},
       "characters": ["宁卓"],
       "scenes": ["废弃戏台"],
       "props": ["长剑"],
