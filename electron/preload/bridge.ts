@@ -24,6 +24,9 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'channel:setDefault', 'channel:getDefault', 'channel:listDefaults', 'channel:deleteDefault',
   // 全局 KV
   'app-kv:get', 'app-kv:set', 'app-kv:delete',
+  // 番茄达人中心（书籍章节下载）
+  'fanqie:getAuthStatus', 'fanqie:openLogin', 'fanqie:logout',
+  'fanqie:searchBook', 'fanqie:listRankBooks', 'fanqie:listChapters', 'fanqie:downloadChapters',
   // 通用任务系统 (settings.db)
   'tasks:list', 'tasks:get', 'tasks:upsert', 'tasks:delete', 'tasks:cancel',
   'tasks:submit',
@@ -128,7 +131,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'controller/ffmpeg/extractFrames', 'controller/ffmpeg/splitGridImage',
   'controller/ffmpeg/upscaleImage', 'controller/ffmpeg/cropImage',
   'controller/ffmpeg/waveform',
-  'controller/ffmpeg/splitAudio', 'controller/ffmpeg/composeVideo',
+  'controller/ffmpeg/splitAudio', 'controller/ffmpeg/extractAudioTrack', 'controller/ffmpeg/composeVideo',
   'controller/ffmpeg/concatMediaClips', 'controller/ffmpeg/concatAudioClips', 'controller/ffmpeg/trimVideo',
   'controller/ffmpeg/upscaleVideo',
   'controller/ffmpeg/getCacheDir', 'controller/ffmpeg/getTempDir',
@@ -163,6 +166,7 @@ const ALLOWED_LISTEN_CHANNELS = new Set([
   'llm:stream:chunk', 'llm:stream:done', 'llm:stream:error',
   'channel:changed',
   'tasks:updated',
+  'fanqie:auth-changed', 'fanqie:download-progress',
   'tasks:delegate:request',
   'updater:state-changed',
   'marketplace:state-changed',
@@ -395,6 +399,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     waveform: (options: any) => invokeMain('controller/ffmpeg/waveform', options),
     splitAudio: (input: string, output: string) =>
       invokeMain('controller/ffmpeg/splitAudio', { input, output }),
+    extractAudioTrack: (options: any) => invokeMain('controller/ffmpeg/extractAudioTrack', options),
     upscaleImage: (options: any) => invokeMain('controller/ffmpeg/upscaleImage', options),
     cropImage: (options: any) => invokeMain('controller/ffmpeg/cropImage', options),
     composeVideo: (options: any) => invokeMain('controller/ffmpeg/composeVideo', options),
@@ -440,6 +445,33 @@ contextBridge.exposeInMainWorld('electronAPI', {
       };
     }) =>
       invokeMain('controller/net/fetch', args),
+  },
+  // 番茄达人中心：书籍搜索 / 章节下载 / 登录态
+  fanqie: {
+    getAuthStatus: () => invokeMain('fanqie:getAuthStatus'),
+    openLogin: () => invokeMain('fanqie:openLogin'),
+    logout: () => invokeMain('fanqie:logout'),
+    searchBook: (keyword: string) => invokeMain('fanqie:searchBook', { keyword }),
+    listRankBooks: (args: {
+      pageIndex?: number;
+      pageSize?: number;
+      rankOverrides?: Record<string, string>;
+      refresh?: boolean;
+    }) => invokeMain('fanqie:listRankBooks', args),
+    listChapters: (bookId: string) => invokeMain('fanqie:listChapters', { bookId }),
+    downloadChapters: (args: {
+      downloadId: string;
+      bookId: string;
+      items: Array<{ itemId: string; index: number; chapterName: string }>;
+    }) => invokeMain('fanqie:downloadChapters', args),
+    onAuthChanged: (callback: (event: any, data: { loggedIn: boolean }) => void) => {
+      ipcRenderer.on('fanqie:auth-changed', callback);
+      return () => ipcRenderer.removeListener('fanqie:auth-changed', callback);
+    },
+    onDownloadProgress: (callback: (event: any, data: any) => void) => {
+      ipcRenderer.on('fanqie:download-progress', callback);
+      return () => ipcRenderer.removeListener('fanqie:download-progress', callback);
+    },
   },
   llm: {
     query: (request: any) => invokeMain('llm:query', request),

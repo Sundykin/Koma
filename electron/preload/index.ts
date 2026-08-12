@@ -4,6 +4,7 @@ import { registerSecurityHeaders } from '../service/security';
 import { initServices } from '../service';
 import { chatIpc } from '../service/chat/ipc';
 import { registerSettingsIpc } from '../service/settings/ipc';
+import { registerFanqieIpc } from '../service/fanqie/ipc';
 import { registerTasksIpc } from '../service/tasks/ipc';
 import { taskService } from '../service/tasks/TaskService';
 import { taskRunner } from '../service/tasks/TaskRunner';
@@ -22,6 +23,7 @@ function preload(): void {
   registerBuiltinLLMProviders();
   chatIpc.init();
   registerSettingsIpc();
+  registerFanqieIpc();
   registerTasksIpc();
   registerMediaPollHandlers();
   registerLLMCompleteHandler();

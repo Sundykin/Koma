@@ -77,6 +77,8 @@
     "createFirst": "创建你的第一个项目",
     "startJourney": "开始 AI 短剧制作之旅",
     "new": "新建",
+    "importFanqie": "番茄导入",
+    "importFanqieTip": "从番茄达人中心下载可推广章节，自动创建项目并分集",
     "noMatchingProjects": "未找到匹配的项目",
     "clearFilters": "清除筛选条件",
     "deleteProject": "删除项目",

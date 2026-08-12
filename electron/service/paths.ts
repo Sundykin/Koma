@@ -92,6 +92,11 @@ export function getMarketplaceCacheDir(): string {
   return path.join(getBusinessRoot(), 'marketplace-cache');
 }
 
+/** 番茄达人中心集成缓存目录（嗅探到的书单接口模板等） */
+export function getFanqieCacheDir(): string {
+  return path.join(getBusinessRoot(), 'fanqie-cache');
+}
+
 /**
  * 全局音色库目录。跨项目共享，固定在业务根下；
  * 不跟随 runtime storage root（音色资源对单台机器是配置一次到处用的全局资产）。

@@ -77,6 +77,8 @@
     "createFirst": "Create your first project",
     "startJourney": "Start your AI video production journey",
     "new": "New",
+    "importFanqie": "Fanqie Import",
+    "importFanqieTip": "Download promotable chapters from Fanqie KOL Center, auto-create project and split episodes",
     "noMatchingProjects": "No matching projects found",
     "clearFilters": "Clear filters",
     "deleteProject": "Delete Project",

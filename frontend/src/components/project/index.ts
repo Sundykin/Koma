@@ -1,6 +1,7 @@
 export { ProjectList } from './ProjectList';
 export { ProjectOverview } from './ProjectOverview';
 export { CreateProjectModal } from './CreateProjectModal';
+export { FanqieImportDialog } from './FanqieImportDialog';
 export { ProjectSettingsModal } from './ProjectSettingsModal';
 export { EpisodeManager } from './EpisodeManager';
 export { EpisodeSplitWizard } from './EpisodeSplitWizard';

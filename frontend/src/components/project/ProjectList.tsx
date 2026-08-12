@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Project } from '../../types';
-import { Plus, Clock, Search, MoreHorizontal, FileText, Film, PlayCircle, CheckCircle2, Trash2, FolderPlus } from 'lucide-react';
-import { Dropdown, Modal } from 'antd';
+import { Plus, Clock, Search, MoreHorizontal, FileText, Film, PlayCircle, CheckCircle2, Trash2, FolderPlus, BookOpen } from 'lucide-react';
+import { Dropdown, Modal, Tooltip } from 'antd';
 import type { MenuProps } from 'antd';
 
 interface ProjectListProps {
@@ -10,13 +10,16 @@ interface ProjectListProps {
   onSelectProject: (id: string) => void;
   onCreateProject: () => void;
   onDeleteProject?: (id: string) => void;
+  /** 从番茄达人中心导入书籍章节（内置登录窗口鉴权） */
+  onImportFanqie?: () => void;
 }
 
 export const ProjectList: React.FC<ProjectListProps> = ({
   projects,
   onSelectProject,
   onCreateProject,
-  onDeleteProject
+  onDeleteProject,
+  onImportFanqie
 }) => {
   const { t } = useTranslation();
   const [filter, setFilter] = useState<'all' | 'script' | 'video' | 'completed'>('all');
@@ -109,13 +112,26 @@ export const ProjectList: React.FC<ProjectListProps> = ({
 
           {/* 右侧：新建按钮（有项目时显示） */}
           {!hasNoProjects && (
-            <button
-              onClick={onCreateProject}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-accent hover:bg-accent-hover text-on-accent text-sm font-medium rounded-md transition-colors cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>{t('project.new')}</span>
-            </button>
+            <div className="flex items-center gap-2">
+              {onImportFanqie && (
+                <Tooltip title={t('project.importFanqieTip')}>
+                  <button
+                    onClick={onImportFanqie}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-surface border border-border hover:border-accent/50 text-text-secondary hover:text-accent text-sm font-medium rounded-md transition-colors cursor-pointer"
+                  >
+                    <BookOpen className="w-4 h-4" />
+                    <span>{t('project.importFanqie')}</span>
+                  </button>
+                </Tooltip>
+              )}
+              <button
+                onClick={onCreateProject}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-accent hover:bg-accent-hover text-on-accent text-sm font-medium rounded-md transition-colors cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>{t('project.new')}</span>
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -136,6 +152,15 @@ export const ProjectList: React.FC<ProjectListProps> = ({
                 <span className="text-lg font-bold text-text-secondary group-hover:text-text-primary transition-colors">{t('project.createFirst')}</span>
                 <span className="text-sm text-text-muted mt-1">{t('project.startJourney')}</span>
               </button>
+              {onImportFanqie && (
+                <button
+                  onClick={onImportFanqie}
+                  className="mt-4 flex items-center gap-1.5 px-4 py-2 text-sm text-text-tertiary hover:text-accent transition-colors cursor-pointer"
+                >
+                  <BookOpen className="w-4 h-4" />
+                  <span>{t('project.importFanqie')}</span>
+                </button>
+              )}
             </div>
           )}
 

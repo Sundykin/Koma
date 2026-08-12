@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef, Suspense, lazy } from 'react';
 import { Project, ScriptAnalysisResult, EditorStep, AppSettings, Episode, EpisodeStepProgress, AsyncTask } from './types';
-import { ProjectList, CreateProjectModal, ProjectSettingsModal } from './components/project';
+import { ProjectList, CreateProjectModal, ProjectSettingsModal, FanqieImportDialog } from './components/project';
 import type { MentionItem } from './editor';
 import { getCharacterCostumePhotoSource } from './utils/mediaSelectors';
 import { getMediaAssetDisplaySource } from './types';
@@ -134,6 +134,7 @@ const AppContent: React.FC = () => {
   });
   const [appSettings, setAppSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isFanqieImportOpen, setIsFanqieImportOpen] = useState(false);
   const [isProjectSettingsOpen, setIsProjectSettingsOpen] = useState(false);
   const [scriptText, setScriptText] = useState(DEFAULT_SCRIPT);
   const [analysisData, setAnalysisData] = useState<ScriptAnalysisResult | null>(isVideoDevMode ? DEV_TEST_ANALYSIS : null);
@@ -401,6 +402,44 @@ const AppContent: React.FC = () => {
     }
   };
 
+  /**
+   * 番茄书籍导入完成：项目与剧集已在向导内创建（AI 分集完成），
+   * 这里直接进入项目编辑器的剧本步骤（剧本解析 / 资产提取入口所在步骤）。
+   */
+  const handleFanqieImportComplete = ({ project, episodes, script }: {
+    project: ReturnType<typeof useProjects>['projects'][number];
+    episodes: Episode[];
+    /** 下载章节合并后的全文；跳过分集时用它回填剧本编辑器 */
+    script: string;
+  }) => {
+    setIsFanqieImportOpen(false);
+    const firstEpisode = episodes.length > 0 ? episodes[0] : null;
+    const newProject: Project = {
+      id: project.id, title: project.title, genre: project.genre, mode: project.mode,
+      episodes: episodes.length || project.episodes || 1, lastEdited: '刚刚',
+      thumbnail: project.thumbnail || getThumbnailUrl(project.id),
+      status: project.status || 'script',
+      mediaSelections: project.mediaSelections,
+      aspectRatio: project.aspectRatio || '16:9',
+      stylePresetId: project.stylePresetId,
+      styleSnapshot: project.styleSnapshot,
+      theme: project.theme,
+      stylePrompt: project.stylePrompt,
+    };
+    setActiveProject(newProject);
+    setActiveEpisode(firstEpisode);
+    setEditorStep('script');
+    setStepProgress({ assets: 'pending', storyboard: 'pending', video: 'pending' });
+    setView('editor');
+    setScriptText(firstEpisode?.scriptText || script || '');
+    setAnalysisData(null);
+    message.success(
+      firstEpisode
+        ? `书籍导入完成：已创建 ${episodes.length} 个剧集，可开始剧本解析`
+        : '项目已创建，下载的章节正文已带入剧本编辑器',
+    );
+  };
+
   const handleSelectProject = (id: string) => {
     const proj = displayProjects.find(p => p.id === id);
     if (proj) {
@@ -555,6 +594,7 @@ const AppContent: React.FC = () => {
                       onSelectProject={handleSelectProject}
                       onCreateProject={() => setIsCreateModalOpen(true)}
                       onDeleteProject={handleDeleteProject}
+                      onImportFanqie={() => setIsFanqieImportOpen(true)}
                     />
                   )
                 )}
@@ -612,6 +652,12 @@ const AppContent: React.FC = () => {
       </div>
       <>
           <CreateProjectModal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} onCreate={handleCreateProject} />
+          <FanqieImportDialog
+            open={isFanqieImportOpen}
+            onClose={() => setIsFanqieImportOpen(false)}
+            createProject={createProjectAPI}
+            onComplete={handleFanqieImportComplete}
+          />
           <ProjectSettingsModal
             project={activeProject}
             open={isProjectSettingsOpen}
