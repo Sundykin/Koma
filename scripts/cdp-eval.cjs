@@ -14,17 +14,27 @@ const WebSocket = require('ws');
 const PORT = process.env.KOMA_ELECTRON_REMOTE_DEBUGGING_PORT || '9333';
 const ENDPOINT = `http://127.0.0.1:${PORT}`;
 
-async function findAppTarget() {
+/**
+ * 选目标页面。默认取主应用窗口；传 --target=<子串> 可选内置窗口
+ * （如番茄达人中心那个隐藏 BrowserWindow），按 title / url 匹配。
+ */
+async function findAppTarget(match) {
   const res = await fetch(`${ENDPOINT}/json/list`);
   const targets = await res.json();
-  // 排除 devtools 自身窗口，取真正的应用页面
-  const page = targets.find(
+  const pages = targets.filter(
     t => t.type === 'page' && t.webSocketDebuggerUrl && !t.url.startsWith('devtools://'),
   );
-  if (!page) {
+  if (pages.length === 0) {
     throw new Error(`未找到应用页面（${ENDPOINT}）。Electron 开发实例是否在运行？`);
   }
-  return page;
+  if (!match) {
+    return pages.find(p => p.url.includes('localhost')) || pages[0];
+  }
+  const hit = pages.find(p => `${p.title} ${p.url}`.includes(match));
+  if (!hit) {
+    throw new Error(`未找到匹配 "${match}" 的页面。当前有：${pages.map(p => p.title).join(' / ')}`);
+  }
+  return hit;
 }
 
 function evaluate(wsUrl, expression) {
@@ -72,13 +82,15 @@ function evaluate(wsUrl, expression) {
 }
 
 async function main() {
-  const scriptPath = process.argv[2];
+  const args = process.argv.slice(2);
+  const targetArg = args.find(a => a.startsWith('--target='));
+  const scriptPath = args.find(a => !a.startsWith('--'));
   if (!scriptPath) {
-    console.error('用法: node scripts/cdp-eval.cjs <脚本文件路径>');
+    console.error('用法: node scripts/cdp-eval.cjs [--target=<标题或URL子串>] <脚本文件路径>');
     process.exit(1);
   }
   const body = fs.readFileSync(scriptPath, 'utf8');
-  const page = await findAppTarget();
+  const page = await findAppTarget(targetArg ? targetArg.slice('--target='.length) : undefined);
   console.error(`[cdp-eval] target: ${page.title} (${page.url})`);
   // 包一层 async IIFE，脚本里可以直接用 await 与 return
   const value = await evaluate(page.webSocketDebuggerUrl, `(async () => {\n${body}\n})()`);

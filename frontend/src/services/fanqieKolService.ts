@@ -49,21 +49,42 @@ export interface FanqieBook {
   categories: string[];
 }
 
-/** 嗅探到的达人中心书单接口模板（主进程 CDP 捕获，详见 FanqieKolService） */
-export interface FanqieRankEndpoint {
-  path: string;
-  params: Record<string, string>;
-  pageParam?: string;
-  pageSizeParam?: string;
-  /** 榜单 / 排序 / 分类类参数，供「换榜单」下拉覆盖 */
-  rankParams: Array<{ key: string; value: string }>;
-  listPath: string;
-  discoveredAt: number;
+/** 筛选项的一个可选值；value 原样回传给接口（分类的 value 本身是段 JSON 字符串） */
+export interface FanqieFilterOption {
+  name: string;
+  value: string;
 }
 
-export interface FanqieRankResult {
+/** 一组筛选条件：频道 / 分类 / 连载状态 / 是否独家 / 上架时间 / 字数 */
+export interface FanqieFilter {
+  key: string;
+  name: string;
+  options: FanqieFilterOption[];
+}
+
+/** 内容库的一个榜单 / 列表入口（爆款榜 / 阅读榜 / 潜力榜 / 全部内容） */
+export interface FanqieMenuEntry {
+  name: string;
+  itemKey: string;
+  /** 2=榜单（走 rank_list，需 rankId）；1=全部内容（走 book/list，需 genre） */
+  type: 1 | 2;
+  rankId: number;
+  filters: FanqieFilter[];
+  sortKey?: string;
+  sortOptions: FanqieFilterOption[];
+  tips?: string;
+}
+
+/** 内容库顶层分类（网文 / 漫画） */
+export interface FanqieContentMenu {
+  name: string;
+  genre: number;
+  menus: FanqieMenuEntry[];
+}
+
+export interface FanqieBookListResult {
   books: FanqieBook[];
-  endpoint: FanqieRankEndpoint;
+  total: number;
   pageIndex: number;
   hasMore: boolean;
 }
@@ -107,15 +128,23 @@ export const fanqieKolService = {
   searchBook: (keyword: string) => invoke<FanqieBook[]>('fanqie:searchBook', { keyword }),
 
   /**
-   * 达人中心书单/榜单。首次调用主进程会自动嗅探接口（约 6 秒），之后走缓存模板。
-   * refresh=true 强制重新嗅探（达人中心改版导致列表为空时使用）。
+   * 内容库筛选菜单（榜单入口 + 各自的筛选项与排序）。
+   * 直接取达人中心自己用来渲染内容库的接口，筛选项与官网完全一致。
    */
-  listRankBooks: (options: {
+  getContentMenu: (refresh = false) =>
+    invoke<FanqieContentMenu[]>('fanqie:getContentMenu', { refresh }),
+
+  /** 按榜单 / 筛选条件取书；filters 的键值都来自 getContentMenu 的结果 */
+  listBooks: (options: {
+    type: 1 | 2;
+    rankId?: number;
+    genre?: number;
+    sortKey?: string;
+    sortValue?: string;
+    filters?: Record<string, string>;
     pageIndex?: number;
     pageSize?: number;
-    rankOverrides?: Record<string, string>;
-    refresh?: boolean;
-  } = {}) => invoke<FanqieRankResult>('fanqie:listRankBooks', options),
+  }) => invoke<FanqieBookListResult>('fanqie:listBooks', options),
 
   listChapters: (bookId: string) => invoke<FanqieChapterListResult>('fanqie:listChapters', { bookId }),
 

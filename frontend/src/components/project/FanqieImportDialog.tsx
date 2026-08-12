@@ -40,7 +40,8 @@ import {
   type FanqieBook,
   type FanqieChapter,
   type FanqieDownloadedChapter,
-  type FanqieRankEndpoint,
+  type FanqieContentMenu,
+  type FanqieMenuEntry,
 } from '../../services/fanqieKolService';
 import { DEFAULT_THEME_PRESET_ID, getAllThemePresets, type ThemePresetCatalogItem } from '../../config/themePresets';
 import { createLogger } from '../../store/logger';
@@ -83,15 +84,20 @@ export const FanqieImportDialog: React.FC<FanqieImportDialogProps> = ({
   const [searchResults, setSearchResults] = useState<FanqieBook[]>([]);
   const [selectedBook, setSelectedBook] = useState<FanqieBook | null>(null);
 
-  // rank（达人中心书单：接口由主进程自动嗅探）
+  // 内容库（达人中心 content/menu + rank_list / book_list）
+  const [menu, setMenu] = useState<FanqieContentMenu[]>([]);
+  const [menuLoading, setMenuLoading] = useState(false);
+  const [genreIndex, setGenreIndex] = useState(0);
+  const [menuIndex, setMenuIndex] = useState(0);
+  /** 已选筛选：filterKey → option.value */
+  const [filterValues, setFilterValues] = useState<Record<string, string>>({});
+  const [sortValue, setSortValue] = useState('');
   const [rankBooks, setRankBooks] = useState<FanqieBook[]>([]);
   const [rankLoading, setRankLoading] = useState(false);
-  const [rankLoaded, setRankLoaded] = useState(false);
   const [rankError, setRankError] = useState('');
   const [rankPage, setRankPage] = useState(0);
   const [rankHasMore, setRankHasMore] = useState(false);
-  const [rankEndpoint, setRankEndpoint] = useState<FanqieRankEndpoint | null>(null);
-  const [rankFilter, setRankFilter] = useState('');
+  const [rankTotal, setRankTotal] = useState(0);
 
   // chapters
   const [chapters, setChapters] = useState<FanqieChapter[]>([]);
@@ -127,14 +133,18 @@ export const FanqieImportDialog: React.FC<FanqieImportDialogProps> = ({
     setBookInput('');
     setSearchResults([]);
     setSelectedBook(null);
+    setMenu([]);
+    setMenuLoading(false);
+    setGenreIndex(0);
+    setMenuIndex(0);
+    setFilterValues({});
+    setSortValue('');
     setRankBooks([]);
     setRankLoading(false);
-    setRankLoaded(false);
     setRankError('');
     setRankPage(0);
     setRankHasMore(false);
-    setRankEndpoint(null);
-    setRankFilter('');
+    setRankTotal(0);
     setChapters([]);
     setDownloadChapterIndex(0);
     setRangeStart(1);
@@ -227,48 +237,97 @@ export const FanqieImportDialog: React.FC<FanqieImportDialogProps> = ({
     }
   };
 
-  // ---------- 达人中心书单 ----------
+  // ---------- 内容库（榜单 + 筛选） ----------
 
-  /**
-   * 拉取书单。首次（或 refresh）时主进程要打开达人中心首页旁听接口，约 6 秒；
-   * 之后命中缓存模板，翻页是普通请求。
-   */
-  const loadRankBooks = useCallback(async (pageIndex: number, refresh = false) => {
-    setRankLoading(true);
+  const activeGenre = menu[genreIndex];
+  const activeMenu: FanqieMenuEntry | undefined = activeGenre?.menus[menuIndex];
+
+  /** 首次进入书单页拉一次筛选菜单（结构基本不变，会话内缓存在主进程） */
+  const loadMenu = useCallback(async (refresh = false) => {
+    setMenuLoading(true);
     setRankError('');
     try {
-      const result = await fanqieKolService.listRankBooks({ pageIndex, refresh });
-      setRankBooks(result.books);
-      setRankEndpoint(result.endpoint);
-      setRankPage(result.pageIndex);
-      setRankHasMore(result.hasMore);
-      setRankLoaded(true);
-      if (result.books.length === 0) {
-        setRankError('书单返回为空，可尝试「重新嗅探接口」');
-      }
+      const data = await fanqieKolService.getContentMenu(refresh);
+      setMenu(data);
+      setGenreIndex(0);
+      setMenuIndex(0);
+      setFilterValues({});
+      setSortValue(data[0]?.menus[0]?.sortOptions[0]?.value || '');
     } catch (err: any) {
-      setRankError(err.message || '获取书单失败');
-      setRankLoaded(true);
+      setRankError(err.message || '获取内容库筛选条件失败');
     } finally {
-      setRankLoading(false);
+      setMenuLoading(false);
     }
   }, []);
 
-  // 进入书籍步骤且停在书单页时自动加载一次
-  useEffect(() => {
-    if (step !== 'book' || bookTab !== 'rank' || rankLoaded || rankLoading) return;
-    void loadRankBooks(0);
-  }, [step, bookTab, rankLoaded, rankLoading, loadRankBooks]);
+  const loadBooks = useCallback(async (pageIndex: number) => {
+    if (!activeGenre || !activeMenu) return;
+    setRankLoading(true);
+    setRankError('');
+    try {
+      const result = await fanqieKolService.listBooks({
+        type: activeMenu.type,
+        rankId: activeMenu.rankId,
+        genre: activeGenre.genre,
+        sortKey: activeMenu.sortKey,
+        sortValue: sortValue || undefined,
+        filters: filterValues,
+        pageIndex,
+        pageSize: 20,
+      });
+      setRankBooks(result.books);
+      setRankPage(result.pageIndex);
+      setRankHasMore(result.hasMore);
+      setRankTotal(result.total);
+      if (result.books.length === 0) setRankError('当前筛选条件下没有书籍');
+    } catch (err: any) {
+      setRankError(err.message || '获取书单失败');
+    } finally {
+      setRankLoading(false);
+    }
+  }, [activeGenre, activeMenu, sortValue, filterValues]);
 
-  const filteredRankBooks = useMemo(() => {
-    const keyword = rankFilter.trim().toLowerCase();
-    if (!keyword) return rankBooks;
-    return rankBooks.filter(b =>
-      b.bookName.toLowerCase().includes(keyword)
-      || b.author.toLowerCase().includes(keyword)
-      || b.categories.some(c => c.toLowerCase().includes(keyword)),
-    );
-  }, [rankBooks, rankFilter]);
+  // 进入书单页时拉菜单
+  useEffect(() => {
+    if (step !== 'book' || bookTab !== 'rank') return;
+    if (menu.length > 0 || menuLoading) return;
+    void loadMenu();
+  }, [step, bookTab, menu.length, menuLoading, loadMenu]);
+
+  // 菜单就绪 / 切榜单 / 改筛选 / 改排序 → 回到第一页重新取
+  useEffect(() => {
+    if (step !== 'book' || bookTab !== 'rank' || !activeMenu) return;
+    void loadBooks(0);
+    // loadBooks 已经把依赖收进闭包，这里只需在筛选条件变化时触发
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, bookTab, activeGenre?.genre, activeMenu?.itemKey, filterValues, sortValue]);
+
+  /** 切榜单：筛选项各榜不同，切换时清空已选，排序回到该榜第一个选项 */
+  const handleMenuChange = (index: number) => {
+    setMenuIndex(index);
+    setFilterValues({});
+    setSortValue(activeGenre?.menus[index]?.sortOptions[0]?.value || '');
+    setSelectedBook(null);
+  };
+
+  const handleGenreChange = (index: number) => {
+    setGenreIndex(index);
+    setMenuIndex(0);
+    setFilterValues({});
+    setSortValue(menu[index]?.menus[0]?.sortOptions[0]?.value || '');
+    setSelectedBook(null);
+  };
+
+  /** 同一筛选项再点一次即取消（达人中心自己也是这个交互） */
+  const toggleFilter = (key: string, value: string) => {
+    setFilterValues(prev => {
+      const next = { ...prev };
+      if (next[key] === value) delete next[key];
+      else next[key] = value;
+      return next;
+    });
+    setSelectedBook(null);
+  };
 
   // ---------- 章节列表 ----------
 
@@ -475,74 +534,113 @@ export const FanqieImportDialog: React.FC<FanqieImportDialogProps> = ({
     );
   };
 
-  const renderRankTab = () => (
-    <div className="space-y-3">
-      <div className="flex gap-2">
-        <Input
-          prefix={<SearchOutlined className="text-text-muted" />}
-          placeholder="在当前书单中过滤书名 / 作者 / 分类"
-          value={rankFilter}
-          onChange={e => setRankFilter(e.target.value)}
-          allowClear
-        />
-        <Tooltip title="达人中心改版或书单为空时，重新嗅探书单接口">
-          <Button
-            icon={<ReloadOutlined />}
-            loading={rankLoading}
-            onClick={() => void loadRankBooks(0, true)}
-          >
-            重新嗅探
-          </Button>
-        </Tooltip>
+  const renderFilterRow = (label: string, options: Array<{ name: string; value: string }>,
+    selected: string, onPick: (value: string) => void) => (
+    <div className="flex items-start gap-2">
+      <span className="shrink-0 w-[52px] pt-0.5 text-xs text-text-tertiary text-right">{label}</span>
+      <div className="flex-1 min-w-0 flex flex-wrap gap-1">
+        {options.map(opt => {
+          const active = selected === opt.value;
+          return (
+            <button
+              key={opt.value}
+              onClick={() => onPick(opt.value)}
+              className={`px-2 h-6 text-xs rounded transition-colors cursor-pointer ${
+                active
+                  ? 'bg-accent text-on-accent'
+                  : 'text-text-secondary hover:text-accent hover:bg-accent/10'
+              }`}
+            >
+              {opt.name}
+            </button>
+          );
+        })}
       </div>
-
-      {rankEndpoint && rankEndpoint.rankParams.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1">
-          <span className="text-xs text-text-muted">当前书单：</span>
-          {rankEndpoint.rankParams.map(p => (
-            <Tag key={p.key} className="!mr-0 !text-[11px]">{p.key}={p.value}</Tag>
-          ))}
-        </div>
-      )}
-
-      {rankLoading ? (
-        <div className="py-10 flex flex-col items-center gap-3">
-          <Spin />
-          <p className="text-xs text-text-muted m-0">
-            正在从达人中心读取书单（首次需要嗅探接口，约 6 秒）…
-          </p>
-        </div>
-      ) : rankError ? (
-        <div className="py-8 text-center space-y-2">
-          <p className="text-sm text-status-warning m-0">{rankError}</p>
-          <Button size="small" onClick={() => void loadRankBooks(0, true)}>重新嗅探接口</Button>
-        </div>
-      ) : (
-        <>
-          <div className="max-h-[320px] overflow-y-auto space-y-2 pr-1">
-            {filteredRankBooks.length === 0 ? (
-              <p className="py-8 text-center text-sm text-text-muted m-0">没有匹配的书籍</p>
-            ) : (
-              filteredRankBooks.map((book, idx) =>
-                renderBookCard(book, rankFilter.trim() ? undefined : rankPage * rankBooks.length + idx + 1),
-              )
-            )}
-          </div>
-          {(rankPage > 0 || rankHasMore) && (
-            <div className="flex items-center justify-center gap-3">
-              <Button size="small" disabled={rankPage === 0} onClick={() => void loadRankBooks(rankPage - 1)}>
-                上一页
-              </Button>
-              <span className="text-xs text-text-muted">第 {rankPage + 1} 页</span>
-              <Button size="small" disabled={!rankHasMore} onClick={() => void loadRankBooks(rankPage + 1)}>
-                下一页
-              </Button>
-            </div>
-          )}
-        </>
-      )}
     </div>
   );
+
+  const renderRankTab = () => {
+    if (menuLoading) {
+      return (
+        <div className="py-10 flex flex-col items-center gap-3">
+          <Spin />
+          <p className="text-xs text-text-muted m-0">正在读取达人中心内容库筛选条件…</p>
+        </div>
+      );
+    }
+    if (menu.length === 0) {
+      return (
+        <div className="py-8 text-center space-y-2">
+          <p className="text-sm text-status-warning m-0">{rankError || '未获取到内容库筛选条件'}</p>
+          <Button size="small" onClick={() => void loadMenu(true)}>重新获取</Button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-3">
+        {/* 顶层分类（网文 / 漫画）——多于一个时才显示 */}
+        {menu.length > 1 && (
+          <Segmented
+            size="small"
+            value={genreIndex}
+            onChange={v => handleGenreChange(Number(v))}
+            options={menu.map((g, i) => ({ value: i, label: g.name }))}
+          />
+        )}
+
+        {/* 榜单入口：爆款榜 / 阅读榜 / 潜力榜 / 全部内容 */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <Segmented
+            size="small"
+            value={menuIndex}
+            onChange={v => handleMenuChange(Number(v))}
+            options={(activeGenre?.menus || []).map((m, i) => ({ value: i, label: m.name }))}
+          />
+          <Tooltip title="重新拉取达人中心的筛选条件（官方新增分类后用）">
+            <Button size="small" type="text" icon={<ReloadOutlined />} onClick={() => void loadMenu(true)} />
+          </Tooltip>
+        </div>
+
+        {/* 筛选条件 + 排序：全部来自达人中心 content/menu 接口，与官网一致 */}
+        {(activeMenu?.filters.length || activeMenu?.sortOptions.length) ? (
+          <div className="space-y-1.5 p-2 rounded-lg bg-bg-surface/60 border border-border-subtle">
+            {(activeMenu?.filters || []).map(f =>
+              <div key={f.key}>{renderFilterRow(f.name, f.options, filterValues[f.key] || '',
+                v => toggleFilter(f.key, v))}</div>)}
+            {activeMenu?.sortKey && activeMenu.sortOptions.length > 0 && (
+              renderFilterRow('排序', activeMenu.sortOptions, sortValue, v => { setSortValue(v); setSelectedBook(null); })
+            )}
+          </div>
+        ) : null}
+
+        {activeMenu?.tips && <p className="text-[11px] text-text-muted m-0">{activeMenu.tips}</p>}
+
+        {rankLoading ? (
+          <div className="py-10 flex justify-center"><Spin /></div>
+        ) : rankError ? (
+          <p className="py-8 text-center text-sm text-text-muted m-0">{rankError}</p>
+        ) : (
+          <>
+            <div className="max-h-[300px] overflow-y-auto space-y-2 pr-1">
+              {rankBooks.map((book, idx) => renderBookCard(book, rankPage * 20 + idx + 1))}
+            </div>
+            {(rankPage > 0 || rankHasMore) && (
+              <div className="flex items-center justify-center gap-3">
+                <Button size="small" disabled={rankPage === 0 || rankLoading}
+                  onClick={() => void loadBooks(rankPage - 1)}>上一页</Button>
+                <span className="text-xs text-text-muted">
+                  第 {rankPage + 1} 页{rankTotal > 0 ? ` · 共 ${rankTotal} 本` : ''}
+                </span>
+                <Button size="small" disabled={!rankHasMore || rankLoading}
+                  onClick={() => void loadBooks(rankPage + 1)}>下一页</Button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    );
+  };
 
   const renderSearchTab = () => (
     <div className="space-y-3">
@@ -575,7 +673,7 @@ export const FanqieImportDialog: React.FC<FanqieImportDialogProps> = ({
         value={bookTab}
         onChange={v => setBookTab(v as 'search' | 'rank')}
         options={[
-          { value: 'rank', label: '达人中心书单' },
+          { value: 'rank', label: '内容库 · 榜单筛选' },
           { value: 'search', label: '搜索 / 书籍 ID' },
         ]}
       />

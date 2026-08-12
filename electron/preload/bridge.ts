@@ -26,7 +26,8 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'app-kv:get', 'app-kv:set', 'app-kv:delete',
   // 番茄达人中心（书籍章节下载）
   'fanqie:getAuthStatus', 'fanqie:openLogin', 'fanqie:logout',
-  'fanqie:searchBook', 'fanqie:listRankBooks', 'fanqie:listChapters', 'fanqie:downloadChapters',
+  'fanqie:searchBook', 'fanqie:getContentMenu', 'fanqie:listBooks',
+  'fanqie:listChapters', 'fanqie:downloadChapters',
   // 通用任务系统 (settings.db)
   'tasks:list', 'tasks:get', 'tasks:upsert', 'tasks:delete', 'tasks:cancel',
   'tasks:submit',
@@ -452,12 +453,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     openLogin: () => invokeMain('fanqie:openLogin'),
     logout: () => invokeMain('fanqie:logout'),
     searchBook: (keyword: string) => invokeMain('fanqie:searchBook', { keyword }),
-    listRankBooks: (args: {
+    getContentMenu: (args?: { refresh?: boolean }) => invokeMain('fanqie:getContentMenu', args || {}),
+    listBooks: (args: {
+      type: 1 | 2;
+      rankId?: number;
+      genre?: number;
+      sortKey?: string;
+      sortValue?: string;
+      filters?: Record<string, string>;
       pageIndex?: number;
       pageSize?: number;
-      rankOverrides?: Record<string, string>;
-      refresh?: boolean;
-    }) => invokeMain('fanqie:listRankBooks', args),
+    }) => invokeMain('fanqie:listBooks', args),
     listChapters: (bookId: string) => invokeMain('fanqie:listChapters', { bookId }),
     downloadChapters: (args: {
       downloadId: string;

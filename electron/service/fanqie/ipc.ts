@@ -6,8 +6,11 @@
  *   fanqie:openLogin        ()                                    => FanqieAuthStatus(登录成功后)
  *   fanqie:logout           ()                                    => boolean
  *   fanqie:searchBook       (args: { keyword })                   => FanqieBook[]
- *   fanqie:listRankBooks    (args: { pageIndex?, pageSize?,
- *                                    rankOverrides?, refresh? })  => FanqieRankResult
+ *   fanqie:getContentMenu   (args: { refresh? })                  => FanqieContentMenu[]
+ *   fanqie:listBooks        (args: { type, rankId?, genre?,
+ *                                    sortKey?, sortValue?,
+ *                                    filters?, pageIndex?,
+ *                                    pageSize? })                 => FanqieBookListResult
  *   fanqie:listChapters     (args: { bookId })                    => FanqieChapterListResult
  *   fanqie:downloadChapters (args: { downloadId, bookId, items }) => { chapters, failed }
  *
@@ -89,21 +92,34 @@ export function registerFanqieIpc(): void {
     }
   });
 
+  ipcMain.handle('fanqie:getContentMenu', async (_event, args: { refresh?: boolean } = {}) => {
+    try {
+      return ok(await fanqieKolService.getContentMenu(args?.refresh === true));
+    } catch (err: any) {
+      return fail('CONTENT_MENU_FAILED', err?.message || String(err));
+    }
+  });
+
   ipcMain.handle(
-    'fanqie:listRankBooks',
+    'fanqie:listBooks',
     async (
       _event,
       args: {
+        type: 1 | 2;
+        rankId?: number;
+        genre?: number;
+        sortKey?: string;
+        sortValue?: string;
+        filters?: Record<string, string>;
         pageIndex?: number;
         pageSize?: number;
-        rankOverrides?: Record<string, string>;
-        refresh?: boolean;
-      } = {},
+      },
     ) => {
       try {
-        return ok(await fanqieKolService.listRankBooks(args || {}));
+        if (!args?.type) return fail('BAD_ARGS', 'type 不能为空');
+        return ok(await fanqieKolService.listBooks(args));
       } catch (err: any) {
-        return fail('RANK_LIST_FAILED', err?.message || String(err));
+        return fail('BOOK_LIST_FAILED', err?.message || String(err));
       }
     },
   );
