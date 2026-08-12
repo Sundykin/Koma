@@ -131,9 +131,31 @@ const FPS_CLASS_FIELDS: Record<string, string> = {
   VHS_VideoCombine: 'frame_rate',
 };
 
-const SIZE_CLASS_NAMES = ['EmptyLatentImage', 'EmptySD3LatentImage'];
+/**
+ * 尺寸节点：各家模型都有自己的空 latent 节点（SD3 / Flux / Flux2 …），
+ * 写死清单必漏。漏了的后果是画面比例注入不进去 —— 工作流照跑，但永远出模板里
+ * 写死的那个尺寸，用户改项目比例完全不生效，且没有任何报错。
+ */
+const SIZE_CLASS_NAMES = ['EmptyLatentImage', 'EmptySD3LatentImage', 'EmptyFlux2LatentImage'];
+/** 兜底：Empty…Latent… 命名的节点都当空 latent 处理 */
+const SIZE_CLASS_PATTERN = /^empty.*latent/i;
 const ASPECT_CLASS_NAMES = ['ResolutionSelector'];
-const SAMPLER_CLASS_NAMES = ['KSampler', 'KSamplerAdvanced', 'SamplerCustom'];
+/**
+ * 采样器：用来定位「接在 latent_image 上的那个尺寸节点」。
+ * SamplerCustomAdvanced 是 Flux / Flux2 / MiniMax H3 这类工作流的标配，漏了它
+ * 就只能退回“全图扫第一个 latent 节点”，多 latent 工作流会挑错。
+ */
+const SAMPLER_CLASS_NAMES = ['KSampler', 'KSamplerAdvanced', 'SamplerCustom', 'SamplerCustomAdvanced'];
+/**
+ * 尺寸镜像节点：自身带字面量 width/height，但只负责按尺寸推导调度参数
+ * （Flux2Scheduler 用它算 sigma shift）。改了 latent 尺寸不同步改这里，
+ * 调度器仍按旧分辨率给 sigmas，出图质量会不对。
+ */
+const SIZE_MIRROR_CLASS_NAMES = ['Flux2Scheduler'];
+
+function isSizeClass(classType: string): boolean {
+  return SIZE_CLASS_NAMES.includes(classType) || SIZE_CLASS_PATTERN.test(classType);
+}
 
 /**
  * 输出节点识别。
@@ -218,15 +240,57 @@ function scorePromptEntry(workflow: ComfyWorkflow, nodeId: string): number {
 }
 
 /** 找到 sampler 的 positive/negative 输入所连的 CLIPTextEncode */
+/**
+ * 沿 conditioning / guider 链向上找 CLIPTextEncode。
+ *
+ * Flux / Flux2 这类工作流的采样器没有 positive 输入，条件是通过 guider 传的：
+ *   SamplerCustomAdvanced.guider → BasicGuider.conditioning → FluxGuidance.conditioning → CLIPTextEncode
+ * 只认 sampler.positive 的话这类工作流一律找不到提示词节点，结果是生图永远用
+ * 模板里写死的那句提示词，用户输入完全不生效 —— 而且不报错。
+ */
+function walkToTextEncode(
+  workflow: ComfyWorkflow,
+  nodeId: string,
+  depth = 0,
+  seen = new Set<string>(),
+): string | undefined {
+  if (depth > 8 || seen.has(nodeId)) return undefined;
+  seen.add(nodeId);
+  const node = workflow[nodeId];
+  if (!node) return undefined;
+  if (node.class_type === 'CLIPTextEncode') return nodeId;
+  for (const key of ['conditioning', 'positive', 'guider']) {
+    const link = node.inputs?.[key];
+    if (isComfyLink(link)) {
+      const found = walkToTextEncode(workflow, link[0], depth + 1, seen);
+      if (found) return found;
+    }
+  }
+  return undefined;
+}
+
 function findSamplerTextNodes(workflow: ComfyWorkflow): { positiveId?: string; negativeId?: string } {
   for (const node of Object.values(workflow)) {
     if (!SAMPLER_CLASS_NAMES.includes(node.class_type)) continue;
     const positive = node.inputs?.positive;
     const negative = node.inputs?.negative;
-    const positiveId = isComfyLink(positive) ? positive[0] : undefined;
-    const negativeId = isComfyLink(negative) ? negative[0] : undefined;
-    if (positiveId && workflow[positiveId]?.class_type === 'CLIPTextEncode') {
-      return { positiveId, negativeId };
+    const negativeId = isComfyLink(negative) && workflow[negative[0]]?.class_type === 'CLIPTextEncode'
+      ? negative[0]
+      : undefined;
+
+    // 经典链路：sampler.positive 直连 CLIPTextEncode
+    if (isComfyLink(positive) && workflow[positive[0]]?.class_type === 'CLIPTextEncode') {
+      return { positiveId: positive[0], negativeId };
+    }
+    // guider 链路（Flux / Flux2）：沿 conditioning 往上走
+    const guided = isComfyLink(node.inputs?.guider)
+      ? walkToTextEncode(workflow, node.inputs.guider[0])
+      : undefined;
+    if (guided) return { positiveId: guided, negativeId };
+    // positive 是连线但中间隔了 FluxGuidance 之类的节点
+    if (isComfyLink(positive)) {
+      const viaChain = walkToTextEncode(workflow, positive[0]);
+      if (viaChain) return { positiveId: viaChain, negativeId };
     }
   }
   return {};
@@ -300,13 +364,13 @@ function detectSize(workflow: ComfyWorkflow): {
   outer: for (const [, node] of Object.entries(workflow)) {
     if (!SAMPLER_CLASS_NAMES.includes(node.class_type)) continue;
     const latent = node.inputs?.latent_image;
-    if (isComfyLink(latent) && SIZE_CLASS_NAMES.includes(workflow[latent[0]]?.class_type ?? '')) {
+    if (isComfyLink(latent) && isSizeClass(workflow[latent[0]]?.class_type ?? '')) {
       sizeId = latent[0];
       break outer;
     }
   }
   if (!sizeId) {
-    sizeId = Object.keys(workflow).find(id => SIZE_CLASS_NAMES.includes(workflow[id]?.class_type ?? ''));
+    sizeId = Object.keys(workflow).find(id => isSizeClass(workflow[id]?.class_type ?? ''));
   }
   const sizeNode = sizeId ? workflow[sizeId] : undefined;
   const sizeDimsLinked = Boolean(sizeNode && isComfyLink(sizeNode.inputs?.width));
@@ -578,8 +642,16 @@ export function applyComfyImageParams(
       const table = ratio ? GENERIC_LATENT_SIZE_2K[ratio] : undefined;
       if (table) {
         const scale = scaleFromImageSize(params.imageSize);
-        sizeNode.inputs.width = Math.round(table[0] * scale);
-        sizeNode.inputs.height = Math.round(table[1] * scale);
+        const width = Math.round(table[0] * scale);
+        const height = Math.round(table[1] * scale);
+        sizeNode.inputs.width = width;
+        sizeNode.inputs.height = height;
+        // 同步调度器上的字面量尺寸（Flux2Scheduler 按它算 sigmas）
+        for (const node of Object.values(next)) {
+          if (!SIZE_MIRROR_CLASS_NAMES.includes(node.class_type)) continue;
+          if (!isComfyLink(node.inputs?.width)) node.inputs.width = width;
+          if (!isComfyLink(node.inputs?.height)) node.inputs.height = height;
+        }
       }
     }
     const count = Math.max(1, Math.floor(Number(params.count) || 1));
