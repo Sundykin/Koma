@@ -41,6 +41,7 @@ import {
   type FanqieChapter,
   type FanqieDownloadedChapter,
   type FanqieContentMenu,
+  type FanqieFilterOption,
   type FanqieMenuEntry,
 } from '../../services/fanqieKolService';
 import { DEFAULT_THEME_PRESET_ID, getAllThemePresets, type ThemePresetCatalogItem } from '../../config/themePresets';
@@ -457,11 +458,17 @@ export const FanqieImportDialog: React.FC<FanqieImportDialogProps> = ({
   }, [open]);
 
   // ---------- 渲染 ----------
+  //
+  // 布局约定：弹窗**固定高度**，内容区自己滚。
+  // 之前是内容撑高弹窗——换榜单、改筛选、进下一步都会让整个弹窗跳一次高度，
+  // 分类有 34 个标签时更是直接顶到屏幕外。现在骨架是
+  //   Steps（固定）+ 内容区（flex-1，内部滚动）+ 操作栏（固定）
+  // 每一步只负责填内容区，操作按钮统一放到底部操作栏。
 
   const stepIndex = ['auth', 'book', 'chapters', 'download', 'project'].indexOf(step);
 
   const renderAuth = () => (
-    <div className="py-8 flex flex-col items-center gap-4">
+    <div className="h-full flex flex-col items-center justify-center gap-4">
       {busy ? (
         <Spin />
       ) : authLoggedIn ? (
@@ -480,12 +487,10 @@ export const FanqieImportDialog: React.FC<FanqieImportDialogProps> = ({
           <p className="text-xs text-text-muted m-0">
             在内置窗口中完成手机号验证码 / 密码登录，登录态会保存在本地
           </p>
+          <Button type="text" icon={<ReloadOutlined />} onClick={checkAuth}>
+            我已完成登录，重新检查
+          </Button>
         </>
-      )}
-      {!busy && !authLoggedIn && (
-        <Button type="text" icon={<ReloadOutlined />} onClick={checkAuth}>
-          我已完成登录，重新检查
-        </Button>
       )}
     </div>
   );
@@ -496,73 +501,118 @@ export const FanqieImportDialog: React.FC<FanqieImportDialogProps> = ({
       <div
         key={book.bookId}
         onClick={() => setSelectedBook(book)}
-        className={`flex gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
-          isSelected
-            ? 'border-accent bg-accent/5'
-            : 'border-border-subtle hover:border-accent/40 bg-bg-surface'
+        className={`flex gap-2.5 p-2 rounded-lg border cursor-pointer transition-all ${
+          isSelected ? 'border-accent bg-accent/5' : 'border-border-subtle hover:border-accent/40 bg-bg-surface'
         }`}
       >
         {typeof rank === 'number' && (
-          <span
-            className={`shrink-0 w-5 text-center text-sm font-semibold leading-6 ${
-              rank <= 3 ? 'text-status-warning' : 'text-text-muted'
-            }`}
-          >
-            {rank}
-          </span>
+          <span className={`shrink-0 w-5 text-center text-xs font-semibold leading-5 ${
+            rank <= 3 ? 'text-status-warning' : 'text-text-muted'
+          }`}>{rank}</span>
         )}
         {book.thumbUrl ? (
-          <img src={book.thumbUrl} alt={book.bookName} className="w-12 h-16 object-cover rounded flex-shrink-0" />
+          <img src={book.thumbUrl} alt={book.bookName} className="w-10 h-[54px] object-cover rounded shrink-0" />
         ) : (
-          <div className="w-12 h-16 rounded bg-bg-elevated flex-shrink-0" />
+          <div className="w-10 h-[54px] rounded bg-bg-elevated shrink-0" />
         )}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="font-medium text-text-primary truncate">{book.bookName}</span>
-            {book.score > 0 && <Tag color="orange" className="!mr-0">{book.score}分</Tag>}
+          <div className="flex items-center gap-1.5">
+            <span className="text-[13px] font-medium text-text-primary truncate">{book.bookName}</span>
+            {book.score > 0 && <Tag color="orange" className="!mr-0 !text-[11px] !leading-4">{book.score}分</Tag>}
           </div>
-          <div className="text-xs text-text-tertiary mt-1">
+          <div className="text-[11px] text-text-tertiary mt-0.5 truncate">
             {book.author || '佚名'}
             {book.wordNum > 0 && ` · ${(book.wordNum / 10000).toFixed(1)}万字`}
             {book.chapterNum > 0 && ` · 共${book.chapterNum}章`}
           </div>
           {book.categories.length > 0 && (
-            <div className="text-xs text-text-muted mt-0.5">{book.categories.join(' / ')}</div>
+            <div className="text-[11px] text-text-muted truncate">{book.categories.join(' / ')}</div>
           )}
         </div>
       </div>
     );
   };
 
-  const renderFilterRow = (label: string, options: Array<{ name: string; value: string }>,
-    selected: string, onPick: (value: string) => void) => (
-    <div className="flex items-start gap-2">
-      <span className="shrink-0 w-[52px] pt-0.5 text-xs text-text-tertiary text-right">{label}</span>
-      <div className="flex-1 min-w-0 flex flex-wrap gap-1">
-        {options.map(opt => {
-          const active = selected === opt.value;
-          return (
+  /**
+   * 一组筛选条件的控件。选项少用行内标签（一眼可选），多了改下拉——
+   * 分类有 34 个，全铺成标签会把筛选区撑成 4 行，正是弹窗高度失控的主因。
+   */
+  const renderFilterControl = (
+    label: string,
+    options: FanqieFilterOption[],
+    selected: string,
+    onPick: (value: string) => void,
+    clearable = true,
+  ) => {
+    if (options.length <= 3) {
+      return (
+        <div key={label} className="flex items-center gap-1">
+          <span className="text-[11px] text-text-tertiary shrink-0">{label}</span>
+          {options.map(opt => (
             <button
               key={opt.value}
               onClick={() => onPick(opt.value)}
-              className={`px-2 h-6 text-xs rounded transition-colors cursor-pointer ${
-                active
+              className={`px-1.5 h-6 text-[11px] rounded cursor-pointer transition-colors ${
+                selected === opt.value
                   ? 'bg-accent text-on-accent'
                   : 'text-text-secondary hover:text-accent hover:bg-accent/10'
               }`}
             >
               {opt.name}
             </button>
-          );
-        })}
-      </div>
+          ))}
+        </div>
+      );
+    }
+    return (
+      <Select
+        key={label}
+        size="small"
+        className="!w-[124px]"
+        placeholder={label}
+        value={selected || undefined}
+        onChange={v => onPick(v ?? '')}
+        allowClear={clearable}
+        showSearch
+        optionFilterProp="label"
+        options={options.map(o => ({ value: o.value, label: o.name }))}
+      />
+    );
+  };
+
+  /** 左栏：品类 + 榜单入口，竖排；内容多时自己滚，不影响弹窗高度 */
+  const renderRankSidebar = () => (
+    <div className="w-[104px] shrink-0 border-r border-border-subtle overflow-y-auto py-1">
+      {menu.map((g, i) => (
+        <button
+          key={g.genre}
+          onClick={() => handleGenreChange(i)}
+          className={`w-full text-left px-2.5 h-7 text-xs cursor-pointer transition-colors ${
+            i === genreIndex ? 'text-accent bg-accent/10 font-medium' : 'text-text-secondary hover:bg-bg-hover'
+          }`}
+        >
+          {g.name}
+        </button>
+      ))}
+      <div className="my-1 mx-2.5 border-t border-border-subtle" />
+      {(activeGenre?.menus || []).map((m, i) => (
+        <button
+          key={m.itemKey}
+          onClick={() => handleMenuChange(i)}
+          className={`w-full text-left px-2.5 h-7 text-xs cursor-pointer transition-colors ${
+            i === menuIndex ? 'text-accent bg-accent/10 font-medium' : 'text-text-tertiary hover:bg-bg-hover'
+          }`}
+        >
+          {m.name}
+        </button>
+      ))}
     </div>
   );
 
   const renderRankTab = () => {
     if (menuLoading) {
       return (
-        <div className="py-10 flex flex-col items-center gap-3">
+        <div className="h-full flex flex-col items-center justify-center gap-3">
           <Spin />
           <p className="text-xs text-text-muted m-0">正在读取达人中心内容库筛选条件…</p>
         </div>
@@ -570,7 +620,7 @@ export const FanqieImportDialog: React.FC<FanqieImportDialogProps> = ({
     }
     if (menu.length === 0) {
       return (
-        <div className="py-8 text-center space-y-2">
+        <div className="h-full flex flex-col items-center justify-center gap-2">
           <p className="text-sm text-status-warning m-0">{rankError || '未获取到内容库筛选条件'}</p>
           <Button size="small" onClick={() => void loadMenu(true)}>重新获取</Button>
         </div>
@@ -578,76 +628,46 @@ export const FanqieImportDialog: React.FC<FanqieImportDialogProps> = ({
     }
 
     return (
-      <div className="space-y-3">
-        {/* 顶层分类（网文 / 漫画）——多于一个时才显示 */}
-        {menu.length > 1 && (
-          <Segmented
-            size="small"
-            value={genreIndex}
-            onChange={v => handleGenreChange(Number(v))}
-            options={menu.map((g, i) => ({ value: i, label: g.name }))}
-          />
-        )}
+      <div className="h-full flex min-h-0">
+        {renderRankSidebar()}
 
-        {/* 榜单入口：爆款榜 / 阅读榜 / 潜力榜 / 全部内容 */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <Segmented
-            size="small"
-            value={menuIndex}
-            onChange={v => handleMenuChange(Number(v))}
-            options={(activeGenre?.menus || []).map((m, i) => ({ value: i, label: m.name }))}
-          />
-          <Tooltip title="重新拉取达人中心的筛选条件（官方新增分类后用）">
-            <Button size="small" type="text" icon={<ReloadOutlined />} onClick={() => void loadMenu(true)} />
-          </Tooltip>
-        </div>
-
-        {/* 筛选条件 + 排序：全部来自达人中心 content/menu 接口，与官网一致 */}
-        {(activeMenu?.filters.length || activeMenu?.sortOptions.length) ? (
-          <div className="space-y-1.5 p-2 rounded-lg bg-bg-surface/60 border border-border-subtle">
+        <div className="flex-1 min-w-0 flex flex-col">
+          {/* 筛选栏：固定不滚，控件按选项数量自适应，高度稳定 */}
+          <div className="shrink-0 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 px-3 py-2 border-b border-border-subtle">
             {(activeMenu?.filters || []).map(f =>
-              <div key={f.key}>{renderFilterRow(f.name, f.options, filterValues[f.key] || '',
-                v => toggleFilter(f.key, v))}</div>)}
-            {activeMenu?.sortKey && activeMenu.sortOptions.length > 0 && (
-              renderFilterRow('排序', activeMenu.sortOptions, sortValue, v => { setSortValue(v); setSelectedBook(null); })
-            )}
+              renderFilterControl(f.name, f.options, filterValues[f.key] || '', v => toggleFilter(f.key, v)))}
+            {activeMenu?.sortKey && activeMenu.sortOptions.length > 0 &&
+              renderFilterControl('排序', activeMenu.sortOptions, sortValue,
+                v => { setSortValue(v); setSelectedBook(null); }, false)}
+            <Tooltip title="重新拉取达人中心筛选条件（官方新增分类后用）">
+              <Button size="small" type="text" className="!ml-auto" icon={<ReloadOutlined />}
+                onClick={() => void loadMenu(true)} />
+            </Tooltip>
           </div>
-        ) : null}
 
-        {activeMenu?.tips && <p className="text-[11px] text-text-muted m-0">{activeMenu.tips}</p>}
-
-        {rankLoading ? (
-          <div className="py-10 flex justify-center"><Spin /></div>
-        ) : rankError ? (
-          <p className="py-8 text-center text-sm text-text-muted m-0">{rankError}</p>
-        ) : (
-          <>
-            <div className="max-h-[300px] overflow-y-auto space-y-2 pr-1">
-              {rankBooks.map((book, idx) => renderBookCard(book, rankPage * 20 + idx + 1))}
-            </div>
-            {(rankPage > 0 || rankHasMore) && (
-              <div className="flex items-center justify-center gap-3">
-                <Button size="small" disabled={rankPage === 0 || rankLoading}
-                  onClick={() => void loadBooks(rankPage - 1)}>上一页</Button>
-                <span className="text-xs text-text-muted">
-                  第 {rankPage + 1} 页{rankTotal > 0 ? ` · 共 ${rankTotal} 本` : ''}
-                </span>
-                <Button size="small" disabled={!rankHasMore || rankLoading}
-                  onClick={() => void loadBooks(rankPage + 1)}>下一页</Button>
+          {/* 书籍列表：唯一的滚动区 */}
+          <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2">
+            {rankLoading ? (
+              <div className="h-full flex items-center justify-center"><Spin /></div>
+            ) : rankError ? (
+              <p className="pt-10 text-center text-sm text-text-muted m-0">{rankError}</p>
+            ) : (
+              <div className="space-y-1.5">
+                {rankBooks.map((book, idx) => renderBookCard(book, rankPage * 20 + idx + 1))}
               </div>
             )}
-          </>
-        )}
+          </div>
+        </div>
       </div>
     );
   };
 
   const renderSearchTab = () => (
-    <div className="space-y-3">
-      <div className="flex gap-2">
+    <div className="h-full flex flex-col px-1">
+      <div className="shrink-0 flex gap-2 py-2">
         <Input
           prefix={<LinkOutlined className="text-text-muted" />}
-          placeholder="如 https://kol.fanqieopen.com/page/content/book-detail?…&book_id=7590221243043826712 或书籍 ID / 书名"
+          placeholder="书名 / 书籍 ID / 达人中心书籍详情页链接"
           value={bookInput}
           onChange={e => setBookInput(e.target.value)}
           onPressEnter={handleSearchBook}
@@ -657,41 +677,31 @@ export const FanqieImportDialog: React.FC<FanqieImportDialogProps> = ({
           搜索
         </Button>
       </div>
-
-      {searchResults.length > 0 && (
-        <div className="max-h-[320px] overflow-y-auto space-y-2 pr-1">
-          {searchResults.map(book => renderBookCard(book))}
-        </div>
-      )}
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        {searchResults.length === 0 ? (
+          <p className="pt-16 text-center text-sm text-text-muted m-0">输入书名或书籍 ID 后回车搜索</p>
+        ) : (
+          <div className="space-y-1.5 pb-2">{searchResults.map(book => renderBookCard(book))}</div>
+        )}
+      </div>
     </div>
   );
 
   const renderBook = () => (
-    <div className="space-y-4">
-      <Segmented
-        block
-        value={bookTab}
-        onChange={v => setBookTab(v as 'search' | 'rank')}
-        options={[
-          { value: 'rank', label: '内容库 · 榜单筛选' },
-          { value: 'search', label: '搜索 / 书籍 ID' },
-        ]}
-      />
-
-      {bookTab === 'rank' ? renderRankTab() : renderSearchTab()}
-
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-text-muted truncate">
-          {selectedBook ? `已选：《${selectedBook.bookName}》` : '请选择一本书'}
-        </span>
-        <Button
-          type="primary"
-          disabled={!selectedBook}
-          loading={busy}
-          onClick={handleLoadChapters}
-        >
-          获取章节列表
-        </Button>
+    <div className="h-full flex flex-col min-h-0">
+      <div className="shrink-0 pb-2">
+        <Segmented
+          block
+          value={bookTab}
+          onChange={v => setBookTab(v as 'search' | 'rank')}
+          options={[
+            { value: 'rank', label: '内容库 · 榜单筛选' },
+            { value: 'search', label: '搜索 / 书籍 ID' },
+          ]}
+        />
+      </div>
+      <div className="flex-1 min-h-0 rounded-lg border border-border-subtle overflow-hidden">
+        {bookTab === 'rank' ? renderRankTab() : renderSearchTab()}
       </div>
     </div>
   );
@@ -699,70 +709,51 @@ export const FanqieImportDialog: React.FC<FanqieImportDialogProps> = ({
   const renderChapters = () => {
     const downloadableCount = chapters.filter(c => c.downloadable).length;
     return (
-      <div className="space-y-4">
-        <div className="p-3 rounded-lg bg-status-info/10 text-sm text-text-secondary">
+      <div className="h-full flex flex-col min-h-0 gap-3">
+        <div className="shrink-0 p-2.5 rounded-lg bg-status-info/10 text-xs text-text-secondary">
           《{selectedBook?.bookName}》共 {chapters.length} 章，其中可推广章节 {downloadableCount} 章
           （第 1 ~ {downloadChapterIndex} 章），仅可推广章节可下载正文。
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="shrink-0 flex items-center gap-3">
           <span className="text-sm text-text-secondary whitespace-nowrap">下载范围</span>
-          <InputNumber
-            min={1}
-            max={downloadChapterIndex}
-            value={rangeStart}
-            onChange={v => setRangeStart(Math.min(v || 1, rangeEnd))}
-          />
+          <InputNumber min={1} max={downloadChapterIndex} value={rangeStart}
+            onChange={v => setRangeStart(Math.min(v || 1, rangeEnd))} />
           <span className="text-text-muted">至</span>
-          <InputNumber
-            min={rangeStart}
-            max={downloadChapterIndex}
-            value={rangeEnd}
-            onChange={v => setRangeEnd(Math.max(v || downloadChapterIndex, rangeStart))}
-          />
+          <InputNumber min={rangeStart} max={downloadChapterIndex} value={rangeEnd}
+            onChange={v => setRangeEnd(Math.max(v || downloadChapterIndex, rangeStart))} />
           <span className="text-xs text-text-muted">共 {selectedChapters.length} 章</span>
         </div>
 
-        <div className="max-h-[200px] overflow-y-auto rounded-lg border border-border-subtle p-2">
+        <div className="flex-1 min-h-0 overflow-y-auto rounded-lg border border-border-subtle p-2">
           <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-            {selectedChapters.slice(0, 100).map(c => (
+            {selectedChapters.slice(0, 200).map(c => (
               <div key={c.itemId} className="text-xs text-text-tertiary truncate px-1 py-0.5" title={c.chapterName}>
                 {c.chapterName}
               </div>
             ))}
-            {selectedChapters.length > 100 && (
+            {selectedChapters.length > 200 && (
               <div className="text-xs text-text-muted px-1 py-0.5">… 等 {selectedChapters.length} 章</div>
             )}
           </div>
-        </div>
-
-        <div className="flex justify-between">
-          <Button onClick={() => setStep('book')}>上一步</Button>
-          <Button
-            type="primary"
-            icon={<ThunderboltOutlined />}
-            disabled={selectedChapters.length === 0}
-            onClick={handleDownload}
-          >
-            下载 {selectedChapters.length} 章正文
-          </Button>
         </div>
       </div>
     );
   };
 
   const renderDownload = () => (
-    <div className="py-6 space-y-4">
+    <div className="h-full flex flex-col items-center justify-center gap-3">
       <Progress
+        className="!w-[70%]"
         percent={downloadTotal > 0 ? Math.round((downloadCompleted / downloadTotal) * 100) : 0}
         status={downloadFailed.length > 0 ? 'exception' : 'active'}
       />
-      <p className="text-center text-sm text-text-secondary m-0">
+      <p className="text-sm text-text-secondary m-0">
         已下载 {downloadCompleted} / {downloadTotal} 章
         {downloadCurrent ? ` · 刚完成：${downloadCurrent}` : ''}
       </p>
       {downloadFailed.length > 0 && (
-        <p className="text-center text-xs text-status-warning m-0">
+        <p className="text-xs text-status-warning m-0">
           {downloadFailed.length} 章失败（将自动重试，仍失败则跳过）
         </p>
       )}
@@ -770,8 +761,8 @@ export const FanqieImportDialog: React.FC<FanqieImportDialogProps> = ({
   );
 
   const renderProject = () => (
-    <div className="space-y-4">
-      <div className="p-3 rounded-lg bg-status-success/10 text-sm text-text-secondary">
+    <div className="h-full overflow-y-auto space-y-4 pr-1">
+      <div className="p-2.5 rounded-lg bg-status-success/10 text-xs text-text-secondary">
         已下载 {downloaded.length} 章（约 {Math.round(mergedScript.length / 10000)} 万字）
         {downloadFailed.length > 0 && `，${downloadFailed.length} 章失败已跳过`}
         。确认项目设置后，将创建项目并进入 AI 自动分集。
@@ -817,20 +808,61 @@ export const FanqieImportDialog: React.FC<FanqieImportDialogProps> = ({
           placeholder="选择视觉风格预设"
         />
       </div>
-
-      <div className="flex justify-end">
-        <Button
-          type="primary"
-          icon={<ThunderboltOutlined />}
-          loading={busy}
-          disabled={!projectTitle.trim()}
-          onClick={handleCreateProject}
-        >
-          创建项目并自动分集
-        </Button>
-      </div>
     </div>
   );
+
+  /** 底部操作栏：每步的主按钮与状态都收在这里，位置固定不跳 */
+  const renderFooter = () => {
+    if (step === 'book') {
+      return (
+        <>
+          <span className="text-xs text-text-muted truncate min-w-0">
+            {selectedBook ? `已选：《${selectedBook.bookName}》` : '请选择一本书'}
+          </span>
+          <div className="flex items-center gap-2 shrink-0">
+            {bookTab === 'rank' && (rankPage > 0 || rankHasMore) && (
+              <>
+                <Button size="small" disabled={rankPage === 0 || rankLoading}
+                  onClick={() => void loadBooks(rankPage - 1)}>上一页</Button>
+                <span className="text-xs text-text-muted whitespace-nowrap">
+                  第 {rankPage + 1} 页{rankTotal > 0 ? ` · 共 ${rankTotal} 本` : ''}
+                </span>
+                <Button size="small" disabled={!rankHasMore || rankLoading}
+                  onClick={() => void loadBooks(rankPage + 1)}>下一页</Button>
+              </>
+            )}
+            <Button type="primary" disabled={!selectedBook} loading={busy} onClick={handleLoadChapters}>
+              获取章节列表
+            </Button>
+          </div>
+        </>
+      );
+    }
+    if (step === 'chapters') {
+      return (
+        <>
+          <Button onClick={() => setStep('book')}>上一步</Button>
+          <Button type="primary" icon={<ThunderboltOutlined />}
+            disabled={selectedChapters.length === 0} onClick={handleDownload}>
+            下载 {selectedChapters.length} 章正文
+          </Button>
+        </>
+      );
+    }
+    if (step === 'project') {
+      return (
+        <>
+          <span className="text-xs text-text-muted">下载完成，确认设置后创建项目</span>
+          <Button type="primary" icon={<ThunderboltOutlined />} loading={busy}
+            disabled={!projectTitle.trim()} onClick={handleCreateProject}>
+            创建项目并自动分集
+          </Button>
+        </>
+      );
+    }
+    // auth / download 这两步没有主动作，留空占位保持底栏高度一致
+    return <span className="text-xs text-text-muted">&nbsp;</span>;
+  };
 
   return (
     <>
@@ -839,29 +871,40 @@ export const FanqieImportDialog: React.FC<FanqieImportDialogProps> = ({
         open={open && step !== 'split'}
         onCancel={onClose}
         footer={null}
-        width={720}
+        width={900}
         centered
         mask={{ closable: false }}
         destroyOnHidden
+        styles={{ body: { padding: 0 } }}
       >
-        <Steps
-          size="small"
-          current={stepIndex < 0 ? 4 : stepIndex}
-          items={[
-            { title: '登录' },
-            { title: '书籍' },
-            { title: '章节' },
-            { title: '下载' },
-            { title: '项目' },
-          ]}
-          className="mb-6"
-        />
+        {/* 固定高度骨架：Steps + 内容区（内部滚动）+ 操作栏 */}
+        <div className="flex flex-col h-[560px]">
+          <div className="shrink-0 px-6 pt-4 pb-3">
+            <Steps
+              size="small"
+              current={stepIndex < 0 ? 4 : stepIndex}
+              items={[
+                { title: '登录' },
+                { title: '书籍' },
+                { title: '章节' },
+                { title: '下载' },
+                { title: '项目' },
+              ]}
+            />
+          </div>
 
-        {step === 'auth' && renderAuth()}
-        {step === 'book' && renderBook()}
-        {step === 'chapters' && renderChapters()}
-        {step === 'download' && renderDownload()}
-        {step === 'project' && renderProject()}
+          <div className="flex-1 min-h-0 px-6">
+            {step === 'auth' && renderAuth()}
+            {step === 'book' && renderBook()}
+            {step === 'chapters' && renderChapters()}
+            {step === 'download' && renderDownload()}
+            {step === 'project' && renderProject()}
+          </div>
+
+          <div className="shrink-0 flex items-center justify-between gap-3 px-6 py-3 mt-3 border-t border-border-subtle">
+            {renderFooter()}
+          </div>
+        </div>
       </Modal>
 
       {/* AI 自动分集：复用现有向导。
