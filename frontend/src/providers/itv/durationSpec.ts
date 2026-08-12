@@ -139,6 +139,9 @@ const ITV_DURATION_SPECS_BY_PROVIDER: Record<string, VideoDurationSpec> = {
   'koma-suihe-itv': { kind: 'range', min: 4, max: 15, step: 1, default: 5 },
   // 旧的独立 seedance（直连 toapis.com）保留映射，避免回归
   'seedance': { kind: 'range', min: 4, max: 15, step: 1, default: 5 },
+  // ComfyUI：时长完全由工作流决定，没有统一上游约束。给宽区间兜底——
+  // 落到 grok 的 6/12/16/20 枚举会让用户看到一个跟自己工作流毫无关系的下拉。
+  'comfyui-itv': { kind: 'range', min: 4, max: 30, step: 1, default: 5 },
 };
 
 /**
@@ -250,6 +253,26 @@ export function buildDurationSpecFromModelDefaults(
  * 优先级：模型 defaults 显式配置 > modelId 前缀 > providerType > DEFAULT。
  * 调用方负责异步拿到 channels；这里是同步纯函数便于 React 渲染。
  */
+/**
+ * 时长 spec 的**唯一**解析入口。
+ *
+ * 优先级：模型 defaults 显式配置 > modelId 前缀 > providerType > DEFAULT。
+ *
+ * 必须只有这一处实现：此前分镜分析走的是「先读 defaults」的完整链路，而
+ * Storyboard / App / 灵绘三处 UI 各自手写成 `byModel ?? byProviderType`，
+ * 漏掉了 defaults 这一层 —— 自建 ComfyUI 渠道明明配了 5–15 秒，UI 却回落到
+ * grok 的 6/12/16/20 枚举，还会按它 clamp 掉用户存的时长。
+ */
+export function resolveItvDurationSpec(input: {
+  modelDefaults?: Record<string, unknown> | null;
+  modelId?: string;
+  providerType?: string;
+}): VideoDurationSpec {
+  return buildDurationSpecFromModelDefaults(input.modelDefaults)
+    ?? getDurationSpecForModel(input.modelId)
+    ?? getDurationSpecForProviderType(input.providerType);
+}
+
 export function getDurationSpecForITVSelection(
   selectionKey: string | undefined | null,
   channels: ReadonlyArray<ChannelLookupEntry>,
@@ -263,13 +286,12 @@ export function getDurationSpecForITVSelection(
   const model = modelId
     ? channel?.models?.find((m) => m.id === modelId || m.providerModelName === modelId)
     : undefined;
-  const fromModelDefaults = buildDurationSpecFromModelDefaults(model?.defaults);
-  if (fromModelDefaults) return fromModelDefaults;
 
-  const byModel = getDurationSpecForModel(modelId);
-  if (byModel) return byModel;
-
-  return getDurationSpecForProviderType(channel?.providerType);
+  return resolveItvDurationSpec({
+    modelDefaults: model?.defaults,
+    modelId,
+    providerType: channel?.providerType,
+  });
 }
 
 function coerceFiniteNumber(value: unknown): number | undefined {

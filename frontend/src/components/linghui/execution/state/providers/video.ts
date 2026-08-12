@@ -3,8 +3,7 @@ import { getProjectITVProvider } from '../../../../../providers';
 import { listCapabilityFallbackCandidates, resolveConfiguredChannelModel } from '../../../../../providers/channel/resolver';
 import {
   clampDurationToSpec,
-  getDurationSpecForModel,
-  getDurationSpecForProviderType,
+  resolveItvDurationSpec,
 } from '../../../../../providers/itv/durationSpec';
 import type { ITVResult } from '../../../../../providers/itv/types';
 import {
@@ -94,7 +93,11 @@ async function executeVideoProviderAttempt(
   const commonOptions = {
     duration: clampDurationToSpec(
       params.duration,
-      getDurationSpecForModel(candidate.modelId) ?? getDurationSpecForProviderType(candidate.providerType),
+      resolveItvDurationSpec({
+        modelDefaults: candidate.modelDefaults,
+        modelId: candidate.modelId,
+        providerType: candidate.providerType,
+      }),
     ),
     aspectRatio: params.aspectRatio,
     resolution: params.resolution,

@@ -53,8 +53,7 @@ import {
 import { resolveConfiguredChannelModel } from '../../providers/channel/resolver';
 import {
   clampDurationToSpec,
-  getDurationSpecForModel,
-  getDurationSpecForProviderType,
+  resolveItvDurationSpec,
   specToInputBounds,
 } from '../../providers/itv/durationSpec';
 import { supportsReferenceKind } from '../../providers/itv/referenceCapabilities';
@@ -416,8 +415,13 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   const itvDurationSpec = useMemo(() => {
     const ctx = resolveConfiguredChannelModel(effectiveSettings, 'itv', itvSelection);
     return (
-      getDurationSpecForModel(ctx?.model.id)
-      ?? getDurationSpecForProviderType(ctx?.channelConfig.providerType)
+      resolveItvDurationSpec({
+        // 关键：先读模型 defaults 的 durationMin/Max —— 自建渠道（ComfyUI 等）的
+        // 时长能力只在这里声明，漏了就会回落成 grok 的 6/12/16/20 枚举
+        modelDefaults: ctx?.model.defaults,
+        modelId: ctx?.model.id,
+        providerType: ctx?.channelConfig.providerType,
+      })
     );
   }, [effectiveSettings, itvSelection]);
 

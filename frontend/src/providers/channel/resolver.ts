@@ -54,6 +54,8 @@ export interface ProviderFallbackCandidate {
   modelLabel: string;
   providerType: string;
   capabilities: ModelCapability[];
+  /** 模型 defaults：时长 spec 等能力声明只在这里，解析时长必须读它 */
+  modelDefaults?: Record<string, unknown>;
 }
 
 export interface ResolvedChannelModelWithFallback {
@@ -381,6 +383,7 @@ export function listCapabilityFallbackCandidates(
     modelLabel: item.model.label,
     providerType: item.definition.runtimeProviderType || item.channelConfig.providerType,
     capabilities: item.model.capabilities,
+    modelDefaults: item.model.defaults,
   }));
 
   const normalizedPreferred = typeof preferredSelection === 'string'

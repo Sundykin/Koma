@@ -38,8 +38,7 @@ import { loadSettings } from './store/globalStore';
 import { listEditorStepIds } from './workflow/editorStepRegistry';
 import { resolveConfiguredChannelModel, serializeMediaSelection } from './providers/channel/resolver';
 import {
-  getDurationSpecForModel,
-  getDurationSpecForProviderType,
+  resolveItvDurationSpec,
 } from './providers/itv/durationSpec';
 
 
@@ -164,8 +163,11 @@ const AppContent: React.FC = () => {
     const itvSelection = serializeMediaSelection(activeProject.mediaSelections?.itv);
     const ctx = resolveConfiguredChannelModel(appSettings, 'itv', itvSelection);
     return (
-      getDurationSpecForModel(ctx?.model.id)
-      ?? getDurationSpecForProviderType(ctx?.channelConfig.providerType)
+      resolveItvDurationSpec({
+        modelDefaults: ctx?.model.defaults,
+        modelId: ctx?.model.id,
+        providerType: ctx?.channelConfig.providerType,
+      })
     );
   }, [activeProject, appSettings]);
 
