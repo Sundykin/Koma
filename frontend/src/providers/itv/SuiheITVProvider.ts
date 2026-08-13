@@ -1,19 +1,17 @@
 /**
  * Koma 官方 - 即梦（Koma 即梦上游）ITV Provider
  *
- * 协议对齐 new-api 网关 (relay/channel/task/suihe/adaptor.go)：
- *   - 客户端发 **OpenAI 标准视频 API** JSON（prompt / model / seconds / size / images / metadata）
- *   - 网关把 OpenAI 标准字段转成Koma 即梦上游 multipart（first_frame、ratio、video_resolution 等）
- *   - 客户端**不需要**发 multipart / 不要构造Koma 即梦 raw 字段
+ * 协议：multipart/form-data 直传（推荐入口）。
+ *   POST /v1/videos/generations   创建任务（表单直传常见 202，JSON 分支常见 200）
+ *   GET  /v1/tasks/{task_id}      轮询任务，终态从 result_urls 取成片
  *
- * 上游路径（OpenAI 视频 API 标准，与 sora2 一致）：
- *   POST /v1/videos              创建任务
- *   GET  /v1/videos/{id}         查询任务（响应 OpenAIVideo：id / status / progress / metadata.url）
+ * 素材一律随表单直传原始文件，由上游完成中转 —— **不再依赖图床**：
+ *   - 首尾帧：first_frame / end_frame
+ *   - 全能参考：image_file[_N] / video_file[_N] / audio_file[_N]
+ *   - 已经是公网 http(s) 链接的素材，字段值直接传字符串，上游自行拉取
  *
- * 字段约定：
- *   - 时长字段使用 OpenAI 标准的 `seconds`（字符串），new-api 内部会换算为Koma 即梦 duration（int）。
- *   - 结果 URL 从响应的 metadata.url / metadata.result_urls[0] 读取（OpenAIVideo 把上游的
- *     result_urls 透传到了 metadata，不在顶层）。
+ * 注意：受理响应里的 `id` 可能是 cgt- 前缀形态，不能当 /v1/tasks/{task_id} 的路径参数，
+ * 必须用同响应里的 `task_id`（UUID）。
  *
  * 模型：
  *   - seedance-2.0       duration 4-15 s
@@ -34,6 +32,7 @@ import { createLogger } from '../../store/logger';
 import { sanitizeBodyForLog } from '../../utils/logFormatting';
 import { safeFetch } from '../../utils/safeFetch';
 import { buildChannelAuthRequest } from '../channel/auth';
+import { extFromMime, fetchReferenceBytes } from '../utils/referenceAssets';
 import {
   assertSupportedVideoCapabilities,
   type ITVProvider,
@@ -82,6 +81,31 @@ const MODEL_DURATION_MAX: Record<string, number> = {
 
 function joinUrl(base: string, path: string): string {
   return `${base.replace(/\/+$/, '')}${path.startsWith('/') ? path : `/${path}`}`;
+}
+
+/**
+ * video_resolution：接受 480p/720p/1080p/2k/4k 直传；WxH 按高度归档；识别不了给 720p。
+ * 与穗禾直连 provider 同一口径，两个渠道行为保持一致。
+ */
+function normalizeSuiheResolution(value?: string): string {
+  const raw = String(value || '').trim().toLowerCase();
+  if (/^(480p|720p|1080p|2k|4k)$/.test(raw)) return raw;
+  const matched = raw.match(/^(\d{2,5})x(\d{2,5})$/);
+  if (matched) {
+    const height = Number(matched[2]);
+    if (height <= 480) return '480p';
+    if (height <= 720) return '720p';
+    return '1080p';
+  }
+  return '720p';
+}
+
+/**
+ * 是否支持全能参考（image_file* / video_file* / audio_file*）。
+ * seedance-1.5-pro 只支持首尾帧，传全能参考字段会被忽略或报错。
+ */
+function modelSupportsOmniReference(model: string): boolean {
+  return !/^seedance-1\.5-pro/i.test(String(model || '').trim());
 }
 
 // Koma 即梦上游接受的比例白名单（来自 400 错误响应 supported 字段）
@@ -197,49 +221,63 @@ export class SuiheITVProvider implements ITVProvider {
   }
 
   /**
-   * 音色参考音频 → 公网 URL 列表：remote-url 直传；data-url 解字节后上传图床
-   * （与图片同一 komaapi 上传通道，wav/mp3 均可）。单条失败跳过不影响整体。
+   * 参考素材 → multipart 表单值。
+   *
+   * 两种形态都由上游直接接受，所以不再需要图床中转：
+   *  - 已经是公网 http(s) 链接 → 原样作为字符串字段值（上游直接拉取）
+   *  - 本地素材（data URL）→ 取字节作为文件字段直传，由上游完成中转
+   * 取字节失败只跳过该条，不影响整个任务。
    */
-  /**
-   * 把本地素材（data URL）传图床换成公网 URL，远程 URL 原样透传。
-   * 音色参考（audio_urls）和上一镜延长参考（video_urls）共用这条路径。
-   */
-  private async resolveMediaReferenceUrls(
-    refs: Array<{ transport?: string; value?: string; mimeType?: string }>,
-    kind: 'audio' | 'video',
-  ): Promise<string[]> {
-    const urls: string[] = [];
-    for (const ref of refs.slice(0, 3)) {
-      const value = ref?.value;
-      if (!value) continue;
-      if (ref.transport === 'remote-url' || /^https?:\/\//i.test(value)) {
-        urls.push(value);
-        continue;
-      }
-      if (!value.startsWith('data:')) continue;
-      try {
-        const { uploadBytesToImageHostingWithRetry } = await import('../../services/imageHostingService');
-        const { parseDataUrl } = await import('../../utils/encoding');
-        const { mimeType, bytes } = parseDataUrl(value);
-        const resolvedMime = mimeType || ref.mimeType || (kind === 'video' ? 'video/mp4' : 'audio/wav');
-        const ext = kind === 'video'
-          ? (resolvedMime.includes('webm') ? 'webm' : 'mp4')
-          : (resolvedMime.includes('mpeg') ? 'mp3' : 'wav');
-        const result = await uploadBytesToImageHostingWithRetry(bytes, {
-          filename: `koma-${kind}-ref-${Date.now()}.${ext}`,
-        });
-        if (result?.success && result.url) {
-          urls.push(result.url);
-        } else {
-          logger.warn(`${kind === 'video' ? '延长参考视频' : '音色参考音频'}上传图床失败，跳过`, { error: result?.error });
-        }
-      } catch (error) {
-        logger.warn(`${kind === 'video' ? '延长参考视频' : '音色参考音频'}上传图床异常，跳过`, {
-          error: error instanceof Error ? error.message : String(error),
-        });
+  private async toFormValue(
+    ref: { transport?: string; value?: string; mimeType?: string } | undefined,
+    kind: 'image' | 'video' | 'audio',
+    label: string,
+  ): Promise<string | Blob | undefined> {
+    const value = ref?.value;
+    if (!value) return undefined;
+    if (ref?.transport === 'remote-url' || /^https?:\/\//i.test(value)) {
+      return value;
+    }
+    try {
+      const { bytes, mimeType } = await fetchReferenceBytes({
+        transport: ref?.transport || 'data-url',
+        value,
+        mimeType: ref?.mimeType,
+      });
+      const resolvedMime = mimeType
+        || (kind === 'video' ? 'video/mp4' : kind === 'audio' ? 'audio/wav' : 'image/png');
+      return new Blob([bytes as BlobPart], { type: resolvedMime });
+    } catch (error) {
+      logger.warn(`${label} 读取失败，已跳过`, {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return undefined;
+    }
+  }
+
+  /** 把一组素材按 field / field_2 / field_3 … 的命名规则塞进表单 */
+  private async appendRefs(
+    form: FormData,
+    refs: Array<{ transport?: string; value?: string; mimeType?: string } | undefined>,
+    baseField: string,
+    kind: 'image' | 'video' | 'audio',
+    max: number,
+  ): Promise<number> {
+    let index = 0;
+    for (const ref of refs) {
+      if (index >= max) break;
+      const value = await this.toFormValue(ref, kind, baseField);
+      if (value === undefined) continue;
+      index += 1;
+      // 主素材字段不带序号，附加素材从 _2 开始（与接口文档一致）
+      const field = index === 1 ? baseField : `${baseField}_${index}`;
+      if (typeof value === 'string') {
+        form.append(field, value);
+      } else {
+        form.append(field, value, `${baseField}-${index}.${extFromMime(value.type)}`);
       }
     }
-    return urls;
+    return index;
   }
 
   async start(request: ITVRequest): Promise<ProviderStartResult<ITVResult>> {
@@ -254,146 +292,91 @@ export class SuiheITVProvider implements ITVProvider {
     const options = request.options as ITVOptions | undefined;
     const model = this.getModelName();
     const duration = clampDuration(model, options?.duration ?? this.config.defaultDuration, 5);
-    // 必须先归一到 Koma 即梦白名单比例，再用它选 size —— 避免 size→ratio 落到 240:427 等非白名单值
     const ratio = normalizeSuiheRatio(options?.aspectRatio);
-    const size = pickSize(ratio);
+    const resolution = normalizeSuiheResolution(options?.resolution ?? this.config.defaultResolution);
 
-    // OpenAI 视频 API 标准用 `seconds`（字符串）；new-api 内部会回填到 duration。
-    const body: Record<string, unknown> = {
-      model,
-      prompt: String(request.prompt || '').trim(),
-      seconds: String(duration),
-      size,
-    };
+    const form = new FormData();
+    form.append('model', model);
+    form.append('prompt', String(request.prompt || '').trim());
+    form.append('ratio', ratio);
+    form.append('duration', String(duration));
+    form.append('video_resolution', resolution);
+    // creative_mode 一律省略：480p 服务端默认 native，高于 480p 默认 super_economy；
+    // 且 sora-v3-933-pro / seedance-1.5-pro 明确不接受该参数，省略最省事也最安全。
 
-    // 读 koma-jimeng 协议编译器拆好的按 kind 的 URL 列表（仅 koma-jimeng 协议下有值），
-    // 优先走分类透传：网关分发到 image_file_N / video_file_N / audio_file_N。
+    // koma-jimeng 协议编译器按 kind 拆好的素材（提示词里的 @image_file_N 等占位符与此一一对应）
     const komaAssets = (request.metadata?.komaJimengAssets ?? null) as
       | { image_urls?: string[]; video_urls?: string[]; audio_urls?: string[] }
       | null;
-    const hasKomaClassified = Boolean(
-      komaAssets
-      && ((komaAssets.image_urls?.length ?? 0)
-        + (komaAssets.video_urls?.length ?? 0)
-        + (komaAssets.audio_urls?.length ?? 0) > 0),
-    );
+    const asRefs = (values?: string[]) => (values || []).map(value => ({ value }));
 
-    // 老路径（grok-image-index 协议或仅图场景）：所有引用图汇总到 images[]，
-    // function_mode 告诉网关走哪条 multipart 字段路径（first_frame / omni_reference /
-    // first_last_frames）。
-    const seenUrls = new Set<string>();
-    const imageUrls: string[] = [];
-    const pushUrl = (value?: string) => {
-      if (!value || seenUrls.has(value)) return;
-      if (imageUrls.length >= SUIHE_MAX_REFERENCE_IMAGES) return;
-      seenUrls.add(value);
-      imageUrls.push(value);
-    };
+    type MediaRef = { transport?: string; value?: string; mimeType?: string };
+    const voiceRefs = (request.metadata?.komaVoiceReferences as MediaRef[] | undefined) ?? [];
+    const videoRefs = (request.metadata?.komaVideoReferences as MediaRef[] | undefined) ?? [];
 
+    const supportsOmni = modelSupportsOmniReference(model);
     let functionMode: string | undefined;
-    if (request.capability === 'video.image-to-video') {
-      pushUrl(request.primaryImage?.value);
-      for (const ref of request.additionalReferences || []) pushUrl(ref?.value);
-      functionMode = 'first_frame';
-    } else if (request.capability === 'video.reference-to-video') {
-      for (const ref of request.referenceImages || []) pushUrl(ref?.value);
-      if (imageUrls.length > 0 || hasKomaClassified) functionMode = 'omni_reference';
-    } else if (request.capability === 'video.start-end-to-video') {
-      pushUrl(request.startFrame?.value);
+    let imageCount = 0;
+
+    if (!supportsOmni && request.capability !== 'video.text-to-video') {
+      // seedance-1.5-pro 只支持首尾帧：传 image_file*/video_file*/audio_file* 会被忽略或报错
+      const first = request.primaryImage ?? request.startFrame ?? request.referenceImages?.[0];
+      imageCount = await this.appendRefs(form, [first], 'first_frame', 'image', 1);
+      if (request.endFrame) {
+        await this.appendRefs(form, [request.endFrame], 'end_frame', 'image', 1);
+      }
       functionMode = 'first_last_frames';
-    }
-
-    // 关键：koma-jimeng 协议下 prompt 占位符固定为 @image_file_N / @video_file_N / @audio_file_N，
-    // 网关字段命名只有 function_mode='omni_reference' 时才匹配（image_file_N 等）。其它模式
-    // （first_frame / first_last_frames）会把图上传成 first_frame / frame_N，与 prompt 不匹配
-    // → 上游模型找不到占位符对应文件 → 失败。所以这里强制 omni_reference 覆盖 capability
-    // 默认值，保证 prompt 与字段名一致。
-    if (hasKomaClassified) {
-      functionMode = 'omni_reference';
-    }
-
-    // metadata.ratio 在网关侧优先级高于 size 推断 —— 作为防御性兜底。
-    // function_mode、end_frame_url 等扩展字段全部走 metadata 透传。
-    const metadata: Record<string, unknown> = { ratio };
-    if (functionMode) metadata.function_mode = functionMode;
-    if (request.capability === 'video.start-end-to-video' && request.endFrame?.value) {
-      metadata.end_frame_url = request.endFrame.value;
-    }
-
-    // 音色参考（音画同出）：渲染工作流经 metadata.komaVoiceReferences 传入，
-    // 本地音频先上传图床拿公网 URL，并入 metadata.audio_urls 让网关分发到 audio_file_N。
-    // @audio_file_N 占位符与 audio_urls 顺序一一对应（每类参考从 1 开始编号）。
-    const voiceAudioUrls = await this.resolveMediaReferenceUrls(
-      (request.metadata?.komaVoiceReferences as Array<{ transport?: string; value?: string; mimeType?: string }> | undefined) ?? [],
-      'audio',
-    );
-    if (voiceAudioUrls.length > 0) {
-      functionMode = 'omni_reference';
-    }
-
-    // 上一镜视频延长参考：整段成片作为 video_file_N 全能参考。提示词首句已经写了
-    // "将 @video_file_1 延长 N 秒"，字段名必须匹配，所以同样强制 omni_reference。
-    const extendVideoUrls = await this.resolveMediaReferenceUrls(
-      (request.metadata?.komaVideoReferences as Array<{ transport?: string; value?: string; mimeType?: string }> | undefined) ?? [],
-      'video',
-    );
-    if (extendVideoUrls.length > 0) {
-      functionMode = 'omni_reference';
-    }
-
-    // 一旦进了 omni_reference（分类资产 / 音色参考 / 延长参考任一触发），prompt 里的
-    // 图片占位符就是 @image_file_N，图必须走 metadata.image_urls 才对得上字段名；
-    // 继续塞 body.images 会让网关按 first_frame/frame_N 命名，占位符全部失配。
-    const useClassifiedImages = hasKomaClassified
-      || voiceAudioUrls.length > 0
-      || extendVideoUrls.length > 0;
-    if (hasKomaClassified) {
-      // Koma 即梦分类协议：URL 按 kind 拆 metadata，避免和 images[] 双写。
-      if (komaAssets?.image_urls?.length) metadata.image_urls = komaAssets.image_urls;
-      if (komaAssets?.video_urls?.length) metadata.video_urls = komaAssets.video_urls;
-    }
-    if (imageUrls.length > 0) {
-      if (useClassifiedImages) {
-        metadata.image_urls = [
-          ...((metadata.image_urls as string[] | undefined) ?? []),
-          ...imageUrls,
-        ];
+    } else if (request.capability === 'video.start-end-to-video') {
+      imageCount = await this.appendRefs(form, [request.startFrame], 'first_frame', 'image', 1);
+      await this.appendRefs(form, [request.endFrame], 'end_frame', 'image', 1);
+      functionMode = 'first_last_frames';
+    } else {
+      // 其余一律走全能参考：提示词里的占位符固定是 @image_file_N / @video_file_N / @audio_file_N，
+      // 只有 omni_reference 的字段命名对得上；首帧场景也按 image_file 送，语义等价且字段一致。
+      const imageRefs = [
+        ...asRefs(komaAssets?.image_urls),
+        ...(request.primaryImage ? [request.primaryImage] : []),
+        ...(request.referenceImages || []),
+        ...(request.additionalReferences || []),
+      ];
+      imageCount = await this.appendRefs(form, imageRefs, 'image_file', 'image', SUIHE_MAX_REFERENCE_IMAGES);
+      const videoCount = await this.appendRefs(
+        form, [...asRefs(komaAssets?.video_urls), ...videoRefs], 'video_file', 'video', 3,
+      );
+      // 参考音频不能单独使用，必须同时有图片或视频参考才生效
+      const audioRefs = [...asRefs(komaAssets?.audio_urls), ...voiceRefs];
+      if (audioRefs.length > 0 && imageCount + videoCount === 0) {
+        logger.warn('参考音频缺少图片/视频参考，按上游约束丢弃', { count: audioRefs.length });
       } else {
-        body.images = imageUrls;
+        await this.appendRefs(form, audioRefs, 'audio_file', 'audio', 3);
+      }
+      if (imageCount + videoCount > 0 || audioRefs.length > 0) {
+        functionMode = 'omni_reference';
       }
     }
-    // video_urls 与 audio_urls 同样按"分类资产 + 延长参考"合并写出
-    const mergedVideoUrls = [
-      ...((metadata.video_urls as string[] | undefined) ?? []),
-      ...extendVideoUrls,
-    ];
-    if (mergedVideoUrls.length > 0) {
-      metadata.video_urls = mergedVideoUrls;
-    }
-    // audio_urls 统一按"分类资产 + 音色参考"合并写出（音色参考已由上方上传图床解析为公网 URL）
-    const mergedAudioUrls = [...(komaAssets?.audio_urls ?? []), ...voiceAudioUrls];
-    if (mergedAudioUrls.length > 0) {
-      metadata.audio_urls = mergedAudioUrls;
-      // @audio_file_N 只有 omni_reference 模式的字段名才对得上
-      metadata.function_mode = 'omni_reference';
-    }
-    body.metadata = metadata;
+    if (functionMode) form.append('function_mode', functionMode);
 
-    logger.info('Koma 即梦 start request', {
+    logger.info('Koma 即梦 start request (multipart)', {
       provider: this.config.provider,
       capability: request.capability,
       model,
-      body: sanitizeBodyForLog(body),
+      ratio,
+      duration,
+      resolution,
+      functionMode,
+      imageCount,
     });
 
-    // OpenAI 标准创建任务路径：POST /v1/videos（非 /v1/videos/generations）
-    const response = await safeFetch(joinUrl(this.getBaseUrl(), '/v1/videos'), {
+    // multipart 直传：素材由上游中转，不再需要图床
+    const response = await safeFetch(joinUrl(this.getBaseUrl(), '/v1/videos/generations'), {
       method: 'POST',
-      headers: this.getHeaders(),
-      body: JSON.stringify(body),
+      // 不能手写 Content-Type —— boundary 由 FormData 自己生成
+      headers: this.getAuthOnlyHeaders(),
+      body: form as unknown as BodyInit,
     });
     const raw = await response.text();
-    if (!response.ok) {
+    // 表单直传分支常见 202，JSON 分支常见 200；都以响应体里的 task_id 为准
+    if (!response.ok && response.status !== 202) {
       logger.error('Suihe start failed', { status: response.status, response: raw.slice(0, 1200) });
       throw new Error(`即梦视频任务创建失败 (HTTP ${response.status}): ${raw.slice(0, 600)}`);
     }
@@ -403,7 +386,9 @@ export class SuiheITVProvider implements ITVProvider {
     } catch {
       throw new Error('即梦上游返回非 JSON 响应');
     }
-    const taskId = data.id || data.task_id;
+    // 必须用 task_id（UUID）；受理响应里的 id 可能是 cgt- 前缀形态，
+    // 不能直接当 GET /v1/tasks/{task_id} 的路径参数。
+    const taskId = data.task_id || data.id;
     if (!taskId) {
       throw new Error(data.error?.message || '即梦上游未返回 task_id');
     }
@@ -411,9 +396,9 @@ export class SuiheITVProvider implements ITVProvider {
   }
 
   async getTaskSnapshot(taskId: string): Promise<ProviderTaskSnapshot<ITVResult>> {
-    // OpenAI 标准 fetch 路径：GET /v1/videos/{id}（不是 /v1/videos/generations/{id}）
+    // 轮询完成状态与取成片以 tasks 接口为准（/v1/videos/{id} 只返回受理侧简要信息）
     const response = await safeFetch(
-      joinUrl(this.getBaseUrl(), `/v1/videos/${encodeURIComponent(taskId)}`),
+      joinUrl(this.getBaseUrl(), `/v1/tasks/${encodeURIComponent(taskId)}`),
       { method: 'GET', headers: this.getAuthOnlyHeaders() },
     );
     if (!response.ok) {
@@ -443,10 +428,10 @@ export class SuiheITVProvider implements ITVProvider {
         ? Math.max(0, Math.min(100, Math.round(Number(pctRaw) || 0)))
         : (state === 'succeeded' ? 100 : 0);
 
-    // OpenAIVideo 把上游的 result_urls 透传到 metadata；同时兼容顶层 result_urls 与 sora result.data[0].url
-    const resultUrl = data.metadata?.url
+    // 终态成片地址取 result_urls[0]；同时兼容 metadata 透传与 sora 风格结构
+    const resultUrl = (Array.isArray(data.result_urls) && data.result_urls[0])
+      || data.metadata?.url
       || (Array.isArray(data.metadata?.result_urls) && data.metadata?.result_urls?.[0])
-      || (Array.isArray(data.result_urls) && data.result_urls[0])
       || data.result?.data?.[0]?.url;
 
     if (state === 'succeeded') {
