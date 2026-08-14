@@ -10,7 +10,6 @@ import type {
 } from '../../../../types/linghui';
 import { importLinghuiWorkspaceAsset } from '../../../../store/linghuiStorage';
 import { openFileDialog } from '../../../../services/electronService';
-import { isImageHostingEnabled } from '../../../../services/imageHostingService';
 import {
   createLinghuiImageAssetItemFromSource,
   createLinghuiImageImportProperties,
@@ -137,10 +136,10 @@ export function useLinghuiCanvasMediaImport({
       const nextScreenX = screenX ?? (targetRect ? targetRect.left + targetRect.width / 2 : window.innerWidth / 2);
       const nextScreenY = screenY ?? (targetRect ? targetRect.top + targetRect.height / 2 : window.innerHeight / 2);
 
-      // 用户要求：先创建带"上传中"标记的节点，再异步走 OSS。这样选完文件立刻能在画布上看到进度反馈。
+      // 用户要求：先创建带"导入中"标记的节点，再异步落工作区。这样选完文件立刻能在画布上看到进度反馈。
       const pendingItems = await Promise.all(result.filePaths.map(async filePath => {
         const filename = filePath.split(/[\\/]/).pop() || 'reference';
-        // 占位 source = filePath，节点 UI 显示"上传中"蒙层，待 OSS 完成后切到远端 URL
+        // 占位 source = filePath，节点 UI 显示"导入中"蒙层，待落盘完成后切到工作区副本
         const item = await createLinghuiImageAssetItemFromSource({ source: filePath, filenameHint: filename });
         return { filePath, filename, item };
       }));
@@ -173,16 +172,11 @@ export function useLinghuiCanvasMediaImport({
       clearPendingGroupFrame();
       scheduleSnapshot();
 
-      // Step 2: 异步逐张上传，完成一张切一张，提供真实进度反馈。
-      const ossEnabled = await isImageHostingEnabled();
-      if (!ossEnabled) message.info('未配置图床渠道，已使用本地工作区资产作为备用。');
-
-      let ossFailureCount = 0;
+      // Step 2: 异步逐张导入工作区，完成一张切一张，提供真实进度反馈。
       await Promise.all(pendingItems.map(async (entry, index) => {
         const nodeId = insertedIds[index];
         try {
-          const resolved = await resolveUploadedFileSource(entry.filePath, entry.filename, { workspaceId, ossEnabled, kind: 'image' });
-          if (resolved.ossError) ossFailureCount += 1;
+          const resolved = await resolveUploadedFileSource(entry.filePath, entry.filename, workspaceId);
           const finalItem = await createLinghuiImageAssetItemFromSource({
             source: resolved.source,
             filenameHint: entry.filename,
@@ -224,10 +218,6 @@ export function useLinghuiCanvasMediaImport({
           }));
         }
       }));
-
-      if (ossEnabled && ossFailureCount > 0) {
-        message.warning(`图床上传失败 ${ossFailureCount} 张，已回退到本地资产`);
-      }
     } catch (error: any) {
       message.error(error?.message || '上传图片到画布失败');
     }
@@ -286,15 +276,10 @@ export function useLinghuiCanvasMediaImport({
       scheduleSnapshot();
 
       // Step 2: 异步逐个上传 + 完成切 source
-      const ossEnabled = await isImageHostingEnabled();
-      if (!ossEnabled) message.info('未配置图床渠道，视频已使用本地工作区资产作为备用。');
-
-      let ossFailureCount = 0;
       await Promise.all(pendingItems.map(async (entry, index) => {
         const nodeId = insertedIds[index];
         try {
-          const resolved = await resolveUploadedFileSource(entry.filePath, entry.filename, { workspaceId, ossEnabled, kind: 'video' });
-          if (resolved.ossError) ossFailureCount += 1;
+          const resolved = await resolveUploadedFileSource(entry.filePath, entry.filename, workspaceId);
           setNodes(currentNodes => currentNodes.map(node => {
             if (node.id !== nodeId) return node;
             const nodeData = node.data as unknown as LinghuiNodeData;
@@ -332,10 +317,6 @@ export function useLinghuiCanvasMediaImport({
           }));
         }
       }));
-
-      if (ossEnabled && ossFailureCount > 0) {
-        message.warning(`图床上传失败 ${ossFailureCount} 个视频，已回退到本地资产`);
-      }
     } catch (error: any) {
       message.error(error?.message || '上传视频到画布失败');
     }

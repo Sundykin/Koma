@@ -106,13 +106,5 @@ export type {
   RemixOptions,
 } from './itv';
 
-// 图床 Provider 类型
-export type {
-  ImageHostingProvider,
-  ImageHostingUploadOptions,
-  ImageHostingUploadResult,
-  ImageHostingProviderDefinition,
-} from './imageHosting';
-
 // 全局变量声明
 export type {} from './globals';

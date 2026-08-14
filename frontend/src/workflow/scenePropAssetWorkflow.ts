@@ -124,7 +124,6 @@ interface GenerateOptions {
   variationPrompt?: string;
   destPath?: string;
   bindOwner?: boolean;
-  normalizeRemoteUrl?: boolean;
   /**
    * 用户手动上传的参考图：作为内容参考传入（references 中位于风格锚定图之后），
    * 场景=空间/构图锚定，道具=造型设计锚定，而不是只依赖项目风格参考图。
@@ -154,7 +153,7 @@ const USER_REFERENCE_GUARDLINES: Record<'scene' | 'prop', string> = {
 export async function generateSceneImage(
   options: GenerateOptions & { scene: Scene; disableTask?: boolean }
 ): Promise<{ success: boolean; path?: string; url?: string; error?: string }> {
-  const { projectId, scene, aspectRatio, theme, stylePrompt, styleSnapshot, project, ttiSelection, seed, variationPrompt, destPath, bindOwner, normalizeRemoteUrl, userReference, onProgress, disableTask } = options;
+  const { projectId, scene, aspectRatio, theme, stylePrompt, styleSnapshot, project, ttiSelection, seed, variationPrompt, destPath, bindOwner, userReference, onProgress, disableTask } = options;
   const finalAspectRatio = aspectRatio || project?.aspectRatio || '16:9';
 
   logger.info(`开始生成场景预览图: ${scene.name}`);
@@ -224,7 +223,6 @@ export async function generateSceneImage(
           ttiSelection,
           destPath,
           bindOwner,
-          normalizeRemoteUrl,
           taskName: `场景: ${scene.name}`,
         });
         ctx.progress(100, '完成');
@@ -327,7 +325,7 @@ export async function generateAllSceneImages(
 export async function generatePropImage(
   options: GenerateOptions & { prop: Prop; disableTask?: boolean }
 ): Promise<{ success: boolean; path?: string; url?: string; error?: string }> {
-  const { projectId, prop, aspectRatio, theme, stylePrompt, styleSnapshot, project, ttiSelection, seed, variationPrompt, destPath, bindOwner, normalizeRemoteUrl, userReference, onProgress, disableTask } = options;
+  const { projectId, prop, aspectRatio, theme, stylePrompt, styleSnapshot, project, ttiSelection, seed, variationPrompt, destPath, bindOwner, userReference, onProgress, disableTask } = options;
   // 道具参考图必须与项目比例一致 — 否则下游分镜走 image-to-image 时输出比例会跟着参考图走，不会跟项目走。
   const finalAspectRatio = aspectRatio || project?.aspectRatio || '16:9';
 
@@ -398,7 +396,6 @@ export async function generatePropImage(
           ttiSelection,
           destPath,
           bindOwner,
-          normalizeRemoteUrl,
           taskName: `道具: ${prop.name}`,
         });
         ctx.progress(100, '完成');

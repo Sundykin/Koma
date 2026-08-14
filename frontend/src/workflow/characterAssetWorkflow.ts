@@ -70,7 +70,6 @@ interface GenerateOptions {
   /** 预览视频：AI 生成的台词（中文）；音轨会被提取成音色样本 */
   previewDialogue?: string;
   bindOwner?: boolean;
-  normalizeRemoteUrl?: boolean;
   /**
    * 用户手动上传的形象参考图：作为人物身份参考传入（references 中位于风格锚定图之后），
    * 让定妆照继承其脸/发型/服装，而不是只依赖项目风格参考图。
@@ -88,7 +87,7 @@ interface GenerateOptions {
 export async function generateCostumePhoto(
   options: GenerateOptions
 ): Promise<{ success: boolean; path?: string; url?: string; error?: string }> {
-  const { projectId, character, aspectRatio, theme, stylePrompt, styleSnapshot, project, ttiSelection, seed, variationPrompt, destPath, bindOwner, normalizeRemoteUrl, userReference, onProgress, disableTask } = options;
+  const { projectId, character, aspectRatio, theme, stylePrompt, styleSnapshot, project, ttiSelection, seed, variationPrompt, destPath, bindOwner, userReference, onProgress, disableTask } = options;
   const finalAspectRatio = aspectRatio || project?.aspectRatio || '16:9';
 
   logger.info(`开始生成角色定妆照: ${character.name}`, { aspectRatio: finalAspectRatio });
@@ -169,7 +168,6 @@ export async function generateCostumePhoto(
           ttiSelection,
           destPath,
           bindOwner,
-          normalizeRemoteUrl,
           taskName: `${character.name} 定妆照`,
         });
         ctx.progress(100, '完成');
@@ -197,7 +195,7 @@ export async function generateCharacterVariantPhoto(
 ): Promise<{ success: boolean; path?: string; url?: string; error?: string }> {
   const {
     projectId, character, variant, aspectRatio, theme, stylePrompt, styleSnapshot, project,
-    ttiSelection, seed, destPath, bindOwner, normalizeRemoteUrl, onProgress, disableTask,
+    ttiSelection, seed, destPath, bindOwner, onProgress, disableTask,
   } = options;
   const finalAspectRatio = aspectRatio || project?.aspectRatio || '16:9';
 
@@ -261,7 +259,6 @@ export async function generateCharacterVariantPhoto(
           ttiSelection,
           destPath,
           bindOwner,
-          normalizeRemoteUrl,
           taskName: `${character.name} · ${variant.name}`,
         });
         ctx.progress(100, '完成');

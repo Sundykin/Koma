@@ -40,9 +40,6 @@ export async function getChannelsByCapability(
   const configs = await getChannelConfigs();
   return configs.filter((config) => {
     if (!config.enabled) return false;
-    if (capability === 'image-hosting') {
-      return getChannelCategory(config) === 'image-hosting';
-    }
     const models = config.models || [];
     if (!models.length) return false;
     return models.some((model) => {
@@ -141,14 +138,8 @@ export async function getDefaultChannelConfig(
   const category = capability === 'tti' ? 'tti'
     : capability === 'itv' ? 'itv'
     : capability === 'tts' ? 'tts'
-    : capability === 'image-hosting' ? 'image-hosting'
     : undefined;
   if (!category) return null;
-
-  if (category === 'image-hosting') {
-    const configs = await getChannelConfigs();
-    return configs.find(c => c.enabled && getChannelCategory(c) === 'image-hosting') || null;
-  }
 
   const sel = await svc.getMediaDefault(category);
   if (!sel) return null;

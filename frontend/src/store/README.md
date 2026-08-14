@@ -90,7 +90,6 @@ store/
 │   ├── modelPresets.ts      # Model parameter presets
 │   ├── themePresets.ts      # Visual style presets
 │   ├── channelConfig.ts     # Provider channel configs
-│   └── imageHostingConfig.ts# Image CDN configuration
 │
 └── project/                 # Project data management
     ├── index.ts             # Project exports

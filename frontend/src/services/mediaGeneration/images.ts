@@ -15,9 +15,6 @@ import { getProjectTTIProvider } from '../../providers';
 import '../taskHandlers'; // 副作用 import：注册内置 TTI/ITV/TTS 任务处理器
 
 
-import {
-  ensureRemoteUrlForImageAsset,
-} from '../mediaRemoteUrlService';
 import type { PromptCompilationInput } from '../promptCompilation/types';
 import { compileGrokTTI } from '../promptCompilation/grokImageIndexCompiler';
 import {
@@ -54,7 +51,6 @@ export async function generateImages(params: {
   taskName?: string;
   destPath?: ImageDestPathResolver;
   bindOwner?: boolean;
-  normalizeRemoteUrl?: boolean;
   /**
    * 进度回调：把 immediate 路径中"调用 provider / 下载 / 持久化 / 绑定"分阶段
    * 暴露给外层（runWithTask 的 ctx.progress / character workflow 的 onProgress）。
@@ -71,7 +67,6 @@ export async function generateImages(params: {
     promptCompilation,
     destPath,
     bindOwner = true,
-    normalizeRemoteUrl = true,
     onProgress,
   } = params;
   const { provider, resolvedContext } = await resolveProviderAndContext({
@@ -254,32 +249,11 @@ export async function generateImages(params: {
         asset: summarizeImageAsset(persisted),
       });
 
-      const normalized = normalizeRemoteUrl
-        ? await ensureRemoteUrlForImageAsset({
-            projectId,
-            asset: persisted,
-            policy: 'best-effort',
-          })
-        : persisted;
-      if (normalizeRemoteUrl) {
-        logger.info('TTI immediate remote-url normalized', {
-          ownerRef,
-          index,
-          before: summarizeImageAsset(persisted),
-          after: summarizeImageAsset(normalized),
-        });
-      } else {
-        logger.info('TTI immediate remote-url normalization skipped', {
-          ownerRef,
-          index,
-          asset: summarizeImageAsset(persisted),
-        });
-      }
-
-      return mergeMediaMetadata(normalized, {
+      // 生成完直接落盘即用：图床已移除，下游 provider 一律读本地字节。
+      return mergeMediaMetadata(persisted, {
         provider: provider.config?.provider,
-        width: optionWidth ?? output.width ?? normalized.width,
-        height: optionHeight ?? output.height ?? normalized.height,
+        width: optionWidth ?? output.width ?? persisted.width,
+        height: optionHeight ?? output.height ?? persisted.height,
       });
     });
 
@@ -398,7 +372,7 @@ export async function generateImages(params: {
     bindOwner,
   });
 
-  // asyncDestPath / normalizeRemoteUrl 已在 fulfiller 里固化处理 —— ITV 始终走 normalize；
+  // asyncDestPath 已在 fulfiller 里固化处理；
   // TTI 也始终 normalize（这是 generateImages 的默认行为，旧实现也走这个分支）
 
   return [finalAsset];
@@ -413,7 +387,6 @@ export async function generateImage(params: {
   taskName?: string;
   destPath?: string;
   bindOwner?: boolean;
-  normalizeRemoteUrl?: boolean;
   onProgress?: (percent: number, stage: string) => void;
 }): Promise<StoredMediaAsset> {
   const assets = await generateImages({

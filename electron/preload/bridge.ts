@@ -145,7 +145,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
 	  // runtime lifecycle
 	  'controller/plugin/activate', 'controller/plugin/deactivate',
 	  'controller/plugin/status', 'controller/plugin/listActive',
-	  // backend provider invocation (used by image-hosting fallback)
+	  // backend provider invocation (plugin 后端 provider 兜底调用)
 	  'controller/plugin/callProvider',
 	  // tools / agents 查询
 	  'controller/plugin/listMCPTools', 'controller/plugin/callMCPTool',

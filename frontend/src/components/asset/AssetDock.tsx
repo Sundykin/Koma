@@ -47,7 +47,6 @@ import { getStorageConfig, initStorageConfig } from '../../store/storageConfig';
 import { createStoredMediaAsset, updateCharacterMedia, updateSceneMedia, updatePropMedia } from '../../utils/mediaAssets';
 import { generateCostumePhoto } from '../../workflow/characterAssetWorkflow';
 import { generateSceneImage, generatePropImage } from '../../workflow/scenePropAssetWorkflow';
-import { ensureRemoteUrlForImageAsset } from '../../services/mediaRemoteUrlService';
 import {
   getCharacterCostumePhotoSource,
   getScenePreviewImageSource,
@@ -318,25 +317,16 @@ export const AssetDock: React.FC<AssetDockProps> = ({
     return `${dir}/${filename}`;
   }, [projectId]);
 
-  /** 生成主图：有"使用参考图"时归一化后作为身份/空间参考传入 */
+  /** 生成主图：有"使用参考图"时作为身份/空间参考直接传本地文件 */
   const generateOne = useCallback(async (type: AssetType, id: string): Promise<boolean> => {
     const entity = (type === 'character' ? characters : type === 'scene' ? scenes : props).find(a => a.id === id);
     if (!entity) return false;
-    let userReference = entity.media?.referenceImage;
-    if (userReference) {
-      try {
-        userReference = await ensureRemoteUrlForImageAsset({
-          projectId,
-          asset: userReference,
-          policy: 'best-effort',
-          filenameHint: `${id}-reference.png`,
-        });
-      } catch { /* 归一化失败则用本地引用兜底 */ }
-    }
+    // 参考图直接用本地副本：TTI provider 都声明了 supportsLocalReferences，自己读字节
+    const userReference = entity.media?.referenceImage;
     const destPath = await getAssetPath(type, id, `${type === 'character' ? 'costume' : 'preview'}-${Date.now()}.png`);
     const base = {
       projectId, aspectRatio, styleSnapshot, ttiSelection, destPath,
-      bindOwner: false as const, normalizeRemoteUrl: true, userReference,
+      bindOwner: false as const, userReference,
     };
     let result: { success: boolean; path?: string; url?: string; error?: string };
     if (type === 'character') {

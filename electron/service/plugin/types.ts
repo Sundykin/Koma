@@ -44,7 +44,7 @@ export interface PluginEntry {
 
 // Provider 元数据
 export interface ProviderMeta {
-  channelType: 'tti' | 'itv' | 'tts' | 'llm' | 'image-hosting';
+  channelType: 'tti' | 'itv' | 'tts' | 'llm';
   capabilities: string[];
   configPanel?: boolean;
   defaultConfig?: Record<string, unknown>;
@@ -178,7 +178,7 @@ export interface PluginPollingConfig {
 // Provider 定义
 export interface ProviderDefinition {
   type: string;
-  kind: 'tti' | 'itv' | 'tts' | 'llm' | 'image-hosting';
+  kind: 'tti' | 'itv' | 'tts' | 'llm';
   name: string;
   description?: string;
   capabilities: string[];

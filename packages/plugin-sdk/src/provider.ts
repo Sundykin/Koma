@@ -9,13 +9,13 @@
  * 字段语义说明：
  *   - 媒体 Provider（tti / itv / tts）的 contractVersion 必填且需等于
  *     MEDIA_PROVIDER_CONTRACT_VERSION，否则 ProviderRegistry.register 抛错
- *   - 'llm' 与 'image-hosting' 不强制 contractVersion
+ *   - 'llm' 不强制 contractVersion
  */
 
 export const MEDIA_PROVIDER_CONTRACT_VERSION = 'media-request-v1';
 
 // 渠道类型
-export type ChannelKind = 'llm' | 'tti' | 'itv' | 'tts' | 'image-hosting';
+export type ChannelKind = 'llm' | 'tti' | 'itv' | 'tts';
 
 // 渠道能力
 export type ChannelCapability =
@@ -25,10 +25,10 @@ export type ChannelCapability =
   | 'tts'
   | 'character-extract'
   | 'remix'
-  | 'image-hosting';
+;
 
 /**
- * tti / itv / tts 必须填 contractVersion；llm / image-hosting 暂不强制。
+ * tti / itv / tts 必须填 contractVersion；llm 暂不强制。
  * 与 frontend/src/providers/registry.types.ts 中的同名函数保持一致。
  */
 export function requiresMediaContractVersion(kind: ChannelKind): boolean {
@@ -112,7 +112,7 @@ export interface ProviderModelDefinition {
 // Provider 定义
 export interface ProviderDefinition<T = any> {
   type: string;              // 唯一标识，如 'sora2', 'vectorengine'
-  kind: ChannelKind;         // 'llm' | 'tti' | 'itv' | 'tts' | 'image-hosting'
+  kind: ChannelKind;         // 'llm' | 'tti' | 'itv' | 'tts'
   name: string;              // 显示名称
   description?: string;      // 描述
   factory: (config: Record<string, any>, ctx: ProviderContext) => T;

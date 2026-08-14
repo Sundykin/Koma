@@ -96,7 +96,6 @@ export const llmRegistry = new ProviderRegistryImpl<any>();
 export const ttiRegistry = new ProviderRegistryImpl<any>();
 export const itvRegistry = new ProviderRegistryImpl<any>();
 export const ttsRegistry = new ProviderRegistryImpl<any>();
-export const imageHostingRegistry = new ProviderRegistryImpl<any>();
 
 // 获取注册表
 export function getRegistry(kind: ChannelKind): IProviderRegistry<any> {
@@ -105,7 +104,6 @@ export function getRegistry(kind: ChannelKind): IProviderRegistry<any> {
     case 'tti': return ttiRegistry;
     case 'itv': return itvRegistry;
     case 'tts': return ttsRegistry;
-    case 'image-hosting': return imageHostingRegistry;
   }
 }
 
@@ -127,7 +125,6 @@ export function unregisterProvidersByPlugin(pluginId: string): void {
   ttiRegistry.unregisterByPlugin(pluginId);
   itvRegistry.unregisterByPlugin(pluginId);
   ttsRegistry.unregisterByPlugin(pluginId);
-  imageHostingRegistry.unregisterByPlugin(pluginId);
 }
 
 // 列出所有 Provider
@@ -140,7 +137,6 @@ export function listProviders(kind?: ChannelKind): ProviderDefinition<any>[] {
     ...ttiRegistry.list(),
     ...itvRegistry.list(),
     ...ttsRegistry.list(),
-    ...imageHostingRegistry.list(),
   ];
 }
 

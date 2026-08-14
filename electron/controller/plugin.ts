@@ -149,19 +149,19 @@ const pluginController = {
    * 调用 Provider（后端执行）
    *
    * 说明：
-   * - 主要用于 image-hosting 这类需要 FormData/Buffer 的能力，前端沙箱 fetch/IPC 传输可能不支持
+   * - 主要用于需要 FormData/Buffer 的能力，前端沙箱 fetch/IPC 传输可能不支持
    * - 由 PluginBridge 负责查找 provider 定义并调用实例方法
    *
    * **重要 — 错误处理**：
    * ee-core 的 IpcServer.register 会用 try/catch 包裹 ipcMain.handle，捕获后**只写
    * coreLogger 不 rethrow**（ee-core 源码 socket/ipcServer.js 第 65-74 行）。
    * 直接 throw 的话，前端 invoke 返回 undefined，错误信息全部丢失。
-   * 这里**统一把所有 throw 转成 image-hosting 调用方期望的 `{success:false, error}`
-   * 形状**，确保前端拿到真实错误（适用于 image-hosting 路径；其它 kind 调用方目前
+   * 这里**统一把所有 throw 转成调用方期望的 `{success:false, error}`
+   * 形状**，确保前端拿到真实错误（其它 kind 调用方目前
    * 也都能容忍 `{success, error}` 形状或会先校验 success 字段）。
    */
   async callProvider(
-    { kind, type, method, args }: { kind: 'tti' | 'itv' | 'tts' | 'llm' | 'image-hosting'; type: string; method: string; args: unknown[] },
+    { kind, type, method, args }: { kind: 'tti' | 'itv' | 'tts' | 'llm'; type: string; method: string; args: unknown[] },
     _event?: IpcMainInvokeEvent
   ) {
     await ensureServicesReady();

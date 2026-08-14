@@ -1,6 +1,6 @@
 /**
  * Provider 注册表
- * 管理 TTI/ITV/TTS/LLM/image-hosting Provider 定义
+ * 管理 TTI/ITV/TTS/LLM Provider 定义
  *
  * 行为与 frontend/src/providers/registry.ts 保持一致：
  *  - 媒体 Provider（tti/itv/tts）必填 contractVersion，且与运行时常量一致
@@ -51,7 +51,7 @@ class ProviderRegistry implements IRegistry<ProviderDefinition> {
     return Array.from(this.providers.values());
   }
 
-  listByKind(kind: 'tti' | 'itv' | 'tts' | 'llm' | 'image-hosting'): ProviderDefinition[] {
+  listByKind(kind: 'tti' | 'itv' | 'tts' | 'llm'): ProviderDefinition[] {
     return this.list().filter(p => p.kind === kind);
   }
 

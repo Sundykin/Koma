@@ -5,7 +5,6 @@ import { toFileSystemDisplayUrl } from '../../../../services/fileSystemPort';
  * 把 director3d / panorama 编辑器写到 properties 的 PNG dataUrl 落盘成 koma-local URL。
  *
  * 为什么必须落盘：
- *  - grok-imagine-itv 等渠道 assetTransports 只接受 'remote-url'，dataUrl 会被 reject
  *  - 视频 provider 多数要求文件路径，dataUrl 直接 fail
  *  - 工作区文档存 base64 字符串会撑爆 IndexedDB（一张 1280px lineart ≈ 500KB）
  *

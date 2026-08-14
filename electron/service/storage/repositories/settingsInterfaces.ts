@@ -3,7 +3,7 @@
  * 全局 settings.db 专用
  */
 
-export type MediaCategory = 'llm' | 'tti' | 'itv' | 'tts' | 'image-hosting';
+export type MediaCategory = 'llm' | 'tti' | 'itv' | 'tts';
 
 export type ChannelSource = 'builtin' | 'plugin';
 

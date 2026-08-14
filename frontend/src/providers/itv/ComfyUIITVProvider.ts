@@ -147,14 +147,6 @@ export class ComfyUIITVProvider implements ITVProvider {
   prefersLocalAssets = true;
 
   // 参考图以原始文件 multipart 直传到 ComfyUI，本地与远端素材都支持
-  assetTransports = {
-    primaryImage: ['remote-url', 'data-url'] as const,
-    additionalReferences: ['remote-url', 'data-url'] as const,
-    referenceImages: ['remote-url', 'data-url'] as const,
-    startFrame: ['remote-url', 'data-url'] as const,
-    endFrame: ['remote-url', 'data-url'] as const,
-  };
-
   constructor(config: ITVConfig) {
     // 默认启用 MiniMax H3 协议：把 @角色名/@场景名/@道具名 编译成模型原生识别的
     // <图片 N>，N 与 ref_images.ref_image_(N-1) 槽位顺序一一对应。

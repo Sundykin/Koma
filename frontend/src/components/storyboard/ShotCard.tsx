@@ -63,7 +63,6 @@ import type { PromptStreamSlot } from './hooks/useStoryboardPrompts';
 import { StagePlayer } from '../video/StagePlayer';
 import { electronService, fsRemove } from '../../services/electronService';
 import { persistMediaAsset } from '../../services/mediaPersistenceService';
-import { ensureRemoteUrlForImageAsset } from '../../services/mediaRemoteUrlService';
 import { getProjectPath } from '../../store/projectStore';
 import { SHOT_LAYOUT, COL_ACTION_WIDTH } from '../../constants/storyboardConstants';
 import { AssetSelector } from './components/AssetSelector';
@@ -613,14 +612,7 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
           },
         });
 
-        const finalized = await ensureRemoteUrlForImageAsset({
-          projectId,
-          asset: stored,
-          policy: 'best-effort',
-          filenameHint: file.name,
-        });
-
-        const newRefs: StoredMediaAsset[] = [...referenceImages, finalized];
+        const newRefs: StoredMediaAsset[] = [...referenceImages, stored];
         onReferenceImagesChange?.(shot.id, newRefs, newRefs.length - 1);
       } finally {
         URL.revokeObjectURL(blobUrl);

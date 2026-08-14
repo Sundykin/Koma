@@ -6,7 +6,6 @@ import type { LLMProvider } from './llm/types';
 import type { TTIProvider } from './tti/types';
 import type { ITVProvider } from './itv/types';
 import type { TTSProvider } from './tts/types';
-import type { ImageHostingProvider } from './imageHosting/types';
 import {
   type ChannelKind,
   type ProviderDefinition,
@@ -16,7 +15,6 @@ import {
   ttiRegistry,
   itvRegistry,
   ttsRegistry,
-  imageHostingRegistry,
 } from './registry';
 
 // 类型安全映射
@@ -25,12 +23,11 @@ export type ProviderKindMap = {
   tti: TTIProvider;
   itv: ITVProvider;
   tts: TTSProvider;
-  'image-hosting': ImageHostingProvider;
 };
 
 /**
  * Provider 管理器
- * 统一管理 LLM/TTI/ITV/TTS/image-hosting 五种类型的 Provider
+ * 统一管理 LLM/TTI/ITV/TTS 四种类型的 Provider
  */
 export class ProviderManager {
   private readonly registries: Record<ChannelKind, IProviderRegistry<any>>;
@@ -41,7 +38,6 @@ export class ProviderManager {
       tti: ttiRegistry,
       itv: itvRegistry,
       tts: ttsRegistry,
-      'image-hosting': imageHostingRegistry,
     };
   }
 
@@ -125,7 +121,6 @@ export class ProviderManager {
       ...this.registries.tti.list(),
       ...this.registries.itv.list(),
       ...this.registries.tts.list(),
-      ...this.registries['image-hosting'].list(),
     ];
   }
 

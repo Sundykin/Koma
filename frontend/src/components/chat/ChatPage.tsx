@@ -18,7 +18,7 @@ import { ChatComposer } from './ChatComposer';
 import type { AttachmentFile } from './ChatComposer';
 import {
   startChatMedia,
-  uploadAttachmentImagesToHosting,
+  saveAttachmentImagesLocally,
   extractChatImageMentionLabels,
   type ChatImageRef,
   type ChatMediaMode,
@@ -207,10 +207,10 @@ export const ChatPage: React.FC = () => {
     return ctx?.model.capabilities.filter((c) => c.startsWith('video.'));
   }, [settings, itvSelectionKey]);
 
-  // 选图后立即上传到图床，加进 chatImageRefs 并标记 pending=true（待跟随消息送出）
+  // 选图后立即落到本地素材目录，加进 chatImageRefs 并标记 pending=true（待跟随消息送出）
   const handleUploadImage = useCallback(async (file: File): Promise<void> => {
     try {
-      const url = (await uploadAttachmentImagesToHosting([{
+      const url = (await saveAttachmentImagesLocally([{
         id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
         file,
         type: 'image',

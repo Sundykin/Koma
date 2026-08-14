@@ -10,7 +10,7 @@ export type { PollingConfig, ChannelCapability };
 
 // 渠道类型
 export type ChannelType = 'tti' | 'itv' | 'character' | 'remix' | 'tts';
-export type MediaCategory = 'llm' | 'tti' | 'itv' | 'tts' | 'image-hosting';
+export type MediaCategory = 'llm' | 'tti' | 'itv' | 'tts';
 export type ModelCapability =
   | 'llm.chat'
   | 'image.text-to-image'
@@ -164,7 +164,7 @@ export function getChannelCategory(config: ChannelConfig): MediaCategory {
           ? 'itv'
           : config.capabilities?.includes('tti')
             ? 'tti'
-            : 'image-hosting';
+            : 'llm';
   }
 }
 

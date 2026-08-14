@@ -65,7 +65,6 @@ vi.mock('./hooks/useShotGridSplit', () => ({
 }));
 
 vi.mock('../../services/mediaPersistenceService', () => ({ persistMediaAsset: vi.fn() }));
-vi.mock('../../services/mediaRemoteUrlService', () => ({ ensureRemoteUrlForImageAsset: vi.fn() }));
 
 function createShot(id: string, videoReference?: Shot['videoReference']): Shot {
   return {

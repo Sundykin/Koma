@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { uploadBytesToImageHostingWithRetry } from '../imageHostingService';
 import {
   buildVideoCapabilityRequest,
   compileWorkflowVideoDomainRequest,
@@ -7,21 +6,7 @@ import {
   resolveVideoProtocolCompilationLimit,
 } from './videoRequestCompiler';
 
-vi.mock('../imageHostingService', () => ({
-  uploadBytesToImageHostingWithRetry: vi.fn(async () => ({
-    success: false,
-    error: 'HTTP 404',
-  })),
-}));
-
 describe('videoRequestCompiler', () => {
-  beforeEach(() => {
-    vi.mocked(uploadBytesToImageHostingWithRetry).mockClear();
-    vi.mocked(uploadBytesToImageHostingWithRetry).mockResolvedValue({
-      success: false,
-      error: 'HTTP 404',
-    });
-  });
 
   it('buildVideoCapabilityRequest: validates capability-specific required fields', () => {
     expect(() => buildVideoCapabilityRequest({
@@ -195,30 +180,7 @@ describe('videoRequestCompiler', () => {
     })).toBe(5);
   });
 
-  it('mapVideoRequestToProviderRequest: URL-only providers require image-hosting upload success by default', async () => {
-    await expect(mapVideoRequestToProviderRequest({
-      projectId: 'p1',
-      request: buildVideoCapabilityRequest({
-        capability: 'video.image-to-video',
-        prompt: 'demo',
-        primaryImage: { transport: 'data-url', value: 'data:image/png;base64,AA==' },
-        additionalReferences: [
-          { transport: 'data-url', value: 'data:image/png;base64,AQ==' },
-        ],
-      }),
-      transportSupport: {
-        primary: false,
-        additional: false,
-        reference: true,
-        start: true,
-        end: true,
-      },
-    })).rejects.toThrow('HTTP 404');
-
-    expect(uploadBytesToImageHostingWithRetry).toHaveBeenCalledTimes(1);
-  });
-
-  it('mapVideoRequestToProviderRequest: can explicitly opt into data-url fallback when required upload fails', async () => {
+  it('mapVideoRequestToProviderRequest: 本地素材原样直达 provider —— 图床已下线，不再做远程 URL 归一化', async () => {
     const request = await mapVideoRequestToProviderRequest({
       projectId: 'p1',
       request: buildVideoCapabilityRequest({
@@ -229,63 +191,13 @@ describe('videoRequestCompiler', () => {
           { transport: 'data-url', value: 'data:image/png;base64,AQ==' },
         ],
       }),
-      transportSupport: {
-        primary: false,
-        additional: false,
-        reference: true,
-        start: true,
-        end: true,
-      },
-      fallbackToSourceOnRequiredUploadFailure: true,
     });
 
-    expect(uploadBytesToImageHostingWithRetry).toHaveBeenCalledTimes(2);
-    expect(request.primaryImage?.transport).toBe('data-url');
-    expect(request.additionalReferences?.[0]?.transport).toBe('data-url');
+    expect(request.primaryImage).toEqual({ transport: 'data-url', value: 'data:image/png;base64,AA==' });
+    expect(request.additionalReferences?.[0]).toEqual({ transport: 'data-url', value: 'data:image/png;base64,AQ==' });
   });
 
-  it('mapVideoRequestToProviderRequest: dedupes duplicate primary and additional uploads in one request', async () => {
-    vi.mocked(uploadBytesToImageHostingWithRetry).mockResolvedValue({
-      success: true,
-      url: 'https://cdn.example.com/shared.png',
-    });
-
-    const request = await mapVideoRequestToProviderRequest({
-      projectId: 'p1',
-      request: buildVideoCapabilityRequest({
-        capability: 'video.image-to-video',
-        prompt: 'demo',
-        primaryImage: { transport: 'data-url', value: 'data:image/png;base64,AA==' },
-        additionalReferences: [
-          { transport: 'data-url', value: 'data:image/png;base64,AA==' },
-        ],
-      }),
-      transportSupport: {
-        primary: false,
-        additional: false,
-        reference: true,
-        start: true,
-        end: true,
-      },
-    });
-
-    expect(uploadBytesToImageHostingWithRetry).toHaveBeenCalledTimes(1);
-    expect(request.primaryImage).toEqual(expect.objectContaining({
-      transport: 'remote-url',
-      value: 'https://cdn.example.com/shared.png',
-    }));
-    expect(request.additionalReferences?.[0]).toEqual(expect.objectContaining({
-      transport: 'remote-url',
-      value: 'https://cdn.example.com/shared.png',
-    }));
-  });
-
-  it('mapVideoRequestToProviderRequest: dedupes duplicate start and end frame uploads in one request', async () => {
-    vi.mocked(uploadBytesToImageHostingWithRetry).mockResolvedValue({
-      success: true,
-      url: 'https://cdn.example.com/frame.png',
-    });
-
+  it('mapVideoRequestToProviderRequest: 首尾帧同样原样透传', async () => {
     const request = await mapVideoRequestToProviderRequest({
       projectId: 'p1',
       request: buildVideoCapabilityRequest({
@@ -294,24 +206,10 @@ describe('videoRequestCompiler', () => {
         startFrame: { transport: 'data-url', value: 'data:image/png;base64,AA==' },
         endFrame: { transport: 'data-url', value: 'data:image/png;base64,AA==' },
       }),
-      transportSupport: {
-        primary: true,
-        additional: true,
-        reference: true,
-        start: false,
-        end: false,
-      },
     });
 
-    expect(uploadBytesToImageHostingWithRetry).toHaveBeenCalledTimes(1);
-    expect(request.startFrame).toEqual(expect.objectContaining({
-      transport: 'remote-url',
-      value: 'https://cdn.example.com/frame.png',
-    }));
-    expect(request.endFrame).toEqual(expect.objectContaining({
-      transport: 'remote-url',
-      value: 'https://cdn.example.com/frame.png',
-    }));
+    expect(request.startFrame).toEqual({ transport: 'data-url', value: 'data:image/png;base64,AA==' });
+    expect(request.endFrame).toEqual({ transport: 'data-url', value: 'data:image/png;base64,AA==' });
   });
 
   it('mapVideoRequestToProviderRequest: respects capability shape and optional max reference cap', async () => {
@@ -325,13 +223,6 @@ describe('videoRequestCompiler', () => {
           { transport: 'data-url', value: 'data:image/png;base64,BB==' },
         ],
       }),
-      transportSupport: {
-        primary: true,
-        additional: true,
-        reference: true,
-        start: true,
-        end: true,
-      },
     });
 
     expect(imageRequest.capability).toBe('video.image-to-video');
@@ -351,13 +242,6 @@ describe('videoRequestCompiler', () => {
           'https://cdn.example.com/5.png',
         ],
       }),
-      transportSupport: {
-        primary: true,
-        additional: true,
-        reference: true,
-        start: true,
-        end: true,
-      },
       maxAdditionalReferences: 2,
     });
 

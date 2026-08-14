@@ -56,7 +56,7 @@ export interface GlobalPluginMeta {
 
 // Provider 插件元数据
 export interface ProviderPluginMeta {
-  channelType: 'tti' | 'itv' | 'tts' | 'llm' | 'image-hosting';  // 主渠道类型
+  channelType: 'tti' | 'itv' | 'tts' | 'llm';  // 主渠道类型
   capabilities: string[];     // 支持的能力列表，如 ['itv', 'character-extract']
   configPanel?: boolean;      // 是否有自定义配置面板
   supportedActions?: string[];  // 支持的操作 (兼容旧字段)
@@ -164,7 +164,7 @@ export interface PromptOverride {
 // 渠道配置
 export interface PluginChannelConfig {
   id: string;
-  type: 'tti' | 'itv' | 'tts' | 'llm' | 'image-hosting';
+  type: 'tti' | 'itv' | 'tts' | 'llm';
   name: string;
   config: Record<string, any>;
 }

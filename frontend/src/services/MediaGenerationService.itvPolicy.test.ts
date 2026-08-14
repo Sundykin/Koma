@@ -8,12 +8,6 @@ vi.mock('../providers', () => {
   };
 });
 
-vi.mock('./imageHostingService', () => {
-  return {
-    uploadBytesToImageHostingWithRetry: vi.fn(),
-  };
-});
-
 vi.mock('./mediaPersistenceService', () => {
   return {
     persistMediaAsset: vi.fn(async ({ destPath }: any = {}) => ({
@@ -39,11 +33,8 @@ describe('MediaGenerationService.generateVideo - ITV input policy matrix', () =>
     vi.clearAllMocks();
   });
 
-  it('URL-only providers: required remoteUrl fails clearly when image-hosting upload fails', async () => {
+  it('本地 data-url 参考图原样交给 provider —— 图床已移除，不再有上传中转', async () => {
     const { getProjectITVProvider } = await import('../providers');
-    const { uploadBytesToImageHostingWithRetry } = await import('./imageHostingService');
-
-    (uploadBytesToImageHostingWithRetry as any).mockResolvedValue({ success: false, error: 'no hosting' });
 
     const start = vi.fn(async () => {
       return { mode: 'immediate', output: { source: 'https://cdn.example.com/out.mp4' } };
@@ -54,43 +45,6 @@ describe('MediaGenerationService.generateVideo - ITV input policy matrix', () =>
       config: { provider: 'custom', apiKey: 'k', baseUrl: 'https://x' },
       validate: () => true,
       testConnection: async () => true,
-      start,
-    });
-
-    const { MediaGenerationService } = await import('./MediaGenerationService');
-    const svc = new MediaGenerationService();
-
-    await expect(svc.generateVideo({
-      projectId: 'p1',
-      ownerRef: { projectId: 'p1', ownerType: 'shot', ownerId: 's1', slot: 'video' },
-      request: {
-        capability: 'video.image-to-video',
-        prompt: 'p',
-        primaryImage: { transport: 'data-url', value: 'data:image/png;base64,AA==' },
-        additionalReferences: [],
-        options: {},
-      } as any,
-    })).rejects.toThrow('no hosting');
-
-    expect(start).not.toHaveBeenCalled();
-  });
-
-  it('data-url-capable providers: best-effort remoteUrl -> continues with data-url when upload fails', async () => {
-    const { getProjectITVProvider } = await import('../providers');
-    const { uploadBytesToImageHostingWithRetry } = await import('./imageHostingService');
-
-    (uploadBytesToImageHostingWithRetry as any).mockResolvedValue({ success: false, error: 'no hosting' });
-
-    const start = vi.fn(async () => {
-      return { mode: 'immediate', output: { source: 'https://cdn.example.com/out.mp4' } };
-    });
-
-    (getProjectITVProvider as any).mockResolvedValue({
-      type: 'custom',
-      config: { provider: 'custom', apiKey: 'k', baseUrl: 'https://x' },
-      validate: () => true,
-      testConnection: async () => true,
-      assetTransports: { primaryImage: ['remote-url', 'data-url'], additionalReferences: ['remote-url', 'data-url'] },
       start,
     });
 
@@ -110,6 +64,10 @@ describe('MediaGenerationService.generateVideo - ITV input policy matrix', () =>
     });
 
     expect(start).toHaveBeenCalled();
+    expect((start.mock.calls[0] as any[])[0].primaryImage).toEqual({
+      transport: 'data-url',
+      value: 'data:image/png;base64,AA==',
+    });
     expect(out.kind).toBe('video');
   });
 

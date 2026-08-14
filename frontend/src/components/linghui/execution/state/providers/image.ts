@@ -10,7 +10,6 @@ import { sanitizeBodyForLog, truncateString } from '../../../../../utils/logForm
 import {
   compileLinghuiPromptReferences,
 } from '../../../editors/state/linghuiPromptReferences';
-import { ensureRemoteUrlForImageSources } from '../../../../../services/mediaRemoteUrlService';
 import { persistMediaAsset } from '../../../../../services/mediaPersistenceService';
 import {
   EXECUTION_PROJECT_ID,
@@ -183,30 +182,17 @@ async function executeImageProviderAttempt(
       };
     }
 
-    // grok 协议下，data-uri 会让 chat/completions body 暴增（部分代理 413/超时），
-    // 这里先尝试把本地参考图上传到图床（best-effort），失败则回落到原始 data-url。
-    const requiresRemoteUrlUpload = replacementStrategy === 'image-index';
-    const [resolvedReferenceSources, resolvedSilentReferenceSources] = requiresRemoteUrlUpload
-      ? await (async () => {
-          const combinedSources = [...referenceSources, ...silentReferenceSources];
-          const resolvedCombinedSources = await ensureRemoteUrlForImageSources({
-            projectId: EXECUTION_PROJECT_ID,
-            sources: combinedSources,
-            policy: 'best-effort',
-          });
-          return [
-            resolvedCombinedSources.slice(0, referenceSources.length),
-            resolvedCombinedSources.slice(referenceSources.length),
-          ];
-        })()
-      : [referenceSources, silentReferenceSources];
+    // 图床已下线：参考图一律用原始来源（data-url / 本地路径），
+    // TTI provider 都声明了 supportsLocalReferences，自己读字节。
+    const resolvedReferenceSources = referenceSources;
+    const resolvedSilentReferenceSources = silentReferenceSources;
 
     const providerReferenceSources = dedupeImageReferenceSources([
       ...resolvedReferenceSources,
       ...resolvedSilentReferenceSources,
     ]);
     references = await ensureProviderAssetInputs(providerReferenceSources, {
-      preferLocalFile: !requiresRemoteUrlUpload,
+      preferLocalFile: true,
     });
 
     if (params.multiAngle && references.length === 0) {

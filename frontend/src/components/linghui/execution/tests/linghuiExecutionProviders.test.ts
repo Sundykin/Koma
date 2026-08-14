@@ -13,9 +13,7 @@ const buildVideoCapabilityRequestMock = vi.fn();
 const compileWorkflowVideoDomainRequestMock = vi.fn();
 const getPromptProtocolMock = vi.fn();
 const mapVideoRequestToProviderRequestMock = vi.fn();
-const resolveITVTransportSupportMock = vi.fn();
 const resolveVideoProtocolCompilationLimitMock = vi.fn();
-const ensureRemoteUrlForImageSourcesMock = vi.fn();
 const persistMediaAssetMock = vi.fn();
 const createSessionMock = vi.fn();
 const disposeSessionMock = vi.fn();
@@ -92,14 +90,9 @@ vi.mock('../../../../services/promptCompilation/videoRequestCompiler', () => ({
   compileWorkflowVideoDomainRequest: (...args: unknown[]) => compileWorkflowVideoDomainRequestMock(...args),
   getPromptProtocol: (...args: unknown[]) => getPromptProtocolMock(...args),
   mapVideoRequestToProviderRequest: (...args: unknown[]) => mapVideoRequestToProviderRequestMock(...args),
-  resolveITVTransportSupport: (...args: unknown[]) => resolveITVTransportSupportMock(...args),
   resolveITVPrefersLocalAssets: (provider: { prefersLocalAssets?: boolean } | undefined) =>
     Boolean(provider?.prefersLocalAssets),
   resolveVideoProtocolCompilationLimit: (...args: unknown[]) => resolveVideoProtocolCompilationLimitMock(...args),
-}));
-
-vi.mock('../../../../services/mediaRemoteUrlService', () => ({
-  ensureRemoteUrlForImageSources: (...args: unknown[]) => ensureRemoteUrlForImageSourcesMock(...args),
 }));
 
 vi.mock('../../../../services/mediaPersistenceService', () => ({
@@ -175,9 +168,7 @@ describe('linghuiExecutionProviders', () => {
 
     getPromptProtocolMock.mockReturnValue(undefined);
     mapVideoRequestToProviderRequestMock.mockImplementation(async ({ request }) => request);
-    resolveITVTransportSupportMock.mockReturnValue({});
     resolveVideoProtocolCompilationLimitMock.mockReturnValue(0);
-    ensureRemoteUrlForImageSourcesMock.mockImplementation(async ({ sources }) => sources);
     persistMediaAssetMock.mockImplementation(async ({ kind, source, mimeType, provider, channelId, modelId, capability, metadata }) => ({
       kind,
       localPath: source,
@@ -444,36 +435,25 @@ describe('linghuiExecutionProviders', () => {
 
     getProjectTTIProviderMock.mockResolvedValue(provider);
     getPromptProtocolMock.mockReturnValue('grok-image-index');
-    ensureRemoteUrlForImageSourcesMock.mockResolvedValue([
-      'https://cdn.example.com/shared.png',
-      'https://cdn.example.com/shared.png',
-    ]);
-
     const { generateImageWithProvider } = await import('../state/linghuiExecutionProviders');
 
     const result = await generateImageWithProvider({
       prompt: '沿用 @ref_shared 的构图',
-      referenceSources: ['/tmp/shared.png'],
-      silentReferenceSources: ['/tmp/shared.png'],
+      referenceSources: ['https://cdn.example.com/shared.png'],
+      silentReferenceSources: ['https://cdn.example.com/shared.png'],
       promptReferences: [
         {
           id: 'shared',
           nodeId: 'node-image-1',
           kind: 'image',
           name: '共享图',
-          source: '/tmp/shared.png',
+          source: 'https://cdn.example.com/shared.png',
         },
       ],
       ttiSelection: 'channel-image::model-image',
       placeholderTitle: 'grok refs',
     });
 
-    expect(ensureRemoteUrlForImageSourcesMock).toHaveBeenCalledTimes(1);
-    expect(ensureRemoteUrlForImageSourcesMock).toHaveBeenCalledWith(expect.objectContaining({
-      projectId: 'linghui',
-      policy: 'best-effort',
-      sources: ['/tmp/shared.png', '/tmp/shared.png'],
-    }));
     expect(provider.start).toHaveBeenCalledWith(expect.objectContaining({
       prompt: '沿用 @Image 1 的构图',
       references: [
@@ -508,7 +488,6 @@ describe('linghuiExecutionProviders', () => {
 
     getProjectTTIProviderMock.mockResolvedValue(provider);
     getPromptProtocolMock.mockReturnValue('grok-image-index');
-    ensureRemoteUrlForImageSourcesMock.mockImplementation(async ({ sources }) => sources);
 
     const { generateImageWithProvider } = await import('../state/linghuiExecutionProviders');
 
@@ -529,9 +508,6 @@ describe('linghuiExecutionProviders', () => {
       placeholderTitle: 'grok refs',
     });
 
-    expect(ensureRemoteUrlForImageSourcesMock).toHaveBeenCalledWith(expect.objectContaining({
-      sources: [storedSource, storedSource],
-    }));
     expect(provider.start).toHaveBeenCalledWith(expect.objectContaining({
       prompt: '沿用 @Image 1 的构图',
       references: [

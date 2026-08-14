@@ -17,30 +17,13 @@ import { clampDurationToSpec, type VideoDurationSpec } from '../../providers/itv
 type VideoRequestAsset = MediaAssetSource | ProviderAssetInput;
 type ProviderAssetTransport = ProviderAssetInput['transport'];
 
-interface ITVProviderTransportConfig {
-  primaryImage?: ReadonlyArray<ProviderAssetTransport>;
-  additionalReferences?: ReadonlyArray<ProviderAssetTransport>;
-  referenceImages?: ReadonlyArray<ProviderAssetTransport>;
-  startFrame?: ReadonlyArray<ProviderAssetTransport>;
-  endFrame?: ReadonlyArray<ProviderAssetTransport>;
-}
-
 interface ITVProviderLike {
   config?: Record<string, unknown>;
-  assetTransports?: ITVProviderTransportConfig;
 }
 
 export interface CompileVideoRequestResult<TAsset = VideoRequestAsset> {
   request: ITVRequest<TAsset>;
   unresolvedMentions: string[];
-}
-
-export interface ITVTransportSupport {
-  primary: boolean;
-  additional: boolean;
-  reference: boolean;
-  start: boolean;
-  end: boolean;
 }
 
 export interface VideoRequestCompileResult {
@@ -54,14 +37,7 @@ export interface VideoMappingMessageOverrides {
   missingPrimaryImage?: string;
   missingReferenceImages?: string;
   missingStartEndFrames?: string;
-  remotePrimary?: string;
-  remoteAdditional?: string;
-  remoteReference?: string;
-  remoteStart?: string;
-  remoteEnd?: string;
 }
-
-const DEFAULT_REMOTE_ONLY_ERROR = '当前 ITV Provider 仅支持 URL 图片输入（remote-url），请启用图床以获得 remoteUrl';
 
 function supportsVisualReferenceCompilation(capability: VideoGenerationCapability): boolean {
   return capability !== 'video.text-to-video';
@@ -181,130 +157,6 @@ async function ensureProviderAssetInputs(
 ): Promise<ProviderAssetInput[]> {
   const resolved = await Promise.all(sources.map(source => ensureProviderAssetInput(source, options)));
   return resolved.filter(Boolean) as ProviderAssetInput[];
-}
-
-async function ensureRemoteUrlForSingleSource(params: {
-  projectId: string;
-  source: MediaAssetSource | ProviderAssetInput | undefined;
-  policy: 'best-effort' | 'required';
-  fallbackToSourceOnUploadFailure?: boolean;
-}) {
-  const { ensureRemoteUrlForImageSource } = await import('../mediaRemoteUrlService');
-  return ensureRemoteUrlForImageSource(params);
-}
-
-async function ensureRemoteUrlForMultipleSources(params: {
-  projectId: string;
-  sources: Array<MediaAssetSource | ProviderAssetInput | undefined>;
-  policy: 'best-effort' | 'required';
-  fallbackToSourceOnUploadFailure?: boolean;
-}) {
-  const { ensureRemoteUrlForImageSources } = await import('../mediaRemoteUrlService');
-  return ensureRemoteUrlForImageSources(params);
-}
-
-async function ensureRemoteUrlForImageToVideoSources(params: {
-  projectId: string;
-  primaryImage: VideoRequestAsset | undefined;
-  additionalReferences: VideoRequestAsset[];
-  primaryPolicy: 'best-effort' | 'required';
-  additionalPolicy: 'best-effort' | 'required';
-  fallbackToSourceOnUploadFailure?: boolean;
-}): Promise<{
-  primaryImage: VideoRequestAsset | undefined;
-  additionalReferences: Array<VideoRequestAsset | undefined>;
-}> {
-  if (params.primaryPolicy === 'required' && params.additionalPolicy === 'required') {
-    const [primaryImage, ...additionalReferences] = await ensureRemoteUrlForMultipleSources({
-      projectId: params.projectId,
-      sources: [
-        params.primaryImage as MediaAssetSource | ProviderAssetInput | undefined,
-        ...(params.additionalReferences as Array<MediaAssetSource | ProviderAssetInput>),
-      ],
-      policy: 'required',
-      fallbackToSourceOnUploadFailure: params.fallbackToSourceOnUploadFailure,
-    });
-    return {
-      primaryImage,
-      additionalReferences,
-    };
-  }
-
-  const [primaryImage, additionalReferences] = await Promise.all([
-    params.primaryPolicy === 'required'
-      ? ensureRemoteUrlForSingleSource({
-          projectId: params.projectId,
-          source: params.primaryImage as MediaAssetSource | ProviderAssetInput | undefined,
-          policy: 'required',
-          fallbackToSourceOnUploadFailure: params.fallbackToSourceOnUploadFailure,
-        })
-      : Promise.resolve(params.primaryImage),
-    params.additionalPolicy === 'required'
-      ? ensureRemoteUrlForMultipleSources({
-          projectId: params.projectId,
-          sources: params.additionalReferences as Array<MediaAssetSource | ProviderAssetInput>,
-          policy: 'required',
-          fallbackToSourceOnUploadFailure: params.fallbackToSourceOnUploadFailure,
-        })
-      : Promise.resolve(params.additionalReferences as Array<VideoRequestAsset | undefined>),
-  ]);
-
-  return {
-    primaryImage,
-    additionalReferences,
-  };
-}
-
-async function ensureRemoteUrlForStartEndSources(params: {
-  projectId: string;
-  startFrame: VideoRequestAsset | undefined;
-  endFrame: VideoRequestAsset | undefined;
-  startPolicy: 'best-effort' | 'required';
-  endPolicy: 'best-effort' | 'required';
-  fallbackToSourceOnUploadFailure?: boolean;
-}): Promise<{
-  startFrame: VideoRequestAsset | undefined;
-  endFrame: VideoRequestAsset | undefined;
-}> {
-  if (params.startPolicy === 'required' && params.endPolicy === 'required') {
-    const [startFrame, endFrame] = await ensureRemoteUrlForMultipleSources({
-      projectId: params.projectId,
-      sources: [
-        params.startFrame as MediaAssetSource | ProviderAssetInput | undefined,
-        params.endFrame as MediaAssetSource | ProviderAssetInput | undefined,
-      ],
-      policy: 'required',
-      fallbackToSourceOnUploadFailure: params.fallbackToSourceOnUploadFailure,
-    });
-    return {
-      startFrame,
-      endFrame,
-    };
-  }
-
-  const [startFrame, endFrame] = await Promise.all([
-    params.startPolicy === 'required'
-      ? ensureRemoteUrlForSingleSource({
-          projectId: params.projectId,
-          source: params.startFrame as MediaAssetSource | ProviderAssetInput | undefined,
-          policy: 'required',
-          fallbackToSourceOnUploadFailure: params.fallbackToSourceOnUploadFailure,
-        })
-      : Promise.resolve(params.startFrame),
-    params.endPolicy === 'required'
-      ? ensureRemoteUrlForSingleSource({
-          projectId: params.projectId,
-          source: params.endFrame as MediaAssetSource | ProviderAssetInput | undefined,
-          policy: 'required',
-          fallbackToSourceOnUploadFailure: params.fallbackToSourceOnUploadFailure,
-        })
-      : Promise.resolve(params.endFrame),
-  ]);
-
-  return {
-    startFrame,
-    endFrame,
-  };
 }
 
 function normalizeVideoRequestOptions(
@@ -442,23 +294,6 @@ export function resolveITVPrefersLocalAssets(provider: unknown): boolean {
   const declared = (provider as { prefersLocalAssets?: boolean } | undefined)?.prefersLocalAssets;
   if (typeof declared === 'boolean') return declared;
   return (provider as ITVProviderLike | undefined)?.config?.provider === 'seedance';
-}
-
-export function resolveITVTransportSupport(provider: unknown): ITVTransportSupport {
-  const transports = (provider as ITVProviderLike | undefined)?.assetTransports;
-  const primaryTransports = transports?.primaryImage;
-  const additionalTransports = transports?.additionalReferences;
-  const referenceTransports = transports?.referenceImages;
-  const startTransports = transports?.startFrame;
-  const endTransports = transports?.endFrame;
-
-  return {
-    primary: supportsDataUrl(primaryTransports),
-    additional: supportsDataUrl(additionalTransports ?? primaryTransports),
-    reference: supportsDataUrl(referenceTransports ?? additionalTransports ?? primaryTransports),
-    start: supportsDataUrl(startTransports ?? primaryTransports),
-    end: supportsDataUrl(endTransports ?? additionalTransports ?? startTransports ?? primaryTransports),
-  };
 }
 
 export function resolveVideoProtocolCompilationLimit(params: {
@@ -730,24 +565,15 @@ export function compileWorkflowVideoDomainRequest(params: {
 export async function mapVideoRequestToProviderRequest(params: {
   projectId: string;
   request: ITVRequest<VideoRequestAsset>;
-  transportSupport: ITVTransportSupport;
   maxAdditionalReferences?: number;
   messages?: VideoMappingMessageOverrides;
   preferLocalAssetInput?: boolean;
-  fallbackToSourceOnRequiredUploadFailure?: boolean;
 }): Promise<ITVRequest<ProviderAssetInput>> {
-  const { projectId, request, transportSupport, maxAdditionalReferences } = params;
-  const fallbackToSourceOnRequiredUploadFailure =
-    params.fallbackToSourceOnRequiredUploadFailure ?? false;
+  const { projectId: _projectId, request, maxAdditionalReferences } = params;
   const messages: Required<VideoMappingMessageOverrides> = {
     missingPrimaryImage: params.messages?.missingPrimaryImage || '缺少主图输入',
     missingReferenceImages: params.messages?.missingReferenceImages || '缺少参考图输入',
     missingStartEndFrames: params.messages?.missingStartEndFrames || '缺少首尾帧输入',
-    remotePrimary: params.messages?.remotePrimary || DEFAULT_REMOTE_ONLY_ERROR,
-    remoteAdditional: params.messages?.remoteAdditional || DEFAULT_REMOTE_ONLY_ERROR,
-    remoteReference: params.messages?.remoteReference || DEFAULT_REMOTE_ONLY_ERROR,
-    remoteStart: params.messages?.remoteStart || DEFAULT_REMOTE_ONLY_ERROR,
-    remoteEnd: params.messages?.remoteEnd || DEFAULT_REMOTE_ONLY_ERROR,
   };
 
   if (isTextToVideoRequest(request)) {
@@ -760,45 +586,17 @@ export async function mapVideoRequestToProviderRequest(params: {
   }
 
   if (isImageToVideoRequest(request)) {
-    const primaryPolicy = transportSupport.primary ? 'best-effort' : 'required';
-    const additionalPolicy = transportSupport.additional ? 'best-effort' : 'required';
     const additionalInput = maxAdditionalReferences != null
       ? (request.additionalReferences || []).slice(0, maxAdditionalReferences)
       : (request.additionalReferences || []);
 
-    const {
-      primaryImage: normalizedPrimary,
-      additionalReferences: normalizedAdditional,
-    } = await ensureRemoteUrlForImageToVideoSources({
-      projectId,
-      primaryImage: request.primaryImage,
-      additionalReferences: additionalInput,
-      primaryPolicy,
-      additionalPolicy,
-      fallbackToSourceOnUploadFailure: fallbackToSourceOnRequiredUploadFailure,
-    });
-
-    const primaryImage = await ensureProviderAssetInput(normalizedPrimary, {
+    const primaryImage = await ensureProviderAssetInput(request.primaryImage, {
       preferLocalFile: params.preferLocalAssetInput,
     });
     if (!primaryImage) throw new Error(messages.missingPrimaryImage);
-    const additionalReferences = await ensureProviderAssetInputs(normalizedAdditional, {
+    const additionalReferences = await ensureProviderAssetInputs(additionalInput, {
       preferLocalFile: params.preferLocalAssetInput,
     });
-    if (
-      !fallbackToSourceOnRequiredUploadFailure &&
-      !transportSupport.primary &&
-      primaryImage.transport !== 'remote-url'
-    ) {
-      throw new Error(messages.remotePrimary);
-    }
-    if (
-      !fallbackToSourceOnRequiredUploadFailure &&
-      !transportSupport.additional &&
-      additionalReferences.some(item => item.transport !== 'remote-url')
-    ) {
-      throw new Error(messages.remoteAdditional);
-    }
 
     return createVideoRequest(request.capability, {
       prompt: request.prompt,
@@ -810,30 +608,14 @@ export async function mapVideoRequestToProviderRequest(params: {
   }
 
   if (isReferenceToVideoRequest(request)) {
-    const additionalPolicy = transportSupport.reference ? 'best-effort' : 'required';
     const referenceSources = maxAdditionalReferences != null
       ? request.referenceImages.slice(0, maxAdditionalReferences + 1)
       : request.referenceImages;
-    const normalizedReferenceSources = additionalPolicy === 'required'
-      ? await ensureRemoteUrlForMultipleSources({
-          projectId,
-          sources: referenceSources as MediaAssetSource[],
-          policy: additionalPolicy,
-          fallbackToSourceOnUploadFailure: fallbackToSourceOnRequiredUploadFailure,
-        })
-      : referenceSources;
-    const referenceImages = await ensureProviderAssetInputs(normalizedReferenceSources, {
+    const referenceImages = await ensureProviderAssetInputs(referenceSources, {
       preferLocalFile: params.preferLocalAssetInput,
     });
     if (!referenceImages.length) {
       throw new Error(messages.missingReferenceImages);
-    }
-    if (
-      !fallbackToSourceOnRequiredUploadFailure &&
-      !transportSupport.reference &&
-      referenceImages.some(item => item.transport !== 'remote-url')
-    ) {
-      throw new Error(messages.remoteReference);
     }
 
     return createVideoRequest(request.capability, {
@@ -845,41 +627,14 @@ export async function mapVideoRequestToProviderRequest(params: {
   }
 
   if (isStartEndToVideoRequest(request)) {
-    const startPolicy = transportSupport.start ? 'best-effort' : 'required';
-    const endPolicy = transportSupport.end ? 'best-effort' : 'required';
-    const {
-      startFrame: normalizedStartFrame,
-      endFrame: normalizedEndFrame,
-    } = await ensureRemoteUrlForStartEndSources({
-      projectId,
-      startFrame: request.startFrame,
-      endFrame: request.endFrame,
-      startPolicy,
-      endPolicy,
-      fallbackToSourceOnUploadFailure: fallbackToSourceOnRequiredUploadFailure,
-    });
-    const startFrame = await ensureProviderAssetInput(normalizedStartFrame, {
+    const startFrame = await ensureProviderAssetInput(request.startFrame, {
       preferLocalFile: params.preferLocalAssetInput,
     });
-    const endFrame = await ensureProviderAssetInput(normalizedEndFrame, {
+    const endFrame = await ensureProviderAssetInput(request.endFrame, {
       preferLocalFile: params.preferLocalAssetInput,
     });
     if (!startFrame || !endFrame) {
       throw new Error(messages.missingStartEndFrames);
-    }
-    if (
-      !fallbackToSourceOnRequiredUploadFailure &&
-      !transportSupport.start &&
-      startFrame.transport !== 'remote-url'
-    ) {
-      throw new Error(messages.remoteStart);
-    }
-    if (
-      !fallbackToSourceOnRequiredUploadFailure &&
-      !transportSupport.end &&
-      endFrame.transport !== 'remote-url'
-    ) {
-      throw new Error(messages.remoteEnd);
     }
 
     return createVideoRequest(request.capability, {

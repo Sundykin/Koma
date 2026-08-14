@@ -522,14 +522,6 @@ export class MiniMaxH3ITVProvider implements ITVProvider {
     return this.validate();
   }
 
-  assetTransports = {
-    primaryImage: ['remote-url' as const],
-    additionalReferences: ['remote-url' as const],
-    referenceImages: ['remote-url' as const],
-    startFrame: ['remote-url' as const],
-    endFrame: ['remote-url' as const],
-  };
-
   async getTaskSnapshot(taskId: string): Promise<ProviderTaskSnapshot<ITVResult>> {
     const query = await safeFetch(
       this.authRequest('GET', '').url(`${this.getBaseUrl()}/v2/query/video_generation/${taskId}`),

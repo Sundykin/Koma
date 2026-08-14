@@ -408,7 +408,7 @@ class ElectronPluginRuntime extends EventEmitter {
             factory: module.createProvider,
             defaultConfig: manifest.providerMeta.defaultConfig,
             pluginId: manifest.id,
-            // 媒体 Provider 必填契约版本；image-hosting / llm 不强制
+            // 媒体 Provider 必填契约版本；llm 不强制
             contractVersion: requiresMediaContractVersion(kind)
               ? MEDIA_PROVIDER_CONTRACT_VERSION
               : undefined,

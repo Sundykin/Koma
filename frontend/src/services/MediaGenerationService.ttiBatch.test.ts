@@ -26,10 +26,6 @@ vi.mock('./mediaTaskBindingService', () => ({
   bindOwnerRefMedia: vi.fn(async () => {}),
 }));
 
-vi.mock('./mediaRemoteUrlService', () => ({
-  ensureRemoteUrlForImageAsset: vi.fn(async ({ asset }: any) => asset),
-}));
-
 describe('MediaGenerationService.generateImages - TTI batch outputs', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -85,7 +81,6 @@ describe('MediaGenerationService.generateImages - TTI batch outputs', () => {
       },
       destPath,
       bindOwner: false,
-      normalizeRemoteUrl: false,
     });
 
     expect(start).toHaveBeenCalledWith(expect.objectContaining({

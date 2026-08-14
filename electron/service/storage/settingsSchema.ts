@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS schema_version (
   description  TEXT
 );
 
--- category: 'llm' | 'tti' | 'itv' | 'tts' | 'image-hosting'
+-- category: 'llm' | 'tti' | 'itv' | 'tts'
 -- source:   'builtin' | 'plugin'
 CREATE TABLE IF NOT EXISTS channel_configs (
   id                    TEXT PRIMARY KEY,

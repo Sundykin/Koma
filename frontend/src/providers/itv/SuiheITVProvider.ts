@@ -158,14 +158,6 @@ export class SuiheITVProvider implements ITVProvider {
 
   // 网关接受 OpenAI images:[url]，所以远程 URL 与 data-url 都可由网关下载后转发；
   // 但为减少网关压力，前端优先 remote-url。
-  assetTransports = {
-    primaryImage: ['remote-url', 'data-url'] as const,
-    additionalReferences: ['remote-url'] as const,
-    referenceImages: ['remote-url'] as const,
-    startFrame: ['remote-url', 'data-url'] as const,
-    endFrame: ['remote-url', 'data-url'] as const,
-  };
-
   constructor(config: ITVConfig) {
     // 默认走 Koma 即梦协议：prompt 编译占位符为 @image_file_N / @video_file_N / @audio_file_N，
     // 网关按 metadata.image_urls / video_urls / audio_urls 分发到上游 multipart 各类字段。

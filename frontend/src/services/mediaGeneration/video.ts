@@ -25,7 +25,6 @@ import {
   getPromptProtocol,
   mapVideoRequestToProviderRequest,
   resolveITVPrefersLocalAssets,
-  resolveITVTransportSupport,
   resolveVideoProtocolCompilationLimit,
 } from '../promptCompilation/videoRequestCompiler';
 import { parseMentions } from '../../editor/mentionTypes';
@@ -149,19 +148,11 @@ export async function generateVideo(params: {
     });
   }
 
-  const transportSupport = resolveITVTransportSupport(provider);
-  logger.info('ITV transport support resolved', {
-    traceId: traceContext.traceId,
-    provider: provider.config?.provider,
-    transportSupport,
-  });
   const providerRequest = await mapVideoRequestToProviderRequest({
     projectId,
     request: compiledDomainRequest.request,
-    transportSupport,
     maxAdditionalReferences,
     preferLocalAssetInput: resolveITVPrefersLocalAssets(provider),
-    fallbackToSourceOnRequiredUploadFailure: false,
   });
   const tracedProviderRequest = withVideoTrace(providerRequest, traceContext);
 

@@ -11,7 +11,6 @@ import { registerDelegate } from './tasksDelegate';
 import { taskHandlerRegistry } from './taskHandlerRegistry';
 import { persistMediaAsset } from './mediaPersistenceService';
 import { bindOwnerRefMedia } from './mediaTaskBindingService';
-import { ensureRemoteUrlForImageAsset } from './mediaRemoteUrlService';
 import { createLogger } from '../store/logger';
 import type { ModelCapability } from '../providers/channel/types';
 import type { MediaKind, MediaOwnerRef, StoredMediaAsset } from '../types/media';
@@ -148,9 +147,9 @@ export function registerMediaPollFulfillers(): void {
     const callerPatch = (args.extra?.assetMetadataPatch as Partial<StoredMediaAsset> | undefined) || undefined;
     const enriched = callerPatch ? mergeMediaMetadata(baseEnriched, callerPatch) : baseEnriched;
 
-    const finalAsset = args.kind === 'image'
-      ? await ensureRemoteUrlForImageAsset({ projectId: args.projectId, asset: enriched, policy: 'best-effort' })
-      : enriched;
+    // 素材一律用本地副本：provider 侧要么 multipart 直传、要么自己读字节转 base64，
+    // 不再需要把图先传到公网换 URL。
+    const finalAsset = enriched;
 
     const bindOwner = (args.extra?.bindOwner as boolean | undefined) ?? true;
     if (bindOwner && args.ownerRef) {

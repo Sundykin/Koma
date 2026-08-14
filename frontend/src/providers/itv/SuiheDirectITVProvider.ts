@@ -107,14 +107,6 @@ export class SuiheDirectITVProvider implements ITVProvider {
   prefersLocalAssets = true;
 
   // multipart 直传：remote-url 由前端下载字节、data-url 直接解字节，两种传输都支持
-  assetTransports = {
-    primaryImage: ['remote-url', 'data-url'] as const,
-    additionalReferences: ['remote-url', 'data-url'] as const,
-    referenceImages: ['remote-url', 'data-url'] as const,
-    startFrame: ['remote-url', 'data-url'] as const,
-    endFrame: ['remote-url', 'data-url'] as const,
-  };
-
   constructor(config: ITVConfig) {
     // 不默认启用 Koma 提示词协议。
     this.config = { ...config };

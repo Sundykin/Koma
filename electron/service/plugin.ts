@@ -96,7 +96,7 @@ class PluginService {
     // 清理过期的 staging 缓存
     this._purgeExpiredStaging();
 
-    // 同步内置插件（如七牛云图床）到 pluginsDir，随后由 PluginInitializer 自动加载激活
+    // 同步内置插件到 pluginsDir，随后由 PluginInitializer 自动加载激活
     await this._syncBuiltinPlugins();
   }
 
@@ -105,7 +105,7 @@ class PluginService {
    * 确保升级后用户拿到最新版本；用户配置（apiKey 等）通过 provider-configs.json 保留。
    */
   private _builtinPluginIds(): string[] {
-    return ['com.koma.qiniu-image-hosting'];
+    return [];
   }
 
   private _resolveBuiltinSourceDir(pluginId: string): string | null {

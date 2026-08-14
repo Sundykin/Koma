@@ -9,9 +9,6 @@ vi.mock('../channel/auth', () => ({
     headers: { 'Content-Type': 'application/json' },
   })),
 }));
-vi.mock('../../services/imageHostingService', () => ({
-  uploadBytesToImageHostingWithRetry: vi.fn(),
-}));
 vi.mock('../../services/electronService', () => ({
   electronService: {
     isElectron: vi.fn(() => true),

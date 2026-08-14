@@ -12,7 +12,6 @@ import {
   getPromptProtocol,
   mapVideoRequestToProviderRequest,
   resolveITVPrefersLocalAssets,
-  resolveITVTransportSupport,
   resolveVideoProtocolCompilationLimit,
 } from '../../../../../services/promptCompilation/videoRequestCompiler';
 import { createLogger } from '../../../../../store/logger';
@@ -172,27 +171,17 @@ async function executeVideoProviderAttempt(
       : undefined,
   });
 
-  const transportSupport = resolveITVTransportSupport(provider);
   let providerRequest;
   try {
     providerRequest = await mapVideoRequestToProviderRequest({
       projectId: EXECUTION_PROJECT_ID,
       request: compiledDomainRequest.request,
-      transportSupport,
       maxAdditionalReferences,
       preferLocalAssetInput: resolveITVPrefersLocalAssets(provider),
-      fallbackToSourceOnRequiredUploadFailure: false,
       messages: {
         missingPrimaryImage: '缺少主图输入',
         missingReferenceImages: '缺少参考图输入',
         missingStartEndFrames: '缺少首尾帧输入',
-        remotePrimary: params.capability === 'video.start-end-to-video'
-          ? '当前 ITV Provider 仅支持远程 URL 首帧'
-          : '当前 ITV Provider 仅支持远程 URL 主图',
-        remoteAdditional: '当前 ITV Provider 仅支持远程 URL 附加参考图',
-        remoteReference: '当前 ITV Provider 仅支持远程 URL 参考图',
-        remoteStart: '当前 ITV Provider 仅支持远程 URL 首帧',
-        remoteEnd: '当前 ITV Provider 仅支持远程 URL 尾帧',
       },
     });
   } catch (error) {
@@ -202,7 +191,6 @@ async function executeVideoProviderAttempt(
       provider: provider.config?.provider,
       capability: params.capability,
       protocol: protocol || 'none',
-      transportSupport,
       error: error instanceof Error ? error.message : String(error),
       originalRequest: summarizeVideoRequestForLog(domainRequest),
       compiledRequest: summarizeVideoRequestForLog(compiledDomainRequest.request),
@@ -215,7 +203,6 @@ async function executeVideoProviderAttempt(
     traceId: traceContext.traceId,
     provider: provider.config?.provider,
     protocol: protocol || 'none',
-    transportSupport,
     request: summarizeVideoRequestForLog(tracedProviderRequest),
   });
 

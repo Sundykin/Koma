@@ -247,7 +247,6 @@ export const CharacterAppearancePanel: React.FC<CharacterAppearancePanelProps> =
         ttiSelection,
         destPath: `${dir}/variant-${variant.id}-${Date.now()}.png`,
         bindOwner: false,
-        normalizeRemoteUrl: true,
       });
       if (!result.success || (!result.path && !result.url)) {
         message.error(result.error || '生成子形象图片失败');

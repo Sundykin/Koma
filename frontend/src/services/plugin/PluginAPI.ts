@@ -24,14 +24,12 @@ import type { ChannelCapability } from '../../providers/registry.types';
 import type { ChannelModelDefinition } from '../../providers/channel/types';
 import { isModelCapability } from '../../providers/channel/types';
 
-function inferPluginCategory(kind: string): 'tti' | 'itv' | 'tts' | 'image-hosting' {
+function inferPluginCategory(kind: string): 'tti' | 'itv' | 'tts' {
   switch (kind) {
     case 'itv':
       return 'itv';
     case 'tts':
       return 'tts';
-    case 'image-hosting':
-      return 'image-hosting';
     default:
       return 'tti';
   }
@@ -39,10 +37,7 @@ function inferPluginCategory(kind: string): 'tti' | 'itv' | 'tts' | 'image-hosti
 
 function inferPluginCategoryFromCapabilities(
   capabilities: string[] | undefined,
-): 'tti' | 'itv' | 'tts' | 'image-hosting' {
-  if (capabilities?.includes('image-hosting')) {
-    return 'image-hosting';
-  }
+): 'tti' | 'itv' | 'tts' {
   if (capabilities?.includes('tts')) {
     return 'tts';
   }
@@ -89,10 +84,6 @@ const dynamicMenuItems = new Map<string, MenuItem[]>();
 const pluginProviderTypes = new Map<string, string[]>();
 
 function normalizeProviderModels(def: ProviderDefinition<any>): ChannelModelDefinition[] | undefined {
-  if (def.kind === 'image-hosting') {
-    return undefined;
-  }
-
   if (!def.models?.length) {
     throw new Error(`插件 Provider "${def.type}" 必须声明至少一个模型`);
   }
@@ -462,7 +453,7 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
         const channelCapabilities = providerDefinition
           ? resolveProviderChannelCapabilities(providerDefinition)
           : (plugin.providerMeta?.capabilities || []) as ChannelCapability[];
-        if (!providerDefinition && inferPluginCategoryFromCapabilities(channelCapabilities as string[]) !== 'image-hosting') {
+        if (!providerDefinition) {
           throw new Error(`插件 Provider "${type}" 尚未注册模型定义，无法写入配置`);
         }
 

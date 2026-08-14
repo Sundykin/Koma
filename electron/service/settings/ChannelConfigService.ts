@@ -289,7 +289,7 @@ export function setMediaDefault(
       );
     }
     const models = safeJsonParse<Array<{ id?: string }>>(channel.models_json, []);
-    const requiresModel = category !== 'image-hosting';
+    const requiresModel = true;
     const effectiveModelId =
       (modelId ?? null)
       || channel.default_model_id

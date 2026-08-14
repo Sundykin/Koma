@@ -16,9 +16,8 @@ const path = require('path');
 const { execSync } = require('child_process');
 
 // 内置插件清单（slug == 目录名）
-const INTERNAL_PLUGINS = [
-  'qiniu-image-hosting',
-];
+// 当前为空：七牛云图床插件已随图床链路一并下线。脚本保留，后续新增内置插件时往这里加 slug。
+const INTERNAL_PLUGINS = [];
 
 const ROOT = path.resolve(__dirname, '..');
 const PLUGINS_DIR = path.join(ROOT, 'packages', 'plugins');

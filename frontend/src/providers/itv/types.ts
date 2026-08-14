@@ -100,24 +100,6 @@ export interface ITVProvider {
   config: ITVConfig;
 
   /**
-   * Declares which asset transports are supported by this ITV provider.
-   *
-   * Why this exists:
-   * - Some remote ITV servers only accept URL-accessible images (`remote-url`).
-   * - Some accept inline base64 via `data-url` (large payloads, but can be useful as a fallback).
-   *
-   * The host (MediaGenerationService) uses this signal to decide whether "ensure remoteUrl"
-   * should be `required` (URL-only) or `best-effort` (data-url is allowed as fallback).
-   */
-  assetTransports?: {
-    primaryImage?: ReadonlyArray<ProviderAssetTransport>;
-    additionalReferences?: ReadonlyArray<ProviderAssetTransport>;
-    referenceImages?: ReadonlyArray<ProviderAssetTransport>;
-    startFrame?: ReadonlyArray<ProviderAssetTransport>;
-    endFrame?: ReadonlyArray<ProviderAssetTransport>;
-  };
-
-  /**
    * 素材同时有本地文件和远程 URL 时，是否优先取本地文件。
    *
    * true 适用于「自己读字节再上传」的 provider（ComfyUI /upload/image、穗禾 multipart 直传）：
