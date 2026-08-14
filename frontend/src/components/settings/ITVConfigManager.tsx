@@ -79,8 +79,6 @@ function getProviderColor(provider: string) {
     case 'pika': return 'magenta';
     case 'sora2': return 'geekblue';
     case 'comfyui-animatediff': return 'orange';
-    case 'grok2api-imagine-itv': return 'green';
-    case 'openai-video': return 'gold';
     case 'suihe-itv': return 'blue';
     case 'comfyui-itv': return 'orange';
     default: return 'default';

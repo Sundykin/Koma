@@ -41,7 +41,7 @@ function createShot(partial?: Partial<Shot>): Shot {
 // 测试 fixture 必须使用 *已注册的* providerType（resolveConfiguredChannelModel 会
 // 通过 getBuiltInChannelDefinition 在 ProviderRegistry 里查找 providerType；
 // 老的 'runway' / 'vidu' / 'kling' 在 channel 收敛后已下线，会让 resolver 返回 undefined）。
-// 这里用现役的 'koma-suihe-itv'（即梦，仅图生视频）+ 'grok2api-imagine-itv'（Grok，全能力）
+// 这里用现役的 'koma-suihe-itv'（即梦，仅图生视频）+ 'suihe-itv'（穗禾直连，全能力）
 // 模拟"图生视频专用渠道"和"参考生视频可用渠道"两个真实组合。
 function createSettings(): AppSettings {
   return {
@@ -71,7 +71,7 @@ function createSettings(): AppSettings {
         id: 'grok-main',
         name: 'Koma 官方 Grok',
         category: 'itv',
-        providerType: 'grok2api-imagine-itv',
+        providerType: 'suihe-itv',
         providerConfig: { apiKey: 'grok-key', baseUrl: 'https://komaapi.com' },
         defaultModelId: 'grok-imagine-video',
         models: [
@@ -605,7 +605,7 @@ describe('shotVideoPlan', () => {
     });
 
     expect(support.disabledReason).toBeUndefined();
-    expect(support.resolvedContext?.definition.id).toBe('grok2api-imagine-itv');
+    expect(support.resolvedContext?.definition.id).toBe('suihe-itv');
     expect(support.resolvedContext?.model.id).toBe('grok-imagine-video');
   });
 });

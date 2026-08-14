@@ -10,7 +10,6 @@
  *   - koma-suihe-itv  metadata.image_urls / video_urls / audio_urls（网关分发到 *_file_N）
  *   - suihe-itv       multipart image_file* / video_file* / audio_file*（穗禾全能参考族）
  *   - comfyui-itv     工作流 ref_images / ref_videos / ref_audios（MiniMax H3 节点）
- *   - grok2api-imagine-itv  只有 image_reference 一个数组，上游没有视频 / 音频参考位
  *   - openai-video    只有 input_reference / images 扩展字段，同样没有视频 / 音频参考位
  */
 import type { PromptCompilationReferenceKind } from '../../services/promptCompilation/types';
@@ -23,8 +22,6 @@ const REFERENCE_KINDS_BY_PROVIDER: Record<string, PromptCompilationReferenceKind
   'suihe-itv': ALL_KINDS,
   'comfyui-itv': ALL_KINDS,
   'minimax-h3-itv': ALL_KINDS,
-  'grok2api-imagine-itv': IMAGE_ONLY,
-  'openai-video': IMAGE_ONLY,
 };
 
 /**

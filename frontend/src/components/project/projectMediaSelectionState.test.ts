@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import type { AppSettings } from '../../types';
 import { buildProjectMediaCategoryState, PROJECT_MEDIA_BASE_REQUIREMENTS } from './projectMediaSelectionState';
 
-// 使用现役 providerType（'koma-suihe-itv' / 'grok2api-imagine-itv' / 'gemini'）。
+// 使用现役 providerType（'koma-suihe-itv' / 'gemini'）。
 // 旧的 'runway' / 'vidu' 已下线，这里映射：
 //  - runway 仅图生视频 → koma-suihe-itv (image-to-video only)
-//  - vidu 全能力 → grok2api-imagine-itv (text/image/ref/start-end-to-video)
+//  - vidu 全能力 → koma-suihe-itv (text/image/ref/start-end-to-video)
 function createSettings(): AppSettings {
   return {
     channelConfigs: [
@@ -33,7 +33,7 @@ function createSettings(): AppSettings {
         id: 'grok-main',
         name: 'Koma 官方 Grok',
         category: 'itv',
-        providerType: 'grok2api-imagine-itv',
+        providerType: 'koma-suihe-itv',
         providerConfig: { apiKey: 'grok-key', baseUrl: 'https://komaapi.com' },
         defaultModelId: 'grok-imagine-video',
         models: [
@@ -102,7 +102,7 @@ describe('projectMediaSelectionState', () => {
 
     expect(state.options.length).toBeGreaterThan(0);
     expect(state.options.every(option => option.channelId === 'grok-main')).toBe(true);
-    expect(state.fallbackLabel).toBe('Koma官方 Grok / grok-imagine-video');
+    expect(state.fallbackLabel).toBe('Koma 即梦 / grok-imagine-video');
     expect(state.usingFallback).toBe(true);
   });
 
@@ -123,7 +123,7 @@ describe('projectMediaSelectionState', () => {
     expect(state.explicitSupported).toBe(false);
     expect(state.usingFallback).toBe(true);
     expect(state.warning).toBe('当前项目选择的模型不支持参考生视频，已回退到全局默认');
-    expect(state.fallbackLabel).toBe('Koma官方 Grok / grok-imagine-video');
+    expect(state.fallbackLabel).toBe('Koma 即梦 / grok-imagine-video');
   });
 
   it('基础项目能力要求会过滤到对应类别的真实模型', () => {

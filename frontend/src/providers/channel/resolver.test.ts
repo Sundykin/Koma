@@ -16,7 +16,7 @@ function createSettings(): AppSettings {
         id: 'runway-main',
         name: 'Runway',
         category: 'itv',
-        providerType: 'grok2api-imagine-itv',
+        providerType: 'koma-suihe-itv',
         providerConfig: { apiKey: 'runway-key' },
         defaultModelId: 'runway-model-a',
         models: [
@@ -206,7 +206,7 @@ describe('channel resolver', () => {
         },
       ],
       enabled: true,
-      // 内置 ITV registry 收敛后只保留 grok2api-imagine-itv / koma-suihe-itv 两类，
+      // 内置 ITV registry 收敛后只保留 koma-suihe-itv / suihe-itv / comfyui-itv / minimax-h3-itv，
       // 这里用 source: 'plugin' 让 getChannelDefinitionForConfig 走插件分支，避免
       // builtin 分支对未注册 providerType 返回 undefined。
       source: 'plugin',

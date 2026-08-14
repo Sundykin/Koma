@@ -67,7 +67,7 @@ function createShot(partial?: Partial<Shot>): Shot {
 
 // 测试 fixture 必须使用 *已注册的* providerType（resolveConfiguredChannelModel 会
 // 通过 getBuiltInChannelDefinition 在 ProviderRegistry 里查找；老的 'runway'/'vidu' 已下线）。
-// 现役 ITV provider：'grok2api-imagine-itv'（Grok 全能力）+ 'koma-suihe-itv'（即梦，仅图生视频）。
+// 现役 ITV provider：'suihe-itv'（穗禾直连，全能力）+ 'koma-suihe-itv'（即梦，仅图生视频）。
 function createSettings(channelId: string, modelId: string): AppSettings {
   return {
     channelConfigs: [
@@ -95,7 +95,7 @@ function createSettings(channelId: string, modelId: string): AppSettings {
         id: 'grok-main',
         name: 'Koma 官方 Grok',
         category: 'itv',
-        providerType: 'grok2api-imagine-itv',
+        providerType: 'suihe-itv',
         providerConfig: { apiKey: 'grok-key', baseUrl: 'https://komaapi.com' },
         defaultModelId: 'grok-imagine-video',
         models: [
